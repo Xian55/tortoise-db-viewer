@@ -7,14 +7,11 @@ const base = process.env.BASE_PATH || "/tortoise-db-viewer/";
 export default defineConfig({
   base,
   optimizeDeps: {
-    // sql.js-httpvfs ships its own worker + wasm; don't pre-bundle it.
-    exclude: ["sql.js-httpvfs"],
+    // sqlite-wasm ships its own .wasm; let Vite handle it as an asset.
+    exclude: ["@sqlite.org/sqlite-wasm"],
   },
   build: {
     target: "esnext",
     assetsInlineLimit: 0, // never inline the wasm
-  },
-  worker: {
-    format: "es",
   },
 });

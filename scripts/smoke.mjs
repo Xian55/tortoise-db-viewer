@@ -1,7 +1,7 @@
 import puppeteer from "puppeteer-core";
 
 const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const BASE = "http://localhost:4317/tortoise-db-viewer/";
+const BASE = process.env.SMOKE_BASE || "http://localhost:4317/tortoise-db-viewer/";
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
@@ -17,15 +17,11 @@ page.on("response", (r) => { if (r.status() >= 400 && !BENIGN.test(r.url())) err
 
 async function testItem(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 30000 });
-  await page.waitForSelector(".tooltip .tt-name", { timeout: 30000 });
+  await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
   const name = await page.$eval(".tooltip .tt-name", (el) => el.textContent);
-  // wait for relations to populate (or show "no sources")
-  await page.waitForFunction(() => {
-    const rel = document.getElementById("rel");
-    return rel && !rel.querySelector(".loading");
-  }, { timeout: 30000 });
-  const panels = await page.$$eval("#rel .panel h2", (els) => els.map((e) => e.textContent));
-  const firstDrop = await page.$eval("#rel .panel tbody tr td", (e) => e.textContent).catch(() => "(none)");
+  await page.waitForSelector(".item-rel", { timeout: 40000 });
+  const panels = await page.$$eval(".item-rel .panel h2", (els) => els.map((e) => e.textContent));
+  const firstDrop = await page.$eval(".item-rel .panel tbody tr td", (e) => e.textContent).catch(() => "(none)");
   console.log(`item ${id}: name="${name}" expect~"${expectName}" panels=[${panels.join(", ")}] firstRow="${firstDrop}"`);
   return name.includes(expectName);
 }

@@ -4,7 +4,7 @@
 // Usage:  SQL_DIR=X:/Programming/tortoise-wow/sql/base node scripts/build-db.mjs
 // Default SQL_DIR assumes the server repo sits next to this one.
 
-import { readFileSync, mkdirSync, rmSync, existsSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseColumns, iterRows, NULL } from "./lib/sqldump.mjs";
@@ -13,6 +13,8 @@ import { openDatabase, RUNTIME } from "./lib/sqlite.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SQL_DIR = process.env.SQL_DIR || join(ROOT, "..", "tortoise-wow", "sql", "base");
+// Single DB file, fetched whole by the browser and loaded into sqlite-wasm.
+// GitHub Pages gzips it on the wire (~27 MB -> ~8.6 MB), decompressed by the browser.
 const OUT = join(ROOT, "public", "data", "tortoise.sqlite");
 
 if (!existsSync(SQL_DIR)) {
