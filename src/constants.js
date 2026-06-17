@@ -93,7 +93,9 @@ export function classRestrictions(mask) {
   if (mask === -1 || mask === 0) return null;
   const out = [];
   for (const [bit, name] of CLASS_MASK) if (mask & bit) out.push(name);
-  return out.length ? out : null;
+  // all classes set == no restriction; don't render the line
+  if (!out.length || out.length === CLASS_MASK.length) return null;
+  return out;
 }
 
 export function money(copper) {
