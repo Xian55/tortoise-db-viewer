@@ -13,6 +13,15 @@ export const IMPORTS = [
     indexes: [], // name search handled by FTS5 (see build-db)
   },
   {
+    file: "tw_world_item_display_info.sql",
+    table: "item_display_info",
+    target: "item_display_info",
+    columns: ["ID", "icon"],
+    text: ["icon"],
+    pk: "ID",
+    indexes: [],
+  },
+  {
     file: "tw_world_creature_template.sql",
     table: "creature_template",
     target: "creatures",

@@ -10,6 +10,12 @@ export function iconUrl(name) {
   return `${ICON_BASE}/${(name || PLACEHOLDER).toLowerCase()}.jpg`;
 }
 
+// small inline icon (for item links / lists), lazy-loaded, placeholder on error
+export function iconImg(name, cls = "il-icon") {
+  return `<img class="${cls}" loading="lazy" src="${iconUrl(name)}" alt="" ` +
+    `onerror="this.src='${iconUrl(PLACEHOLDER)}'">`;
+}
+
 export function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -44,8 +50,7 @@ export function renderTooltip(it, { spellMap = new Map() } = {}) {
   // header (icon + name)
   const head =
     `<div class="tt-head">` +
-    `<img class="tt-icon" loading="lazy" src="${iconUrl(it._icon)}" alt="" ` +
-    `onerror="this.src='${iconUrl(PLACEHOLDER)}'">` +
+    iconImg(it.icon, "tt-icon") +
     `<div class="tt-name" style="color:${qualityColor(it.quality)}">${esc(it.name)}</div>` +
     `</div>`;
   L.push(head);
@@ -146,8 +151,9 @@ export function table(headers, body) {
   return `<table><thead><tr>${head}</tr></thead><tbody>${html}</tbody></table>`;
 }
 
-export function itemLink(entry, name, quality) {
-  return `<a class="ilink" href="?item=${entry}" style="color:${qualityColor(quality)}">${esc(name)}</a>`;
+export function itemLink(entry, name, quality, icon) {
+  return `<a class="ilink" href="?item=${entry}" style="color:${qualityColor(quality)}">` +
+    `${iconImg(icon)}${esc(name)}</a>`;
 }
 
 export function pct(v) {

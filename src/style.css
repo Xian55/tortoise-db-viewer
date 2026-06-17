@@ -76,6 +76,7 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: upp
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--panel2); }
 .ilink:hover { text-decoration: underline; }
+.il-icon { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; border-radius: 3px; border: 1px solid #000; background: #000; }
 
 h1 { font-size: 22px; }
 .results table td:first-child { width: 60%; }

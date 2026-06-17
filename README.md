@@ -64,17 +64,16 @@ Routes: `?item=<id>` for an item page, `?search=<term>` for search.
 
 ## Icons
 
-Item icon names are not in the SQL dumps — they live in the client's
-`ItemDisplayInfo.dbc`. Extract that file from your Turtle client (its patch MPQs
-hold the custom item icons) and run:
+Icon names come from the repo's `item_display_info` table (`display_id → icon`),
+which is mirrored into the DB. Every query that returns an item LEFT JOINs it, so
+item names show their icon everywhere (tooltip, search, relation lists) with no
+extra request — the name is already loaded with the DB. Images are lazy-loaded
+(`<img loading="lazy">`) from the Blizzard render CDN
+(`render-us.worldofwarcraft.com/icons/56/<name>.jpg`) and fall back to a
+placeholder on a 404.
 
-```sh
-ITEMDISPLAYINFO_DBC="X:/path/ItemDisplayInfo.dbc" node scripts/build-icons.mjs
-```
-
-This writes `public/data/icons.json` (`display_id → icon name`). Icons are served
-from the Blizzard render CDN (`render-us.worldofwarcraft.com/icons/56/<name>.jpg`).
-Without `icons.json`, items show a placeholder icon — everything else still works.
+Custom Turtle displays absent from `item_display_info` show the placeholder; add
+their icons by extending that table in the source data.
 
 ## Deploy (GitHub Pages)
 

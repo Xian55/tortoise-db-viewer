@@ -191,23 +191,5 @@ db.pragma("journal_mode = DELETE");
 db.exec("VACUUM");
 db.close();
 
-// ---- icon map: display_id -> icon name (from item_display_info) ----
-// Covers standard items straight from the repo (no client DBC needed). Custom
-// Turtle displays not in this table fall back to a placeholder icon in the UI.
-console.log("Writing icon map...");
-{
-  const sql = read("tw_world_item_display_info.sql");
-  const cols = parseColumns(sql);
-  const iID = cols.indexOf("ID"), iIcon = cols.indexOf("icon");
-  const map = {};
-  let n = 0;
-  for (const row of iterRows(sql, "item_display_info")) {
-    const id = clean(row[iID]), icon = clean(row[iIcon]);
-    if (id && icon) { map[id] = String(icon).toLowerCase(); n++; }
-  }
-  writeFileSync(join(ROOT, "public", "data", "icons.json"), JSON.stringify(map));
-  console.log(`  icons.json: ${n} mappings`);
-}
-
 const mb = (statSync(OUT).size / 1048576).toFixed(1);
 console.log(`\nDone in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${OUT} (${mb} MB)`);

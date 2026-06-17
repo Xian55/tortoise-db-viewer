@@ -2,19 +2,11 @@ import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
 import {
-  renderTooltip, panel, table, itemLink, pct, esc,
+  renderTooltip, panel, table, itemLink, iconImg, pct, esc,
 } from "./render.js";
 
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
-let icons = {}; // display_id -> icon name (optional)
-
-async function loadIcons() {
-  try {
-    const res = await fetch(import.meta.env.BASE_URL + "data/icons.json");
-    if (res.ok) icons = await res.json();
-  } catch { /* placeholder icons */ }
-}
 
 // ---- routing ----
 function navigate(url, replace = false) {
@@ -67,7 +59,7 @@ async function showSearch(term) {
   catch (e) { app.innerHTML = errorBox(e); return; }
   if (!rows.length) { app.innerHTML = `<div class="home"><p>No items match “${esc(term)}”.</p></div>`; return; }
   const body = rows.map((r) =>
-    `<tr><td>${itemLink(r.entry, r.name, r.quality)}</td>` +
+    `<tr><td>${itemLink(r.entry, r.name, r.quality, r.icon)}</td>` +
     `<td class="muted">${r.item_level || ""}</td>` +
     `<td class="muted">${r.required_level || ""}</td>` +
     `<td class="muted">${r.entry}</td></tr>`).join("");
@@ -80,7 +72,6 @@ async function showItem(id) {
   let it;
   try { it = await queryOne(Q.Q_ITEM, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
   if (!it) { app.innerHTML = `<div class="home"><p>No item with ID ${id}.</p></div>`; return; }
-  it._icon = icons[it.display_id];
   document.title = `${it.name} - Tortoise-WoW DB`;
 
   // spell descriptions for the tooltip effect lines
@@ -117,12 +108,12 @@ async function showItem(id) {
     }).join("")));
 
   html += panel("Contained in", table(["Container", "Chance"],
-    contained.map((c) => `<tr><td>${itemLink(c.entry, c.name, c.quality)}</td><td>${pct(c.chance)}</td></tr>`).join("")));
+    contained.map((c) => `<tr><td>${itemLink(c.entry, c.name, c.quality, c.icon)}</td><td>${pct(c.chance)}</td></tr>`).join("")));
 
   html += panel("Disenchants into", table(["Item", "Chance", "Qty"],
     disen.map((d) => {
       const qty = d.maxc > d.minc ? `${d.minc}-${d.maxc}` : d.minc;
-      return `<tr><td>${itemLink(d.entry, d.name, d.quality)}</td><td>${pct(d.chance)}</td><td class="muted">${qty}</td></tr>`;
+      return `<tr><td>${itemLink(d.entry, d.name, d.quality, d.icon)}</td><td>${pct(d.chance)}</td><td class="muted">${qty}</td></tr>`;
     }).join("")));
 
   const reqQuests = quests.filter((q) => q.role === "req");
@@ -139,7 +130,7 @@ async function showItem(id) {
     const bySpell = new Map();
     for (const r of createdBy) {
       if (!bySpell.has(r.entry)) bySpell.set(r.entry, { name: r.name, reagents: [] });
-      if (r.reagent_item) bySpell.get(r.entry).reagents.push(`${esc(r.reagent_name)} ×${r.count || 1}`);
+      if (r.reagent_item) bySpell.get(r.entry).reagents.push(`${iconImg(r.reagent_icon)}${esc(r.reagent_name)} ×${r.count || 1}`);
     }
     const rows = [...bySpell.values()].map((s) =>
       `<tr><td>${esc(s.name)}</td><td class="muted">${s.reagents.join(", ")}</td></tr>`).join("");
@@ -148,7 +139,7 @@ async function showItem(id) {
 
   html += panel("Reagent for", table(["Creates", "Via spell"],
     reagentFor.filter((r) => r.created).map((r) =>
-      `<tr><td>${itemLink(r.created, r.created_name, r.quality)}</td><td class="muted">${esc(r.spell_name)}</td></tr>`).join("")));
+      `<tr><td>${itemLink(r.created, r.created_name, r.quality, r.created_icon)}</td><td class="muted">${esc(r.spell_name)}</td></tr>`).join("")));
 
   app.innerHTML =
     `<div class="item-view">
@@ -165,4 +156,4 @@ function errorBox(e) {
 
 // ---- boot ----
 preconnect();
-loadIcons().finally(route);
+route();
