@@ -5,6 +5,7 @@ import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, iconImg, pct, esc 
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
+import { initHovercards } from "./hovercard.js";
 
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
@@ -331,4 +332,5 @@ function errorBox(e) {
 
 // ---- boot ----
 preconnect();
+initHovercards();
 route();

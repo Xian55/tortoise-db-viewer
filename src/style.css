@@ -83,6 +83,10 @@ tbody tr:hover { background: var(--panel2); }
 .ilink:hover { text-decoration: underline; }
 .il-icon { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; border-radius: 3px; border: 1px solid #000; background: #000; }
 
+/* hover tooltip card */
+.hovercard { position: fixed; z-index: 1000; pointer-events: none; max-width: 340px; }
+.hovercard .tooltip { box-shadow: 0 8px 30px rgba(0, 0, 0, .65); }
+
 h1 { font-size: 22px; }
 .results table td:first-child { width: 60%; }
 

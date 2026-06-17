@@ -76,6 +76,16 @@ async function testDungeon(id, expectName) {
   return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot"));
 }
 
+async function testHover() {
+  await page.goto(`${BASE}?search=copper`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".results table tbody tr td a.ilink", { timeout: 40000 });
+  await page.hover(".results table tbody tr td a.ilink");
+  await page.waitForSelector(".hovercard .tt-name", { timeout: 10000 }).catch(() => {});
+  const name = await page.$eval(".hovercard .tt-name", (e) => e.textContent).catch(() => "(none)");
+  console.log(`hover: card name="${name}"`);
+  return name !== "(none)";
+}
+
 let ok = true;
 const t = Date.now();
 ok = (await testItem(7909, "Aquamarine")) && ok;
@@ -87,6 +97,7 @@ ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;
+ok = (await testHover()) && ok;
 ok = (await testBrowse("items", "&class=2&quality=4&minrl=40", "DPS")) && ok;
 ok = (await testBrowse("items", "&class=4&stat=armor&statmin=100", "Armor")) && ok;
 ok = (await testBrowse("items", "&stat=agi&statmin=20", "Agility")) && ok;
