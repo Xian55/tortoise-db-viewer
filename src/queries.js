@@ -68,6 +68,8 @@ export const Q_REAGENT_FOR = `
   LEFT JOIN item_display_info di ON di.ID = ci.display_id
   WHERE sr.item = ?1 GROUP BY s.entry, ci.entry ORDER BY ci.quality DESC LIMIT 100`;
 
+export const Q_ITEM_SOURCES = `SELECT source FROM item_sources WHERE item = ?1`;
+
 export const Q_SPELL = `SELECT entry, name, description, auraDescription, s1, s2, s3, d1, d2, d3 FROM spells WHERE entry = ?1`;
 
 // ---- NPC (creature) pages ----

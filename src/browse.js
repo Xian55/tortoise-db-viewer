@@ -2,11 +2,11 @@
 // against the in-memory DB; sorting + pagination are handled client-side by the
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
-import { itemLink, npcLink, esc } from "./render.js";
+import { itemLink, npcLink, sourceTags, esc } from "./render.js";
 import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
-  CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL,
+  CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
 } from "./constants.js";
 
 const PAGE = 100;
@@ -20,6 +20,7 @@ const COL = {
   req: { key: "req", label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
   slot: { key: "slot", label: "Slot", cls: "muted", cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
   id: { key: "id", label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
+  source: { key: "source", label: "Source", cls: "src-col", cell: (r) => sourceTags(r.sources), value: (r) => r.sources || "" },
   dps: { key: "dps", label: "DPS", num: true, cell: (r) => (dpsVal(r) ? dpsVal(r).toFixed(1) : ""), value: (r) => dpsVal(r) },
   speed: { key: "speed", label: "Speed", num: true, cls: "muted", cell: (r) => (r.delay ? (r.delay / 1000).toFixed(2) : ""), value: (r) => r.delay / 1000 || 0 },
   armor: { key: "armor", label: "Armor", num: true, cls: "muted", cell: (r) => r.armor || "", value: (r) => r.armor || 0 },
@@ -29,9 +30,9 @@ const COL = {
 // when stat criteria are active, a sortable column per criterion stat is inserted
 // (right after Name).
 function buildItemCols(cls, statCols) {
-  const base = cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.id]
-    : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.id]
-      : [COL.name, COL.ilvl, COL.req, COL.slot, COL.id];
+  const base = cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.source, COL.id]
+    : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.source, COL.id]
+      : [COL.name, COL.ilvl, COL.req, COL.slot, COL.source, COL.id];
   return statCols.length ? [base[0], ...statCols, ...base.slice(1)] : base;
 }
 
@@ -109,6 +110,7 @@ async function browseItems(p) {
     quality: p.get("quality") || "", slot: p.get("slot") || "",
     minrl: p.get("minrl") || "", maxrl: p.get("maxrl") || "",
     minil: p.get("minil") || "", maxil: p.get("maxil") || "",
+    source: p.get("source") || "",
   };
   const criteria = parseCriteria(p.get("stats"));
   const where = [], binds = [];
@@ -126,6 +128,12 @@ async function browseItems(p) {
   if (f.maxrl !== "") add("i.required_level <= ?", +f.maxrl);
   if (f.minil !== "") add("i.item_level >= ?", +f.minil);
   if (f.maxil !== "") add("i.item_level <= ?", +f.maxil);
+  // source is multi-valued + TEXT (can't reuse addIn): match items having ANY selected source.
+  const srcVals = f.source.split(",").filter(Boolean);
+  if (srcVals.length) {
+    where.push(`i.entry IN (SELECT item FROM item_sources WHERE source IN (${srcVals.map(() => "?").join(",")}))`);
+    for (const v of srcVals) binds.push(v);
+  }
   // each criterion -> presence-aware match against item_stats (op is whitelisted).
   for (const c of criteria) add(`i.entry IN (SELECT item FROM item_stats WHERE stat='${c.key}' AND value ${c.op} ?)`, +c.val);
 
@@ -136,7 +144,8 @@ async function browseItems(p) {
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
   const rows = await query(
     `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, i.display_id,
-            i.dmg_min1, i.dmg_max1, i.delay, i.armor, di.icon${statSel2}
+            i.dmg_min1, i.dmg_max1, i.delay, i.armor, di.icon${statSel2},
+            (SELECT GROUP_CONCAT(source,',') FROM item_sources s WHERE s.item = i.entry) AS sources
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
 
@@ -161,6 +170,7 @@ async function browseItems(p) {
     ${subMap ? selectField("subclass", "Subtype", options(Object.entries(subMap), f.subclass, "Any")) : ""}
     ${multiField("quality", "Quality", QUALITY.map((q, i) => [i, q.name]), f.quality)}
     ${multiField("slot", "Slot", Object.entries(INV_TYPE), f.slot)}
+    ${multiField("source", "Source", ITEM_SOURCE, f.source)}
     <div class="break"></div>
     ${numField("minrl", "Req lvl ≥", f.minrl)} ${numField("maxrl", "Req lvl ≤", f.maxrl)}
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}

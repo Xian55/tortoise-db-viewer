@@ -82,6 +82,15 @@ export const GEAR_CRITERIA = [
 // flat key -> label (column headers + valid-key whitelist for the stats= URL param)
 export const GEAR_STAT_LABEL = Object.fromEntries(GEAR_CRITERIA.flatMap((g) => g.options));
 
+// item acquisition sources (key/label, in display order) — powers the browse
+// Source filter + tag column and the item-detail header tags. Derived at build
+// time into the item_sources table (see scripts/build-db.mjs).
+export const ITEM_SOURCE = [
+  ["drop", "Drop"], ["skin", "Skinning"], ["pick", "Pickpocket"],
+  ["object", "Object"], ["container", "Container"], ["disenchant", "Disenchant"],
+  ["vendor", "Vendor"], ["quest", "Quest"], ["crafted", "Crafted"], ["pvp", "PvP"],
+];
+
 export const CREATURE_TYPE = {
   1: "Beast", 2: "Dragonkin", 3: "Demon", 4: "Elemental", 5: "Giant", 6: "Undead",
   7: "Humanoid", 8: "Critter", 9: "Mechanical", 10: "Not specified", 11: "Totem",

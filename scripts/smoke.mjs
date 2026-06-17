@@ -45,6 +45,25 @@ async function testNpc(id, expectName, expectTab) {
   return name.includes(expectName) && tabsList.length > 0 && sortableH > 0 && (!expectTab || tabsList.some((t) => t.includes(expectTab)));
 }
 
+async function testBrowseSource(src) {
+  await page.goto(`${BASE}?browse=items&source=${src}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const tags = await page.$$eval(".browse td.src-col .tagx", (e) => e.length);
+  const checked = await page.$$eval(".multi [data-mv='source']:checked", (e) => e.map((c) => c.value));
+  console.log(`browse source=${src}: rows=${rows} tags=${tags} headers=[${headers.join(",")}] checked=[${checked.join(",")}]`);
+  return rows > 0 && headers.includes("Source") && tags > 0 && checked.includes(src);
+}
+
+async function testItemSources(id) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".item-sources .tagx", { timeout: 40000 });
+  const tags = await page.$$eval(".item-sources .tagx", (e) => e.map((t) => t.textContent.trim()));
+  console.log(`item sources ${id}: [${tags.join(", ")}]`);
+  return tags.length > 0;
+}
+
 async function testNpcTypeLink(id) {
   await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".npc-meta a.nav[href*='browse=npcs']", { timeout: 40000 });
@@ -165,6 +184,8 @@ ok = (await testBrowse("items", `&class=4${sc("armor,>=,100")}`, "Armor")) && ok
 ok = (await testBrowse("items", sc("agi,>=,20"), "Agility")) && ok;
 ok = (await testBrowse("items", sc("sp,>=,20"), "Spell Power")) && ok;
 ok = (await testBrowse("npcs", "&rank=3")) && ok;
+ok = (await testBrowseSource("vendor")) && ok;
+ok = (await testItemSources(2770)) && ok;
 console.log(`\nelapsed ${Date.now() - t}ms`);
 if (errors.length) { console.log("\nERRORS:\n" + errors.slice(0, 20).join("\n")); }
 console.log(ok && !errors.length ? "\nSMOKE: PASS" : "\nSMOKE: FAIL");

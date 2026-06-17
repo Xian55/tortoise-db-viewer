@@ -354,6 +354,29 @@ console.log("Deriving item_stats...");
   console.log(`  item_stats: ${nrows} rows | ${cov}`);
 }
 
+// ---- Derived per-item acquisition sources (powers the browse Source filter) ----
+// One row per (item, source); the rich set mirrors the item-detail tabs. PvP is
+// approximated from a honor-rank requirement (no honor/BG vendor link in dumps).
+console.log("Deriving item_sources...");
+{
+  db.exec(`CREATE TABLE item_sources (item INTEGER, source TEXT)`);
+  const insSrc = (sql) => db.exec(`INSERT INTO item_sources ${sql}`);
+  insSrc(`SELECT DISTINCT item, 'drop'       FROM drops WHERE src='c'`);
+  insSrc(`SELECT DISTINCT item, 'skin'       FROM drops WHERE src='s'`);
+  insSrc(`SELECT DISTINCT item, 'pick'       FROM drops WHERE src='p'`);
+  insSrc(`SELECT DISTINCT item, 'object'     FROM drops WHERE src='o'`);
+  insSrc(`SELECT DISTINCT item, 'container'  FROM drops WHERE src='i'`);
+  insSrc(`SELECT DISTINCT item, 'disenchant' FROM drops WHERE src='e'`);
+  insSrc(`SELECT DISTINCT item, 'vendor'     FROM npc_vendor`);
+  insSrc(`SELECT DISTINCT item, 'quest'      FROM quest_item WHERE role IN ('reward','choice')`);
+  insSrc(`SELECT DISTINCT item, 'crafted'    FROM spell_creates`);
+  insSrc(`SELECT entry, 'pvp'                FROM items WHERE required_honor_rank > 0`);
+  db.exec(`CREATE INDEX idx_item_sources_source ON item_sources(source, item)`);
+  db.exec(`CREATE INDEX idx_item_sources_item ON item_sources(item)`);
+  const n = db.prepare(`SELECT COUNT(*) c FROM item_sources`).get().c;
+  console.log(`  item_sources: ${n} rows`);
+}
+
 // ---- Full-text search over item names ----
 console.log("Building FTS index...");
 db.exec(`CREATE VIRTUAL TABLE items_fts USING fts5(name, content='items', content_rowid='entry', tokenize='unicode61')`);

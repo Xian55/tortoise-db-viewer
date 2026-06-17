@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, iconImg, pct, esc } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, iconImg, sourceTags, pct, esc } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -123,12 +123,14 @@ async function showItem(id) {
     if (sp) spellMap.set(sid, sp);
   }));
 
-  const [dropped, objects, sold, contained, disen, quests, starts, createdBy, reagentFor] =
+  const [dropped, objects, sold, contained, disen, quests, starts, createdBy, reagentFor, srcRows] =
     await Promise.all([
       query(Q.Q_DROPPED_BY, [id]), query(Q.Q_OBJECT_SOURCE, [id]), query(Q.Q_SOLD_BY, [id]),
       query(Q.Q_CONTAINED_IN, [id]), query(Q.Q_DISENCHANTS_INTO, [id]), query(Q.Q_QUEST_ITEM, [id]),
       query(Q.Q_STARTS_QUEST, [id]), query(Q.Q_CREATED_BY, [id]), query(Q.Q_REAGENT_FOR, [id]),
+      query(Q.Q_ITEM_SOURCES, [id]),
     ]);
+  const srcCsv = srcRows.map((r) => r.source).join(",");
 
   const dchance = (d) => d.drop_chance ?? d.skin_chance ?? d.pick_chance;
   const srcTag = (d) => (d.skin_chance != null ? ' <span class="muted">(skin)</span>' : d.pick_chance != null ? ' <span class="muted">(pickpocket)</span>' : "");
@@ -197,6 +199,7 @@ async function showItem(id) {
     `<div class="item-view">
       <div class="item-main">${renderTooltip(it, { spellMap })}
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}</div>
+        ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}
       </div>
       <div class="item-rel">${tabs(tabDefs)}</div>
     </div>`;

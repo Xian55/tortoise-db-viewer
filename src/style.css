@@ -107,6 +107,19 @@ h1 { font-size: 22px; }
 .tagx { display: inline-block; padding: 1px 8px; margin-left: 4px; font-size: 12px;
   background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
 
+/* item source tags (browse column + item-detail header). subtle accents per source. */
+.item-sources { margin-top: 8px; }
+.item-sources .tagx:first-child { margin-left: 0; }
+td.src-col .tagx { margin: 1px 4px 1px 0; }
+.tagx.src-drop { border-color: #b9603e; color: #e89070; }
+.tagx.src-skin, .tagx.src-pick { border-color: #8a6d3b; color: #d3b066; }
+.tagx.src-object, .tagx.src-container { border-color: #4a7a8c; color: #79b4c8; }
+.tagx.src-disenchant { border-color: #6f4a8c; color: #b07fce; }
+.tagx.src-vendor { border-color: #3f7a4f; color: #74c98a; }
+.tagx.src-quest { border-color: #b8a23a; color: #ffd100; }
+.tagx.src-crafted { border-color: #6a6f8c; color: #9aa0c8; }
+.tagx.src-pvp { border-color: #a33a3a; color: #e06666; }
+
 /* tabs */
 .tabbar { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
 .tab { padding: 9px 16px; background: none; border: none; border-bottom: 2px solid transparent;

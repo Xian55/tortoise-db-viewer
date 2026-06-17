@@ -1,7 +1,17 @@
 import {
   QUALITY, ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, STAT_TYPE,
-  BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, classRestrictions, money,
+  BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, ITEM_SOURCE, classRestrictions, money,
 } from "./constants.js";
+
+const SRC_LABEL = Object.fromEntries(ITEM_SOURCE);
+const SRC_ORDER = ITEM_SOURCE.map(([k]) => k);
+// render a comma-list of source keys as ordered .tagx pills (browse + item page)
+export function sourceTags(csv) {
+  if (!csv) return "";
+  const set = new Set(String(csv).split(","));
+  return SRC_ORDER.filter((k) => set.has(k))
+    .map((k) => `<span class="tagx src-${k}">${SRC_LABEL[k]}</span>`).join("");
+}
 
 const ICON_BASE = "https://render-us.worldofwarcraft.com/icons/56";
 const PLACEHOLDER = "inv_misc_questionmark";
