@@ -240,8 +240,16 @@ export async function showBrowse(kind, navigate) {
       if (key && op && val !== "") crits.push(`${key},${op},${val}`);
     });
     if (crits.length) np.set("stats", crits.join("|"));
-    const cur = new URLSearchParams(location.search); // preserve active sort/group across filter changes
-    for (const k of ["sort", "dir", "groupby"]) { const v = cur.get(k); if (v) np.set(k, v); }
+    // preserve active sort/group across filter changes, but drop a sort that
+    // points at a criterion column (s_*) which no longer exists.
+    const cur = new URLSearchParams(location.search);
+    const liveStatCols = new Set(crits.map((c) => "s_" + c.split(",")[0]));
+    const sort = cur.get("sort");
+    if (sort && (!sort.startsWith("s_") || liveStatCols.has(sort))) {
+      np.set("sort", sort);
+      const dir = cur.get("dir"); if (dir) np.set("dir", dir);
+    }
+    const groupby = cur.get("groupby"); if (groupby) np.set("groupby", groupby);
     return np;
   };
   app.querySelectorAll("[data-f]").forEach((el) =>
@@ -288,10 +296,11 @@ export async function showBrowse(kind, navigate) {
       } else if (e.target.closest("[data-crm]")) {
         e.preventDefault();
         const row = e.target.closest("[data-crow]");
-        const complete = row.querySelector("[data-cstat]").value && row.querySelector("[data-cval]").value !== "";
         if (critWrap.querySelectorAll("[data-crow]").length > 1) row.remove();
         else { row.querySelector("[data-cstat]").value = ""; row.querySelector("[data-cval]").value = ""; }
-        if (complete) navigate(`?${collect().toString()}`);
+        // always re-navigate: guarantees the table + columns rebuild from the
+        // remaining criteria (a removed column must never linger).
+        navigate(`?${collect().toString()}`);
       }
     });
   }
