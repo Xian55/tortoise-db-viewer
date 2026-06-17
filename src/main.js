@@ -225,7 +225,7 @@ async function showNpc(id) {
   const lvl = lvlRange(npc) || "??";
   const bits = [`Level ${lvl}`];
   if (CREATURE_RANK[npc.rank]) bits.push(CREATURE_RANK[npc.rank]);
-  if (CREATURE_TYPE[npc.type]) bits.push(CREATURE_TYPE[npc.type]);
+  if (CREATURE_TYPE[npc.type]) bits.push(`<a class="nav" href="?browse=npcs&type=${npc.type}">${CREATURE_TYPE[npc.type]}</a>`);
   const hp = npc.health_max ? `${npc.health_min}–${npc.health_max} HP` : "";
   const roles = npcRoles(npc.npc_flags);
   const rankClass = npc.rank === 3 ? "npc-boss" : (npc.rank === 2 || npc.rank === 4) ? "npc-rare" : npc.rank === 1 ? "npc-elite" : "";

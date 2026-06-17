@@ -45,6 +45,20 @@ async function testNpc(id, expectName, expectTab) {
   return name.includes(expectName) && tabsList.length > 0 && sortableH > 0 && (!expectTab || tabsList.some((t) => t.includes(expectTab)));
 }
 
+async function testNpcTypeLink(id) {
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-meta a.nav[href*='browse=npcs']", { timeout: 40000 });
+  const href = await page.$eval(".npc-meta a.nav[href*='browse=npcs']", (e) => e.getAttribute("href"));
+  const label = await page.$eval(".npc-meta a.nav[href*='browse=npcs']", (e) => e.textContent.trim());
+  await page.click(".npc-meta a.nav[href*='browse=npcs']");
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const typeSel = await page.$eval(".filters [data-f='type']", (e) => e.value).catch(() => "?");
+  const m = /type=(\d+)/.exec(href);
+  const matchSel = m && m[1] === typeSel;
+  console.log(`npc type link ${id}: label="${label}" href="${href}" filterType=${typeSel} match=${matchSel}`);
+  return /browse=npcs&type=\d+/.test(href) && matchSel;
+}
+
 async function testBrowse(kind, query = "", expectHeader) {
   await page.goto(`${BASE}?browse=${kind}${query}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
@@ -138,6 +152,7 @@ ok = (await testItem(647, "Destiny")) && ok;
 ok = (await testSearch("thunder")) && ok;
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;
+ok = (await testNpcTypeLink(2376)) && ok;
 ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;
 ok = (await testBrowsePersist()) && ok;
