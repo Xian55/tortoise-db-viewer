@@ -1,19 +1,21 @@
-// Extract display_id -> inventory icon name from a 1.12 ItemDisplayInfo.dbc
-// and write public/data/icons.json (consumed by the frontend).
+// OPTIONAL: augment public/data/icons.json with icon names from a client
+// ItemDisplayInfo.dbc. scripts/build-db.mjs already builds icons.json from the
+// repo's item_display_info table (covers standard items); run this only to add
+// icons for custom Turtle displays that aren't in that table. It MERGES into the
+// existing icons.json rather than replacing it.
 //
-// The SQL dumps don't contain icon names; they live in the client DBC.
-// Get ItemDisplayInfo.dbc out of your Turtle client (patch MPQs included for
-// custom items) with any MPQ extractor, then:
+// Get ItemDisplayInfo.dbc out of your Turtle client (patch MPQs hold the custom
+// icons) with any MPQ extractor, then:
 //
 //   ITEMDISPLAYINFO_DBC="X:/path/ItemDisplayInfo.dbc" node scripts/build-icons.mjs
 //
-// Icons are then served from the Blizzard render CDN:
+// Icons are served from the Blizzard render CDN:
 //   https://render-us.worldofwarcraft.com/icons/56/<iconname>.jpg
 //
 // ICON_FIELD overrides the 0-based field index of inventoryIcon[0] (default 5,
 // correct for build 5875 / patch 1.12.x).
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -53,7 +55,9 @@ if (ICON_FIELD >= fieldCount) {
   process.exit(1);
 }
 
-const map = {};
+// merge into the existing (SQL-derived) icons.json
+const map = existsSync(OUT) ? JSON.parse(readFileSync(OUT, "utf8")) : {};
+const before = Object.keys(map).length;
 let n = 0;
 for (let r = 0; r < recordCount; r++) {
   const base = HEADER + r * recordSize;
@@ -65,4 +69,4 @@ for (let r = 0; r < recordCount; r++) {
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(map));
-console.log(`Wrote ${n} icon mappings -> ${OUT}`);
+console.log(`Merged ${n} DBC icons -> ${OUT} (${before} -> ${Object.keys(map).length} total)`);
