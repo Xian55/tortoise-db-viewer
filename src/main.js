@@ -153,7 +153,6 @@ async function showItem(id) {
   const disenCols = [
     { label: "Item", cell: (d) => itemLink(d.entry, d.name, d.quality, d.icon), value: (d) => d.name },
     { label: "Chance", num: true, cell: (d) => pct(d.chance), value: (d) => d.chance || 0 },
-    { label: "Qty", num: true, cls: "muted", cell: (d) => (d.maxc > d.minc ? `${d.minc}-${d.maxc}` : d.minc), value: (d) => d.maxc || d.minc || 0 },
   ];
   const questCols = (showQty, showChoice) => [
     { label: "Quest", cell: (q) => esc(q.title) + (showChoice && q.role === "choice" ? ' <span class="muted">(choice)</span>' : ""), value: (q) => q.title },
@@ -288,9 +287,16 @@ async function showDungeon(id) {
   try { map = await queryOne(Q.Q_DUNGEON, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
   if (!map) { app.innerHTML = `<div class="home"><p>No map with ID ${id}.</p></div>`; return; }
   document.title = `${map.name} - Tortoise-WoW DB`;
-  const [npcs, loot] = await Promise.all([query(Q.Q_DUNGEON_NPCS, [id]), query(Q.Q_DUNGEON_LOOT, [id])]);
+  const [bossLoot, npcs, loot] = await Promise.all([
+    query(Q.Q_DUNGEON_BOSS_LOOT, [id]), query(Q.Q_DUNGEON_NPCS, [id]), query(Q.Q_DUNGEON_LOOT, [id]),
+  ]);
   const typeLabel = map.type === 2 ? "Raid" : "Dungeon";
 
+  const bossCols = [
+    { label: "Boss", cell: (r) => npcLink(r.boss, r.boss_name), value: (r) => r.boss_name },
+    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+    { label: "Chance", num: true, cell: (r) => pct(r.chance), value: (r) => r.chance || 0 },
+  ];
   const npcCols = [
     { label: "NPC", cell: (c) => npcLink(c.entry, c.name) + (c.subname ? ` <span class="muted">&lt;${esc(c.subname)}&gt;</span>` : ""), value: (c) => c.name },
     { label: "Level", num: true, cls: "muted", cell: (c) => lvlRange(c), value: (c) => c.level_max || c.level_min || 0 },
@@ -302,8 +308,9 @@ async function showDungeon(id) {
     { label: "Req", num: true, cls: "muted", cell: (i) => i.required_level || "", value: (i) => i.required_level || 0 },
   ];
   const tabDefs = [
+    { id: "bosses", label: "Boss Loot", ...regTable(bossCols, bossLoot, 500) },
     { id: "npcs", label: "Creatures", ...regTable(npcCols, npcs) },
-    { id: "loot", label: "Loot", ...regTable(lootCols, loot, 200) },
+    { id: "loot", label: "All Loot", ...regTable(lootCols, loot, 200) },
   ];
 
   app.innerHTML =

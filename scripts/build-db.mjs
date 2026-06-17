@@ -113,20 +113,118 @@ console.log("Importing maps + spawns...");
   const cs = read("tw_world_creature.sql");
   const cc = parseColumns(cs);
   const iId = cc.indexOf("id"), iMap = cc.indexOf("map");
-  db.exec(`CREATE TABLE spawns (id INTEGER, map INTEGER)`);
-  const ss = db.prepare(`INSERT INTO spawns VALUES (?,?)`);
-  const seen = new Set();
-  let ns = 0;
+  // spawn count per (creature, map) — cnt=1 marks a unique spawn (a boss heuristic)
+  const counts = new Map();
+  for (const r of iterRows(cs, "creature")) {
+    const k = `${clean(r[iId])}:${clean(r[iMap])}`;
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  db.exec(`CREATE TABLE spawns (id INTEGER, map INTEGER, cnt INTEGER)`);
+  const ss = db.prepare(`INSERT INTO spawns VALUES (?,?,?)`);
   db.transaction(() => {
-    for (const r of iterRows(cs, "creature")) {
-      const id = clean(r[iId]), map = clean(r[iMap]);
-      const k = `${id}:${map}`;
-      if (!seen.has(k)) { seen.add(k); ss.run(id, map); ns++; }
+    for (const [k, c] of counts) {
+      const [id, map] = k.split(":").map(Number);
+      ss.run(id, map, c);
     }
   })();
   db.exec(`CREATE INDEX idx_spawns_id ON spawns(id)`);
   db.exec(`CREATE INDEX idx_spawns_map ON spawns(map)`);
-  console.log(`  maps: ${nm} | spawns (distinct id,map): ${ns}`);
+  console.log(`  maps: ${nm} | spawns (distinct id,map): ${counts.size}`);
+}
+
+// ---- Resolve effective drop chances (mangos loot groups + references) ----
+// Equal-chance groups (chance=0) split the group remainder; references multiply
+// through. Large shared/world-drop pools are excluded (noise, not per-creature
+// loot). The result replaces the raw loot tables, which are dropped afterward.
+console.log("Resolving loot chances...");
+{
+  const REF_THRESHOLD = 30; // a reference resolving to more items than this = world-drop pool
+  const load = (t) => {
+    const m = new Map();
+    for (const r of db.prepare(`SELECT entry, item, chance, groupid, mincountOrRef FROM ${t}`).all()) {
+      let a = m.get(r.entry); if (!a) m.set(r.entry, a = []); a.push(r);
+    }
+    return m;
+  };
+  const REF = load("loot_reference");
+
+  const sizeCache = new Map();
+  function refItems(refId, seen) {
+    const s = new Set();
+    for (const r of (REF.get(refId) || [])) {
+      if (r.item > 0) s.add(r.item);
+      else if (r.mincountOrRef < 0 && !seen.has(-r.mincountOrRef)) {
+        seen.add(-r.mincountOrRef);
+        for (const it of refItems(-r.mincountOrRef, seen)) s.add(it);
+      }
+    }
+    return s;
+  }
+  const refSize = (refId) => {
+    if (sizeCache.has(refId)) return sizeCache.get(refId);
+    const n = refItems(refId, new Set([refId])).size;
+    sizeCache.set(refId, n); return n;
+  };
+
+  const refResCache = new Map();
+  function resolveRef(refId) {
+    if (refResCache.has(refId)) return refResCache.get(refId);
+    refResCache.set(refId, new Map()); // cycle guard
+    const res = resolveRows(REF.get(refId) || []);
+    refResCache.set(refId, res); return res;
+  }
+  function addRow(result, row, prob) {
+    if (prob <= 0) return;
+    if (row.mincountOrRef < 0) {
+      const refId = -row.mincountOrRef;
+      if (refSize(refId) > REF_THRESHOLD) return; // skip world-drop pools
+      for (const [item, p] of resolveRef(refId)) result.set(item, (result.get(item) || 0) + p * prob);
+    } else if (row.item > 0) {
+      result.set(row.item, (result.get(row.item) || 0) + prob);
+    }
+  }
+  function resolveRows(rows) {
+    const result = new Map(), groups = new Map();
+    for (const r of rows) { let a = groups.get(r.groupid); if (!a) groups.set(r.groupid, a = []); a.push(r); }
+    for (const [gid, grows] of groups) {
+      if (gid === 0) {
+        for (const row of grows) {
+          const ch = Math.abs(row.chance);
+          addRow(result, row, ch > 0 ? ch / 100 : (row.mincountOrRef < 0 ? 1 : 0));
+        }
+      } else {
+        const explicit = grows.filter((r) => Math.abs(r.chance) > 0);
+        const equal = grows.filter((r) => r.chance === 0);
+        const sumE = explicit.reduce((a, r) => a + Math.abs(r.chance), 0);
+        for (const row of explicit) addRow(result, row, Math.abs(row.chance) / 100);
+        const eqP = Math.max(0, 100 - sumE) / 100 / (equal.length || 1);
+        for (const row of equal) addRow(result, row, eqP);
+      }
+    }
+    return result;
+  }
+
+  db.exec(`CREATE TABLE drops (src TEXT, owner INTEGER, item INTEGER, chance REAL)`);
+  const ins = db.prepare(`INSERT INTO drops VALUES (?,?,?,?)`);
+  const sources = [["c", "loot_creature"], ["s", "loot_skinning"], ["p", "loot_pickpocket"],
+    ["o", "loot_object"], ["i", "loot_item"], ["e", "loot_disenchant"]];
+  let nd = 0;
+  db.transaction(() => {
+    for (const [src, table] of sources) {
+      for (const [owner, rows] of load(table)) {
+        for (const [item, prob] of resolveRows(rows)) { ins.run(src, owner, item, prob * 100); nd++; }
+      }
+    }
+  })();
+  db.exec(`CREATE INDEX idx_drops_owner ON drops(owner, src)`);
+  db.exec(`CREATE INDEX idx_drops_item ON drops(item, src)`);
+
+  // raw loot tables are no longer needed at runtime
+  for (const t of ["loot_creature", "loot_skinning", "loot_pickpocket", "loot_object",
+    "loot_item", "loot_disenchant", "loot_fishing", "loot_reference"]) {
+    db.exec(`DROP TABLE IF EXISTS ${t}`);
+  }
+  console.log(`  drops (resolved): ${nd} rows (raw loot tables dropped)`);
 }
 
 // ---- Spells + crafting graph (single pass over the 16MB dump) ----

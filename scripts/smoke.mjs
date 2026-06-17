@@ -73,7 +73,7 @@ async function testDungeon(id, expectName) {
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   console.log(`dungeon ${id}: name="${name}" tabs=[${tabList.join(", ")}]`);
-  return name.includes(expectName) && tabList.length > 0;
+  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot"));
 }
 
 let ok = true;
