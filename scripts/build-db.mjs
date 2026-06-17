@@ -4,12 +4,12 @@
 // Usage:  SQL_DIR=X:/Programming/tortoise-wow/sql/base node scripts/build-db.mjs
 // Default SQL_DIR assumes the server repo sits next to this one.
 
-import Database from "better-sqlite3";
 import { readFileSync, mkdirSync, rmSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseColumns, iterRows, NULL } from "./lib/sqldump.mjs";
 import { IMPORTS, LOOT_TABLES, LOOT_COLUMNS } from "./lib/schema.mjs";
+import { openDatabase, RUNTIME } from "./lib/sqlite.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SQL_DIR = process.env.SQL_DIR || join(ROOT, "..", "tortoise-wow", "sql", "base");
@@ -23,10 +23,11 @@ if (!existsSync(SQL_DIR)) {
 mkdirSync(dirname(OUT), { recursive: true });
 rmSync(OUT, { force: true });
 
-const db = new Database(OUT);
+const db = await openDatabase(OUT);
 db.pragma("page_size = 4096"); // must be set before any table is created
 db.pragma("journal_mode = OFF");
 db.pragma("synchronous = OFF");
+console.log(`Runtime: ${RUNTIME}`);
 
 const t0 = Date.now();
 const clean = (v) => (v === NULL ? null : v);

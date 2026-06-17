@@ -6,14 +6,18 @@
   "description": "Fast static item database (octowow-style) for Tortoise-WoW, hosted on GitHub Pages",
   "scripts": {
     "build:db": "node scripts/build-db.mjs",
+    "build:db:bun": "bun scripts/build-db.mjs",
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke": "node scripts/smoke.mjs"
   },
   "devDependencies": {
-    "better-sqlite3": "^11.8.1",
     "puppeteer-core": "^25.1.0",
     "vite": "^6.0.7"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.8.1"
   },
   "dependencies": {
     "sql.js-httpvfs": "^0.8.12"

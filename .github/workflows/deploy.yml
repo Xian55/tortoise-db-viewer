@@ -29,20 +29,19 @@ jobs:
           sparse-checkout: sql/base
           sparse-checkout-cone-mode: false
 
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
+          bun-version: latest
 
-      - run: npm ci
+      - run: bun install
 
       - name: Build SQLite database
-        run: node scripts/build-db.mjs
+        run: bun scripts/build-db.mjs
         env:
           SQL_DIR: ${{ github.workspace }}/server/sql/base
 
       - name: Build site
-        run: npm run build
+        run: bunx --bun vite build
 
       - uses: actions/upload-pages-artifact@v3
         with:

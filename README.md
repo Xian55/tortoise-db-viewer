@@ -31,14 +31,25 @@ resolution) run in the browser via `src/queries.js`.
 
 ## Develop
 
+Runs on **Bun** or **Node**. The build script auto-detects the runtime: Bun uses
+the native `bun:sqlite`, Node uses `better-sqlite3` (an optional dependency, so a
+Bun-only install never compiles a native module).
+
 ```sh
+# Bun (no native compile)
+bun install
+bun scripts/build-db.mjs        # -> public/data/tortoise.sqlite
+bun run dev                     # http://localhost:5173/tortoise-wow-database/
+
+# Node
 npm install
-SQL_DIR="X:/Programming/tortoise-wow/sql/base" npm run build:db   # -> public/data/tortoise.sqlite
-npm run dev            # http://localhost:5173/tortoise-wow-database/
+npm run build:db
+npm run dev
 ```
 
 `SQL_DIR` defaults to `../tortoise-wow/sql/base` (the server repo next to this one),
-so if both repos sit side by side you can just run `npm run build:db`.
+so if both repos sit side by side no env var is needed. Override it to point
+elsewhere: `SQL_DIR="X:/path/sql/base" bun scripts/build-db.mjs`.
 
 Routes: `?item=<id>` for an item page, `?search=<term>` for search.
 
