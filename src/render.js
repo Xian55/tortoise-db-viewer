@@ -138,6 +138,18 @@ export function renderTooltip(it, { spellMap = new Map() } = {}) {
   return `<div class="tooltip">${L.join("")}</div>`;
 }
 
+// ---- tabbed sections (NPC pages) ----
+// items: [{ id, label, count, html }] — only non-empty tabs are shown.
+export function tabs(items) {
+  const live = items.filter((t) => t.count > 0);
+  if (!live.length) return `<p class="muted">No data.</p>`;
+  const bar = live.map((t, i) =>
+    `<button class="tab${i === 0 ? " active" : ""}" data-tab="${t.id}">${esc(t.label)} <span class="tabn">${t.count}</span></button>`).join("");
+  const panes = live.map((t, i) =>
+    `<div class="tabpane${i === 0 ? "" : " hidden"}" data-pane="${t.id}">${t.html}</div>`).join("");
+  return `<div class="tabs"><div class="tabbar">${bar}</div><div class="tabpanes">${panes}</div></div>`;
+}
+
 // ---- relation panels ----
 export function panel(title, bodyHtml) {
   if (!bodyHtml) return "";

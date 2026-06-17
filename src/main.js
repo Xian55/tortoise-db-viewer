@@ -2,7 +2,7 @@ import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
 import {
-  renderTooltip, panel, table, itemLink, npcLink, iconImg, pct, esc, qualityColor,
+  renderTooltip, panel, table, tabs, itemLink, npcLink, iconImg, pct, esc, qualityColor,
 } from "./render.js";
 import { CREATURE_TYPE, CREATURE_RANK, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -165,9 +165,9 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [drops, sells, starts, ends] = await Promise.all([
-    query(Q.Q_NPC_DROPS, [id]), query(Q.Q_NPC_SELLS, [id]),
-    query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
+  const [loot, skin, pick, sells, starts, ends] = await Promise.all([
+    query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
+    query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
   ]);
 
   const lvl = npc.level_max && npc.level_max !== npc.level_min ? `${npc.level_min}-${npc.level_max}` : (npc.level_min || "??");
@@ -178,30 +178,45 @@ async function showNpc(id) {
   const roles = npcRoles(npc.npc_flags);
   const rankClass = npc.rank === 3 ? "npc-boss" : (npc.rank === 2 || npc.rank === 4) ? "npc-rare" : npc.rank === 1 ? "npc-elite" : "";
 
-  let html = "";
-  html += panel("Drops", table(["Item", "Chance"],
-    drops.map((d) => {
-      const tag = d.srcrank === 1 ? " (skin)" : d.srcrank === 2 ? " (pickpocket)" : "";
-      return `<tr><td>${itemLink(d.entry, d.name, d.quality, d.icon)}<span class="muted">${tag}</span></td><td>${pct(d.chance)}</td></tr>`;
-    }).join("")));
-  html += panel("Sells", table(["Item", "Stock"],
-    sells.map((s) => `<tr><td>${itemLink(s.entry, s.name, s.quality, s.icon)}</td><td class="muted">${s.maxcount > 0 ? s.maxcount : "∞"}</td></tr>`).join("")));
-  html += panel("Starts quests", table(["Quest", "Level"],
-    starts.map((q) => `<tr><td>${esc(q.title)}</td><td class="muted">${q.level || ""}</td></tr>`).join("")));
-  html += panel("Ends quests", table(["Quest", "Level"],
-    ends.map((q) => `<tr><td>${esc(q.title)}</td><td class="muted">${q.level || ""}</td></tr>`).join("")));
+  const lootTable = (rows) => table(["Item", "Chance"],
+    rows.map((d) => `<tr><td>${itemLink(d.entry, d.name, d.quality, d.icon)}</td><td>${pct(d.chance)}</td></tr>`).join(""));
+  const questTable = (rows) => table(["Quest", "Level"],
+    rows.map((q) => `<tr><td>${esc(q.title)}</td><td class="muted">${q.level || ""}</td></tr>`).join(""));
+  const sellTable = table(["Item", "Stock"],
+    sells.map((s) => `<tr><td>${itemLink(s.entry, s.name, s.quality, s.icon)}</td><td class="muted">${s.maxcount > 0 ? s.maxcount : "∞"}</td></tr>`).join(""));
+
+  const tabDefs = [
+    { id: "drops", label: "Drops", count: loot.length, html: lootTable(loot) },
+    { id: "skinning", label: "Skinning", count: skin.length, html: lootTable(skin) },
+    { id: "pickpocketing", label: "Pickpocketing", count: pick.length, html: lootTable(pick) },
+    { id: "sells", label: "Sells", count: sells.length, html: sellTable },
+    { id: "starts", label: "Starts quests", count: starts.length, html: questTable(starts) },
+    { id: "ends", label: "Ends quests", count: ends.length, html: questTable(ends) },
+  ];
 
   app.innerHTML =
-    `<div class="npc-view">
+    `<div class="npc-page">
       <div class="npc-head">
         <h1 class="${rankClass}">${esc(npc.name)}</h1>
-        ${npc.subname ? `<div class="npc-sub muted">&lt;${esc(npc.subname)}&gt;</div>` : ""}
-        <div class="npc-meta muted">${bits.join(" · ")}${hp ? " · " + hp : ""}</div>
-        ${roles.length ? `<div class="npc-roles">${roles.map((r) => `<span class="tagx">${esc(r)}</span>`).join("")}</div>` : ""}
-        <div class="item-meta muted">NPC #${npc.entry}</div>
+        ${npc.subname ? `<span class="npc-sub muted">&lt;${esc(npc.subname)}&gt;</span>` : ""}
+        <div class="npc-meta muted">${bits.join(" · ")}${hp ? " · " + hp : ""}
+          ${roles.map((r) => `<span class="tagx">${esc(r)}</span>`).join("")}
+          <span class="dim">· NPC #${npc.entry}</span></div>
       </div>
-      <div class="item-rel">${html || `<p class="muted">No data.</p>`}</div>
+      ${tabs(tabDefs)}
     </div>`;
+  wireTabs();
+}
+
+function wireTabs() {
+  const bar = app.querySelector(".tabbar");
+  if (!bar) return;
+  bar.addEventListener("click", (e) => {
+    const btn = e.target.closest(".tab");
+    if (!btn) return;
+    app.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
+    app.querySelectorAll(".tabpane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== btn.dataset.tab));
+  });
 }
 
 function errorBox(e) {

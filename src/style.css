@@ -75,6 +75,9 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 7px 14px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { color: var(--text); }
+th.sortable.active { color: var(--gold); }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--panel2); }
 .ilink:hover { text-decoration: underline; }
@@ -84,15 +87,25 @@ h1 { font-size: 22px; }
 .results table td:first-child { width: 60%; }
 
 /* npc view */
-.npc-view { display: grid; grid-template-columns: 300px 1fr; gap: 26px; align-items: start; }
-@media (max-width: 760px) { .npc-view { grid-template-columns: 1fr; } }
-.npc-head h1 { margin: 0 0 2px; }
-.npc-sub { font-style: italic; margin-bottom: 6px; }
-.npc-meta { margin-bottom: 8px; }
+.npc-head { margin-bottom: 16px; }
+.npc-head h1 { display: inline; margin: 0; }
+.npc-sub { margin-left: 8px; font-style: italic; }
+.npc-meta { margin-top: 8px; }
 .npc-boss { color: #ff8000; } .npc-rare { color: #a335ee; } .npc-elite { color: #ffd100; }
-.npc-roles { margin-bottom: 8px; }
-.tagx { display: inline-block; padding: 2px 8px; margin: 2px 4px 0 0; font-size: 12px;
+.npc-meta .dim { opacity: .7; }
+.tagx { display: inline-block; padding: 1px 8px; margin-left: 4px; font-size: 12px;
   background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
+
+/* tabs */
+.tabbar { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.tab { padding: 9px 16px; background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--muted); font: inherit; cursor: pointer; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--gold); }
+.tabn { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 4px; font-size: 12px;
+  background: var(--panel2); border-radius: 9px; color: var(--muted); }
+.tab.active .tabn { color: var(--text); }
+.tabpane.hidden { display: none; }
 
 /* browse / finder */
 .filters { display: flex; flex-wrap: wrap; gap: 10px 14px; margin: 4px 0 16px; align-items: flex-end; }
