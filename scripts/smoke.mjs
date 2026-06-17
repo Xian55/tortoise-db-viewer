@@ -56,12 +56,29 @@ async function testBrowseSource(src) {
   return rows > 0 && headers.includes("Source") && tags > 0 && checked.includes(src);
 }
 
-async function testItemSources(id) {
+async function testItemSources(id, expectTag) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".item-sources .tagx", { timeout: 40000 });
   const tags = await page.$$eval(".item-sources .tagx", (e) => e.map((t) => t.textContent.trim()));
   console.log(`item sources ${id}: [${tags.join(", ")}]`);
-  return tags.length > 0;
+  return tags.length > 0 && (!expectTag || tags.includes(expectTag));
+}
+
+// unobtainable (dev-artifact) items are hidden by default but shown when opted in;
+// item 5031 ("ZZZZZZZZ") is a known dev artifact.
+async function testUnobtainable() {
+  const has = async (src) => {
+    await page.goto(`${BASE}?browse=items&source=${src}&q=ZZZZZZZZ`, { waitUntil: "networkidle0", timeout: 40000 });
+    await page.waitForSelector(".browse", { timeout: 40000 });
+    return page.$$eval(".browse table tbody tr", (r) => r.length).catch(() => 0);
+  };
+  // default (no source filter): the junk item must be hidden
+  await page.goto(`${BASE}?browse=items&q=ZZZZZZZZ`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse", { timeout: 40000 });
+  const hiddenByDefault = await page.$$eval(".browse table tbody tr", (r) => r.length).catch(() => 0);
+  const shownWhenOptedIn = await has("unobtainable");
+  console.log(`unobtainable: defaultRows=${hiddenByDefault} (want 0) optedInRows=${shownWhenOptedIn} (want >0)`);
+  return hiddenByDefault === 0 && shownWhenOptedIn > 0;
 }
 
 async function testNpcTypeLink(id) {
@@ -186,6 +203,8 @@ ok = (await testBrowse("items", sc("sp,>=,20"), "Spell Power")) && ok;
 ok = (await testBrowse("npcs", "&rank=3")) && ok;
 ok = (await testBrowseSource("vendor")) && ok;
 ok = (await testItemSources(2770)) && ok;
+ok = (await testItemSources(5031, "Unobtainable")) && ok;
+ok = (await testUnobtainable()) && ok;
 console.log(`\nelapsed ${Date.now() - t}ms`);
 if (errors.length) { console.log("\nERRORS:\n" + errors.slice(0, 20).join("\n")); }
 console.log(ok && !errors.length ? "\nSMOKE: PASS" : "\nSMOKE: FAIL");

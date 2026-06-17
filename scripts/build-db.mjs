@@ -371,10 +371,24 @@ console.log("Deriving item_sources...");
   insSrc(`SELECT DISTINCT item, 'quest'      FROM quest_item WHERE role IN ('reward','choice')`);
   insSrc(`SELECT DISTINCT item, 'crafted'    FROM spell_creates`);
   insSrc(`SELECT entry, 'pvp'                FROM items WHERE required_honor_rank > 0`);
+  // 'unobtainable' = dev artifacts (test/deprecated/placeholder items) detected by
+  // name convention; hidden by default in the item browse. Name-pattern, NOT
+  // "no known source" — many legit items simply lack loot data (e.g. world drops,
+  // rep rewards) and must stay visible. The OLD rules are case-sensitive: all-caps
+  // "OLD"/"(OLD)" is a dev marker, while normal-case "Old Blanchy" is a real item.
+  const JUNK = [/^zz/i, /^OLD\b/, /\(OLD\)/, /\bdeprecated\b/i, /^monster\s*-/i,
+    /\[ph\]/i, /\[dep\]/i, /\bunused\b/i, /\btest\b/i];
+  const insU = db.prepare(`INSERT INTO item_sources VALUES (?, 'unobtainable')`);
+  let nu = 0;
+  db.transaction(() => {
+    for (const { entry, name } of db.prepare(`SELECT entry, name FROM items`).all()) {
+      if (name && JUNK.some((re) => re.test(name))) { insU.run(entry); nu++; }
+    }
+  })();
   db.exec(`CREATE INDEX idx_item_sources_source ON item_sources(source, item)`);
   db.exec(`CREATE INDEX idx_item_sources_item ON item_sources(item)`);
   const n = db.prepare(`SELECT COUNT(*) c FROM item_sources`).get().c;
-  console.log(`  item_sources: ${n} rows`);
+  console.log(`  item_sources: ${n} rows (unobtainable: ${nu})`);
 }
 
 // ---- Full-text search over item names ----

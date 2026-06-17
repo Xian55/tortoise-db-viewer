@@ -119,6 +119,7 @@ td.src-col .tagx { margin: 1px 4px 1px 0; }
 .tagx.src-quest { border-color: #b8a23a; color: #ffd100; }
 .tagx.src-crafted { border-color: #6a6f8c; color: #9aa0c8; }
 .tagx.src-pvp { border-color: #a33a3a; color: #e06666; }
+.tagx.src-unobtainable { border-color: #555; color: #888; }
 
 /* tabs */
 .tabbar { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }

@@ -89,6 +89,7 @@ export const ITEM_SOURCE = [
   ["drop", "Drop"], ["skin", "Skinning"], ["pick", "Pickpocket"],
   ["object", "Object"], ["container", "Container"], ["disenchant", "Disenchant"],
   ["vendor", "Vendor"], ["quest", "Quest"], ["crafted", "Crafted"], ["pvp", "PvP"],
+  ["unobtainable", "Unobtainable"],
 ];
 
 export const CREATURE_TYPE = {

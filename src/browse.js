@@ -134,6 +134,10 @@ async function browseItems(p) {
     where.push(`i.entry IN (SELECT item FROM item_sources WHERE source IN (${srcVals.map(() => "?").join(",")}))`);
     for (const v of srcVals) binds.push(v);
   }
+  // dev artifacts (test/deprecated/placeholder) are hidden unless explicitly requested.
+  if (!srcVals.includes("unobtainable")) {
+    where.push(`i.entry NOT IN (SELECT item FROM item_sources WHERE source='unobtainable')`);
+  }
   // each criterion -> presence-aware match against item_stats (op is whitelisted).
   for (const c of criteria) add(`i.entry IN (SELECT item FROM item_stats WHERE stat='${c.key}' AND value ${c.op} ?)`, +c.val);
 
