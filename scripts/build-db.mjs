@@ -7,6 +7,7 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import { parseColumns, iterRows, NULL } from "./lib/sqldump.mjs";
 import { IMPORTS, LOOT_TABLES, LOOT_COLUMNS } from "./lib/schema.mjs";
 import { openDatabase, RUNTIME } from "./lib/sqlite.mjs";
@@ -191,5 +192,10 @@ db.pragma("journal_mode = DELETE");
 db.exec("VACUUM");
 db.close();
 
-const mb = (statSync(OUT).size / 1048576).toFixed(1);
-console.log(`\nDone in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${OUT} (${mb} MB)`);
+// content hash -> version.json (drives client cache invalidation)
+const buf = readFileSync(OUT);
+const version = createHash("sha256").update(buf).digest("hex").slice(0, 12);
+writeFileSync(join(ROOT, "public", "data", "version.json"), JSON.stringify({ version }));
+
+const mb = (buf.length / 1048576).toFixed(1);
+console.log(`\nDone in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${OUT} (${mb} MB, version ${version})`);

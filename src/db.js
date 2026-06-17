@@ -1,37 +1,56 @@
 // Official SQLite WASM build. The whole DB is fetched once and loaded into the
 // engine; all queries then run locally. Persisted to OPFS (when available) so
 // repeat visits skip the download. No COOP/COEP headers needed (OPFS SAHPool).
+//
+// Cache invalidation: build-db.mjs writes data/version.json with a content hash.
+// The client keys both the download URL (?v=) and the OPFS filename by that hash,
+// and wipes stale OPFS copies — so a new deploy is picked up automatically.
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 
-const DB_URL = import.meta.env.BASE_URL + "data/tortoise.sqlite";
-// Bump when the DB schema/content changes to invalidate the OPFS copy.
+const BASE = import.meta.env.BASE_URL;
 const OPFS_POOL = "tortoise-db";
-const OPFS_FILE = "/tortoise.sqlite";
 
 let dbPromise = null;
 
-async function fetchDbBytes() {
-  const res = await fetch(DB_URL);
+async function getVersion() {
+  try {
+    const res = await fetch(`${BASE}data/version.json`, { cache: "no-store" });
+    if (res.ok) return (await res.json()).version || "0";
+  } catch { /* fall through */ }
+  return "0";
+}
+
+async function fetchDbBytes(url) {
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`DB download failed: HTTP ${res.status}`);
   return new Uint8Array(await res.arrayBuffer());
 }
 
 async function init() {
+  const version = await getVersion();
+  const url = `${BASE}data/tortoise.sqlite?v=${version}`;
+  const opfsFile = `/tortoise-${version}.sqlite`;
   const sqlite3 = await sqlite3InitModule();
 
   // Preferred: OPFS SAHPool — durable, survives reloads, works on GitHub Pages.
   try {
     const pool = await sqlite3.installOpfsSAHPoolVfs({ name: OPFS_POOL });
-    if (!pool.getFileNames().includes(OPFS_FILE)) {
-      pool.importDb(OPFS_FILE, await fetchDbBytes());
+    if (!pool.getFileNames().includes(opfsFile)) {
+      // a new version: drop any older cached DBs, then import this one
+      for (const f of pool.getFileNames()) {
+        if (f.startsWith("/tortoise-") && f.endsWith(".sqlite")) {
+          try { pool.unlink(f); } catch { /* ignore */ }
+        }
+      }
+      pool.importDb(opfsFile, await fetchDbBytes(url));
     }
-    return new pool.OpfsSAHPoolDb(OPFS_FILE);
+    return new pool.OpfsSAHPoolDb(opfsFile);
   } catch (e) {
     console.warn("OPFS unavailable; loading DB in-memory.", e?.message || e);
   }
 
   // Fallback: deserialize into an in-memory database (relies on HTTP cache).
-  const bytes = await fetchDbBytes();
+  const bytes = await fetchDbBytes(url);
   const db = new sqlite3.oo1.DB();
   const p = sqlite3.wasm.allocFromTypedArray(bytes);
   const rc = sqlite3.capi.sqlite3_deserialize(
