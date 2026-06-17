@@ -45,19 +45,19 @@ async function testNpc(id, expectName, expectTab) {
   return name.includes(expectName) && tabsList.length > 0 && sortableH > 0 && (!expectTab || tabsList.some((t) => t.includes(expectTab)));
 }
 
-async function testBrowse(kind, query = "") {
+async function testBrowse(kind, query = "", expectHeader) {
   await page.goto(`${BASE}?browse=${kind}${query}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const filters = await page.$$eval(".filters [data-f]", (e) => e.length);
   const sortable = await page.$$eval(".browse th.sortable", (e) => e.length);
-  // click a header, confirm client-side sort marks the column active
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   await page.click(".browse th.sortable");
   await page.waitForSelector(".browse th.active", { timeout: 10000 }).catch(() => {});
   const active = await page.$$eval(".browse th.active", (e) => e.length);
   const count = await page.$eval(".browse-count", (e) => e.textContent).catch(() => "?");
-  console.log(`browse ${kind}${query}: ${rows} rows, ${filters} filters, ${sortable} sortable, active=${active}, "${count}"`);
-  return rows > 0 && filters > 0 && sortable > 0 && active > 0;
+  console.log(`browse ${kind}${query}: ${rows} rows, ${filters} filters, ${sortable} sortable, active=${active}, headers=[${headers.join(",")}], "${count}"`);
+  return rows > 0 && filters > 0 && sortable > 0 && active > 0 && (!expectHeader || headers.includes(expectHeader));
 }
 
 let ok = true;
@@ -69,7 +69,8 @@ ok = (await testItem(647, "Destiny")) && ok;
 ok = (await testSearch("thunder")) && ok;
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;
-ok = (await testBrowse("items", "&class=2&quality=4&minrl=40")) && ok;
+ok = (await testBrowse("items", "&class=2&quality=4&minrl=40", "DPS")) && ok;
+ok = (await testBrowse("items", "&class=4&stat=armor&statmin=100", "Armor")) && ok;
 ok = (await testBrowse("npcs", "&rank=3")) && ok;
 console.log(`\nelapsed ${Date.now() - t}ms`);
 if (errors.length) { console.log("\nERRORS:\n" + errors.slice(0, 20).join("\n")); }

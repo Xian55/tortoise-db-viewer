@@ -12,13 +12,43 @@ import {
 const PAGE = 100;
 const lvlRange = (r) => (r.level_max && r.level_max !== r.level_min ? `${r.level_min}-${r.level_max}` : (r.level_min || ""));
 
-const ITEM_COLS = [
-  { label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
-  { label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
-  { label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
-  { label: "Slot", cls: "muted", cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
-  { label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
-];
+const dpsVal = (r) => (r.delay > 0 && (r.dmg_min1 || r.dmg_max1) ? ((r.dmg_min1 + r.dmg_max1) / 2) / (r.delay / 1000) : 0);
+
+const COL = {
+  name: { label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+  ilvl: { label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
+  req: { label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
+  slot: { label: "Slot", cls: "muted", cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
+  id: { label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
+  dps: { label: "DPS", num: true, cell: (r) => (dpsVal(r) ? dpsVal(r).toFixed(1) : ""), value: (r) => dpsVal(r) },
+  speed: { label: "Speed", num: true, cls: "muted", cell: (r) => (r.delay ? (r.delay / 1000).toFixed(2) : ""), value: (r) => r.delay / 1000 || 0 },
+  armor: { label: "Armor", num: true, cls: "muted", cell: (r) => r.armor || "", value: (r) => r.armor || 0 },
+};
+
+// columns adapt to the class filter: weapons show DPS/Speed, armor shows Armor.
+function buildItemCols(cls) {
+  if (cls === "2") return [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.id];
+  if (cls === "4") return [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.id];
+  return [COL.name, COL.ilvl, COL.req, COL.slot, COL.id];
+}
+
+// stat filter (wowhead-style "additional filters"): pick stat + minimum value.
+const STAT_TYPES = [["agi", "Agility", 3], ["str", "Strength", 4], ["sta", "Stamina", 7], ["int", "Intellect", 5], ["spi", "Spirit", 6]];
+const RES_COLS = [["holyres", "Holy Res", "holy_res"], ["fireres", "Fire Res", "fire_res"], ["natureres", "Nature Res", "nature_res"], ["frostres", "Frost Res", "frost_res"], ["shadowres", "Shadow Res", "shadow_res"], ["arcaneres", "Arcane Res", "arcane_res"]];
+
+function statFilter(key, v) {
+  const s = STAT_TYPES.find((x) => x[0] === key);
+  if (s) {
+    const parts = [], binds = [];
+    for (let i = 1; i <= 10; i++) { parts.push(`(i.stat_type${i}=${s[2]} AND i.stat_value${i} >= ?)`); binds.push(v); }
+    return { sql: "(" + parts.join(" OR ") + ")", binds };
+  }
+  if (key === "armor") return { sql: "i.armor >= ?", binds: [v] };
+  if (key === "dps") return { sql: "(i.delay > 0 AND ((i.dmg_min1+i.dmg_max1)/2.0)/(i.delay/1000.0) >= ?)", binds: [v] };
+  const r = RES_COLS.find((x) => x[0] === key);
+  if (r) return { sql: `i.${r[2]} >= ?`, binds: [v] };
+  return null;
+}
 const NPC_COLS = [
   { label: "Name", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
   { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
@@ -51,6 +81,7 @@ async function browseItems(p) {
     quality: p.get("quality") || "", slot: p.get("slot") || "",
     minrl: p.get("minrl") || "", maxrl: p.get("maxrl") || "",
     minil: p.get("minil") || "", maxil: p.get("maxil") || "",
+    stat: p.get("stat") || "", statmin: p.get("statmin") || "",
   };
   const where = [], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
@@ -63,13 +94,25 @@ async function browseItems(p) {
   if (f.maxrl !== "") add("i.required_level <= ?", +f.maxrl);
   if (f.minil !== "") add("i.item_level >= ?", +f.minil);
   if (f.maxil !== "") add("i.item_level <= ?", +f.maxil);
+  if (f.stat && f.statmin !== "") {
+    const sf = statFilter(f.stat, +f.statmin);
+    if (sf) { where.push(sf.sql); binds.push(...sf.binds); }
+  }
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
   const rows = await query(
-    `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, di.icon
+    `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, i.display_id,
+            i.dmg_min1, i.dmg_max1, i.delay, i.armor, di.icon
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
 
   const subMap = f.class === "2" ? WEAPON_SUBCLASS : f.class === "4" ? ARMOR_SUBCLASS : null;
+  const statSel = `<div class="fld"><label>Stat</label><select data-f="stat">
+    ${opt("", "Any stat", f.stat)}
+    <optgroup label="Base stats">${STAT_TYPES.map((s) => opt(s[0], s[1], f.stat)).join("")}</optgroup>
+    <optgroup label="Defense">${opt("armor", "Armor", f.stat)}</optgroup>
+    <optgroup label="Weapon">${opt("dps", "DPS", f.stat)}</optgroup>
+    <optgroup label="Resistances">${RES_COLS.map((r) => opt(r[0], r[1], f.stat)).join("")}</optgroup>
+  </select></div>`;
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
     ${selectField("class", "Class", options(Object.entries(ITEM_CLASS), f.class, "Any class"))}
@@ -78,9 +121,10 @@ async function browseItems(p) {
     ${selectField("slot", "Slot", options(Object.entries(INV_TYPE), f.slot, "Any slot"))}
     ${numField("minrl", "Req lvl ≥", f.minrl)} ${numField("maxrl", "Req lvl ≤", f.maxrl)}
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
+    ${statSel} ${numField("statmin", "Stat ≥", f.statmin)}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  return { rows, cols: ITEM_COLS, filters, noun: "items" };
+  return { rows, cols: buildItemCols(f.class), filters, noun: "items" };
 }
 
 async function browseNpcs(p) {
