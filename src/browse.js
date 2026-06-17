@@ -26,10 +26,13 @@ const COL = {
 };
 
 // columns adapt to the class filter: weapons show DPS/Speed, armor shows Armor.
-function buildItemCols(cls) {
-  if (cls === "2") return [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.id];
-  if (cls === "4") return [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.id];
-  return [COL.name, COL.ilvl, COL.req, COL.slot, COL.id];
+// when a stat filter is active, its column is inserted (right after Name) so it
+// can be sorted by value.
+function buildItemCols(cls, statCol) {
+  const base = cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.id]
+    : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.id]
+      : [COL.name, COL.ilvl, COL.req, COL.slot, COL.id];
+  return statCol ? [base[0], statCol, ...base.slice(1)] : base;
 }
 
 // stat filter (wowhead-style "additional filters"): pick stat + minimum value.
@@ -48,6 +51,29 @@ function statFilter(key, v) {
   const r = RES_COLS.find((x) => x[0] === key);
   if (r) return { sql: `i.${r[2]} >= ?`, binds: [v] };
   return null;
+}
+
+// SQL expression yielding the stat's value (aliased AS statval for the column).
+function statExpr(key) {
+  const s = STAT_TYPES.find((x) => x[0] === key);
+  if (s) {
+    let e = "0";
+    for (let i = 10; i >= 1; i--) e = `CASE WHEN i.stat_type${i}=${s[2]} THEN i.stat_value${i} ELSE ${e} END`;
+    return `(${e})`;
+  }
+  if (key === "armor") return "i.armor";
+  if (key === "dps") return "(CASE WHEN i.delay>0 THEN ((i.dmg_min1+i.dmg_max1)/2.0)/(i.delay/1000.0) ELSE 0 END)";
+  const r = RES_COLS.find((x) => x[0] === key);
+  if (r) return `i.${r[2]}`;
+  return null;
+}
+function statLabel(key) {
+  const s = STAT_TYPES.find((x) => x[0] === key);
+  if (s) return s[1];
+  if (key === "armor") return "Armor";
+  if (key === "dps") return "DPS";
+  const r = RES_COLS.find((x) => x[0] === key);
+  return r ? r[1] : "Stat";
 }
 const NPC_COLS = [
   { label: "Name", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
@@ -99,11 +125,20 @@ async function browseItems(p) {
     if (sf) { where.push(sf.sql); binds.push(...sf.binds); }
   }
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
+  const statSel2 = f.stat ? `, ${statExpr(f.stat)} AS statval` : "";
   const rows = await query(
     `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, i.display_id,
-            i.dmg_min1, i.dmg_max1, i.delay, i.armor, di.icon
+            i.dmg_min1, i.dmg_max1, i.delay, i.armor, di.icon${statSel2}
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
+
+  // skip the stat column when the class already shows it (weapon DPS, armor Armor)
+  const dupCol = (f.class === "2" && f.stat === "dps") || (f.class === "4" && f.stat === "armor");
+  const statCol = (f.stat && !dupCol) ? {
+    label: statLabel(f.stat), num: true,
+    cell: (r) => (r.statval ? (f.stat === "dps" ? Number(r.statval).toFixed(1) : r.statval) : ""),
+    value: (r) => r.statval || 0,
+  } : null;
 
   const subMap = f.class === "2" ? WEAPON_SUBCLASS : f.class === "4" ? ARMOR_SUBCLASS : null;
   const statSel = `<div class="fld"><label>Stat</label><select data-f="stat">
@@ -119,12 +154,13 @@ async function browseItems(p) {
     ${subMap ? selectField("subclass", "Subtype", options(Object.entries(subMap), f.subclass, "Any")) : ""}
     ${selectField("quality", "Quality", options(QUALITY.map((q, i) => [i, q.name]), f.quality, "Any quality"))}
     ${selectField("slot", "Slot", options(Object.entries(INV_TYPE), f.slot, "Any slot"))}
+    <div class="break"></div>
     ${numField("minrl", "Req lvl ≥", f.minrl)} ${numField("maxrl", "Req lvl ≤", f.maxrl)}
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
     ${statSel} ${numField("statmin", "Stat ≥", f.statmin)}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  return { rows, cols: buildItemCols(f.class), filters, noun: "items" };
+  return { rows, cols: buildItemCols(f.class, statCol), filters, noun: "items" };
 }
 
 async function browseNpcs(p) {

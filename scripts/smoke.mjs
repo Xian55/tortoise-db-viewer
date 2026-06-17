@@ -71,6 +71,7 @@ ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testBrowse("items", "&class=2&quality=4&minrl=40", "DPS")) && ok;
 ok = (await testBrowse("items", "&class=4&stat=armor&statmin=100", "Armor")) && ok;
+ok = (await testBrowse("items", "&stat=agi&statmin=20", "Agility")) && ok;
 ok = (await testBrowse("npcs", "&rank=3")) && ok;
 console.log(`\nelapsed ${Date.now() - t}ms`);
 if (errors.length) { console.log("\nERRORS:\n" + errors.slice(0, 20).join("\n")); }
