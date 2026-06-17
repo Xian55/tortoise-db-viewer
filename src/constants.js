@@ -68,6 +68,27 @@ export const RESISTANCES = [
   ["frost_res", "Frost"], ["shadow_res", "Shadow"], ["arcane_res", "Arcane"],
 ];
 
+export const CREATURE_TYPE = {
+  1: "Beast", 2: "Dragonkin", 3: "Demon", 4: "Elemental", 5: "Giant", 6: "Undead",
+  7: "Humanoid", 8: "Critter", 9: "Mechanical", 10: "Not specified", 11: "Totem",
+  12: "Non-combat Pet", 13: "Gas Cloud",
+};
+
+export const CREATURE_RANK = {
+  1: "Elite", 2: "Rare Elite", 3: "World Boss", 4: "Rare",
+};
+
+// npc_flags bits -> role label
+export const NPC_FLAGS = [
+  [2, "Quest Giver"], [16, "Trainer"], [128, "Vendor"], [4096, "Repair"],
+  [8192, "Flight Master"], [65536, "Banker"], [131072, "Innkeeper"], [4194304, "Auctioneer"],
+];
+
+export function npcRoles(flags) {
+  if (!flags) return [];
+  return NPC_FLAGS.filter(([bit]) => flags & bit).map(([, name]) => name);
+}
+
 export function classRestrictions(mask) {
   if (mask === -1 || mask === 0) return null;
   const out = [];

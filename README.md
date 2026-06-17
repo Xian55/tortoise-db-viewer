@@ -1,8 +1,12 @@
 # Tortoise-WoW Item Database
 
 A fast, static, octowow-style item database for [Tortoise-WoW](https://github.com/Penqle/tortoise-wow),
-hosted on GitHub Pages. Item pages, drop sources, vendors, quests, disenchanting,
-crafting — all queried **in the browser** with the official SQLite WASM build.
+hosted on GitHub Pages. Item pages, NPC pages, drop sources, vendors, quests,
+disenchanting, crafting, and filterable browse/finder pages for items and NPCs —
+all queried **in the browser** with the official SQLite WASM build.
+
+Routes: `?item=<id>`, `?npc=<id>`, `?browse=items` / `?browse=npcs` (with filter
+query params, e.g. `?browse=items&class=2&quality=4&minrl=40`), `?search=<term>`.
 
 **Live:** https://xian55.github.io/tortoise-db-viewer/
 
@@ -59,8 +63,6 @@ npm run dev
 
 `SQL_DIR` defaults to `../tortoise-wow/sql/base` (the server repo next to this
 one). Override it: `SQL_DIR="X:/path/sql/base" bun scripts/build-db.mjs`.
-
-Routes: `?item=<id>` for an item page, `?search=<term>` for search.
 
 ## Icons
 

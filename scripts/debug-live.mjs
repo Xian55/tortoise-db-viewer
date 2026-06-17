@@ -1,6 +1,6 @@
 import puppeteer from "puppeteer-core";
 const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const URL = (process.env.SMOKE_BASE || "https://xian55.github.io/tortoise-db-viewer/") + "?item=7909";
+const URL = (process.env.SMOKE_BASE || "https://xian55.github.io/tortoise-db-viewer/") + "?item=" + (process.env.ITEM || "7909");
 
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: "new", args: ["--no-sandbox"] });
 const page = await browser.newPage();

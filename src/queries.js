@@ -88,3 +88,50 @@ export const Q_REAGENT_FOR = `
   WHERE sr.item = ?1 GROUP BY s.entry, ci.entry ORDER BY ci.quality DESC LIMIT 100`;
 
 export const Q_SPELL = `SELECT entry, name, description, auraDescription, s1, s2, s3, d1, d2, d3 FROM spells WHERE entry = ?1`;
+
+// ---- NPC (creature) pages ----
+export const Q_NPC = `SELECT entry, name, subname, level_min, level_max, rank, type, faction, health_min, health_max, npc_flags FROM creatures WHERE entry = ?1`;
+
+// Items an NPC drops — loot/skinning/pickpocket sets plus referenced sets.
+export const Q_NPC_DROPS = `
+WITH RECURSIVE
+start(e, src) AS (
+    SELECT loot_id, 'loot' FROM creatures WHERE entry = ?1 AND loot_id > 0
+  UNION ALL
+    SELECT skinning_loot_id, 'skin' FROM creatures WHERE entry = ?1 AND skinning_loot_id > 0
+  UNION ALL
+    SELECT pickpocket_loot_id, 'pick' FROM creatures WHERE entry = ?1 AND pickpocket_loot_id > 0
+),
+refs(refentry) AS (
+    SELECT -lc.mincountOrRef FROM loot_creature   lc JOIN start s ON s.src='loot' AND lc.entry=s.e AND lc.mincountOrRef < 0
+  UNION
+    SELECT -lk.mincountOrRef FROM loot_skinning   lk JOIN start s ON s.src='skin' AND lk.entry=s.e AND lk.mincountOrRef < 0
+  UNION
+    SELECT -lp.mincountOrRef FROM loot_pickpocket lp JOIN start s ON s.src='pick' AND lp.entry=s.e AND lp.mincountOrRef < 0
+  UNION
+    SELECT -lr.mincountOrRef FROM loot_reference  lr JOIN refs ON lr.entry = refs.refentry AND lr.mincountOrRef < 0
+),
+drops(item, chance, src) AS (
+    SELECT lc.item, ABS(lc.chance), 'loot' FROM loot_creature   lc JOIN start s ON s.src='loot' AND lc.entry=s.e WHERE lc.item > 0
+  UNION ALL
+    SELECT lk.item, ABS(lk.chance), 'skin' FROM loot_skinning   lk JOIN start s ON s.src='skin' AND lk.entry=s.e WHERE lk.item > 0
+  UNION ALL
+    SELECT lp.item, ABS(lp.chance), 'pick' FROM loot_pickpocket lp JOIN start s ON s.src='pick' AND lp.entry=s.e WHERE lp.item > 0
+  UNION ALL
+    SELECT lr.item, ABS(lr.chance), 'loot' FROM loot_reference  lr JOIN refs ON lr.entry = refs.refentry WHERE lr.item > 0
+)
+SELECT d.item AS entry, i.name, i.quality, di.icon,
+       MAX(d.chance) AS chance,
+       MIN(CASE d.src WHEN 'loot' THEN 0 WHEN 'skin' THEN 1 ELSE 2 END) AS srcrank
+FROM drops d JOIN items i ON i.entry = d.item
+LEFT JOIN item_display_info di ON di.ID = i.display_id
+GROUP BY d.item ORDER BY chance DESC LIMIT 300`;
+
+export const Q_NPC_SELLS = `
+  SELECT i.entry, i.name, i.quality, di.icon, v.maxcount
+  FROM npc_vendor v JOIN items i ON i.entry = v.item
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE v.entry = ?1 ORDER BY i.quality DESC, i.name LIMIT 300`;
+
+export const Q_NPC_STARTS = `SELECT q.entry, q.title, q.level FROM creature_quest_start r JOIN quests q ON q.entry = r.quest WHERE r.id = ?1 ORDER BY q.level`;
+export const Q_NPC_ENDS = `SELECT q.entry, q.title, q.level FROM creature_quest_end r JOIN quests q ON q.entry = r.quest WHERE r.id = ?1 ORDER BY q.level`;

@@ -156,6 +156,10 @@ export function itemLink(entry, name, quality, icon) {
     `${iconImg(icon)}${esc(name)}</a>`;
 }
 
+export function npcLink(entry, name) {
+  return `<a class="ilink npc" href="?npc=${entry}">${esc(name)}</a>`;
+}
+
 export function pct(v) {
   if (v == null) return "";
   return v >= 100 ? "100%" : v >= 1 ? `${v.toFixed(1)}%` : `${v.toFixed(2)}%`;

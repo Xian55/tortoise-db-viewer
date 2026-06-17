@@ -2,8 +2,10 @@ import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
 import {
-  renderTooltip, panel, table, itemLink, iconImg, pct, esc,
+  renderTooltip, panel, table, itemLink, npcLink, iconImg, pct, esc, qualityColor,
 } from "./render.js";
+import { CREATURE_TYPE, CREATURE_RANK, npcRoles } from "./constants.js";
+import { showBrowse } from "./browse.js";
 
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
@@ -32,8 +34,12 @@ document.getElementById("searchForm").addEventListener("submit", (e) => {
 function route() {
   const params = new URLSearchParams(location.search);
   const item = params.get("item");
+  const npc = params.get("npc");
+  const browse = params.get("browse");
   const term = params.get("search");
   if (item) showItem(Number(item));
+  else if (npc) showNpc(Number(npc));
+  else if (browse) showBrowse(browse, navigate);
   else if (term) { searchInput.value = term; showSearch(term); }
   else showHome();
 }
@@ -42,12 +48,14 @@ function route() {
 function showHome() {
   document.title = "Tortoise-WoW Database";
   app.innerHTML = `<div class="home">
-    <h1>Tortoise-WoW Item Database</h1>
-    <p>Search for an item above, or open one directly with <code>?item=ID</code>.</p>
+    <h1>Tortoise-WoW Database</h1>
+    <p>Search above, or <a class="nav" href="?browse=items">browse items</a> /
+       <a class="nav" href="?browse=npcs">browse NPCs</a> with filters.
+       Open directly with <code>?item=ID</code> or <code>?npc=ID</code>.</p>
     <p class="muted">Examples:
       <a class="ilink" href="?item=55356">Netherwrought Bracers</a> ·
-      <a class="ilink" href="?item=19019">Thunderfury</a> ·
-      <a class="ilink" href="?item=7909">Aquamarine</a></p>
+      <a class="ilink" href="?item=7909">Aquamarine</a> ·
+      <a class="ilink" href="?npc=2376">Torn Fin Oracle</a></p>
   </div>`;
 }
 
@@ -95,7 +103,7 @@ async function showItem(id) {
       const ch = d.drop_chance ?? d.skin_chance ?? d.pick_chance;
       const tag = d.skin_chance != null ? " (skin)" : d.pick_chance != null ? " (pickpocket)" : "";
       const lvl = d.level_max && d.level_max !== d.level_min ? `${d.level_min}-${d.level_max}` : (d.level_min || "");
-      return `<tr><td>${esc(d.name)}${tag}</td><td class="muted">${lvl}</td><td>${pct(ch)}</td></tr>`;
+      return `<tr><td>${npcLink(d.entry, d.name)}${tag}</td><td class="muted">${lvl}</td><td>${pct(ch)}</td></tr>`;
     }).join("")));
 
   html += panel("Found in object", table(["Object", "Chance"],
@@ -104,7 +112,7 @@ async function showItem(id) {
   html += panel("Sold by", table(["Vendor", "Level", "Stock"],
     sold.map((s) => {
       const lvl = s.level_max && s.level_max !== s.level_min ? `${s.level_min}-${s.level_max}` : (s.level_min || "");
-      return `<tr><td>${esc(s.name)}</td><td class="muted">${lvl}</td><td class="muted">${s.maxcount > 0 ? s.maxcount : "∞"}</td></tr>`;
+      return `<tr><td>${npcLink(s.entry, s.name)}</td><td class="muted">${lvl}</td><td class="muted">${s.maxcount > 0 ? s.maxcount : "∞"}</td></tr>`;
     }).join("")));
 
   html += panel("Contained in", table(["Container", "Chance"],
@@ -147,6 +155,52 @@ async function showItem(id) {
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}</div>
       </div>
       <div class="item-rel">${html || `<p class="muted">No additional sources found.</p>`}</div>
+    </div>`;
+}
+
+async function showNpc(id) {
+  app.innerHTML = `<div class="loading">Loading NPC ${id}…</div>`;
+  let npc;
+  try { npc = await queryOne(Q.Q_NPC, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
+  document.title = `${npc.name} - Tortoise-WoW DB`;
+
+  const [drops, sells, starts, ends] = await Promise.all([
+    query(Q.Q_NPC_DROPS, [id]), query(Q.Q_NPC_SELLS, [id]),
+    query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
+  ]);
+
+  const lvl = npc.level_max && npc.level_max !== npc.level_min ? `${npc.level_min}-${npc.level_max}` : (npc.level_min || "??");
+  const bits = [`Level ${lvl}`];
+  if (CREATURE_RANK[npc.rank]) bits.push(CREATURE_RANK[npc.rank]);
+  if (CREATURE_TYPE[npc.type]) bits.push(CREATURE_TYPE[npc.type]);
+  const hp = npc.health_max ? `${npc.health_min}–${npc.health_max} HP` : "";
+  const roles = npcRoles(npc.npc_flags);
+  const rankClass = npc.rank === 3 ? "npc-boss" : (npc.rank === 2 || npc.rank === 4) ? "npc-rare" : npc.rank === 1 ? "npc-elite" : "";
+
+  let html = "";
+  html += panel("Drops", table(["Item", "Chance"],
+    drops.map((d) => {
+      const tag = d.srcrank === 1 ? " (skin)" : d.srcrank === 2 ? " (pickpocket)" : "";
+      return `<tr><td>${itemLink(d.entry, d.name, d.quality, d.icon)}<span class="muted">${tag}</span></td><td>${pct(d.chance)}</td></tr>`;
+    }).join("")));
+  html += panel("Sells", table(["Item", "Stock"],
+    sells.map((s) => `<tr><td>${itemLink(s.entry, s.name, s.quality, s.icon)}</td><td class="muted">${s.maxcount > 0 ? s.maxcount : "∞"}</td></tr>`).join("")));
+  html += panel("Starts quests", table(["Quest", "Level"],
+    starts.map((q) => `<tr><td>${esc(q.title)}</td><td class="muted">${q.level || ""}</td></tr>`).join("")));
+  html += panel("Ends quests", table(["Quest", "Level"],
+    ends.map((q) => `<tr><td>${esc(q.title)}</td><td class="muted">${q.level || ""}</td></tr>`).join("")));
+
+  app.innerHTML =
+    `<div class="npc-view">
+      <div class="npc-head">
+        <h1 class="${rankClass}">${esc(npc.name)}</h1>
+        ${npc.subname ? `<div class="npc-sub muted">&lt;${esc(npc.subname)}&gt;</div>` : ""}
+        <div class="npc-meta muted">${bits.join(" · ")}${hp ? " · " + hp : ""}</div>
+        ${roles.length ? `<div class="npc-roles">${roles.map((r) => `<span class="tagx">${esc(r)}</span>`).join("")}</div>` : ""}
+        <div class="item-meta muted">NPC #${npc.entry}</div>
+      </div>
+      <div class="item-rel">${html || `<p class="muted">No data.</p>`}</div>
     </div>`;
 }
 

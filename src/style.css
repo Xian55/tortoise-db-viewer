@@ -25,8 +25,10 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
   padding: 10px 18px; background: var(--panel);
   border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10;
 }
-.brand { font-size: 18px; font-weight: 700; color: var(--gold); }
+.brand { font-size: 18px; font-weight: 700; color: var(--gold); white-space: nowrap; }
 .brand:hover { text-decoration: none; }
+.topnav { display: flex; gap: 14px; }
+.topnav .nav { color: var(--text); font-weight: 500; }
 #searchForm { display: flex; gap: 6px; flex: 1; max-width: 480px; }
 #search {
   flex: 1; padding: 7px 11px; border-radius: 6px;
@@ -80,3 +82,30 @@ tbody tr:hover { background: var(--panel2); }
 
 h1 { font-size: 22px; }
 .results table td:first-child { width: 60%; }
+
+/* npc view */
+.npc-view { display: grid; grid-template-columns: 300px 1fr; gap: 26px; align-items: start; }
+@media (max-width: 760px) { .npc-view { grid-template-columns: 1fr; } }
+.npc-head h1 { margin: 0 0 2px; }
+.npc-sub { font-style: italic; margin-bottom: 6px; }
+.npc-meta { margin-bottom: 8px; }
+.npc-boss { color: #ff8000; } .npc-rare { color: #a335ee; } .npc-elite { color: #ffd100; }
+.npc-roles { margin-bottom: 8px; }
+.tagx { display: inline-block; padding: 2px 8px; margin: 2px 4px 0 0; font-size: 12px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
+
+/* browse / finder */
+.filters { display: flex; flex-wrap: wrap; gap: 10px 14px; margin: 4px 0 16px; align-items: flex-end; }
+.filters .fld { display: flex; flex-direction: column; gap: 3px; }
+.filters label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.filters select, .filters input {
+  padding: 6px 9px; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font: inherit;
+}
+.filters input[type=number] { width: 72px; }
+.filters .reset { padding: 7px 12px; cursor: pointer; }
+.browse-count { color: var(--muted); margin: 0 0 10px; }
+.pager { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
+.pager button { padding: 6px 14px; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); cursor: pointer; }
+.pager button:disabled { opacity: .4; cursor: default; }
