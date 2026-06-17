@@ -138,6 +138,19 @@ h1 { font-size: 22px; }
 .multi-opt { display: flex; gap: 8px; align-items: center; padding: 4px 6px; white-space: nowrap; cursor: pointer; }
 .multi-opt:hover { background: var(--panel2); }
 .filters .reset { padding: 7px 12px; cursor: pointer; }
+/* multi-criteria gear filter: stacked stat/operator/value rows on their own line */
+.fld.crit { flex-basis: 100%; }
+.crit-rows { display: flex; flex-direction: column; gap: 6px; }
+.crit-row { display: flex; gap: 8px; align-items: center; }
+.crit-row select[data-cstat] { min-width: 170px; }
+.crit-row select[data-cop] { width: 56px; text-align: center; }
+.crit-row input[data-cval] { width: 80px; }
+.crit-rm { padding: 5px 9px; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--muted); cursor: pointer; font: inherit; line-height: 1; }
+.crit-rm:hover { color: var(--text); border-color: var(--text); }
+.crit-add { align-self: flex-start; margin-top: 8px; padding: 6px 11px; background: var(--panel2);
+  border: 1px dashed var(--border); border-radius: 6px; color: var(--text); cursor: pointer; font: inherit; }
+.crit-add:hover { border-color: var(--text); }
 .browse-count { color: var(--muted); margin: 0 0 10px; }
 .pager { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
 .pager button { padding: 6px 14px; background: var(--panel2); border: 1px solid var(--border);

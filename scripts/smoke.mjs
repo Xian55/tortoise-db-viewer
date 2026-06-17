@@ -79,6 +79,19 @@ async function testBrowseMulti() {
   return rows > 0 && ["quality:3", "quality:4", "slot:1", "slot:5"].every((k) => checked.includes(k));
 }
 
+async function testBrowseCriteria() {
+  const q = encodeURIComponent("agi,>=,10|sta,>=,10"); // multi-criteria, AND-combined
+  await page.goto(`${BASE}?browse=items&stats=${q}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const critRows = await page.$$eval(".crit-row", (e) => e.length);
+  const cstats = await page.$$eval(".crit-row [data-cstat]", (e) => e.map((s) => s.value));
+  console.log(`browse criteria: rows=${rows} headers=[${headers.join(",")}] critRows=${critRows} cstats=[${cstats.join(",")}]`);
+  return rows > 0 && headers.includes("Agility") && headers.includes("Stamina")
+    && critRows === 2 && cstats.includes("agi") && cstats.includes("sta");
+}
+
 async function testDungeons() {
   await page.goto(`${BASE}?dungeons`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
@@ -129,10 +142,13 @@ ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;
 ok = (await testBrowsePersist()) && ok;
 ok = (await testBrowseMulti()) && ok;
+ok = (await testBrowseCriteria()) && ok;
 ok = (await testHover()) && ok;
+const sc = (s) => `&stats=${encodeURIComponent(s)}`;
 ok = (await testBrowse("items", "&class=2&quality=4&minrl=40", "DPS")) && ok;
-ok = (await testBrowse("items", "&class=4&stat=armor&statmin=100", "Armor")) && ok;
-ok = (await testBrowse("items", "&stat=agi&statmin=20", "Agility")) && ok;
+ok = (await testBrowse("items", `&class=4${sc("armor,>=,100")}`, "Armor")) && ok;
+ok = (await testBrowse("items", sc("agi,>=,20"), "Agility")) && ok;
+ok = (await testBrowse("items", sc("sp,>=,20"), "Spell Power")) && ok;
 ok = (await testBrowse("npcs", "&rank=3")) && ok;
 console.log(`\nelapsed ${Date.now() - t}ms`);
 if (errors.length) { console.log("\nERRORS:\n" + errors.slice(0, 20).join("\n")); }

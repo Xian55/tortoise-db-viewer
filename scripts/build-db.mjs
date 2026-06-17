@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { parseColumns, iterRows, NULL } from "./lib/sqldump.mjs";
 import { IMPORTS, LOOT_TABLES, LOOT_COLUMNS } from "./lib/schema.mjs";
 import { openDatabase, RUNTIME } from "./lib/sqlite.mjs";
+import { statsFromColumns, statsFromAuras } from "./lib/itemstats.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SQL_DIR = process.env.SQL_DIR || join(ROOT, "..", "tortoise-wow", "sql", "base");
@@ -228,6 +229,10 @@ console.log("Resolving loot chances...");
 }
 
 // ---- Spells + crafting graph (single pass over the 16MB dump) ----
+// spellStats: spellId -> { statKey: value } derived from the spell's effect auras
+// (build-time only; the raw effect/aura columns are NOT persisted). Used by the
+// item_stats pass below to resolve an item's equip-spell stats.
+const spellStats = new Map();
 console.log("Importing spells + crafting graph...");
 {
   const sql = read("tw_world_spell_template.sql");
@@ -236,6 +241,7 @@ console.log("Importing spells + crafting graph...");
   const iEntry = at("entry"), iName = at("name"), iDesc = at("description"), iAura = at("auraDescription"), iIcon = at("spellIconId");
   const bp = [1, 2, 3].map((n) => at(`effectBasePoints${n}`));
   const ds = [1, 2, 3].map((n) => at(`effectDieSides${n}`));
+  const effIdx = [1, 2, 3].map((n) => ({ a: at(`effectApplyAuraName${n}`), m: at(`effectMiscValue${n}`), b: at(`effectBasePoints${n}`) }));
   const reagents = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [at(`reagent${n}`), at(`reagentCount${n}`)]);
   const creates = [1, 2, 3].map((n) => at(`effectItemType${n}`));
 
@@ -256,6 +262,10 @@ console.log("Importing spells + crafting graph...");
       sSpell.run(e, clean(row[iName]), clean(row[iDesc]), clean(row[iAura]), clean(row[iIcon]),
         s[0], s[1], s[2], d[0], d[1], d[2]);
       ns++;
+      // derive gear stats from this spell's effect auras (for item_stats)
+      const effects = effIdx.map((f) => ({ aura: clean(row[f.a]) || 0, misc: clean(row[f.m]) || 0, base: clean(row[f.b]) || 0 }));
+      const st = statsFromAuras(effects);
+      if (Object.keys(st).length) spellStats.set(e, st);
       for (const ci of creates) {
         const item = clean(row[ci]);
         if (item) { sCreate.run(e, item); nc++; }
@@ -309,6 +319,39 @@ console.log("Importing quests + quest items...");
   db.exec(`CREATE INDEX idx_quest_item_item ON quest_item(item)`);
   db.exec(`CREATE INDEX idx_quest_item_quest ON quest_item(quest)`);
   console.log(`  quests: ${nq} | quest_item links: ${nqi}`);
+}
+
+// ---- Derived per-item gear stats (powers the multi-criteria browse filter) ----
+// One row per (item, stat). Stats come from item columns (base stats, armor,
+// resistances, DPS) plus equip-spell auras (spellStats). Only items that actually
+// have a stat get a row -> presence-aware filtering (`natRes >= 0` => has nature res).
+console.log("Deriving item_stats...");
+{
+  db.exec(`CREATE TABLE item_stats (item INTEGER, stat TEXT, value REAL)`);
+  const ins = db.prepare(`INSERT INTO item_stats VALUES (?,?,?)`);
+  const items = db.prepare(`SELECT * FROM items`).all();
+  const coverage = new Map();
+  let nrows = 0;
+  db.transaction(() => {
+    for (const it of items) {
+      const acc = statsFromColumns(it);
+      for (let k = 1; k <= 5; k++) {
+        if (it[`spelltrigger_${k}`] !== 1) continue; // "Equip:" effects only
+        const st = spellStats.get(it[`spellid_${k}`]);
+        if (st) for (const key in st) acc[key] = (acc[key] || 0) + st[key];
+      }
+      for (const stat in acc) {
+        if (!acc[stat]) continue;
+        ins.run(it.entry, stat, acc[stat]);
+        coverage.set(stat, (coverage.get(stat) || 0) + 1);
+        nrows++;
+      }
+    }
+  })();
+  db.exec(`CREATE INDEX idx_item_stats_lookup ON item_stats(stat, value)`);
+  db.exec(`CREATE INDEX idx_item_stats_item ON item_stats(item)`);
+  const cov = [...coverage.entries()].sort((a, b) => b[1] - a[1]).map(([k, c]) => `${k}:${c}`).join(" ");
+  console.log(`  item_stats: ${nrows} rows | ${cov}`);
 }
 
 // ---- Full-text search over item names ----

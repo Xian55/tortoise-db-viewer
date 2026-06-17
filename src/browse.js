@@ -6,7 +6,7 @@ import { itemLink, npcLink, esc } from "./render.js";
 import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
-  CREATURE_TYPE, CREATURE_RANK,
+  CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL,
 } from "./constants.js";
 
 const PAGE = 100;
@@ -26,54 +26,44 @@ const COL = {
 };
 
 // columns adapt to the class filter: weapons show DPS/Speed, armor shows Armor.
-// when a stat filter is active, its column is inserted (right after Name) so it
-// can be sorted by value.
-function buildItemCols(cls, statCol) {
+// when stat criteria are active, a sortable column per criterion stat is inserted
+// (right after Name).
+function buildItemCols(cls, statCols) {
   const base = cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.id]
     : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.id]
       : [COL.name, COL.ilvl, COL.req, COL.slot, COL.id];
-  return statCol ? [base[0], statCol, ...base.slice(1)] : base;
+  return statCols.length ? [base[0], ...statCols, ...base.slice(1)] : base;
 }
 
-// stat filter (wowhead-style "additional filters"): pick stat + minimum value.
-const STAT_TYPES = [["agi", "Agility", 3], ["str", "Strength", 4], ["sta", "Stamina", 7], ["int", "Intellect", 5], ["spi", "Spirit", 6]];
-const RES_COLS = [["holyres", "Holy Res", "holy_res"], ["fireres", "Fire Res", "fire_res"], ["natureres", "Nature Res", "nature_res"], ["frostres", "Frost Res", "frost_res"], ["shadowres", "Shadow Res", "shadow_res"], ["arcaneres", "Arcane Res", "arcane_res"]];
+// Multi-criteria gear filter: each criterion is { key, op, val } matched against
+// the derived item_stats table (see scripts/lib/itemstats.mjs). AND-combined.
+const CRIT_OPS = new Set([">", ">=", "="]);
+const statLabel = (key) => GEAR_STAT_LABEL[key] || "Stat";
 
-function statFilter(key, v) {
-  const s = STAT_TYPES.find((x) => x[0] === key);
-  if (s) {
-    const parts = [], binds = [];
-    for (let i = 1; i <= 10; i++) { parts.push(`(i.stat_type${i}=${s[2]} AND i.stat_value${i} >= ?)`); binds.push(v); }
-    return { sql: "(" + parts.join(" OR ") + ")", binds };
-  }
-  if (key === "armor") return { sql: "i.armor >= ?", binds: [v] };
-  if (key === "dps") return { sql: "(i.delay > 0 AND ((i.dmg_min1+i.dmg_max1)/2.0)/(i.delay/1000.0) >= ?)", binds: [v] };
-  const r = RES_COLS.find((x) => x[0] === key);
-  if (r) return { sql: `i.${r[2]} >= ?`, binds: [v] };
-  return null;
+// Parse the `stats` URL param ("key,op,val|key,op,val"); drop malformed entries.
+function parseCriteria(raw) {
+  if (!raw) return [];
+  return raw.split("|").map((s) => {
+    const [key, op, val] = s.split(",");
+    return { key, op, val };
+  }).filter((c) => GEAR_STAT_LABEL[c.key] && CRIT_OPS.has(c.op) && c.val !== "" && c.val != null && !Number.isNaN(+c.val));
 }
 
-// SQL expression yielding the stat's value (aliased AS statval for the column).
-function statExpr(key) {
-  const s = STAT_TYPES.find((x) => x[0] === key);
-  if (s) {
-    let e = "0";
-    for (let i = 10; i >= 1; i--) e = `CASE WHEN i.stat_type${i}=${s[2]} THEN i.stat_value${i} ELSE ${e} END`;
-    return `(${e})`;
-  }
-  if (key === "armor") return "i.armor";
-  if (key === "dps") return "(CASE WHEN i.delay>0 THEN ((i.dmg_min1+i.dmg_max1)/2.0)/(i.delay/1000.0) ELSE 0 END)";
-  const r = RES_COLS.find((x) => x[0] === key);
-  if (r) return `i.${r[2]}`;
-  return null;
+// stat <select> with the same grouped layout as the reference gear-finder.
+function critStatOptions(cur) {
+  return GEAR_CRITERIA.map((g) =>
+    `<optgroup label="${esc(g.group)}">${g.options.map(([v, l]) => opt(v, l, cur)).join("")}</optgroup>`).join("");
 }
-function statLabel(key) {
-  const s = STAT_TYPES.find((x) => x[0] === key);
-  if (s) return s[1];
-  if (key === "armor") return "Armor";
-  if (key === "dps") return "DPS";
-  const r = RES_COLS.find((x) => x[0] === key);
-  return r ? r[1] : "Stat";
+// one criterion row (stat + operator + value + remove). c may be null (blank row).
+function critRow(c) {
+  const key = c ? c.key : "", op = (c && c.op) || ">=", val = c ? c.val : "";
+  const ops = [">", ">=", "="].map((o) => `<option value="${esc(o)}"${o === op ? " selected" : ""}>${esc(o)}</option>`).join("");
+  return `<div class="crit-row" data-crow>
+    <select data-cstat><option value=""${key ? "" : " selected"}>Stat…</option>${critStatOptions(key)}</select>
+    <select data-cop>${ops}</select>
+    <input type="number" data-cval value="${esc(val)}" min="0" placeholder="0">
+    <button type="button" class="crit-rm" data-crm title="Remove criterion">✕</button>
+  </div>`;
 }
 const NPC_COLS = [
   { key: "name", label: "Name", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
@@ -119,8 +109,8 @@ async function browseItems(p) {
     quality: p.get("quality") || "", slot: p.get("slot") || "",
     minrl: p.get("minrl") || "", maxrl: p.get("maxrl") || "",
     minil: p.get("minil") || "", maxil: p.get("maxil") || "",
-    stat: p.get("stat") || "", statmin: p.get("statmin") || "",
   };
+  const criteria = parseCriteria(p.get("stats"));
   const where = [], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
   const addIn = (col, csv) => {
@@ -136,34 +126,35 @@ async function browseItems(p) {
   if (f.maxrl !== "") add("i.required_level <= ?", +f.maxrl);
   if (f.minil !== "") add("i.item_level >= ?", +f.minil);
   if (f.maxil !== "") add("i.item_level <= ?", +f.maxil);
-  if (f.stat && f.statmin !== "") {
-    const sf = statFilter(f.stat, +f.statmin);
-    if (sf) { where.push(sf.sql); binds.push(...sf.binds); }
-  }
+  // each criterion -> presence-aware match against item_stats (op is whitelisted).
+  for (const c of criteria) add(`i.entry IN (SELECT item FROM item_stats WHERE stat='${c.key}' AND value ${c.op} ?)`, +c.val);
+
+  // one LEFT JOIN per distinct criterion stat so its value can be shown + sorted.
+  const critKeys = [...new Set(criteria.map((c) => c.key))];
+  const joins = critKeys.map((key, n) => `LEFT JOIN item_stats s${n} ON s${n}.item=i.entry AND s${n}.stat='${key}'`).join(" ");
+  const statSel2 = critKeys.map((key, n) => `, s${n}.value AS stat_${key}`).join("");
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
-  const statSel2 = f.stat ? `, ${statExpr(f.stat)} AS statval` : "";
   const rows = await query(
     `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, i.display_id,
             i.dmg_min1, i.dmg_max1, i.delay, i.armor, di.icon${statSel2}
-     FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${whereSql}
+     FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
 
-  // skip the stat column when the class already shows it (weapon DPS, armor Armor)
-  const dupCol = (f.class === "2" && f.stat === "dps") || (f.class === "4" && f.stat === "armor");
-  const statCol = (f.stat && !dupCol) ? {
-    key: f.stat, label: statLabel(f.stat), num: true,
-    cell: (r) => (r.statval ? (f.stat === "dps" ? Number(r.statval).toFixed(1) : r.statval) : ""),
-    value: (r) => r.statval || 0,
-  } : null;
+  // skip a criterion column when the class column already shows it (weapon DPS, armor Armor)
+  const statCols = critKeys
+    .filter((key) => !(key === "dps" && f.class === "2") && !(key === "armor" && f.class === "4"))
+    .map((key) => ({
+      key: `s_${key}`, label: statLabel(key), num: true,
+      cell: (r) => { const v = r[`stat_${key}`]; return v == null ? "" : (key === "dps" ? Number(v).toFixed(1) : v); },
+      value: (r) => r[`stat_${key}`] ?? 0,
+    }));
 
   const subMap = f.class === "2" ? WEAPON_SUBCLASS : f.class === "4" ? ARMOR_SUBCLASS : null;
-  const statSel = `<div class="fld"><label>Stat</label><select data-f="stat">
-    ${opt("", "Any stat", f.stat)}
-    <optgroup label="Base stats">${STAT_TYPES.map((s) => opt(s[0], s[1], f.stat)).join("")}</optgroup>
-    <optgroup label="Defense">${opt("armor", "Armor", f.stat)}</optgroup>
-    <optgroup label="Weapon">${opt("dps", "DPS", f.stat)}</optgroup>
-    <optgroup label="Resistances">${RES_COLS.map((r) => opt(r[0], r[1], f.stat)).join("")}</optgroup>
-  </select></div>`;
+  const critRows = criteria.length ? criteria.map(critRow).join("") : critRow(null);
+  const critBlock = `<div class="fld crit" data-criteria><label>Stats</label>
+    <div class="crit-rows">${critRows}</div>
+    <button type="button" class="crit-add" data-cadd>+ Add criterion</button>
+  </div>`;
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
     ${selectField("class", "Class", options(Object.entries(ITEM_CLASS), f.class, "Any class"))}
@@ -173,10 +164,10 @@ async function browseItems(p) {
     <div class="break"></div>
     ${numField("minrl", "Req lvl ≥", f.minrl)} ${numField("maxrl", "Req lvl ≤", f.maxrl)}
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
-    ${statSel} ${numField("statmin", "Stat ≥", f.statmin)}
+    ${critBlock}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  return { rows, cols: buildItemCols(f.class, statCol), filters, noun: "items" };
+  return { rows, cols: buildItemCols(f.class, statCols), filters, noun: "items" };
 }
 
 async function browseNpcs(p) {
@@ -241,6 +232,14 @@ export async function showBrowse(kind, navigate) {
     const multi = {};
     app.querySelectorAll("[data-mv]:checked").forEach((cb) => { (multi[cb.dataset.mv] ??= []).push(cb.value); });
     for (const k in multi) np.set(k, multi[k].join(","));
+    const crits = [];
+    app.querySelectorAll("[data-crow]").forEach((row) => {
+      const key = row.querySelector("[data-cstat]").value;
+      const op = row.querySelector("[data-cop]").value;
+      const val = row.querySelector("[data-cval]").value;
+      if (key && op && val !== "") crits.push(`${key},${op},${val}`);
+    });
+    if (crits.length) np.set("stats", crits.join("|"));
     const cur = new URLSearchParams(location.search); // preserve active sort/group across filter changes
     for (const k of ["sort", "dir", "groupby"]) { const v = cur.get(k); if (v) np.set(k, v); }
     return np;
@@ -268,6 +267,31 @@ export async function showBrowse(kind, navigate) {
       if (!e.target.closest(".multi")) {
         document.querySelectorAll(".multi-panel.open").forEach((p) => p.classList.remove("open"));
         openMulti = null;
+      }
+    });
+  }
+  // multi-criteria gear filter (rows added/removed client-side; URL updates on change)
+  const critWrap = app.querySelector("[data-criteria]");
+  if (critWrap) {
+    critWrap.addEventListener("change", (e) => {
+      const row = e.target.closest("[data-crow]");
+      if (!row) return;
+      const key = row.querySelector("[data-cstat]").value;
+      const val = row.querySelector("[data-cval]").value;
+      // navigate when the row is actionable: complete, or its stat was just cleared
+      if ((key && val !== "") || (e.target.matches("[data-cstat]") && !key)) navigate(`?${collect().toString()}`);
+    });
+    critWrap.addEventListener("click", (e) => {
+      if (e.target.closest("[data-cadd]")) {
+        e.preventDefault();
+        critWrap.querySelector(".crit-rows").insertAdjacentHTML("beforeend", critRow(null));
+      } else if (e.target.closest("[data-crm]")) {
+        e.preventDefault();
+        const row = e.target.closest("[data-crow]");
+        const complete = row.querySelector("[data-cstat]").value && row.querySelector("[data-cval]").value !== "";
+        if (critWrap.querySelectorAll("[data-crow]").length > 1) row.remove();
+        else { row.querySelector("[data-cstat]").value = ""; row.querySelector("[data-cval]").value = ""; }
+        if (complete) navigate(`?${collect().toString()}`);
       }
     });
   }
