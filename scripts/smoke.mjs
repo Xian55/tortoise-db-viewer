@@ -70,6 +70,15 @@ async function testBrowsePersist() {
   return active.includes("iLvl") && groups > 0;
 }
 
+async function testBrowseMulti() {
+  await page.goto(`${BASE}?browse=items&quality=3,4&slot=1,5`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const checked = await page.$$eval(".multi [data-mv]:checked", (e) => e.map((c) => `${c.dataset.mv}:${c.value}`));
+  console.log(`browse multi: rows=${rows} checked=[${checked.join(",")}]`);
+  return rows > 0 && ["quality:3", "quality:4", "slot:1", "slot:5"].every((k) => checked.includes(k));
+}
+
 async function testDungeons() {
   await page.goto(`${BASE}?dungeons`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
@@ -119,6 +128,7 @@ ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;
 ok = (await testBrowsePersist()) && ok;
+ok = (await testBrowseMulti()) && ok;
 ok = (await testHover()) && ok;
 ok = (await testBrowse("items", "&class=2&quality=4&minrl=40", "DPS")) && ok;
 ok = (await testBrowse("items", "&class=4&stat=armor&statmin=100", "Armor")) && ok;

@@ -101,6 +101,18 @@ function textField(name, label, cur) {
   return `<div class="fld"><label>${esc(label)}</label><input type="search" data-f="${name}" value="${esc(cur ?? "")}" placeholder="name…"></div>`;
 }
 
+// multi-select checkbox dropdown; value persisted as a comma list (e.g. quality=3,4)
+let openMulti = null;
+function multiField(name, label, entries, csv) {
+  const sel = new Set((csv || "").split(",").filter(Boolean));
+  const summary = sel.size ? `${sel.size} selected` : "Any";
+  const boxes = entries.map(([v, l]) =>
+    `<label class="multi-opt"><input type="checkbox" data-mv="${name}" value="${v}"${sel.has(String(v)) ? " checked" : ""}> ${esc(l)}</label>`).join("");
+  return `<div class="fld multi" data-multi="${name}"><label>${esc(label)}</label>
+    <button type="button" class="multi-btn">${esc(summary)} ▾</button>
+    <div class="multi-panel">${boxes}</div></div>`;
+}
+
 async function browseItems(p) {
   const f = {
     q: p.get("q") || "", class: p.get("class") || "", subclass: p.get("subclass") || "",
@@ -111,11 +123,15 @@ async function browseItems(p) {
   };
   const where = [], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
+  const addIn = (col, csv) => {
+    const vals = (csv || "").split(",").filter(Boolean);
+    if (vals.length) { where.push(`${col} IN (${vals.map(() => "?").join(",")})`); for (const v of vals) binds.push(+v); }
+  };
   if (f.q) add("i.name LIKE ?", `%${f.q}%`);
   if (f.class !== "") add("i.class = ?", +f.class);
   if (f.subclass !== "") add("i.subclass = ?", +f.subclass);
-  if (f.quality !== "") add("i.quality = ?", +f.quality);
-  if (f.slot !== "") add("i.inventory_type = ?", +f.slot);
+  addIn("i.quality", f.quality);
+  addIn("i.inventory_type", f.slot);
   if (f.minrl !== "") add("i.required_level >= ?", +f.minrl);
   if (f.maxrl !== "") add("i.required_level <= ?", +f.maxrl);
   if (f.minil !== "") add("i.item_level >= ?", +f.minil);
@@ -152,8 +168,8 @@ async function browseItems(p) {
     ${textField("q", "Name", f.q)}
     ${selectField("class", "Class", options(Object.entries(ITEM_CLASS), f.class, "Any class"))}
     ${subMap ? selectField("subclass", "Subtype", options(Object.entries(subMap), f.subclass, "Any")) : ""}
-    ${selectField("quality", "Quality", options(QUALITY.map((q, i) => [i, q.name]), f.quality, "Any quality"))}
-    ${selectField("slot", "Slot", options(Object.entries(INV_TYPE), f.slot, "Any slot"))}
+    ${multiField("quality", "Quality", QUALITY.map((q, i) => [i, q.name]), f.quality)}
+    ${multiField("slot", "Slot", Object.entries(INV_TYPE), f.slot)}
     <div class="break"></div>
     ${numField("minrl", "Req lvl ≥", f.minrl)} ${numField("maxrl", "Req lvl ≤", f.maxrl)}
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
@@ -222,6 +238,9 @@ export async function showBrowse(kind, navigate) {
     const np = new URLSearchParams();
     np.set("browse", kind);
     app.querySelectorAll("[data-f]").forEach((el) => { if (el.value !== "") np.set(el.dataset.f, el.value); });
+    const multi = {};
+    app.querySelectorAll("[data-mv]:checked").forEach((cb) => { (multi[cb.dataset.mv] ??= []).push(cb.value); });
+    for (const k in multi) np.set(k, multi[k].join(","));
     const cur = new URLSearchParams(location.search); // preserve active sort/group across filter changes
     for (const k of ["sort", "dir", "groupby"]) { const v = cur.get(k); if (v) np.set(k, v); }
     return np;
@@ -232,6 +251,26 @@ export async function showBrowse(kind, navigate) {
       if (el.dataset.f === "class") np.delete("subclass");
       navigate(`?${np.toString()}`);
     }));
+  // multi-select dropdowns
+  app.querySelectorAll(".multi-btn").forEach((btn) => btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wrap = btn.closest("[data-multi]"), panel = wrap.querySelector(".multi-panel");
+    const willOpen = !panel.classList.contains("open");
+    app.querySelectorAll(".multi-panel.open").forEach((p) => p.classList.remove("open"));
+    panel.classList.toggle("open", willOpen);
+    openMulti = willOpen ? wrap.dataset.multi : null;
+  }));
+  app.querySelectorAll("[data-mv]").forEach((cb) => cb.addEventListener("change", () => navigate(`?${collect().toString()}`)));
+  if (openMulti) { const p = app.querySelector(`[data-multi="${openMulti}"] .multi-panel`); if (p) p.classList.add("open"); }
+  if (!document.__multiClose) {
+    document.__multiClose = true;
+    document.addEventListener("mousedown", (e) => {
+      if (!e.target.closest(".multi")) {
+        document.querySelectorAll(".multi-panel.open").forEach((p) => p.classList.remove("open"));
+        openMulti = null;
+      }
+    });
+  }
   const reset = app.querySelector("[data-reset]");
   if (reset) reset.addEventListener("click", () => navigate(`?browse=${kind}`));
 }

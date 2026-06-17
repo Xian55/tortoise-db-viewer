@@ -128,6 +128,15 @@ h1 { font-size: 22px; }
 }
 .filters input[type=number] { width: 72px; }
 .filters .break { flex-basis: 100%; height: 0; margin: 0; padding: 0; }
+.fld.multi { position: relative; }
+.multi-btn { padding: 6px 9px; min-width: 110px; text-align: left; background: var(--panel2);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; cursor: pointer; }
+.multi-panel { display: none; position: absolute; z-index: 50; top: 100%; left: 0; margin-top: 4px;
+  max-height: 260px; overflow: auto; min-width: 170px; padding: 6px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
+.multi-panel.open { display: block; }
+.multi-opt { display: flex; gap: 8px; align-items: center; padding: 4px 6px; white-space: nowrap; cursor: pointer; }
+.multi-opt:hover { background: var(--panel2); }
 .filters .reset { padding: 7px 12px; cursor: pointer; }
 .browse-count { color: var(--muted); margin: 0 0 10px; }
 .pager { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
