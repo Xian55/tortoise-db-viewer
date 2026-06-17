@@ -64,6 +64,26 @@ async function testItemSources(id, expectTag) {
   return tags.length > 0 && (!expectTag || tags.includes(expectTag));
 }
 
+// new select filters: confirm the param yields rows and the select reflects it.
+async function testFilter(param, value) {
+  await page.goto(`${BASE}?browse=items&${param}=${value}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const sel = await page.$eval(`.filters [data-f='${param}']`, (e) => e.value).catch(() => "?");
+  console.log(`filter ${param}=${value}: rows=${rows} selected=${sel}`);
+  return rows > 0 && sel === value;
+}
+
+// crafted item shows its crafting profession in the "Created by" section.
+async function testCrafted(id, expectProf) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".item-rel", { timeout: 40000 });
+  const cells = await page.$$eval(".item-rel td", (tds) => tds.map((t) => t.textContent.trim()));
+  const hit = cells.some((t) => t.includes(expectProf));
+  console.log(`crafted ${id}: profession "${expectProf}" present=${hit}`);
+  return hit;
+}
+
 // unobtainable (dev-artifact) items are hidden by default but shown when opted in;
 // item 5031 ("ZZZZZZZZ") is a known dev artifact.
 async function testUnobtainable() {
@@ -205,6 +225,12 @@ ok = (await testBrowseSource("vendor")) && ok;
 ok = (await testItemSources(2770)) && ok;
 ok = (await testItemSources(5031, "Unobtainable")) && ok;
 ok = (await testUnobtainable()) && ok;
+ok = (await testFilter("bind", "2")) && ok;
+ok = (await testFilter("uclass", "8")) && ok;
+ok = (await testFilter("faction", "a")) && ok;
+ok = (await testFilter("prof", "197")) && ok;
+ok = (await testFilter("unique", "1")) && ok;
+ok = (await testCrafted(2575, "Tailoring")) && ok;
 console.log(`\nelapsed ${Date.now() - t}ms`);
 if (errors.length) { console.log("\nERRORS:\n" + errors.slice(0, 20).join("\n")); }
 console.log(ok && !errors.length ? "\nSMOKE: PASS" : "\nSMOKE: FAIL");

@@ -235,6 +235,19 @@ console.log("Resolving loot chances...");
 const spellStats = new Map();
 console.log("Importing spells + crafting graph...");
 {
+  // spell_id -> { skill, req } from skill_line_ability: lets us label a crafting
+  // spell with its profession (+ required skill) on the item page. First row wins.
+  const spellSkill = new Map();
+  {
+    const slaSql = read("tw_world_skill_line_ability.sql");
+    const sc = parseColumns(slaSql);
+    const iSp = sc.indexOf("spell_id"), iSk = sc.indexOf("skill_id"), iRq = sc.indexOf("req_skill_value");
+    for (const r of iterRows(slaSql, "skill_line_ability")) {
+      const sp = clean(r[iSp]);
+      if (!spellSkill.has(sp)) spellSkill.set(sp, { skill: clean(r[iSk]), req: clean(r[iRq]) });
+    }
+    console.log(`  skill_line_ability: ${spellSkill.size} spells`);
+  }
   const sql = read("tw_world_spell_template.sql");
   const c = parseColumns(sql);
   const at = (name) => c.indexOf(name);
@@ -247,10 +260,10 @@ console.log("Importing spells + crafting graph...");
 
   db.exec(`CREATE TABLE spells (entry INTEGER PRIMARY KEY, name TEXT, description TEXT, auraDescription TEXT, spellIconId INTEGER,
     s1 INTEGER, s2 INTEGER, s3 INTEGER, d1 INTEGER, d2 INTEGER, d3 INTEGER)`);
-  db.exec(`CREATE TABLE spell_creates (spell INTEGER, item INTEGER)`);
+  db.exec(`CREATE TABLE spell_creates (spell INTEGER, item INTEGER, skill INTEGER, skill_req INTEGER)`);
   db.exec(`CREATE TABLE spell_reagent (spell INTEGER, item INTEGER, count INTEGER)`);
   const sSpell = db.prepare(`INSERT OR REPLACE INTO spells VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
-  const sCreate = db.prepare(`INSERT INTO spell_creates VALUES (?,?)`);
+  const sCreate = db.prepare(`INSERT INTO spell_creates VALUES (?,?,?,?)`);
   const sReag = db.prepare(`INSERT INTO spell_reagent VALUES (?,?,?)`);
   let ns = 0, nc = 0, nr = 0;
   db.transaction(() => {
@@ -266,9 +279,10 @@ console.log("Importing spells + crafting graph...");
       const effects = effIdx.map((f) => ({ aura: clean(row[f.a]) || 0, misc: clean(row[f.m]) || 0, base: clean(row[f.b]) || 0 }));
       const st = statsFromAuras(effects);
       if (Object.keys(st).length) spellStats.set(e, st);
+      const sk = spellSkill.get(e);
       for (const ci of creates) {
         const item = clean(row[ci]);
-        if (item) { sCreate.run(e, item); nc++; }
+        if (item) { sCreate.run(e, item, sk ? sk.skill : null, sk ? sk.req : null); nc++; }
       }
       for (const [ri, rc] of reagents) {
         const item = clean(row[ri]);

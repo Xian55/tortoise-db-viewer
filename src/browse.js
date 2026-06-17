@@ -7,6 +7,7 @@ import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
   CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
+  BONDING, CLASS_MASK, PROFESSION, RACE_ALLIANCE, RACE_HORDE,
 } from "./constants.js";
 
 const PAGE = 100;
@@ -111,6 +112,8 @@ async function browseItems(p) {
     minrl: p.get("minrl") || "", maxrl: p.get("maxrl") || "",
     minil: p.get("minil") || "", maxil: p.get("maxil") || "",
     source: p.get("source") || "",
+    bind: p.get("bind") || "", uclass: p.get("uclass") || "", faction: p.get("faction") || "",
+    unique: p.get("unique") || "", prof: p.get("prof") || "",
   };
   const criteria = parseCriteria(p.get("stats"));
   const where = [], binds = [];
@@ -138,6 +141,15 @@ async function browseItems(p) {
   if (!srcVals.includes("unobtainable")) {
     where.push(`i.entry NOT IN (SELECT item FROM item_sources WHERE source='unobtainable')`);
   }
+  if (f.bind !== "") add("i.bonding = ?", +f.bind);
+  // usable by class: unrestricted (-1) or the class bit is set in allowable_class.
+  if (f.uclass !== "") { where.push("(i.allowable_class = -1 OR (i.allowable_class & ?) <> 0)"); binds.push(+f.uclass); }
+  // faction: items restricted to one side's races only (allowable_race set, no cross-faction bit).
+  const factionCond = "(i.allowable_race <> -1 AND (i.allowable_race & ?) <> 0 AND (i.allowable_race & ?) = 0)";
+  if (f.faction === "a") { where.push(factionCond); binds.push(RACE_ALLIANCE, RACE_HORDE); }
+  else if (f.faction === "h") { where.push(factionCond); binds.push(RACE_HORDE, RACE_ALLIANCE); }
+  if (f.unique === "1") where.push("i.max_count = 1");
+  if (f.prof !== "") add("i.required_skill = ?", +f.prof);
   // each criterion -> presence-aware match against item_stats (op is whitelisted).
   for (const c of criteria) add(`i.entry IN (SELECT item FROM item_stats WHERE stat='${c.key}' AND value ${c.op} ?)`, +c.val);
 
@@ -178,6 +190,12 @@ async function browseItems(p) {
     <div class="break"></div>
     ${numField("minrl", "Req lvl ≥", f.minrl)} ${numField("maxrl", "Req lvl ≤", f.maxrl)}
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
+    <div class="break"></div>
+    ${selectField("bind", "Bind", options(Object.entries(BONDING), f.bind, "Any"))}
+    ${selectField("uclass", "Usable by", options(CLASS_MASK, f.uclass, "Any class"))}
+    ${selectField("faction", "Faction", options([["a", "Alliance"], ["h", "Horde"]], f.faction, "Any"))}
+    ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any"))}
+    ${selectField("unique", "Unique", options([["1", "Unique only"]], f.unique, "Any"))}
     ${critBlock}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;

@@ -62,6 +62,22 @@ export const CLASS_MASK = [
   [64, "Shaman"], [128, "Mage"], [256, "Warlock"], [1024, "Druid"],
 ];
 
+// allowable_race bitmask (1.12) grouped by faction (for the browse Faction filter
+// + tooltip). Alliance: Human/Dwarf/NightElf/Gnome. Horde: Orc/Undead/Tauren/Troll.
+export const RACE_ALLIANCE = 1 + 4 + 8 + 64;   // 77
+export const RACE_HORDE = 2 + 16 + 32 + 128;   // 178
+
+// profession skill_id -> name. Covers crafting + gathering (Jewelcrafting 755 is
+// backported on Tortoise). Used by the "Requires profession" browse filter
+// (items.required_skill) and the crafted-by profession shown on the item page.
+export const PROFESSION = [
+  [171, "Alchemy"], [164, "Blacksmithing"], [185, "Cooking"], [333, "Enchanting"],
+  [202, "Engineering"], [129, "First Aid"], [356, "Fishing"], [182, "Herbalism"],
+  [755, "Jewelcrafting"], [165, "Leatherworking"], [186, "Mining"], [393, "Skinning"],
+  [197, "Tailoring"],
+];
+export const PROFESSION_LABEL = Object.fromEntries(PROFESSION);
+
 // resistance column -> tooltip label
 export const RESISTANCES = [
   ["holy_res", "Holy"], ["fire_res", "Fire"], ["nature_res", "Nature"],

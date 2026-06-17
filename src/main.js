@@ -3,7 +3,7 @@ import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
 import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, iconImg, sourceTags, pct, esc } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, npcRoles } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 
@@ -170,12 +170,14 @@ async function showItem(id) {
   // created-by: group reagents per spell
   const bySpell = new Map();
   for (const r of createdBy) {
-    if (!bySpell.has(r.entry)) bySpell.set(r.entry, { name: r.name, reagents: [] });
+    if (!bySpell.has(r.entry)) bySpell.set(r.entry, { name: r.name, skill: r.skill, req: r.skill_req, reagents: [] });
     if (r.reagent_item) bySpell.get(r.entry).reagents.push(`${iconImg(r.reagent_icon)}${esc(r.reagent_name)} ×${r.count || 1}`);
   }
   const createdRows = [...bySpell.values()];
+  const profOf = (s) => PROFESSION_LABEL[s.skill] || "";
   const createdCols = [
     { label: "Spell", cell: (s) => esc(s.name), value: (s) => s.name },
+    { label: "Profession", cls: "muted", cell: (s) => (profOf(s) ? esc(profOf(s)) + (s.req > 1 ? ` <span class="dim">(${s.req})</span>` : "") : ""), value: (s) => profOf(s) },
     { label: "Reagents", cls: "muted", cell: (s) => s.reagents.join(", "), value: (s) => s.reagents.length },
   ];
 

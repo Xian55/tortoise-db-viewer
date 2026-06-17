@@ -53,7 +53,7 @@ export const Q_QUEST_ITEM = `SELECT q.entry, q.title, q.level, qi.role, qi.count
 export const Q_STARTS_QUEST = `SELECT q.entry, q.title, q.level FROM quests q WHERE q.entry = (SELECT start_quest FROM items WHERE entry = ?1) AND q.entry > 0`;
 
 export const Q_CREATED_BY = `
-  SELECT s.entry, s.name, ci.entry AS reagent_item, ci.name AS reagent_name, di.icon AS reagent_icon, sr.count
+  SELECT s.entry, s.name, sc.skill, sc.skill_req, ci.entry AS reagent_item, ci.name AS reagent_name, di.icon AS reagent_icon, sr.count
   FROM spell_creates sc JOIN spells s ON s.entry = sc.spell
   LEFT JOIN spell_reagent sr ON sr.spell = sc.spell
   LEFT JOIN items ci ON ci.entry = sr.item
