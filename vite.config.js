@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 
 // GitHub Pages project site is served from /<repo>/.
 // Override with BASE_PATH env (e.g. "/" for a user/custom-domain site).
-const base = process.env.BASE_PATH || "/tortoise-wow-database/";
+const base = process.env.BASE_PATH || "/tortoise-db-viewer/";
 
 export default defineConfig({
   base,

@@ -1,7 +1,7 @@
 import puppeteer from "puppeteer-core";
 
 const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const BASE = "http://localhost:4317/tortoise-wow-database/";
+const BASE = "http://localhost:4317/tortoise-db-viewer/";
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,

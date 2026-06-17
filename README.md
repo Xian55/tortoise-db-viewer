@@ -39,7 +39,7 @@ Bun-only install never compiles a native module).
 # Bun (no native compile)
 bun install
 bun scripts/build-db.mjs        # -> public/data/tortoise.sqlite
-bun run dev                     # http://localhost:5173/tortoise-wow-database/
+bun run dev                     # http://localhost:5173/tortoise-db-viewer/
 
 # Node
 npm install
@@ -76,8 +76,8 @@ it is regenerated in CI.
 
 One-time setup: repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 
-If the repo name differs from `tortoise-wow-database`, set the Vite base path
-accordingly (env `BASE_PATH`, e.g. `/` for a custom domain or user site).
+The Vite base path defaults to `/tortoise-db-viewer/` (the repo name). For a
+custom domain or user site, override it with env `BASE_PATH=/`.
 
 ## Test
 
