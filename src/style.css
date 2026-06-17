@@ -78,6 +78,10 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: upp
 th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 th.sortable:hover { color: var(--text); }
 th.sortable.active { color: var(--gold); }
+.grouprow td { background: var(--panel2); color: var(--text); font-weight: 600; }
+.groupctl { display: inline-flex; gap: 6px; align-items: center; margin-bottom: 10px; }
+.groupctl label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.groupctl select { padding: 5px 9px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--panel2); }
 .ilink:hover { text-decoration: underline; }

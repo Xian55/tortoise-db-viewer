@@ -72,8 +72,10 @@ async function testDungeon(id, expectName) {
   await page.waitForSelector(".npc-head h1", { timeout: 40000 });
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
-  console.log(`dungeon ${id}: name="${name}" tabs=[${tabList.join(", ")}]`);
-  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot"));
+  const groupRows = await page.$$eval(".tabpane:not(.hidden) .grouprow", (e) => e.length);
+  const hasGroupCtl = (await page.$(".tabpane:not(.hidden) [data-groupby]")) !== null;
+  console.log(`dungeon ${id}: name="${name}" tabs=[${tabList.join(", ")}] groupRows=${groupRows} groupCtl=${hasGroupCtl}`);
+  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && groupRows > 0 && hasGroupCtl;
 }
 
 async function testHover() {

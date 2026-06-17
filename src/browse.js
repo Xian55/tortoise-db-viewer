@@ -204,7 +204,7 @@ export async function showBrowse(kind, navigate) {
     <p class="browse-count">${view.rows.length.toLocaleString()} ${view.noun}</p>
     <div data-browse></div></div>`;
   const tableEl = app.querySelector("[data-browse]");
-  if (view.rows.length) createTable(tableEl, { columns: view.cols, rows: view.rows, pageSize: PAGE });
+  if (view.rows.length) createTable(tableEl, { columns: view.cols, rows: view.rows, pageSize: PAGE, groupable: true });
   else tableEl.innerHTML = `<p class="muted">No matches.</p>`;
 
   const collect = () => {

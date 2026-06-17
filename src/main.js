@@ -14,10 +14,10 @@ const lvlRange = (r) => (r.level_max && r.level_max !== r.level_min ? `${r.level
 
 // ---- sortable-table registry (mounted after innerHTML) ----
 let pendingTables = [];
-function regTable(columns, rows, pageSize = Infinity) {
+function regTable(columns, rows, opts = {}) {
   if (!rows || !rows.length) return { html: "", count: 0 };
   const id = `t${pendingTables.length}`;
-  pendingTables.push({ id, columns, rows, pageSize });
+  pendingTables.push({ id, columns, rows, ...opts });
   return { html: `<div class="tbl" data-table="${id}"></div>`, count: rows.length };
 }
 function mountTables() {
@@ -104,7 +104,7 @@ async function showSearch(term) {
     { label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
     { label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
   ];
-  const t = regTable(cols, rows, 100);
+  const t = regTable(cols, rows, { pageSize: 100 });
   app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${t.html}</div>`;
   mountTables();
 }
@@ -181,7 +181,7 @@ async function showItem(id) {
   const rewQuests = quests.filter((q) => q.role !== "req");
 
   const tabDefs = [
-    { id: "dropped", label: "Dropped by", ...regTable(droppedCols, dropped) },
+    { id: "dropped", label: "Dropped by", ...regTable(droppedCols, dropped, { groupable: true }) },
     { id: "object", label: "Found in object", ...regTable(objectCols, objects) },
     { id: "sold", label: "Sold by", ...regTable(soldCols, sold) },
     { id: "contained", label: "Contained in", ...regTable(itemChanceCols, contained) },
@@ -309,9 +309,9 @@ async function showDungeon(id) {
     { label: "Req", num: true, cls: "muted", cell: (i) => i.required_level || "", value: (i) => i.required_level || 0 },
   ];
   const tabDefs = [
-    { id: "bosses", label: "Boss Loot", ...regTable(bossCols, bossLoot, 500) },
+    { id: "bosses", label: "Boss Loot", ...regTable(bossCols, bossLoot, { pageSize: 500, groupable: true, group: 0 }) },
     { id: "npcs", label: "Creatures", ...regTable(npcCols, npcs) },
-    { id: "loot", label: "All Loot", ...regTable(lootCols, loot, 200) },
+    { id: "loot", label: "All Loot", ...regTable(lootCols, loot, { pageSize: 200 }) },
   ];
 
   app.innerHTML =
