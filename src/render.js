@@ -172,6 +172,10 @@ export function npcLink(entry, name) {
   return `<a class="ilink npc" href="?npc=${entry}">${esc(name)}</a>`;
 }
 
+export function dungeonLink(id, name) {
+  return `<a class="ilink" href="?dungeon=${id}">${esc(name)}</a>`;
+}
+
 export function pct(v) {
   if (v == null) return "";
   return v >= 100 ? "100%" : v >= 1 ? `${v.toFixed(1)}%` : `${v.toFixed(2)}%`;

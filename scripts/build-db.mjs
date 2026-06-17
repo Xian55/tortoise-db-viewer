@@ -98,6 +98,37 @@ for (const lt of LOOT_TABLES) {
   console.log(`  ${lt.target}: ${n} rows`);
 }
 
+// ---- Maps + distinct creature spawns (for dungeon/raid + NPC location) ----
+console.log("Importing maps + spawns...");
+{
+  const ms = read("tw_world_map_template.sql");
+  const mc = parseColumns(ms);
+  const iE = mc.indexOf("entry"), iN = mc.indexOf("map_name"), iT = mc.indexOf("map_type");
+  db.exec(`CREATE TABLE maps (id INTEGER PRIMARY KEY, name TEXT, type INTEGER)`);
+  const sm = db.prepare(`INSERT OR REPLACE INTO maps VALUES (?,?,?)`);
+  let nm = 0;
+  db.transaction(() => { for (const r of iterRows(ms, "map_template")) { sm.run(clean(r[iE]), clean(r[iN]), clean(r[iT])); nm++; } })();
+  db.exec(`CREATE INDEX idx_maps_type ON maps(type)`);
+
+  const cs = read("tw_world_creature.sql");
+  const cc = parseColumns(cs);
+  const iId = cc.indexOf("id"), iMap = cc.indexOf("map");
+  db.exec(`CREATE TABLE spawns (id INTEGER, map INTEGER)`);
+  const ss = db.prepare(`INSERT INTO spawns VALUES (?,?)`);
+  const seen = new Set();
+  let ns = 0;
+  db.transaction(() => {
+    for (const r of iterRows(cs, "creature")) {
+      const id = clean(r[iId]), map = clean(r[iMap]);
+      const k = `${id}:${map}`;
+      if (!seen.has(k)) { seen.add(k); ss.run(id, map); ns++; }
+    }
+  })();
+  db.exec(`CREATE INDEX idx_spawns_id ON spawns(id)`);
+  db.exec(`CREATE INDEX idx_spawns_map ON spawns(map)`);
+  console.log(`  maps: ${nm} | spawns (distinct id,map): ${ns}`);
+}
+
 // ---- Spells + crafting graph (single pass over the 16MB dump) ----
 console.log("Importing spells + crafting graph...");
 {

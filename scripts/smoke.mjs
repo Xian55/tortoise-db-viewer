@@ -60,6 +60,22 @@ async function testBrowse(kind, query = "", expectHeader) {
   return rows > 0 && filters > 0 && sortable > 0 && active > 0 && (!expectHeader || headers.includes(expectHeader));
 }
 
+async function testDungeons() {
+  await page.goto(`${BASE}?dungeons`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".results table tbody tr", (r) => r.length);
+  console.log(`dungeons index: ${rows} rows`);
+  return rows > 0;
+}
+async function testDungeon(id, expectName) {
+  await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  const name = await page.$eval(".npc-head h1", (e) => e.textContent);
+  const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  console.log(`dungeon ${id}: name="${name}" tabs=[${tabList.join(", ")}]`);
+  return name.includes(expectName) && tabList.length > 0;
+}
+
 let ok = true;
 const t = Date.now();
 ok = (await testItem(7909, "Aquamarine")) && ok;
@@ -69,6 +85,8 @@ ok = (await testItem(647, "Destiny")) && ok;
 ok = (await testSearch("thunder")) && ok;
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;
+ok = (await testDungeons()) && ok;
+ok = (await testDungeon(36, "Deadmines")) && ok;
 ok = (await testBrowse("items", "&class=2&quality=4&minrl=40", "DPS")) && ok;
 ok = (await testBrowse("items", "&class=4&stat=armor&statmin=100", "Armor")) && ok;
 ok = (await testBrowse("items", "&stat=agi&statmin=20", "Agility")) && ok;

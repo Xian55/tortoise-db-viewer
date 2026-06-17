@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, iconImg, pct, esc } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, iconImg, pct, esc } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -62,10 +62,13 @@ function route() {
   const params = new URLSearchParams(location.search);
   const item = params.get("item");
   const npc = params.get("npc");
+  const dungeon = params.get("dungeon");
   const browse = params.get("browse");
   const term = params.get("search");
   if (item) showItem(Number(item));
   else if (npc) showNpc(Number(npc));
+  else if (dungeon) showDungeon(Number(dungeon));
+  else if (params.get("dungeons") !== null) showDungeons();
   else if (browse) showBrowse(browse, navigate);
   else if (term) { searchInput.value = term; showSearch(term); }
   else showHome();
@@ -76,9 +79,10 @@ function showHome() {
   document.title = "Tortoise-WoW Database";
   app.innerHTML = `<div class="home">
     <h1>Tortoise-WoW Database</h1>
-    <p>Search above, or <a class="nav" href="?browse=items">browse items</a> /
-       <a class="nav" href="?browse=npcs">browse NPCs</a> with filters.
-       Open directly with <code>?item=ID</code> or <code>?npc=ID</code>.</p>
+    <p>Search above, or browse <a class="nav" href="?browse=items">items</a> /
+       <a class="nav" href="?browse=npcs">NPCs</a> /
+       <a class="nav" href="?dungeons">dungeons &amp; raids</a>.
+       Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, or <code>?dungeon=ID</code>.</p>
     <p class="muted">Examples:
       <a class="ilink" href="?item=2770">Copper Ore</a> ·
       <a class="ilink" href="?item=7909">Aquamarine</a> ·
@@ -130,6 +134,7 @@ async function showItem(id) {
   const droppedCols = [
     { label: "NPC", cell: (d) => npcLink(d.entry, d.name) + srcTag(d), value: (d) => d.name },
     { label: "Level", num: true, cls: "muted", cell: (d) => lvlRange(d), value: (d) => d.level_max || d.level_min || 0 },
+    { label: "Location", cls: "muted", cell: (d) => (d.dungeon ? dungeonLink(d.dungeon_id, d.dungeon) : ""), value: (d) => d.dungeon || "" },
     { label: "Chance", num: true, cell: (d) => pct(dchance(d)), value: (d) => dchance(d) || 0 },
   ];
   const objectCols = [
@@ -206,10 +211,16 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [loot, skin, pick, sells, starts, ends] = await Promise.all([
+  const [loot, skin, pick, sells, starts, ends, maps] = await Promise.all([
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
+    query(Q.Q_NPC_MAPS, [id]),
   ]);
+  const mapHtml = maps.map((m) => {
+    const tag = m.type === 2 ? "Raid" : m.type === 1 ? "Dungeon" : null;
+    const nm = tag ? dungeonLink(m.id, m.name) : esc(m.name);
+    return tag ? `${nm} <span class="dim">(${tag})</span>` : nm;
+  }).join(", ");
 
   const lvl = lvlRange(npc) || "??";
   const bits = [`Level ${lvl}`];
@@ -249,6 +260,57 @@ async function showNpc(id) {
         <div class="npc-meta muted">${bits.join(" · ")}${hp ? " · " + hp : ""}
           ${roles.map((r) => `<span class="tagx">${esc(r)}</span>`).join("")}
           <span class="dim">· NPC #${npc.entry}</span></div>
+        ${mapHtml ? `<div class="npc-meta muted">Location: ${mapHtml}</div>` : ""}
+      </div>
+      ${tabs(tabDefs)}
+    </div>`;
+  mountTables();
+  wireTabs();
+}
+
+async function showDungeons() {
+  document.title = "Dungeons & Raids - Tortoise-WoW DB";
+  app.innerHTML = `<div class="loading">Loading…</div>`;
+  let rows;
+  try { rows = await query(Q.Q_DUNGEONS); } catch (e) { app.innerHTML = errorBox(e); return; }
+  const cols = [
+    { label: "Name", cell: (m) => dungeonLink(m.id, m.name), value: (m) => m.name },
+    { label: "Type", cls: "muted", cell: (m) => (m.type === 2 ? "Raid" : "Dungeon"), value: (m) => m.type },
+  ];
+  const t = regTable(cols, rows);
+  app.innerHTML = `<div class="results"><h1>Dungeons &amp; Raids</h1>${t.html}</div>`;
+  mountTables();
+}
+
+async function showDungeon(id) {
+  app.innerHTML = `<div class="loading">Loading…</div>`;
+  let map;
+  try { map = await queryOne(Q.Q_DUNGEON, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (!map) { app.innerHTML = `<div class="home"><p>No map with ID ${id}.</p></div>`; return; }
+  document.title = `${map.name} - Tortoise-WoW DB`;
+  const [npcs, loot] = await Promise.all([query(Q.Q_DUNGEON_NPCS, [id]), query(Q.Q_DUNGEON_LOOT, [id])]);
+  const typeLabel = map.type === 2 ? "Raid" : "Dungeon";
+
+  const npcCols = [
+    { label: "NPC", cell: (c) => npcLink(c.entry, c.name) + (c.subname ? ` <span class="muted">&lt;${esc(c.subname)}&gt;</span>` : ""), value: (c) => c.name },
+    { label: "Level", num: true, cls: "muted", cell: (c) => lvlRange(c), value: (c) => c.level_max || c.level_min || 0 },
+    { label: "Rank", num: true, cls: "muted", cell: (c) => CREATURE_RANK[c.rank] || "Normal", value: (c) => c.rank || 0 },
+  ];
+  const lootCols = [
+    { label: "Item", cell: (i) => itemLink(i.entry, i.name, i.quality, i.icon), value: (i) => i.name },
+    { label: "iLvl", num: true, cls: "muted", cell: (i) => i.item_level || "", value: (i) => i.item_level || 0 },
+    { label: "Req", num: true, cls: "muted", cell: (i) => i.required_level || "", value: (i) => i.required_level || 0 },
+  ];
+  const tabDefs = [
+    { id: "npcs", label: "Creatures", ...regTable(npcCols, npcs) },
+    { id: "loot", label: "Loot", ...regTable(lootCols, loot, 200) },
+  ];
+
+  app.innerHTML =
+    `<div class="npc-page">
+      <div class="npc-head">
+        <h1>${esc(map.name)}</h1>
+        <div class="npc-meta muted">${typeLabel} · Map #${map.id}</div>
       </div>
       ${tabs(tabDefs)}
     </div>`;

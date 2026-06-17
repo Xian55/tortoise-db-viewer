@@ -36,7 +36,9 @@ hit(e, chance, src) AS (
 SELECT c.entry, c.name, c.level_min, c.level_max, c.rank,
        MAX(CASE WHEN hit.src='loot' THEN hit.chance END) AS drop_chance,
        MAX(CASE WHEN hit.src='skin' THEN hit.chance END) AS skin_chance,
-       MAX(CASE WHEN hit.src='pick' THEN hit.chance END) AS pick_chance
+       MAX(CASE WHEN hit.src='pick' THEN hit.chance END) AS pick_chance,
+       (SELECT m.name FROM spawns sp JOIN maps m ON m.id=sp.map WHERE sp.id=c.entry AND m.type IN (1,2) ORDER BY m.type DESC LIMIT 1) AS dungeon,
+       (SELECT m.id   FROM spawns sp JOIN maps m ON m.id=sp.map WHERE sp.id=c.entry AND m.type IN (1,2) ORDER BY m.type DESC LIMIT 1) AS dungeon_id
 FROM hit JOIN creatures c
   ON (hit.src='loot' AND c.loot_id=hit.e) OR (hit.src='skin' AND c.skinning_loot_id=hit.e) OR (hit.src='pick' AND c.pickpocket_loot_id=hit.e)
 GROUP BY c.entry ORDER BY COALESCE(drop_chance, skin_chance, pick_chance) DESC LIMIT 100`;
@@ -125,3 +127,37 @@ export const Q_NPC_SELLS = `
 
 export const Q_NPC_STARTS = `SELECT q.entry, q.title, q.level FROM creature_quest_start r JOIN quests q ON q.entry = r.quest WHERE r.id = ?1 ORDER BY q.level`;
 export const Q_NPC_ENDS = `SELECT q.entry, q.title, q.level FROM creature_quest_end r JOIN quests q ON q.entry = r.quest WHERE r.id = ?1 ORDER BY q.level`;
+
+// maps an NPC spawns on (dungeon/raid first, then world)
+export const Q_NPC_MAPS = `
+  SELECT DISTINCT m.id, m.name, m.type FROM spawns s JOIN maps m ON m.id = s.map
+  WHERE s.id = ?1 AND m.name <> '' ORDER BY m.type DESC, m.name`;
+
+// ---- dungeons / raids ----
+export const Q_DUNGEONS = `SELECT id, name, type FROM maps WHERE type IN (1,2) AND name <> '' ORDER BY type, name`;
+export const Q_DUNGEON = `SELECT id, name, type FROM maps WHERE id = ?1`;
+export const Q_DUNGEON_NPCS = `
+  SELECT DISTINCT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank
+  FROM spawns s JOIN creatures c ON c.entry = s.id
+  WHERE s.map = ?1 AND c.name <> '' ORDER BY c.rank DESC, c.level_max DESC, c.name`;
+
+// all items dropped by creatures spawning in a map (loot sets + references)
+export const Q_DUNGEON_LOOT = `
+WITH RECURSIVE
+setids(e) AS (
+  SELECT DISTINCT c.loot_id FROM spawns s JOIN creatures c ON c.entry = s.id WHERE s.map = ?1 AND c.loot_id > 0
+),
+refs(refentry) AS (
+    SELECT -lc.mincountOrRef FROM loot_creature lc JOIN setids ON lc.entry = setids.e AND lc.mincountOrRef < 0
+  UNION
+    SELECT -lr.mincountOrRef FROM loot_reference lr JOIN refs ON lr.entry = refs.refentry AND lr.mincountOrRef < 0
+),
+items_from(item) AS (
+    SELECT lc.item FROM loot_creature lc JOIN setids ON lc.entry = setids.e WHERE lc.item > 0
+  UNION
+    SELECT lr.item FROM loot_reference lr JOIN refs ON lr.entry = refs.refentry WHERE lr.item > 0
+)
+SELECT i.entry, i.name, i.quality, i.item_level, i.required_level, di.icon
+FROM items_from f JOIN items i ON i.entry = f.item
+LEFT JOIN item_display_info di ON di.ID = i.display_id
+ORDER BY i.quality DESC, i.item_level DESC LIMIT 1000`;
