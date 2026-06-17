@@ -1,14 +1,41 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import {
-  renderTooltip, panel, table, tabs, itemLink, npcLink, iconImg, pct, esc, qualityColor,
-} from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, iconImg, pct, esc } from "./render.js";
+import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
 
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
+
+const lvlRange = (r) => (r.level_max && r.level_max !== r.level_min ? `${r.level_min}-${r.level_max}` : (r.level_min || ""));
+
+// ---- sortable-table registry (mounted after innerHTML) ----
+let pendingTables = [];
+function regTable(columns, rows, pageSize = Infinity) {
+  if (!rows || !rows.length) return { html: "", count: 0 };
+  const id = `t${pendingTables.length}`;
+  pendingTables.push({ id, columns, rows, pageSize });
+  return { html: `<div class="tbl" data-table="${id}"></div>`, count: rows.length };
+}
+function mountTables() {
+  for (const s of pendingTables) {
+    const el = app.querySelector(`[data-table="${s.id}"]`);
+    if (el) createTable(el, s);
+  }
+  pendingTables = [];
+}
+function wireTabs() {
+  const bar = app.querySelector(".tabbar");
+  if (!bar) return;
+  bar.addEventListener("click", (e) => {
+    const btn = e.target.closest(".tab");
+    if (!btn) return;
+    app.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
+    app.querySelectorAll(".tabpane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== btn.dataset.tab));
+  });
+}
 
 // ---- routing ----
 function navigate(url, replace = false) {
@@ -53,7 +80,7 @@ function showHome() {
        <a class="nav" href="?browse=npcs">browse NPCs</a> with filters.
        Open directly with <code>?item=ID</code> or <code>?npc=ID</code>.</p>
     <p class="muted">Examples:
-      <a class="ilink" href="?item=55356">Netherwrought Bracers</a> ·
+      <a class="ilink" href="?item=2770">Copper Ore</a> ·
       <a class="ilink" href="?item=7909">Aquamarine</a> ·
       <a class="ilink" href="?npc=2376">Torn Fin Oracle</a></p>
   </div>`;
@@ -66,13 +93,15 @@ async function showSearch(term) {
   try { rows = await query(Q.Q_SEARCH, [`%${term}%`, term]); }
   catch (e) { app.innerHTML = errorBox(e); return; }
   if (!rows.length) { app.innerHTML = `<div class="home"><p>No items match “${esc(term)}”.</p></div>`; return; }
-  const body = rows.map((r) =>
-    `<tr><td>${itemLink(r.entry, r.name, r.quality, r.icon)}</td>` +
-    `<td class="muted">${r.item_level || ""}</td>` +
-    `<td class="muted">${r.required_level || ""}</td>` +
-    `<td class="muted">${r.entry}</td></tr>`).join("");
-  app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>` +
-    table(["Name", "iLvl", "Req", "ID"], body) + `</div>`;
+  const cols = [
+    { label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+    { label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
+    { label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
+    { label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
+  ];
+  const t = regTable(cols, rows, 100);
+  app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${t.html}</div>`;
+  mountTables();
 }
 
 async function showItem(id) {
@@ -82,7 +111,6 @@ async function showItem(id) {
   if (!it) { app.innerHTML = `<div class="home"><p>No item with ID ${id}.</p></div>`; return; }
   document.title = `${it.name} - Tortoise-WoW DB`;
 
-  // spell descriptions for the tooltip effect lines
   const spellIds = [1, 2, 3, 4, 5].map((i) => it[`spellid_${i}`]).filter(Boolean);
   const spellMap = new Map();
   await Promise.all(spellIds.map(async (sid) => {
@@ -97,65 +125,78 @@ async function showItem(id) {
       query(Q.Q_STARTS_QUEST, [id]), query(Q.Q_CREATED_BY, [id]), query(Q.Q_REAGENT_FOR, [id]),
     ]);
 
-  let html = "";
-  html += panel("Dropped by", table(["NPC", "Level", "Chance"],
-    dropped.map((d) => {
-      const ch = d.drop_chance ?? d.skin_chance ?? d.pick_chance;
-      const tag = d.skin_chance != null ? " (skin)" : d.pick_chance != null ? " (pickpocket)" : "";
-      const lvl = d.level_max && d.level_max !== d.level_min ? `${d.level_min}-${d.level_max}` : (d.level_min || "");
-      return `<tr><td>${npcLink(d.entry, d.name)}${tag}</td><td class="muted">${lvl}</td><td>${pct(ch)}</td></tr>`;
-    }).join("")));
+  const dchance = (d) => d.drop_chance ?? d.skin_chance ?? d.pick_chance;
+  const srcTag = (d) => (d.skin_chance != null ? ' <span class="muted">(skin)</span>' : d.pick_chance != null ? ' <span class="muted">(pickpocket)</span>' : "");
+  const droppedCols = [
+    { label: "NPC", cell: (d) => npcLink(d.entry, d.name) + srcTag(d), value: (d) => d.name },
+    { label: "Level", num: true, cls: "muted", cell: (d) => lvlRange(d), value: (d) => d.level_max || d.level_min || 0 },
+    { label: "Chance", num: true, cell: (d) => pct(dchance(d)), value: (d) => dchance(d) || 0 },
+  ];
+  const objectCols = [
+    { label: "Object", cell: (o) => esc(o.name), value: (o) => o.name },
+    { label: "Chance", num: true, cell: (o) => pct(o.chance), value: (o) => o.chance || 0 },
+  ];
+  const soldCols = [
+    { label: "Vendor", cell: (s) => npcLink(s.entry, s.name), value: (s) => s.name },
+    { label: "Level", num: true, cls: "muted", cell: (s) => lvlRange(s), value: (s) => s.level_max || s.level_min || 0 },
+    { label: "Stock", num: true, cls: "muted", cell: (s) => (s.maxcount > 0 ? s.maxcount : "∞"), value: (s) => (s.maxcount > 0 ? s.maxcount : Infinity) },
+  ];
+  const itemChanceCols = [
+    { label: "Item", cell: (c) => itemLink(c.entry, c.name, c.quality, c.icon), value: (c) => c.name },
+    { label: "Chance", num: true, cell: (c) => pct(c.chance), value: (c) => c.chance || 0 },
+  ];
+  const disenCols = [
+    { label: "Item", cell: (d) => itemLink(d.entry, d.name, d.quality, d.icon), value: (d) => d.name },
+    { label: "Chance", num: true, cell: (d) => pct(d.chance), value: (d) => d.chance || 0 },
+    { label: "Qty", num: true, cls: "muted", cell: (d) => (d.maxc > d.minc ? `${d.minc}-${d.maxc}` : d.minc), value: (d) => d.maxc || d.minc || 0 },
+  ];
+  const questCols = (showQty, showChoice) => [
+    { label: "Quest", cell: (q) => esc(q.title) + (showChoice && q.role === "choice" ? ' <span class="muted">(choice)</span>' : ""), value: (q) => q.title },
+    { label: "Level", num: true, cls: "muted", cell: (q) => q.level || "", value: (q) => q.level || 0 },
+    ...(showQty ? [{ label: "Qty", num: true, cls: "muted", cell: (q) => q.count, value: (q) => q.count || 0 }] : []),
+  ];
+  const reagentForCols = [
+    { label: "Creates", cell: (r) => itemLink(r.created, r.created_name, r.quality, r.created_icon), value: (r) => r.created_name },
+    { label: "Via spell", cls: "muted", cell: (r) => esc(r.spell_name), value: (r) => r.spell_name },
+  ];
 
-  html += panel("Found in object", table(["Object", "Chance"],
-    objects.map((o) => `<tr><td>${esc(o.name)}</td><td>${pct(o.chance)}</td></tr>`).join("")));
-
-  html += panel("Sold by", table(["Vendor", "Level", "Stock"],
-    sold.map((s) => {
-      const lvl = s.level_max && s.level_max !== s.level_min ? `${s.level_min}-${s.level_max}` : (s.level_min || "");
-      return `<tr><td>${npcLink(s.entry, s.name)}</td><td class="muted">${lvl}</td><td class="muted">${s.maxcount > 0 ? s.maxcount : "∞"}</td></tr>`;
-    }).join("")));
-
-  html += panel("Contained in", table(["Container", "Chance"],
-    contained.map((c) => `<tr><td>${itemLink(c.entry, c.name, c.quality, c.icon)}</td><td>${pct(c.chance)}</td></tr>`).join("")));
-
-  html += panel("Disenchants into", table(["Item", "Chance", "Qty"],
-    disen.map((d) => {
-      const qty = d.maxc > d.minc ? `${d.minc}-${d.maxc}` : d.minc;
-      return `<tr><td>${itemLink(d.entry, d.name, d.quality, d.icon)}</td><td>${pct(d.chance)}</td><td class="muted">${qty}</td></tr>`;
-    }).join("")));
+  // created-by: group reagents per spell
+  const bySpell = new Map();
+  for (const r of createdBy) {
+    if (!bySpell.has(r.entry)) bySpell.set(r.entry, { name: r.name, reagents: [] });
+    if (r.reagent_item) bySpell.get(r.entry).reagents.push(`${iconImg(r.reagent_icon)}${esc(r.reagent_name)} ×${r.count || 1}`);
+  }
+  const createdRows = [...bySpell.values()];
+  const createdCols = [
+    { label: "Spell", cell: (s) => esc(s.name), value: (s) => s.name },
+    { label: "Reagents", cls: "muted", cell: (s) => s.reagents.join(", "), value: (s) => s.reagents.length },
+  ];
 
   const reqQuests = quests.filter((q) => q.role === "req");
   const rewQuests = quests.filter((q) => q.role !== "req");
-  html += panel("Reward from quest", table(["Quest", "Level"],
-    rewQuests.map((q) => `<tr><td>${esc(q.title)}${q.role === "choice" ? " (choice)" : ""}</td><td class="muted">${q.level || ""}</td></tr>`).join("")));
-  html += panel("Required for quest", table(["Quest", "Level", "Qty"],
-    reqQuests.map((q) => `<tr><td>${esc(q.title)}</td><td class="muted">${q.level || ""}</td><td class="muted">${q.count}</td></tr>`).join("")));
 
-  if (starts.length) html += panel("Starts quest", table(["Quest", "Level"],
-    starts.map((q) => `<tr><td>${esc(q.title)}</td><td class="muted">${q.level || ""}</td></tr>`).join("")));
-
-  if (createdBy.length) {
-    const bySpell = new Map();
-    for (const r of createdBy) {
-      if (!bySpell.has(r.entry)) bySpell.set(r.entry, { name: r.name, reagents: [] });
-      if (r.reagent_item) bySpell.get(r.entry).reagents.push(`${iconImg(r.reagent_icon)}${esc(r.reagent_name)} ×${r.count || 1}`);
-    }
-    const rows = [...bySpell.values()].map((s) =>
-      `<tr><td>${esc(s.name)}</td><td class="muted">${s.reagents.join(", ")}</td></tr>`).join("");
-    html += panel("Created by", table(["Spell", "Reagents"], rows));
-  }
-
-  html += panel("Reagent for", table(["Creates", "Via spell"],
-    reagentFor.filter((r) => r.created).map((r) =>
-      `<tr><td>${itemLink(r.created, r.created_name, r.quality, r.created_icon)}</td><td class="muted">${esc(r.spell_name)}</td></tr>`).join("")));
+  const tabDefs = [
+    { id: "dropped", label: "Dropped by", ...regTable(droppedCols, dropped) },
+    { id: "object", label: "Found in object", ...regTable(objectCols, objects) },
+    { id: "sold", label: "Sold by", ...regTable(soldCols, sold) },
+    { id: "contained", label: "Contained in", ...regTable(itemChanceCols, contained) },
+    { id: "disen", label: "Disenchants into", ...regTable(disenCols, disen) },
+    { id: "reward", label: "Reward from quest", ...regTable(questCols(false, true), rewQuests) },
+    { id: "reqquest", label: "Required for quest", ...regTable(questCols(true, false), reqQuests) },
+    { id: "starts", label: "Starts quest", ...regTable(questCols(false, false), starts) },
+    { id: "created", label: "Created by", ...regTable(createdCols, createdRows) },
+    { id: "reagent", label: "Reagent for", ...regTable(reagentForCols, reagentFor.filter((r) => r.created)) },
+  ];
 
   app.innerHTML =
     `<div class="item-view">
       <div class="item-main">${renderTooltip(it, { spellMap })}
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}</div>
       </div>
-      <div class="item-rel">${html || `<p class="muted">No additional sources found.</p>`}</div>
+      <div class="item-rel">${tabs(tabDefs)}</div>
     </div>`;
+  mountTables();
+  wireTabs();
 }
 
 async function showNpc(id) {
@@ -170,7 +211,7 @@ async function showNpc(id) {
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
   ]);
 
-  const lvl = npc.level_max && npc.level_max !== npc.level_min ? `${npc.level_min}-${npc.level_max}` : (npc.level_min || "??");
+  const lvl = lvlRange(npc) || "??";
   const bits = [`Level ${lvl}`];
   if (CREATURE_RANK[npc.rank]) bits.push(CREATURE_RANK[npc.rank]);
   if (CREATURE_TYPE[npc.type]) bits.push(CREATURE_TYPE[npc.type]);
@@ -178,20 +219,26 @@ async function showNpc(id) {
   const roles = npcRoles(npc.npc_flags);
   const rankClass = npc.rank === 3 ? "npc-boss" : (npc.rank === 2 || npc.rank === 4) ? "npc-rare" : npc.rank === 1 ? "npc-elite" : "";
 
-  const lootTable = (rows) => table(["Item", "Chance"],
-    rows.map((d) => `<tr><td>${itemLink(d.entry, d.name, d.quality, d.icon)}</td><td>${pct(d.chance)}</td></tr>`).join(""));
-  const questTable = (rows) => table(["Quest", "Level"],
-    rows.map((q) => `<tr><td>${esc(q.title)}</td><td class="muted">${q.level || ""}</td></tr>`).join(""));
-  const sellTable = table(["Item", "Stock"],
-    sells.map((s) => `<tr><td>${itemLink(s.entry, s.name, s.quality, s.icon)}</td><td class="muted">${s.maxcount > 0 ? s.maxcount : "∞"}</td></tr>`).join(""));
+  const lootCols = [
+    { label: "Item", cell: (d) => itemLink(d.entry, d.name, d.quality, d.icon), value: (d) => d.name },
+    { label: "Chance", num: true, cell: (d) => pct(d.chance), value: (d) => d.chance || 0 },
+  ];
+  const sellCols = [
+    { label: "Item", cell: (s) => itemLink(s.entry, s.name, s.quality, s.icon), value: (s) => s.name },
+    { label: "Stock", num: true, cls: "muted", cell: (s) => (s.maxcount > 0 ? s.maxcount : "∞"), value: (s) => (s.maxcount > 0 ? s.maxcount : Infinity) },
+  ];
+  const questCols = [
+    { label: "Quest", cell: (q) => esc(q.title), value: (q) => q.title },
+    { label: "Level", num: true, cls: "muted", cell: (q) => q.level || "", value: (q) => q.level || 0 },
+  ];
 
   const tabDefs = [
-    { id: "drops", label: "Drops", count: loot.length, html: lootTable(loot) },
-    { id: "skinning", label: "Skinning", count: skin.length, html: lootTable(skin) },
-    { id: "pickpocketing", label: "Pickpocketing", count: pick.length, html: lootTable(pick) },
-    { id: "sells", label: "Sells", count: sells.length, html: sellTable },
-    { id: "starts", label: "Starts quests", count: starts.length, html: questTable(starts) },
-    { id: "ends", label: "Ends quests", count: ends.length, html: questTable(ends) },
+    { id: "drops", label: "Drops", ...regTable(lootCols, loot) },
+    { id: "skinning", label: "Skinning", ...regTable(lootCols, skin) },
+    { id: "pickpocketing", label: "Pickpocketing", ...regTable(lootCols, pick) },
+    { id: "sells", label: "Sells", ...regTable(sellCols, sells) },
+    { id: "starts", label: "Starts quests", ...regTable(questCols, starts) },
+    { id: "ends", label: "Ends quests", ...regTable(questCols, ends) },
   ];
 
   app.innerHTML =
@@ -205,18 +252,8 @@ async function showNpc(id) {
       </div>
       ${tabs(tabDefs)}
     </div>`;
+  mountTables();
   wireTabs();
-}
-
-function wireTabs() {
-  const bar = app.querySelector(".tabbar");
-  if (!bar) return;
-  bar.addEventListener("click", (e) => {
-    const btn = e.target.closest(".tab");
-    if (!btn) return;
-    app.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
-    app.querySelectorAll(".tabpane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== btn.dataset.tab));
-  });
 }
 
 function errorBox(e) {

@@ -1,48 +1,31 @@
-// Browse / finder views with filters (wowhead-style), paginated.
-// All filtering runs as SQL against the in-memory DB, so it's instant.
+// Browse / finder views with filters (wowhead-style). Filtering runs as SQL
+// against the in-memory DB; sorting + pagination are handled client-side by the
+// shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
 import { itemLink, npcLink, esc } from "./render.js";
+import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
   CREATURE_TYPE, CREATURE_RANK,
 } from "./constants.js";
 
 const PAGE = 100;
+const lvlRange = (r) => (r.level_max && r.level_max !== r.level_min ? `${r.level_min}-${r.level_max}` : (r.level_min || ""));
 
-// sortable column defs: { key (url + sql sort id), label, sql (order expr) }
 const ITEM_COLS = [
-  { key: "name", label: "Name", sql: "i.name" },
-  { key: "ilvl", label: "iLvl", sql: "i.item_level" },
-  { key: "req", label: "Req", sql: "i.required_level" },
-  { key: "slot", label: "Slot", sql: "i.inventory_type" },
-  { key: "id", label: "ID", sql: "i.entry" },
+  { label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+  { label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
+  { label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
+  { label: "Slot", cls: "muted", cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
+  { label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
 ];
 const NPC_COLS = [
-  { key: "name", label: "Name", sql: "c.name" },
-  { key: "level", label: "Level", sql: "c.level_max" },
-  { key: "rank", label: "Rank", sql: "c.rank" },
-  { key: "type", label: "Type", sql: "c.type" },
-  { key: "id", label: "ID", sql: "c.entry" },
+  { label: "Name", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
+  { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
+  { label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
+  { label: "Type", cls: "muted", cell: (r) => CREATURE_TYPE[r.type] || "", value: (r) => CREATURE_TYPE[r.type] || "" },
+  { label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
 ];
-
-// default sort direction for a column when first clicked ("a" name, "d" others)
-const defaultDir = (key) => (key === "name" ? "a" : "d");
-
-function orderBy(cols, sortKey, dir, fallback) {
-  const col = cols.find((c) => c.key === sortKey);
-  if (!col) return fallback;
-  return `${col.sql} ${dir === "a" ? "ASC" : "DESC"}, ${cols[0].sql} ASC`;
-}
-
-function sortableTable(cols, sortKey, dir, bodyRows) {
-  if (!bodyRows) return "";
-  const head = cols.map((c) => {
-    const active = c.key === sortKey;
-    const arrow = active ? (dir === "a" ? " ▲" : " ▼") : "";
-    return `<th class="sortable${active ? " active" : ""}" data-sort="${c.key}">${esc(c.label)}${arrow}</th>`;
-  }).join("");
-  return `<table><thead><tr>${head}</tr></thead><tbody>${bodyRows}</tbody></table>`;
-}
 
 function opt(value, label, cur) {
   return `<option value="${value}"${String(cur) === String(value) ? " selected" : ""}>${esc(label)}</option>`;
@@ -61,14 +44,6 @@ function numField(name, label, cur) {
 function textField(name, label, cur) {
   return `<div class="fld"><label>${esc(label)}</label><input type="search" data-f="${name}" value="${esc(cur ?? "")}" placeholder="name…"></div>`;
 }
-function pager(page, total) {
-  const pages = Math.ceil(total / PAGE);
-  if (pages <= 1) return "";
-  return `<div class="pager">
-    <button data-page="${page - 1}"${page <= 0 ? " disabled" : ""}>← Prev</button>
-    <span class="muted">Page ${page + 1} / ${pages}</span>
-    <button data-page="${page + 1}"${page >= pages - 1 ? " disabled" : ""}>Next →</button></div>`;
-}
 
 async function browseItems(p) {
   const f = {
@@ -76,8 +51,6 @@ async function browseItems(p) {
     quality: p.get("quality") || "", slot: p.get("slot") || "",
     minrl: p.get("minrl") || "", maxrl: p.get("maxrl") || "",
     minil: p.get("minil") || "", maxil: p.get("maxil") || "",
-    sort: p.get("sort") || "", dir: p.get("dir") || defaultDir(p.get("sort")),
-    page: Math.max(0, parseInt(p.get("page") || "0", 10) || 0),
   };
   const where = [], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
@@ -91,13 +64,10 @@ async function browseItems(p) {
   if (f.minil !== "") add("i.item_level >= ?", +f.minil);
   if (f.maxil !== "") add("i.item_level <= ?", +f.maxil);
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
-  const order = orderBy(ITEM_COLS, f.sort, f.dir, "i.quality DESC, i.item_level DESC");
-
-  const total = (await query(`SELECT COUNT(*) AS n FROM items i ${whereSql}`, binds))[0]?.n || 0;
   const rows = await query(
     `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, di.icon
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${whereSql}
-     ORDER BY ${order} LIMIT ? OFFSET ?`, [...binds, PAGE, f.page * PAGE]);
+     ORDER BY i.quality DESC, i.item_level DESC`, binds);
 
   const subMap = f.class === "2" ? WEAPON_SUBCLASS : f.class === "4" ? ARMOR_SUBCLASS : null;
   const filters = `<div class="filters">
@@ -110,25 +80,13 @@ async function browseItems(p) {
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-
-  const body = rows.map((r) => `<tr>
-    <td>${itemLink(r.entry, r.name, r.quality, r.icon)}</td>
-    <td class="muted">${r.item_level || ""}</td>
-    <td class="muted">${r.required_level || ""}</td>
-    <td class="muted">${INV_TYPE[r.inventory_type] || ""}</td>
-    <td class="muted">${r.entry}</td></tr>`).join("");
-
-  return { page: f.page, total,
-    html: filters + `<p class="browse-count">${total.toLocaleString()} items</p>` +
-      sortableTable(ITEM_COLS, f.sort, f.dir, body) + pager(f.page, total) };
+  return { rows, cols: ITEM_COLS, filters, noun: "items" };
 }
 
 async function browseNpcs(p) {
   const f = {
     q: p.get("q") || "", type: p.get("type") || "", rank: p.get("rank") || "",
     minlvl: p.get("minlvl") || "", maxlvl: p.get("maxlvl") || "",
-    sort: p.get("sort") || "", dir: p.get("dir") || defaultDir(p.get("sort")),
-    page: Math.max(0, parseInt(p.get("page") || "0", 10) || 0),
   };
   const where = ["c.name <> ''"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
@@ -138,12 +96,9 @@ async function browseNpcs(p) {
   if (f.minlvl !== "") add("c.level_min >= ?", +f.minlvl);
   if (f.maxlvl !== "") add("c.level_max <= ?", +f.maxlvl);
   const whereSql = "WHERE " + where.join(" AND ");
-  const order = orderBy(NPC_COLS, f.sort, f.dir, "c.level_max DESC, c.name");
-
-  const total = (await query(`SELECT COUNT(*) AS n FROM creatures c ${whereSql}`, binds))[0]?.n || 0;
   const rows = await query(
     `SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.type
-     FROM creatures c ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`, [...binds, PAGE, f.page * PAGE]);
+     FROM creatures c ${whereSql} ORDER BY c.level_max DESC, c.name`, binds);
 
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
@@ -152,20 +107,7 @@ async function browseNpcs(p) {
     ${numField("minlvl", "Level ≥", f.minlvl)} ${numField("maxlvl", "Level ≤", f.maxlvl)}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-
-  const body = rows.map((r) => {
-    const lvl = r.level_max && r.level_max !== r.level_min ? `${r.level_min}-${r.level_max}` : (r.level_min || "");
-    return `<tr>
-      <td>${npcLink(r.entry, r.name)}${r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""}</td>
-      <td class="muted">${lvl}</td>
-      <td class="muted">${CREATURE_RANK[r.rank] || "Normal"}</td>
-      <td class="muted">${CREATURE_TYPE[r.type] || ""}</td>
-      <td class="muted">${r.entry}</td></tr>`;
-  }).join("");
-
-  return { page: f.page, total,
-    html: filters + `<p class="browse-count">${total.toLocaleString()} NPCs</p>` +
-      sortableTable(NPC_COLS, f.sort, f.dir, body) + pager(f.page, total) };
+  return { rows, cols: NPC_COLS, filters, noun: "NPCs" };
 }
 
 export async function showBrowse(kind, navigate) {
@@ -177,36 +119,24 @@ export async function showBrowse(kind, navigate) {
   let view;
   try { view = isNpc ? await browseNpcs(p) : await browseItems(p); }
   catch (e) { app.innerHTML = `<div class="error">Failed: ${esc(e.message || e)}</div>`; return; }
-  app.innerHTML = `<div class="browse"><h1>Browse ${isNpc ? "NPCs" : "Items"}</h1>${view.html}</div>`;
 
-  // build params from the current control values, preserving the active sort
+  app.innerHTML = `<div class="browse"><h1>Browse ${isNpc ? "NPCs" : "Items"}</h1>${view.filters}
+    <p class="browse-count">${view.rows.length.toLocaleString()} ${view.noun}</p>
+    <div data-browse></div></div>`;
+  const tableEl = app.querySelector("[data-browse]");
+  if (view.rows.length) createTable(tableEl, { columns: view.cols, rows: view.rows, pageSize: PAGE });
+  else tableEl.innerHTML = `<p class="muted">No matches.</p>`;
+
   const collect = () => {
     const np = new URLSearchParams();
     np.set("browse", kind);
     app.querySelectorAll("[data-f]").forEach((el) => { if (el.value !== "") np.set(el.dataset.f, el.value); });
-    const s = p.get("sort");
-    if (s) { np.set("sort", s); np.set("dir", p.get("dir") || defaultDir(s)); }
     return np;
   };
   app.querySelectorAll("[data-f]").forEach((el) =>
     el.addEventListener("change", () => {
-      const np = collect();            // changing a filter resets to page 0
-      if (el.dataset.f === "class") np.delete("subclass"); // subtype list depends on class
-      navigate(`?${np.toString()}`);
-    }));
-  // clickable column headers: set/toggle sort, page resets
-  app.querySelectorAll("th[data-sort]").forEach((th) =>
-    th.addEventListener("click", () => {
-      const key = th.dataset.sort;
-      const cur = p.get("sort"), curDir = p.get("dir") || defaultDir(cur);
-      const dir = key === cur ? (curDir === "a" ? "d" : "a") : defaultDir(key);
       const np = collect();
-      np.set("sort", key); np.set("dir", dir);
-      navigate(`?${np.toString()}`);
-    }));
-  app.querySelectorAll("[data-page]").forEach((btn) =>
-    btn.addEventListener("click", () => {
-      const np = collect(); np.set("page", btn.dataset.page);
+      if (el.dataset.f === "class") np.delete("subclass");
       navigate(`?${np.toString()}`);
     }));
   const reset = app.querySelector("[data-reset]");

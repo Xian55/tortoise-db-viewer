@@ -19,11 +19,11 @@ async function testItem(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 30000 });
   await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
   const name = await page.$eval(".tooltip .tt-name", (el) => el.textContent);
-  await page.waitForSelector(".item-rel", { timeout: 40000 });
-  const panels = await page.$$eval(".item-rel .panel h2", (els) => els.map((e) => e.textContent));
-  const firstDrop = await page.$eval(".item-rel .panel tbody tr td", (e) => e.textContent).catch(() => "(none)");
-  console.log(`item ${id}: name="${name}" expect~"${expectName}" panels=[${panels.join(", ")}] firstRow="${firstDrop}"`);
-  return name.includes(expectName);
+  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  const tabList = await page.$$eval(".item-rel .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+  const sortableH = await page.$$eval(".item-rel .tabpane:not(.hidden) th.sortable", (e) => e.length);
+  console.log(`item ${id}: name="${name}" tabs=[${tabList.join(", ")}] sortableHdrs=${sortableH}`);
+  return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
 async function testSearch(term) {
@@ -40,8 +40,9 @@ async function testNpc(id, expectName, expectTab) {
   await page.waitForSelector(".npc-head h1", { timeout: 40000 });
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   const tabsList = await page.$$eval(".tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
-  console.log(`npc ${id}: name="${name}" tabs=[${tabsList.join(", ")}]`);
-  return name.includes(expectName) && tabsList.length > 0 && (!expectTab || tabsList.some((t) => t.includes(expectTab)));
+  const sortableH = await page.$$eval(".tabpane:not(.hidden) th.sortable", (e) => e.length);
+  console.log(`npc ${id}: name="${name}" tabs=[${tabsList.join(", ")}] sortableHdrs=${sortableH}`);
+  return name.includes(expectName) && tabsList.length > 0 && sortableH > 0 && (!expectTab || tabsList.some((t) => t.includes(expectTab)));
 }
 
 async function testBrowse(kind, query = "") {
@@ -50,18 +51,19 @@ async function testBrowse(kind, query = "") {
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const filters = await page.$$eval(".filters [data-f]", (e) => e.length);
   const sortable = await page.$$eval(".browse th.sortable", (e) => e.length);
-  // click a header, confirm it re-sorts (URL gains sort=)
+  // click a header, confirm client-side sort marks the column active
   await page.click(".browse th.sortable");
-  await page.waitForFunction(() => location.search.includes("sort="), { timeout: 10000 }).catch(() => {});
-  const sorted = page.url().includes("sort=");
+  await page.waitForSelector(".browse th.active", { timeout: 10000 }).catch(() => {});
+  const active = await page.$$eval(".browse th.active", (e) => e.length);
   const count = await page.$eval(".browse-count", (e) => e.textContent).catch(() => "?");
-  console.log(`browse ${kind}${query}: ${rows} rows, ${filters} filters, ${sortable} sortable, sortClick=${sorted}, "${count}"`);
-  return rows > 0 && filters > 0 && sortable > 0 && sorted;
+  console.log(`browse ${kind}${query}: ${rows} rows, ${filters} filters, ${sortable} sortable, active=${active}, "${count}"`);
+  return rows > 0 && filters > 0 && sortable > 0 && active > 0;
 }
 
 let ok = true;
 const t = Date.now();
 ok = (await testItem(7909, "Aquamarine")) && ok;
+ok = (await testItem(2770, "Copper Ore")) && ok;
 ok = (await testItem(55356, "Netherwrought")) && ok;
 ok = (await testItem(647, "Destiny")) && ok;
 ok = (await testSearch("thunder")) && ok;
