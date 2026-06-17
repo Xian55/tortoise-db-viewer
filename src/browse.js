@@ -15,14 +15,14 @@ const lvlRange = (r) => (r.level_max && r.level_max !== r.level_min ? `${r.level
 const dpsVal = (r) => (r.delay > 0 && (r.dmg_min1 || r.dmg_max1) ? ((r.dmg_min1 + r.dmg_max1) / 2) / (r.delay / 1000) : 0);
 
 const COL = {
-  name: { label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
-  ilvl: { label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
-  req: { label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
-  slot: { label: "Slot", cls: "muted", cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
-  id: { label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
-  dps: { label: "DPS", num: true, cell: (r) => (dpsVal(r) ? dpsVal(r).toFixed(1) : ""), value: (r) => dpsVal(r) },
-  speed: { label: "Speed", num: true, cls: "muted", cell: (r) => (r.delay ? (r.delay / 1000).toFixed(2) : ""), value: (r) => r.delay / 1000 || 0 },
-  armor: { label: "Armor", num: true, cls: "muted", cell: (r) => r.armor || "", value: (r) => r.armor || 0 },
+  name: { key: "name", label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+  ilvl: { key: "ilvl", label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
+  req: { key: "req", label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
+  slot: { key: "slot", label: "Slot", cls: "muted", cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
+  id: { key: "id", label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
+  dps: { key: "dps", label: "DPS", num: true, cell: (r) => (dpsVal(r) ? dpsVal(r).toFixed(1) : ""), value: (r) => dpsVal(r) },
+  speed: { key: "speed", label: "Speed", num: true, cls: "muted", cell: (r) => (r.delay ? (r.delay / 1000).toFixed(2) : ""), value: (r) => r.delay / 1000 || 0 },
+  armor: { key: "armor", label: "Armor", num: true, cls: "muted", cell: (r) => r.armor || "", value: (r) => r.armor || 0 },
 };
 
 // columns adapt to the class filter: weapons show DPS/Speed, armor shows Armor.
@@ -76,11 +76,11 @@ function statLabel(key) {
   return r ? r[1] : "Stat";
 }
 const NPC_COLS = [
-  { label: "Name", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
-  { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
-  { label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
-  { label: "Type", cls: "muted", cell: (r) => CREATURE_TYPE[r.type] || "", value: (r) => CREATURE_TYPE[r.type] || "" },
-  { label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
+  { key: "name", label: "Name", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
+  { key: "level", label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
+  { key: "rank", label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
+  { key: "type", label: "Type", cls: "muted", cell: (r) => CREATURE_TYPE[r.type] || "", value: (r) => CREATURE_TYPE[r.type] || "" },
+  { key: "id", label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
 ];
 
 function opt(value, label, cur) {
@@ -135,7 +135,7 @@ async function browseItems(p) {
   // skip the stat column when the class already shows it (weapon DPS, armor Armor)
   const dupCol = (f.class === "2" && f.stat === "dps") || (f.class === "4" && f.stat === "armor");
   const statCol = (f.stat && !dupCol) ? {
-    label: statLabel(f.stat), num: true,
+    key: f.stat, label: statLabel(f.stat), num: true,
     cell: (r) => (r.statval ? (f.stat === "dps" ? Number(r.statval).toFixed(1) : r.statval) : ""),
     value: (r) => r.statval || 0,
   } : null;
@@ -204,13 +204,26 @@ export async function showBrowse(kind, navigate) {
     <p class="browse-count">${view.rows.length.toLocaleString()} ${view.noun}</p>
     <div data-browse></div></div>`;
   const tableEl = app.querySelector("[data-browse]");
-  if (view.rows.length) createTable(tableEl, { columns: view.cols, rows: view.rows, pageSize: PAGE, groupable: true });
-  else tableEl.innerHTML = `<p class="muted">No matches.</p>`;
+  if (view.rows.length) {
+    createTable(tableEl, {
+      columns: view.cols, rows: view.rows, pageSize: PAGE, groupable: true,
+      sort: p.get("sort"), dir: p.get("dir"), group: p.get("groupby"),
+      // mirror sort/group into the URL (no re-render) so the view is shareable
+      onState: (s) => {
+        const np = new URLSearchParams(location.search);
+        if (s.sort) { np.set("sort", s.sort); np.set("dir", s.dir); } else { np.delete("sort"); np.delete("dir"); }
+        if (s.group) np.set("groupby", s.group); else np.delete("groupby");
+        history.replaceState({}, "", "?" + np.toString());
+      },
+    });
+  } else tableEl.innerHTML = `<p class="muted">No matches.</p>`;
 
   const collect = () => {
     const np = new URLSearchParams();
     np.set("browse", kind);
     app.querySelectorAll("[data-f]").forEach((el) => { if (el.value !== "") np.set(el.dataset.f, el.value); });
+    const cur = new URLSearchParams(location.search); // preserve active sort/group across filter changes
+    for (const k of ["sort", "dir", "groupby"]) { const v = cur.get(k); if (v) np.set(k, v); }
     return np;
   };
   app.querySelectorAll("[data-f]").forEach((el) =>

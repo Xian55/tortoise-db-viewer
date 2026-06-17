@@ -60,6 +60,16 @@ async function testBrowse(kind, query = "", expectHeader) {
   return rows > 0 && filters > 0 && sortable > 0 && active > 0 && (!expectHeader || headers.includes(expectHeader));
 }
 
+async function testBrowsePersist() {
+  await page.goto(`${BASE}?browse=items&class=4&sort=ilvl&dir=d&groupby=slot`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const active = await page.$eval(".browse th.active", (e) => e.textContent.trim()).catch(() => "(none)");
+  const groups = await page.$$eval(".browse .grouprow", (e) => e.length);
+  const groupSel = await page.$eval(".browse [data-groupby]", (e) => e.value).catch(() => "?");
+  console.log(`browse persist: active="${active}" groupRows=${groups} groupSel=${groupSel}`);
+  return active.includes("iLvl") && groups > 0;
+}
+
 async function testDungeons() {
   await page.goto(`${BASE}?dungeons`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
@@ -99,6 +109,7 @@ ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;
+ok = (await testBrowsePersist()) && ok;
 ok = (await testHover()) && ok;
 ok = (await testBrowse("items", "&class=2&quality=4&minrl=40", "DPS")) && ok;
 ok = (await testBrowse("items", "&class=4&stat=armor&statmin=100", "Armor")) && ok;

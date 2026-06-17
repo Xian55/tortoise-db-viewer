@@ -10,8 +10,19 @@ import { esc } from "./render.js";
 
 const stripTags = (h) => String(h).replace(/<[^>]*>/g, "").trim();
 
-export function createTable(container, { columns, rows, pageSize = Infinity, groupable = false, group = null }) {
-  const state = { rows: rows.slice(), sort: null, dir: "a", page: 0, group };
+export function createTable(container, { columns, rows, pageSize = Infinity, groupable = false, group = null, sort = null, dir = "a", onState }) {
+  const colKey = (i) => (i == null ? "" : (columns[i].key || columns[i].label));
+  const findCol = (key) => {
+    if (key == null || key === "") return null;
+    const i = columns.findIndex((c) => (c.key || c.label) === key);
+    return i < 0 ? null : i;
+  };
+  const state = {
+    rows: rows.slice(), page: 0,
+    sort: findCol(sort), dir: dir === "d" ? "d" : "a",
+    group: typeof group === "number" ? group : findCol(group),
+  };
+  const emit = () => onState && onState({ sort: colKey(state.sort), dir: state.dir, group: colKey(state.group) });
 
   const keyOf = (col, row) => (col.value ? col.value(row) : stripTags(col.cell(row)));
   function cmp(col, dir) {
@@ -81,7 +92,7 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
       if (state.sort === i) state.dir = state.dir === "a" ? "d" : "a";
       else { state.sort = i; state.dir = columns[i].num ? "d" : "a"; }
       state.page = 0;
-      render();
+      render(); emit();
       return;
     }
     const pg = e.target.closest("button[data-pg]");
@@ -89,7 +100,7 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
   });
   container.addEventListener("change", (e) => {
     const sel = e.target.closest("[data-groupby]");
-    if (sel) { state.group = sel.value === "" ? null : +sel.value; state.page = 0; render(); }
+    if (sel) { state.group = sel.value === "" ? null : +sel.value; state.page = 0; render(); emit(); }
   });
 
   render();
