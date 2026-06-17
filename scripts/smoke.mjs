@@ -84,8 +84,17 @@ async function testDungeon(id, expectName) {
   const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const groupRows = await page.$$eval(".tabpane:not(.hidden) .grouprow", (e) => e.length);
   const hasGroupCtl = (await page.$(".tabpane:not(.hidden) [data-groupby]")) !== null;
-  console.log(`dungeon ${id}: name="${name}" tabs=[${tabList.join(", ")}] groupRows=${groupRows} groupCtl=${hasGroupCtl}`);
-  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && groupRows > 0 && hasGroupCtl;
+  await page.click(".tabpane:not(.hidden) .grouprow");
+  const collapseOk = await page.evaluate(() => {
+    const gr = document.querySelector(".tabpane:not(.hidden) .grouprow.collapsed");
+    if (!gr) return false;
+    const key = gr.getAttribute("data-group");
+    const rows = [...document.querySelectorAll(".tabpane:not(.hidden) tbody tr[data-group]")]
+      .filter((t) => !t.classList.contains("grouprow") && t.getAttribute("data-group") === key);
+    return rows.length > 0 && rows.every((t) => t.style.display === "none");
+  });
+  console.log(`dungeon ${id}: name="${name}" tabs=[${tabList.join(", ")}] groupRows=${groupRows} groupCtl=${hasGroupCtl} collapse=${collapseOk}`);
+  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && groupRows > 0 && hasGroupCtl && collapseOk;
 }
 
 async function testHover() {

@@ -21,6 +21,7 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
     rows: rows.slice(), page: 0,
     sort: findCol(sort), dir: dir === "d" ? "d" : "a",
     group: typeof group === "number" ? group : findCol(group),
+    collapsed: new Set(),
   };
   const emit = () => onState && onState({ sort: colKey(state.sort), dir: state.dir, group: colKey(state.group) });
 
@@ -65,11 +66,18 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
 
     let body = "", prev = Symbol("none");
     for (const r of slice) {
+      const cells = dcols.map((c) => `<td${c.cls ? ` class="${c.cls}"` : ""}>${c.cell(r)}</td>`).join("");
       if (grouped) {
-        const g = keyOf(gcol, r);
-        if (g !== prev) { body += `<tr class="grouprow"><td colspan="${dcols.length}">${gcol.cell(r)}</td></tr>`; prev = g; }
+        const g = keyOf(gcol, r), gk = String(g), col = state.collapsed.has(gk);
+        if (g !== prev) {
+          body += `<tr class="grouprow${col ? " collapsed" : ""}" data-group="${esc(gk)}"><td colspan="${dcols.length}">` +
+            `<span class="caret">${col ? "▸" : "▾"}</span>${gcol.cell(r)}</td></tr>`;
+          prev = g;
+        }
+        body += `<tr data-group="${esc(gk)}"${col ? ' style="display:none"' : ""}>${cells}</tr>`;
+      } else {
+        body += `<tr>${cells}</tr>`;
       }
-      body += "<tr>" + dcols.map((c) => `<td${c.cls ? ` class="${c.cls}"` : ""}>${c.cell(r)}</td>`).join("") + "</tr>";
     }
 
     const groupSel = groupable ? `<div class="groupctl"><label>Group by</label><select data-groupby>
@@ -96,11 +104,23 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
       return;
     }
     const pg = e.target.closest("button[data-pg]");
-    if (pg) { state.page = +pg.dataset.pg; render(); }
+    if (pg) { state.page = +pg.dataset.pg; render(); return; }
+    // collapse / expand a group (ignore clicks on links inside the header)
+    const gr = e.target.closest(".grouprow");
+    if (gr && !e.target.closest("a")) {
+      const key = gr.getAttribute("data-group");
+      const collapsed = !state.collapsed.has(key);
+      if (collapsed) state.collapsed.add(key); else state.collapsed.delete(key);
+      gr.classList.toggle("collapsed", collapsed);
+      const caret = gr.querySelector(".caret"); if (caret) caret.textContent = collapsed ? "▸" : "▾";
+      container.querySelectorAll("tbody tr[data-group]").forEach((tr) => {
+        if (!tr.classList.contains("grouprow") && tr.getAttribute("data-group") === key) tr.style.display = collapsed ? "none" : "";
+      });
+    }
   });
   container.addEventListener("change", (e) => {
     const sel = e.target.closest("[data-groupby]");
-    if (sel) { state.group = sel.value === "" ? null : +sel.value; state.page = 0; render(); emit(); }
+    if (sel) { state.group = sel.value === "" ? null : +sel.value; state.collapsed.clear(); state.page = 0; render(); emit(); }
   });
 
   render();
