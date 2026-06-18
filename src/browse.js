@@ -3,7 +3,7 @@
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
 import { Q_CRAFTING } from "./queries.js";
-import { itemLink, npcLink, sourceTags, iconImg, esc } from "./render.js";
+import { itemLink, npcLink, sourceTags, esc } from "./render.js";
 import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
@@ -281,8 +281,8 @@ async function browseCrafting(p) {
     if (!g) {
       g = {
         spell: r.spell, item: r.item, item_name: r.item_name, quality: r.quality, item_icon: r.item_icon,
-        skill: r.skill, req: r.skill_req, min: r.skill_min, max: r.skill_max,
-        trainer: r.trainer, auto: r.auto, recipe_item: r.recipe_item, recipe_name: r.recipe_name, recipe_quality: r.recipe_quality,
+        skill: r.skill, req: r.learn_req ?? r.skill_req, min: r.skill_min, max: r.skill_max,
+        trainer: r.trainer, auto: r.auto, recipe_item: r.recipe_item, recipe_name: r.recipe_name, recipe_quality: r.recipe_quality, recipe_icon: r.recipe_icon,
         reagents: [],
       };
       bySpell.set(r.spell, g);
@@ -297,9 +297,9 @@ async function browseCrafting(p) {
     { key: "name", label: "Name", cell: (c) => itemLink(c.item, c.item_name, c.quality, c.item_icon), value: (c) => c.item_name },
     { key: "prof", label: "Profession", cls: "muted", cell: (c) => esc(PROFESSION_LABEL[c.skill] || ""), value: (c) => PROFESSION_LABEL[c.skill] || "" },
     { key: "skill", label: "Skill", num: true, cell: (c) => craftSkillCell(c), value: (c) => c.req || 0 },
-    { key: "reagents", label: "Reagents", cls: "muted", cell: (c) => c.reagents.map((r) => `${iconImg(r.icon)}${itemLink(r.item, r.name, r.quality)}${r.count > 1 ? ` ×${r.count}` : ""}`).join(", "), value: (c) => c.reagents.length },
+    { key: "reagents", label: "Reagents", cls: "muted", cell: (c) => c.reagents.map((r) => `${itemLink(r.item, r.name, r.quality, r.icon)}${r.count > 1 ? ` ×${r.count}` : ""}`).join(", "), value: (c) => c.reagents.length },
     { key: "source", label: "Source",
-      cell: (c) => (c.recipe_item ? itemLink(c.recipe_item, c.recipe_name, c.recipe_quality)
+      cell: (c) => (c.recipe_item ? itemLink(c.recipe_item, c.recipe_name, c.recipe_quality, c.recipe_icon)
         : c.trainer ? `<span class="tagx src-crafted">Trainer</span>`
           : c.auto ? `<span class="tagx" title="Learned automatically with the profession">Auto</span>` : "—"),
       value: (c) => (c.recipe_item ? "Recipe" : c.trainer ? "Trainer" : c.auto ? "Auto" : "") },

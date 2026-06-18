@@ -319,28 +319,35 @@ console.log("Importing spells + crafting graph...");
 console.log("Deriving craft sources...");
 {
   // spells a trainer can teach: union of npc_trainer (per-NPC) and the shared
-  // npc_trainer_template pools. We only need presence, so flatten to a Set.
-  const trainerSpells = new Set();
+  // npc_trainer_template pools. Map to the trainer's required skill (the "orange"
+  // skill level), keeping the highest value seen.
+  const trainerSkill = new Map();
   for (const [file, table] of [
     ["tw_world_npc_trainer.sql", "npc_trainer"],
     ["tw_world_npc_trainer_template.sql", "npc_trainer_template"],
   ]) {
     const sql = read(file);
-    const iSpell = parseColumns(sql).indexOf("spell");
+    const cols = parseColumns(sql);
+    const iSpell = cols.indexOf("spell"), iReq = cols.indexOf("reqskillvalue");
     for (const r of iterRows(sql, table)) {
       const sp = clean(r[iSpell]);
-      if (sp) trainerSpells.add(sp);
+      if (!sp) continue;
+      const req = clean(r[iReq]) || 0;
+      if (!trainerSkill.has(sp) || req > trainerSkill.get(sp)) trainerSkill.set(sp, req);
     }
   }
 
   // recipe items (class 9: Recipe/Pattern/Plans/Schematic/Formula/Book) reference a
   // spell in one of their spellid slots — usually a "learn" spell that triggers the
-  // real craft, occasionally the craft spell itself. Map that referenced spell -> item.
+  // real craft, occasionally the craft spell itself. Map that referenced spell -> item,
+  // and remember each recipe item's required skill rank (its "orange" level).
   const slots = [1, 2, 3, 4, 5];
   const itemBySpell = new Map();
+  const itemRank = new Map();
   const recipeRows = db.prepare(
-    `SELECT entry, ${slots.map((n) => `spellid_${n}`).join(", ")} FROM items WHERE class = 9`).all();
+    `SELECT entry, required_skill_rank, ${slots.map((n) => `spellid_${n}`).join(", ")} FROM items WHERE class = 9`).all();
   for (const r of recipeRows) {
+    itemRank.set(r.entry, r.required_skill_rank || 0);
     for (const n of slots) {
       const sp = r[`spellid_${n}`];
       if (sp > 0 && !itemBySpell.has(sp)) itemBySpell.set(sp, r.entry);
@@ -351,19 +358,24 @@ console.log("Deriving craft sources...");
   // trainers and recipe items use).
   const learnersOf = (spell) => [spell, ...(spellTriggers.get(spell) || [])];
   const recipeFor = (spell) => { for (const s of learnersOf(spell)) if (itemBySpell.has(s)) return itemBySpell.get(s); return null; };
-  const trainerTaught = (spell) => learnersOf(spell).some((s) => trainerSpells.has(s));
+  const trainerReq = (spell) => { let r = null; for (const s of learnersOf(spell)) if (trainerSkill.has(s)) r = Math.max(r ?? 0, trainerSkill.get(s)); return r; };
 
-  db.exec(`CREATE TABLE craft_source (spell INTEGER PRIMARY KEY, trainer INTEGER DEFAULT 0, recipe_item INTEGER, auto INTEGER DEFAULT 0)`);
-  const insCs = db.prepare(`INSERT OR REPLACE INTO craft_source VALUES (?,?,?,?)`);
+  // learn_req is the recipe's "orange" skill: where it first becomes learnable. The
+  // skill_line_ability req is unreliable here (mostly 1), so prefer the recipe item's
+  // required rank, then the trainer's required skill; fall back at query time.
+  db.exec(`CREATE TABLE craft_source (spell INTEGER PRIMARY KEY, trainer INTEGER DEFAULT 0, recipe_item INTEGER, auto INTEGER DEFAULT 0, learn_req INTEGER)`);
+  const insCs = db.prepare(`INSERT OR REPLACE INTO craft_source VALUES (?,?,?,?,?)`);
   const craftSpells = db.prepare(`SELECT DISTINCT spell FROM spell_creates WHERE item IS NOT NULL`).all();
   let ncs = 0, nrec = 0, ntr = 0;
   db.transaction(() => {
     for (const { spell } of craftSpells) {
       const recipe = recipeFor(spell);
-      const trainer = trainerTaught(spell) ? 1 : 0;
+      const tReq = trainerReq(spell);
+      const trainer = tReq != null ? 1 : 0;
+      const learnReq = recipe != null ? (itemRank.get(recipe) || null) : tReq;
       if (recipe) nrec++;
       if (trainer) ntr++;
-      insCs.run(spell, trainer, recipe, craftAuto.get(spell) || 0);
+      insCs.run(spell, trainer, recipe, craftAuto.get(spell) || 0, learnReq);
       ncs++;
     }
   })();

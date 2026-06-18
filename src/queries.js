@@ -77,7 +77,7 @@ export const Q_CRAFTING = `
   SELECT sc.spell, s.name AS spell_name, sc.skill, sc.skill_req, sc.skill_min, sc.skill_max,
          ci.entry AS item, ci.name AS item_name, ci.quality, cdi.icon AS item_icon,
          sr.item AS reagent, ri.name AS reagent_name, ri.quality AS reagent_quality, rdi.icon AS reagent_icon, sr.count,
-         cs.trainer, cs.auto, cs.recipe_item, rc.name AS recipe_name, rc.quality AS recipe_quality
+         cs.trainer, cs.auto, cs.learn_req, cs.recipe_item, rc.name AS recipe_name, rc.quality AS recipe_quality, rcdi.icon AS recipe_icon
   FROM spell_creates sc
   JOIN spells s ON s.entry = sc.spell
   JOIN items ci ON ci.entry = sc.item
@@ -87,6 +87,7 @@ export const Q_CRAFTING = `
   LEFT JOIN item_display_info rdi ON rdi.ID = ri.display_id
   LEFT JOIN craft_source cs ON cs.spell = sc.spell
   LEFT JOIN items rc ON rc.entry = cs.recipe_item
+  LEFT JOIN item_display_info rcdi ON rcdi.ID = rc.display_id
   WHERE sc.skill IN (171,164,185,333,202,129,356,182,755,165,186,393,197)
   ORDER BY sc.skill, ci.name, sc.spell`;
 
