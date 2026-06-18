@@ -233,6 +233,12 @@ console.log("Resolving loot chances...");
 // (build-time only; the raw effect/aura columns are NOT persisted). Used by the
 // item_stats pass below to resolve an item's equip-spell stats.
 const spellStats = new Map();
+// craftSpell -> [learn spells that trigger it]. Recipe items and trainers reference
+// the learn spell, which teaches the actual trade-skill craft. Used by craft_source.
+const spellTriggers = new Map();
+// spellId -> 1 when the skill grants the craft automatically (learn_on_get_skill):
+// these have no trainer/recipe source — you just know them with the profession.
+const craftAuto = new Map();
 console.log("Importing spells + crafting graph...");
 {
   // spell_id -> { skill, req } from skill_line_ability: lets us label a crafting
@@ -242,9 +248,13 @@ console.log("Importing spells + crafting graph...");
     const slaSql = read("tw_world_skill_line_ability.sql");
     const sc = parseColumns(slaSql);
     const iSp = sc.indexOf("spell_id"), iSk = sc.indexOf("skill_id"), iRq = sc.indexOf("req_skill_value");
+    const iMin = sc.indexOf("min_value"), iMax = sc.indexOf("max_value"), iLearn = sc.indexOf("learn_on_get_skill");
     for (const r of iterRows(slaSql, "skill_line_ability")) {
       const sp = clean(r[iSp]);
-      if (!spellSkill.has(sp)) spellSkill.set(sp, { skill: clean(r[iSk]), req: clean(r[iRq]) });
+      // min_value/max_value are the yellow/grey skill-up thresholds (green is their
+      // midpoint); kept so the crafting view can color recipe difficulty.
+      if (!spellSkill.has(sp)) spellSkill.set(sp, { skill: clean(r[iSk]), req: clean(r[iRq]), min: clean(r[iMin]), max: clean(r[iMax]) });
+      if (clean(r[iLearn])) craftAuto.set(sp, 1);
     }
     console.log(`  skill_line_ability: ${spellSkill.size} spells`);
   }
@@ -257,13 +267,14 @@ console.log("Importing spells + crafting graph...");
   const effIdx = [1, 2, 3].map((n) => ({ a: at(`effectApplyAuraName${n}`), m: at(`effectMiscValue${n}`), b: at(`effectBasePoints${n}`) }));
   const reagents = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [at(`reagent${n}`), at(`reagentCount${n}`)]);
   const creates = [1, 2, 3].map((n) => at(`effectItemType${n}`));
+  const triggers = [1, 2, 3].map((n) => at(`effectTriggerSpell${n}`));
 
   db.exec(`CREATE TABLE spells (entry INTEGER PRIMARY KEY, name TEXT, description TEXT, auraDescription TEXT, spellIconId INTEGER,
     s1 INTEGER, s2 INTEGER, s3 INTEGER, d1 INTEGER, d2 INTEGER, d3 INTEGER)`);
-  db.exec(`CREATE TABLE spell_creates (spell INTEGER, item INTEGER, skill INTEGER, skill_req INTEGER)`);
+  db.exec(`CREATE TABLE spell_creates (spell INTEGER, item INTEGER, skill INTEGER, skill_req INTEGER, skill_min INTEGER, skill_max INTEGER)`);
   db.exec(`CREATE TABLE spell_reagent (spell INTEGER, item INTEGER, count INTEGER)`);
   const sSpell = db.prepare(`INSERT OR REPLACE INTO spells VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
-  const sCreate = db.prepare(`INSERT INTO spell_creates VALUES (?,?,?,?)`);
+  const sCreate = db.prepare(`INSERT INTO spell_creates VALUES (?,?,?,?,?,?)`);
   const sReag = db.prepare(`INSERT INTO spell_reagent VALUES (?,?,?)`);
   let ns = 0, nc = 0, nr = 0;
   db.transaction(() => {
@@ -282,11 +293,16 @@ console.log("Importing spells + crafting graph...");
       const sk = spellSkill.get(e);
       for (const ci of creates) {
         const item = clean(row[ci]);
-        if (item) { sCreate.run(e, item, sk ? sk.skill : null, sk ? sk.req : null); nc++; }
+        if (item) { sCreate.run(e, item, sk ? sk.skill : null, sk ? sk.req : null, sk ? sk.min : null, sk ? sk.max : null); nc++; }
       }
       for (const [ri, rc] of reagents) {
         const item = clean(row[ri]);
         if (item) { sReag.run(e, item, clean(row[rc]) || 1); nr++; }
+      }
+      // record learn-spell -> craft chains (triggered craft spell -> [learn spells])
+      for (const ti of triggers) {
+        const t = clean(row[ti]);
+        if (t) { const a = spellTriggers.get(t); if (a) a.push(e); else spellTriggers.set(t, [e]); }
       }
     }
   })();
@@ -295,6 +311,64 @@ console.log("Importing spells + crafting graph...");
   db.exec(`CREATE INDEX idx_spell_reagent_item ON spell_reagent(item)`);
   db.exec(`CREATE INDEX idx_spell_reagent_spell ON spell_reagent(spell)`);
   console.log(`  spells: ${ns} | creates: ${nc} | reagents: ${nr}`);
+}
+
+// ---- Crafting source: trainer-taught vs recipe-item-taught ----
+// For each craft spell, record whether it can be learned from a trainer and the
+// recipe/pattern/plans item (if any) that teaches it. Runs after items + spells.
+console.log("Deriving craft sources...");
+{
+  // spells a trainer can teach: union of npc_trainer (per-NPC) and the shared
+  // npc_trainer_template pools. We only need presence, so flatten to a Set.
+  const trainerSpells = new Set();
+  for (const [file, table] of [
+    ["tw_world_npc_trainer.sql", "npc_trainer"],
+    ["tw_world_npc_trainer_template.sql", "npc_trainer_template"],
+  ]) {
+    const sql = read(file);
+    const iSpell = parseColumns(sql).indexOf("spell");
+    for (const r of iterRows(sql, table)) {
+      const sp = clean(r[iSpell]);
+      if (sp) trainerSpells.add(sp);
+    }
+  }
+
+  // recipe items (class 9: Recipe/Pattern/Plans/Schematic/Formula/Book) reference a
+  // spell in one of their spellid slots — usually a "learn" spell that triggers the
+  // real craft, occasionally the craft spell itself. Map that referenced spell -> item.
+  const slots = [1, 2, 3, 4, 5];
+  const itemBySpell = new Map();
+  const recipeRows = db.prepare(
+    `SELECT entry, ${slots.map((n) => `spellid_${n}`).join(", ")} FROM items WHERE class = 9`).all();
+  for (const r of recipeRows) {
+    for (const n of slots) {
+      const sp = r[`spellid_${n}`];
+      if (sp > 0 && !itemBySpell.has(sp)) itemBySpell.set(sp, r.entry);
+    }
+  }
+  // the spells that "stand in" for a craft when checking trainer/recipe sources: the
+  // craft spell itself plus any learn spell that triggers it (the indirection both
+  // trainers and recipe items use).
+  const learnersOf = (spell) => [spell, ...(spellTriggers.get(spell) || [])];
+  const recipeFor = (spell) => { for (const s of learnersOf(spell)) if (itemBySpell.has(s)) return itemBySpell.get(s); return null; };
+  const trainerTaught = (spell) => learnersOf(spell).some((s) => trainerSpells.has(s));
+
+  db.exec(`CREATE TABLE craft_source (spell INTEGER PRIMARY KEY, trainer INTEGER DEFAULT 0, recipe_item INTEGER, auto INTEGER DEFAULT 0)`);
+  const insCs = db.prepare(`INSERT OR REPLACE INTO craft_source VALUES (?,?,?,?)`);
+  const craftSpells = db.prepare(`SELECT DISTINCT spell FROM spell_creates WHERE item IS NOT NULL`).all();
+  let ncs = 0, nrec = 0, ntr = 0;
+  db.transaction(() => {
+    for (const { spell } of craftSpells) {
+      const recipe = recipeFor(spell);
+      const trainer = trainerTaught(spell) ? 1 : 0;
+      if (recipe) nrec++;
+      if (trainer) ntr++;
+      insCs.run(spell, trainer, recipe, craftAuto.get(spell) || 0);
+      ncs++;
+    }
+  })();
+  db.exec(`CREATE INDEX idx_craft_source_spell ON craft_source(spell)`);
+  console.log(`  craft_source: ${ncs} spells (trainer: ${ntr}, recipe: ${nrec}, recipe pool: ${itemBySpell.size})`);
 }
 
 // ---- Quests + quest<->item link table ----

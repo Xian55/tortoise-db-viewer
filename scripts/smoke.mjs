@@ -91,6 +91,20 @@ async function testCrafted(id, expectProf) {
   return hit;
 }
 
+// crafting browse: filtered to one profession, grouped, with skill-up brackets
+// (orange #ff8040 span) and a Source column (recipe link / Trainer badge).
+async function testCrafting() {
+  await page.goto(`${BASE}?browse=crafting&prof=171`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const groupRows = await page.$$eval(".browse .grouprow", (e) => e.length);
+  const profSel = await page.$eval(".filters [data-f='prof']", (e) => e.value).catch(() => "?");
+  const brackets = await page.$$eval(".browse tbody td span[style*='ff8040']", (e) => e.length);
+  console.log(`crafting prof=171: rows=${rows} headers=[${headers.join(",")}] groupRows=${groupRows} profSel=${profSel} brackets=${brackets}`);
+  return rows > 0 && headers.includes("Skill") && headers.includes("Source") && profSel === "171" && groupRows > 0 && brackets > 0;
+}
+
 // row selection: ID column gone, ops disabled until a row is picked, prefix copy.
 async function testSelection() {
   await page.goto(`${BASE}?browse=items`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -272,6 +286,7 @@ ok = (await testFilter("faction", "a")) && ok;
 ok = (await testFilter("prof", "197")) && ok;
 ok = (await testFilter("unique", "1")) && ok;
 ok = (await testCrafted(2575, "Tailoring")) && ok;
+ok = (await testCrafting()) && ok;
 ok = (await testSelection()) && ok;
 ok = (await testGroupSelection()) && ok;
 console.log(`\nelapsed ${Date.now() - t}ms`);

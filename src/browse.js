@@ -2,12 +2,13 @@
 // against the in-memory DB; sorting + pagination are handled client-side by the
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
-import { itemLink, npcLink, sourceTags, esc } from "./render.js";
+import { Q_CRAFTING } from "./queries.js";
+import { itemLink, npcLink, sourceTags, iconImg, esc } from "./render.js";
 import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
   CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
-  BONDING, CLASS_MASK, PROFESSION, RACE_ALLIANCE, RACE_HORDE,
+  BONDING, CLASS_MASK, PROFESSION, PROFESSION_LABEL, RACE_ALLIANCE, RACE_HORDE,
 } from "./constants.js";
 
 const PAGE = 100;
@@ -259,18 +260,72 @@ async function browseNpcs(p) {
   return { rows, cols: NPC_COLS, filters, noun: "NPCs" };
 }
 
+// Skill-up difficulty colors (recipe orange→yellow→green→grey). green is the
+// midpoint of the yellow (min_value) and grey (max_value) thresholds; some recipes
+// never go grey (min=max=0) and just show the orange requirement.
+function craftSkillCell(c) {
+  const span = (v, col) => `<span style="color:${col}">${v}</span>`;
+  const o = span(c.req || 0, "#ff8040");
+  if (!c.min && !c.max) return o;
+  const green = Math.round((c.min + c.max) / 2);
+  return `<span style="white-space:nowrap">${o} ${span(c.min, "#ffd100")} ${span(green, "#40c040")} ${span(c.max, "#808080")}</span>`;
+}
+
+async function browseCrafting(p) {
+  const f = { q: p.get("q") || "", prof: p.get("prof") || "" };
+  const rows = await query(Q_CRAFTING, []);
+  // one query row per (craft spell, reagent); fold reagents into one craft per spell.
+  const bySpell = new Map();
+  for (const r of rows) {
+    let g = bySpell.get(r.spell);
+    if (!g) {
+      g = {
+        spell: r.spell, item: r.item, item_name: r.item_name, quality: r.quality, item_icon: r.item_icon,
+        skill: r.skill, req: r.skill_req, min: r.skill_min, max: r.skill_max,
+        trainer: r.trainer, auto: r.auto, recipe_item: r.recipe_item, recipe_name: r.recipe_name, recipe_quality: r.recipe_quality,
+        reagents: [],
+      };
+      bySpell.set(r.spell, g);
+    }
+    if (r.reagent) g.reagents.push({ item: r.reagent, name: r.reagent_name, quality: r.reagent_quality, icon: r.reagent_icon, count: r.count || 1 });
+  }
+  let crafts = [...bySpell.values()];
+  if (f.prof) crafts = crafts.filter((c) => String(c.skill) === f.prof);
+  if (f.q) { const ql = f.q.toLowerCase(); crafts = crafts.filter((c) => (c.item_name || "").toLowerCase().includes(ql)); }
+
+  const cols = [
+    { key: "name", label: "Name", cell: (c) => itemLink(c.item, c.item_name, c.quality, c.item_icon), value: (c) => c.item_name },
+    { key: "prof", label: "Profession", cls: "muted", cell: (c) => esc(PROFESSION_LABEL[c.skill] || ""), value: (c) => PROFESSION_LABEL[c.skill] || "" },
+    { key: "skill", label: "Skill", num: true, cell: (c) => craftSkillCell(c), value: (c) => c.req || 0 },
+    { key: "reagents", label: "Reagents", cls: "muted", cell: (c) => c.reagents.map((r) => `${iconImg(r.icon)}${itemLink(r.item, r.name, r.quality)}${r.count > 1 ? ` ×${r.count}` : ""}`).join(", "), value: (c) => c.reagents.length },
+    { key: "source", label: "Source",
+      cell: (c) => (c.recipe_item ? itemLink(c.recipe_item, c.recipe_name, c.recipe_quality)
+        : c.trainer ? `<span class="tagx src-crafted">Trainer</span>`
+          : c.auto ? `<span class="tagx" title="Learned automatically with the profession">Auto</span>` : "—"),
+      value: (c) => (c.recipe_item ? "Recipe" : c.trainer ? "Trainer" : c.auto ? "Auto" : "") },
+  ];
+  const filters = `<div class="filters">
+    ${textField("q", "Name", f.q)}
+    ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any"))}
+    <button class="reset" data-reset="1">Reset</button>
+  </div>`;
+  return { rows: crafts, cols, filters, noun: "crafts" };
+}
+
 export async function showBrowse(kind, navigate) {
   const app = document.getElementById("app");
   const isNpc = kind === "npcs";
-  document.title = `Browse ${isNpc ? "NPCs" : "Items"} - Tortoise-WoW DB`;
+  const isItems = kind === "items";
+  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : "Items";
+  document.title = `Browse ${heading} - Tortoise-WoW DB`;
   app.innerHTML = `<div class="loading">Loading…</div>`;
   const p = new URLSearchParams(location.search);
   let view;
-  try { view = isNpc ? await browseNpcs(p) : await browseItems(p); }
+  try { view = kind === "crafting" ? await browseCrafting(p) : isNpc ? await browseNpcs(p) : await browseItems(p); }
   catch (e) { app.innerHTML = `<div class="error">Failed: ${esc(e.message || e)}</div>`; return; }
 
   // items get row selection + clipboard/external operations on the selection.
-  const selbar = isNpc ? "" : `<div class="selbar" data-selbar>
+  const selbar = !isItems ? "" : `<div class="selbar" data-selbar>
     <span class="selcount" data-selcount>0 selected</span>
     <button type="button" data-op="ids" disabled>Copy IDs</button>
     <span class="op-prefix"><input type="text" data-prefix value=".additem " aria-label="line prefix">
@@ -279,7 +334,7 @@ export async function showBrowse(kind, navigate) {
     <button type="button" data-op="clear" disabled>Clear</button>
     <span class="op-status" data-opstatus></span>
   </div>`;
-  app.innerHTML = `<div class="browse"><h1>Browse ${isNpc ? "NPCs" : "Items"}</h1>${view.filters}
+  app.innerHTML = `<div class="browse"><h1>Browse ${esc(heading)}</h1>${view.filters}
     <p class="browse-count">${view.rows.length.toLocaleString()} ${view.noun}</p>
     ${selbar}
     <div data-browse></div></div>`;
@@ -294,8 +349,9 @@ export async function showBrowse(kind, navigate) {
   if (view.rows.length) {
     tableApi = createTable(tableEl, {
       columns: view.cols, rows: view.rows, pageSize: PAGE, groupable: true,
-      sort: p.get("sort"), dir: p.get("dir"), group: p.get("groupby"),
-      selectable: !isNpc, rowKey: (r) => r.entry,
+      sort: p.get("sort"), dir: p.get("dir"),
+      group: p.get("groupby") ?? (kind === "crafting" ? "prof" : null),
+      selectable: isItems, rowKey: isItems ? (r) => r.entry : undefined,
       onSelectionChange: bar ? (count) => updateSelbar(count) : undefined,
       // mirror sort/group into the URL (no re-render) so the view is shareable
       onState: (s) => {
