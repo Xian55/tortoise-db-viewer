@@ -166,6 +166,20 @@ td.src-col .tagx { margin: 1px 4px 1px 0; }
   border: 1px dashed var(--border); border-radius: 6px; color: var(--text); cursor: pointer; font: inherit; }
 .crit-add:hover { border-color: var(--text); }
 .browse-count { color: var(--muted); margin: 0 0 10px; }
+/* row-selection column + operations bar */
+.selcol { width: 28px; text-align: center; padding-right: 0; }
+.selcol input { cursor: pointer; }
+.selbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px;
+  padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; }
+.selbar .selcount { font-size: 12px; color: var(--muted); min-width: 72px; }
+.selbar button { padding: 5px 11px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font: inherit; cursor: pointer; }
+.selbar button:hover:not(:disabled) { border-color: var(--text); }
+.selbar button:disabled { opacity: .45; cursor: default; }
+.selbar .op-prefix { display: inline-flex; gap: 6px; align-items: center; }
+.selbar .op-prefix input { width: 96px; padding: 5px 8px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; }
+.selbar .op-status { font-size: 12px; color: var(--accent, #74c98a); }
 .pager { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
 .pager button { padding: 6px 14px; background: var(--panel2); border: 1px solid var(--border);
   border-radius: 6px; color: var(--text); cursor: pointer; }

@@ -20,7 +20,6 @@ const COL = {
   ilvl: { key: "ilvl", label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
   req: { key: "req", label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
   slot: { key: "slot", label: "Slot", cls: "muted", cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
-  id: { key: "id", label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
   source: { key: "source", label: "Source", cls: "src-col", cell: (r) => sourceTags(r.sources), value: (r) => r.sources || "" },
   dps: { key: "dps", label: "DPS", num: true, cell: (r) => (dpsVal(r) ? dpsVal(r).toFixed(1) : ""), value: (r) => dpsVal(r) },
   speed: { key: "speed", label: "Speed", num: true, cls: "muted", cell: (r) => (r.delay ? (r.delay / 1000).toFixed(2) : ""), value: (r) => r.delay / 1000 || 0 },
@@ -31,9 +30,9 @@ const COL = {
 // when stat criteria are active, a sortable column per criterion stat is inserted
 // (right after Name).
 function buildItemCols(cls, statCols) {
-  const base = cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.source, COL.id]
-    : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.source, COL.id]
-      : [COL.name, COL.ilvl, COL.req, COL.slot, COL.source, COL.id];
+  const base = cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.source]
+    : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.source]
+      : [COL.name, COL.ilvl, COL.req, COL.slot, COL.source];
   return statCols.length ? [base[0], ...statCols, ...base.slice(1)] : base;
 }
 
@@ -103,6 +102,37 @@ function multiField(name, label, entries, csv) {
   return `<div class="fld multi" data-multi="${name}"><label>${esc(label)}</label>
     <button type="button" class="multi-btn">${esc(summary)} ▾</button>
     <div class="multi-panel">${boxes}</div></div>`;
+}
+
+// selection operations bar for the item browse: clipboard exports + open on
+// Wowhead (classic). Reads the live selection from the table API on each click.
+const WOWHEAD = "https://www.wowhead.com/classic/item=";
+function wireSelbar(bar, api) {
+  const status = bar.querySelector("[data-opstatus]");
+  let timer = null;
+  const flash = (msg) => {
+    status.textContent = msg;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { status.textContent = ""; }, 2500);
+  };
+  const copy = async (text, n) => {
+    try { await navigator.clipboard.writeText(text); flash(`Copied ${n}`); }
+    catch { flash("Copy failed"); }
+  };
+  bar.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-op]");
+    if (!btn) return;
+    const ids = api.getSelected().map((r) => r.entry);
+    if (!ids.length) return;
+    if (btn.dataset.op === "ids") copy(ids.join("\n"), ids.length);
+    else if (btn.dataset.op === "prefix") {
+      const pfx = bar.querySelector("[data-prefix]").value;
+      copy(ids.map((id) => pfx + id).join("\n"), ids.length);
+    } else if (btn.dataset.op === "wh") {
+      if (ids.length > 15 && !confirm(`Open ${ids.length} Wowhead tabs?`)) return;
+      ids.forEach((id) => window.open(WOWHEAD + id, "_blank", "noopener"));
+    } else if (btn.dataset.op === "clear") api.clearSelection();
+  });
 }
 
 async function browseItems(p) {
@@ -239,14 +269,34 @@ export async function showBrowse(kind, navigate) {
   try { view = isNpc ? await browseNpcs(p) : await browseItems(p); }
   catch (e) { app.innerHTML = `<div class="error">Failed: ${esc(e.message || e)}</div>`; return; }
 
+  // items get row selection + clipboard/external operations on the selection.
+  const selbar = isNpc ? "" : `<div class="selbar" data-selbar>
+    <span class="selcount" data-selcount>0 selected</span>
+    <button type="button" data-op="ids" disabled>Copy IDs</button>
+    <span class="op-prefix"><input type="text" data-prefix value=".additem " aria-label="line prefix">
+      <button type="button" data-op="prefix" disabled>Copy w/ prefix</button></span>
+    <button type="button" data-op="wh" disabled>Open on Wowhead</button>
+    <button type="button" data-op="clear" disabled>Clear</button>
+    <span class="op-status" data-opstatus></span>
+  </div>`;
   app.innerHTML = `<div class="browse"><h1>Browse ${isNpc ? "NPCs" : "Items"}</h1>${view.filters}
     <p class="browse-count">${view.rows.length.toLocaleString()} ${view.noun}</p>
+    ${selbar}
     <div data-browse></div></div>`;
   const tableEl = app.querySelector("[data-browse]");
+  const bar = app.querySelector("[data-selbar]");
+  const updateSelbar = (count) => {
+    if (!bar) return;
+    bar.querySelector("[data-selcount]").textContent = `${count} selected`;
+    bar.querySelectorAll("[data-op]").forEach((b) => { b.disabled = count === 0; });
+  };
+  let tableApi = null;
   if (view.rows.length) {
-    createTable(tableEl, {
+    tableApi = createTable(tableEl, {
       columns: view.cols, rows: view.rows, pageSize: PAGE, groupable: true,
       sort: p.get("sort"), dir: p.get("dir"), group: p.get("groupby"),
+      selectable: !isNpc, rowKey: (r) => r.entry,
+      onSelectionChange: bar ? (count) => updateSelbar(count) : undefined,
       // mirror sort/group into the URL (no re-render) so the view is shareable
       onState: (s) => {
         const np = new URLSearchParams(location.search);
@@ -255,7 +305,9 @@ export async function showBrowse(kind, navigate) {
         history.replaceState({}, "", "?" + np.toString());
       },
     });
-  } else tableEl.innerHTML = `<p class="muted">No matches.</p>`;
+  } else if (bar) { bar.remove(); tableEl.innerHTML = `<p class="muted">No matches.</p>`; }
+  else tableEl.innerHTML = `<p class="muted">No matches.</p>`;
+  if (bar && tableApi) wireSelbar(bar, tableApi);
 
   const collect = () => {
     const np = new URLSearchParams();

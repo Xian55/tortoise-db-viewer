@@ -6,11 +6,15 @@
 //   value() supplies the sort/group key; defaults to the cell's text. num => numeric.
 // opts: { pageSize, groupable, group } — groupable shows a "Group by" selector;
 //   group is the default column index to group by (null = none).
+// Selection (opt-in): pass selectable:true + rowKey:(row)=>id to add a checkbox
+//   column with per-row, per-group, and select-all checkboxes. Selection is a Set
+//   of row keys that survives sort/paging/grouping. onSelectionChange(count, rows)
+//   fires on every change; createTable returns { getSelected, clearSelection }.
 import { esc } from "./render.js";
 
 const stripTags = (h) => String(h).replace(/<[^>]*>/g, "").trim();
 
-export function createTable(container, { columns, rows, pageSize = Infinity, groupable = false, group = null, sort = null, dir = "a", onState }) {
+export function createTable(container, { columns, rows, pageSize = Infinity, groupable = false, group = null, sort = null, dir = "a", onState, selectable = false, rowKey = null, onSelectionChange }) {
   const colKey = (i) => (i == null ? "" : (columns[i].key || columns[i].label));
   const findCol = (key) => {
     if (key == null || key === "") return null;
@@ -22,10 +26,14 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
     sort: findCol(sort), dir: dir === "d" ? "d" : "a",
     group: typeof group === "number" ? group : findCol(group),
     collapsed: new Set(),
+    selected: new Set(),
   };
   const emit = () => onState && onState({ sort: colKey(state.sort), dir: state.dir, group: colKey(state.group) });
 
   const keyOf = (col, row) => (col.value ? col.value(row) : stripTags(col.cell(row)));
+  const rkey = (row) => String(rowKey ? rowKey(row) : keyOf(columns[0], row));
+  const selectedRows = () => state.rows.filter((r) => state.selected.has(rkey(r)));
+  const emitSel = () => onSelectionChange && onSelectionChange(state.selected.size, selectedRows());
   function cmp(col, dir) {
     const mul = dir === "a" ? 1 : -1;
     return (a, b) => {
@@ -51,6 +59,8 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
     const grouped = state.group != null;
     const dcols = grouped ? columns.filter((_, i) => i !== state.group) : columns;
     const gcol = grouped ? columns[state.group] : null;
+    const selTh = selectable ? `<th class="selcol"><input type="checkbox" data-selall title="Select all"></th>` : "";
+    const selTd = (r) => (selectable ? `<td class="selcol"><input type="checkbox" data-selrow="${esc(rkey(r))}"${state.selected.has(rkey(r)) ? " checked" : ""}></td>` : "");
 
     const showAll = !isFinite(pageSize);
     const pages = showAll ? 1 : Math.max(1, Math.ceil(state.rows.length / pageSize));
@@ -70,13 +80,14 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
       if (grouped) {
         const g = keyOf(gcol, r), gk = String(g), col = state.collapsed.has(gk);
         if (g !== prev) {
-          body += `<tr class="grouprow${col ? " collapsed" : ""}" data-group="${esc(gk)}"><td colspan="${dcols.length}">` +
+          const gsel = selectable ? `<td class="selcol"><input type="checkbox" data-selgroup="${esc(gk)}"></td>` : "";
+          body += `<tr class="grouprow${col ? " collapsed" : ""}" data-group="${esc(gk)}">${gsel}<td colspan="${dcols.length}">` +
             `<span class="caret">${col ? "▸" : "▾"}</span>${gcol.cell(r)}</td></tr>`;
           prev = g;
         }
-        body += `<tr data-group="${esc(gk)}"${col ? ' style="display:none"' : ""}>${cells}</tr>`;
+        body += `<tr data-group="${esc(gk)}"${col ? ' style="display:none"' : ""}>${selTd(r)}${cells}</tr>`;
       } else {
-        body += `<tr>${cells}</tr>`;
+        body += `<tr>${selTd(r)}${cells}</tr>`;
       }
     }
 
@@ -90,7 +101,23 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
       <span class="muted">Page ${state.page + 1} / ${pages}</span>
       <button data-pg="${state.page + 1}"${state.page >= pages - 1 ? " disabled" : ""}>Next →</button></div>` : "";
 
-    container.innerHTML = groupSel + `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>` + pager;
+    container.innerHTML = groupSel + `<table><thead><tr>${selTh}${head}</tr></thead><tbody>${body}</tbody></table>` + pager;
+    if (selectable) syncSelUI();
+  }
+
+  // reflect selection state on the (in)determinate header + group checkboxes.
+  function syncSelUI() {
+    const total = state.rows.length;
+    const selN = selectedRows().length;
+    const allCb = container.querySelector("[data-selall]");
+    if (allCb) { allCb.checked = total > 0 && selN === total; allCb.indeterminate = selN > 0 && selN < total; }
+    const gcol = state.group != null ? columns[state.group] : null;
+    if (gcol) container.querySelectorAll("[data-selgroup]").forEach((cb) => {
+      const inG = state.rows.filter((r) => String(keyOf(gcol, r)) === cb.dataset.selgroup);
+      const s = inG.filter((r) => state.selected.has(rkey(r))).length;
+      cb.checked = inG.length > 0 && s === inG.length;
+      cb.indeterminate = s > 0 && s < inG.length;
+    });
   }
 
   container.addEventListener("click", (e) => {
@@ -105,9 +132,9 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
     }
     const pg = e.target.closest("button[data-pg]");
     if (pg) { state.page = +pg.dataset.pg; render(); return; }
-    // collapse / expand a group (ignore clicks on links inside the header)
+    // collapse / expand a group (ignore clicks on links or the group checkbox)
     const gr = e.target.closest(".grouprow");
-    if (gr && !e.target.closest("a")) {
+    if (gr && !e.target.closest("a") && !e.target.closest("input")) {
       const key = gr.getAttribute("data-group");
       const collapsed = !state.collapsed.has(key);
       if (collapsed) state.collapsed.add(key); else state.collapsed.delete(key);
@@ -120,8 +147,31 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
   });
   container.addEventListener("change", (e) => {
     const sel = e.target.closest("[data-groupby]");
-    if (sel) { state.group = sel.value === "" ? null : +sel.value; state.collapsed.clear(); state.page = 0; render(); emit(); }
+    if (sel) { state.group = sel.value === "" ? null : +sel.value; state.collapsed.clear(); state.page = 0; render(); emit(); return; }
+    if (!selectable) return;
+    const row = e.target.closest("[data-selrow]");
+    if (row) {
+      if (e.target.checked) state.selected.add(row.dataset.selrow); else state.selected.delete(row.dataset.selrow);
+      syncSelUI(); emitSel(); return;
+    }
+    const grp = e.target.closest("[data-selgroup]");
+    if (grp) {
+      const gcol = columns[state.group], on = e.target.checked;
+      for (const r of state.rows) if (String(keyOf(gcol, r)) === grp.dataset.selgroup) {
+        if (on) state.selected.add(rkey(r)); else state.selected.delete(rkey(r));
+      }
+      render(); emitSel(); return;
+    }
+    const all = e.target.closest("[data-selall]");
+    if (all) {
+      if (all.checked) for (const r of state.rows) state.selected.add(rkey(r)); else state.selected.clear();
+      render(); emitSel(); return;
+    }
   });
 
   render();
+  return {
+    getSelected: () => selectedRows(),
+    clearSelection: () => { state.selected.clear(); render(); emitSel(); },
+  };
 }

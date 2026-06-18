@@ -9,6 +9,13 @@ const browser = await puppeteer.launch({
   args: ["--no-sandbox"],
 });
 const page = await browser.newPage();
+// capture clipboard writes so the copy operations can be asserted headlessly
+await page.evaluateOnNewDocument(() => {
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } },
+  });
+});
 const errors = [];
 const BENIGN = /favicon\.ico|icons\.json/;
 page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
@@ -82,6 +89,40 @@ async function testCrafted(id, expectProf) {
   const hit = cells.some((t) => t.includes(expectProf));
   console.log(`crafted ${id}: profession "${expectProf}" present=${hit}`);
   return hit;
+}
+
+// row selection: ID column gone, ops disabled until a row is picked, prefix copy.
+async function testSelection() {
+  await page.goto(`${BASE}?browse=items`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse tbody tr [data-selrow]", { timeout: 40000 });
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const noId = !headers.includes("ID");
+  const disabled0 = await page.$eval('.selbar [data-op="ids"]', (b) => b.disabled);
+  const firstId = await page.$eval(".browse tbody tr [data-selrow]", (el) => el.getAttribute("data-selrow"));
+  await page.click(".browse tbody tr [data-selrow]");
+  const count1 = await page.$eval("[data-selcount]", (e) => e.textContent);
+  const enabled = await page.$eval('.selbar [data-op="ids"]', (b) => !b.disabled);
+  await page.click('.selbar [data-op="prefix"]');
+  const copied = await page.evaluate(() => window.__copied);
+  const okPrefix = copied === `.additem ${firstId}`;
+  console.log(`selection: noId=${noId} disabled0=${disabled0} count="${count1}" enabled=${enabled} copied="${copied}"`);
+  return noId && disabled0 && enabled && count1 === "1 selected" && okPrefix;
+}
+
+// group selection: grouping by Slot, ticking a group header selects all its rows.
+async function testGroupSelection() {
+  await page.goto(`${BASE}?browse=items&class=4`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse [data-groupby]", { timeout: 40000 });
+  const val = await page.$$eval(".browse [data-groupby] option", (opts) => {
+    const o = opts.find((x) => x.textContent.trim() === "Slot"); return o ? o.value : "";
+  });
+  await page.select(".browse [data-groupby]", val);
+  await page.waitForSelector(".browse [data-selgroup]", { timeout: 40000 });
+  await page.click(".browse [data-selgroup]");
+  const count = await page.$eval("[data-selcount]", (e) => e.textContent);
+  const n = parseInt(count, 10) || 0;
+  console.log(`group selection: "${count}"`);
+  return n > 1;
 }
 
 // unobtainable (dev-artifact) items are hidden by default but shown when opted in;
@@ -231,6 +272,8 @@ ok = (await testFilter("faction", "a")) && ok;
 ok = (await testFilter("prof", "197")) && ok;
 ok = (await testFilter("unique", "1")) && ok;
 ok = (await testCrafted(2575, "Tailoring")) && ok;
+ok = (await testSelection()) && ok;
+ok = (await testGroupSelection()) && ok;
 console.log(`\nelapsed ${Date.now() - t}ms`);
 if (errors.length) { console.log("\nERRORS:\n" + errors.slice(0, 20).join("\n")); }
 console.log(ok && !errors.length ? "\nSMOKE: PASS" : "\nSMOKE: FAIL");
