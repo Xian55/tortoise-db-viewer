@@ -537,6 +537,19 @@ async function showZone(id, gatherItem = null) {
   };
   const npcs = dedupe(spawns), objs = dedupe(objects);
 
+  // representative in-game icon per object = its highest-chance loot item's icon
+  // (idx_drops_owner makes the per-object subquery cheap).
+  const iconByEntry = new Map();
+  if (objs.length) {
+    const ph = objs.map(() => "?").join(",");
+    const rows = await query(
+      `SELECT g.entry, (SELECT di.icon FROM drops d JOIN items i ON i.entry = d.item
+         LEFT JOIN item_display_info di ON di.ID = i.display_id
+         WHERE d.src='o' AND d.owner = g.data1 ORDER BY d.chance DESC LIMIT 1) AS icon
+       FROM gameobjects g WHERE g.entry IN (${ph})`, objs.map((o) => o.entry));
+    for (const r of rows) if (r.icon) iconByEntry.set(r.entry, r.icon);
+  }
+
   const npcCols = [
     { label: "NPC", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
     { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
@@ -548,16 +561,14 @@ async function showZone(id, gatherItem = null) {
     { label: "iLvl", num: true, cls: "muted", cell: (i) => i.item_level || "", value: (i) => i.item_level || 0 },
     { label: "Req", num: true, cls: "muted", cell: (i) => i.required_level || "", value: (i) => i.required_level || 0 },
   ];
-  // per-object map toggles: shownObjects survives table re-render (sort/page);
-  // objColors remembers the layer color assigned by the map for the row swatch.
-  const shownObjects = new Set(), objColors = new Map();
+  // per-object map toggles: shownObjects survives table re-render (sort/page)
+  const shownObjects = new Set();
   const objCols = [
-    { label: "Object", cell: (o) => esc(o.name), value: (o) => o.name },
+    { label: "Object", cell: (o) => (iconByEntry.get(o.entry) ? iconImg(iconByEntry.get(o.entry)) : "") + esc(o.name), value: (o) => o.name },
     { label: "Type", cls: "muted", cell: (o) => GAMEOBJECT_TYPE[o.type] || "", value: (o) => GAMEOBJECT_TYPE[o.type] || "" },
     { label: "Spawns", num: true, cls: "muted", cell: (o) => o.count, value: (o) => o.count },
     { label: "Map", cls: "mapcol",
-      cell: (o) => `<label class="mapchk"><input type="checkbox" data-mapobj="${o.entry}"${shownObjects.has(o.entry) ? " checked" : ""}>` +
-        `<span class="swatch" style="background:${shownObjects.has(o.entry) ? (objColors.get(o.entry) || "transparent") : "transparent"}"></span></label>`,
+      cell: (o) => `<label class="mapchk"><input type="checkbox" data-mapobj="${o.entry}"${shownObjects.has(o.entry) ? " checked" : ""}></label>`,
       value: (o) => (shownObjects.has(o.entry) ? 1 : 0) },
   ];
   const tabDefs = [
@@ -588,11 +599,8 @@ async function showZone(id, gatherItem = null) {
       const cb = e.target.closest("[data-mapobj]");
       if (!cb) return;
       const entry = Number(cb.dataset.mapobj);
-      const color = zmap.toggleObject(entry, cb.checked);
-      if (cb.checked) { shownObjects.add(entry); if (color) objColors.set(entry, color); }
-      else shownObjects.delete(entry);
-      const sw = cb.parentElement.querySelector(".swatch");
-      if (sw) sw.style.background = cb.checked ? (objColors.get(entry) || "transparent") : "transparent";
+      zmap.toggleObject(entry, cb.checked, iconByEntry.get(entry));
+      if (cb.checked) shownObjects.add(entry); else shownObjects.delete(entry);
     });
   } catch (e) { el.innerHTML = errorBox(e); }
 }

@@ -132,30 +132,22 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   if (focusBounds && focusBounds.isValid()) map.fitBounds(focusBounds.pad(0.3));
   setTimeout(() => map.invalidateSize(), 0);
 
-  // Per-object layers toggled from the zone page's Objects tab. Each gets a
-  // distinct palette color; returns the color so the row can show a swatch.
-  const PALETTE = ["#ff5e5e", "#5ec8ff", "#ffd24d", "#7dff7d", "#c98bff", "#ff9f4d", "#4dffd2", "#ff7de0", "#ff4da6", "#9dd34d"];
+  // Per-object layers toggled from the zone page's Objects tab, drawn with the
+  // object's in-game (loot) icon.
   const objLayers = new Map();
-  let palIdx = 0;
-  function toggleObject(entry, on) {
+  function toggleObject(entry, on, icon) {
     let rec = objLayers.get(entry);
     if (on) {
       if (!rec) {
-        const color = PALETTE[palIdx++ % PALETTE.length];
         const layer = L.layerGroup();
         const e = objByEntry.get(entry);
-        if (e) for (const ll of e.lls) {
-          L.circleMarker(ll, { radius: 5, color: "#000", weight: 1, fillColor: color, fillOpacity: 0.9 })
-            .bindTooltip(e.name, { direction: "top" }).addTo(layer);
-        }
-        rec = { layer, color };
+        const poi = L.divIcon({ html: iconImg(icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] });
+        if (e) for (const ll of e.lls) L.marker(ll, { icon: poi }).bindTooltip(e.name, { direction: "top" }).addTo(layer);
+        rec = { layer };
         objLayers.set(entry, rec);
       }
       rec.layer.addTo(map);
-      return rec.color;
-    }
-    if (rec) map.removeLayer(rec.layer);
-    return rec ? rec.color : null;
+    } else if (rec) map.removeLayer(rec.layer);
   }
 
   return { map, toggleObject };
