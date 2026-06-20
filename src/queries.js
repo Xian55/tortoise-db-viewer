@@ -9,12 +9,36 @@ export const Q_ITEM = `
   LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE i.entry = ?1`;
 
-export const Q_SEARCH = `
-  SELECT i.entry, i.name, i.quality, i.class, i.subclass, i.inventory_type, i.item_level, i.required_level, di.icon
-  FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
-  WHERE i.name LIKE ?1
+// ---- Unified search (items/NPCs/quests via FTS5; dungeons via LIKE) ----
+// FTS queries: ?1 = FTS MATCH string (prefix tokens), ?2 = raw term (exact/prefix
+// tiebreak), ?3 = LIMIT. Dungeons: ?1 = LIKE pattern, ?2 = raw term, ?3 = LIMIT.
+export const Q_SEARCH_ITEMS = `
+  SELECT i.entry, i.name, i.quality, i.item_level, i.required_level, di.icon
+  FROM items_fts f JOIN items i ON i.entry = f.rowid
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE items_fts MATCH ?1
   ORDER BY (i.name = ?2) DESC, (i.name LIKE ?2 || '%') DESC, i.quality DESC, i.item_level DESC
-  LIMIT 100`;
+  LIMIT ?3`;
+
+export const Q_SEARCH_NPCS = `
+  SELECT c.entry, c.name, c.level_min, c.level_max, c.rank, c.type
+  FROM creatures_fts f JOIN creatures c ON c.entry = f.rowid
+  WHERE creatures_fts MATCH ?1
+  ORDER BY (c.name = ?2) DESC, (c.name LIKE ?2 || '%') DESC, c.level_max DESC
+  LIMIT ?3`;
+
+export const Q_SEARCH_QUESTS = `
+  SELECT q.entry, q.title, q.level, q.zone, q.type
+  FROM quests_fts f JOIN quests q ON q.entry = f.rowid
+  WHERE quests_fts MATCH ?1
+  ORDER BY (q.title = ?2) DESC, (q.title LIKE ?2 || '%') DESC, q.level
+  LIMIT ?3`;
+
+export const Q_SEARCH_DUNGEONS = `
+  SELECT id, name, type FROM maps
+  WHERE type IN (1,2) AND name LIKE ?1
+  ORDER BY (name = ?2) DESC, name
+  LIMIT ?3`;
 
 // Dropped by NPCs (creature loot / skinning / pickpocket).
 export const Q_DROPPED_BY = `
@@ -138,3 +162,32 @@ export const Q_DUNGEON_BOSS_LOOT = `
   JOIN drops d ON d.src='c' AND d.owner = c.loot_id
   JOIN items i ON i.entry = d.item LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE s.map = ?1 ORDER BY c.name, d.chance DESC LIMIT 2000`;
+
+// ---- quests ----
+export const Q_QUEST = `SELECT q.*, a.name AS zone_name FROM quests q LEFT JOIN areas a ON a.entry = q.zone WHERE q.entry = ?1`;
+export const Q_QUEST_BRIEF = `SELECT entry, title, level FROM quests WHERE entry = ?1`;
+
+export const Q_QUEST_GIVERS_NPC = `SELECT c.entry, c.name, c.level_min, c.level_max, c.rank FROM creature_quest_start r JOIN creatures c ON c.entry = r.id WHERE r.quest = ?1 ORDER BY c.level_max, c.name`;
+export const Q_QUEST_ENDERS_NPC = `SELECT c.entry, c.name, c.level_min, c.level_max, c.rank FROM creature_quest_end r JOIN creatures c ON c.entry = r.id WHERE r.quest = ?1 ORDER BY c.level_max, c.name`;
+export const Q_QUEST_GIVERS_GO = `SELECT g.entry, g.name FROM gameobject_quest_start r JOIN gameobjects g ON g.entry = r.id WHERE r.quest = ?1 ORDER BY g.name`;
+export const Q_QUEST_ENDERS_GO = `SELECT g.entry, g.name FROM gameobject_quest_end r JOIN gameobjects g ON g.entry = r.id WHERE r.quest = ?1 ORDER BY g.name`;
+
+// All quest<->item links for one quest (split by role client-side).
+export const Q_QUEST_ITEMS = `
+  SELECT qi.role, qi.count, i.entry, i.name, i.quality, di.icon
+  FROM quest_item qi JOIN items i ON i.entry = qi.item
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE qi.quest = ?1`;
+
+// Kill/interact objectives: creatures (is_go=0) and gameobjects (is_go=1).
+export const Q_QUEST_CREATURES = `
+  SELECT o.target, o.is_go, o.count, COALESCE(c.name, g.name) AS name, c.level_min, c.level_max, c.rank
+  FROM quest_creature_objective o
+  LEFT JOIN creatures c ON c.entry = o.target AND o.is_go = 0
+  LEFT JOIN gameobjects g ON g.entry = o.target AND o.is_go = 1
+  WHERE o.quest = ?1`;
+
+export const Q_QUEST_REP = `SELECT r.faction, r.value, f.name1 AS faction_name FROM quest_reward_rep r LEFT JOIN faction_names f ON f.id = r.faction WHERE r.quest = ?1`;
+
+// Reverse: quests that require killing this creature ("Objective of" on NPC page).
+export const Q_NPC_OBJECTIVE_OF = `SELECT q.entry, q.title, q.level, o.count FROM quest_creature_objective o JOIN quests q ON q.entry = o.quest WHERE o.target = ?1 AND o.is_go = 0 ORDER BY q.level LIMIT 100`;

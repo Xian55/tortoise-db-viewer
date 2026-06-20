@@ -402,23 +402,42 @@ console.log("Deriving craft sources...");
   console.log(`  craft_source: ${ncs} spells (trainer: ${ntr}, recipe: ${nrec}, recipe pool: ${itemBySpell.size})`);
 }
 
-// ---- Quests + quest<->item link table ----
-console.log("Importing quests + quest items...");
+// ---- Quests + quest link tables (items, creature/GO objectives, rep rewards) ----
+console.log("Importing quests + quest links...");
 {
   const sql = read("tw_world_quest_template.sql");
   const c = parseColumns(sql);
   const at = (name) => c.indexOf(name);
-  const iEntry = at("entry"), iTitle = at("Title"), iZone = at("ZoneOrSort"),
-    iMin = at("MinLevel"), iLvl = at("QuestLevel");
-  const req = [1, 2, 3, 4].map((n) => [at(`ReqItemId${n}`), at(`ReqItemCount${n}`)]);
-  const rew = [1, 2, 3, 4].map((n) => [at(`RewItemId${n}`), at(`RewItemCount${n}`)]);
-  const choice = [1, 2, 3, 4, 5, 6].map((n) => [at(`RewChoiceItemId${n}`), at(`RewChoiceItemCount${n}`)]);
+  const cols = {
+    entry: at("entry"), title: at("Title"), zone: at("ZoneOrSort"), type: at("Type"),
+    min: at("MinLevel"), level: at("QuestLevel"),
+    reqclasses: at("RequiredClasses"), reqraces: at("RequiredRaces"),
+    reqskill: at("RequiredSkill"), reqskillvalue: at("RequiredSkillValue"),
+    details: at("Details"), objectives: at("Objectives"),
+    requesttext: at("RequestItemsText"), offertext: at("OfferRewardText"), endtext: at("EndText"),
+    money: at("RewOrReqMoney"), xp: at("RewXP"), rewspell: at("RewSpell"),
+    srcitem: at("SrcItemId"), prevquest: at("PrevQuestId"), nextquest: at("NextQuestId"),
+  };
+  const objText = [1, 2, 3, 4].map((n) => at(`ObjectiveText${n}`));
+  const reqItem = [1, 2, 3, 4].map((n) => [at(`ReqItemId${n}`), at(`ReqItemCount${n}`)]);
+  const srcItem = [1, 2, 3, 4].map((n) => [at(`ReqSourceId${n}`), at(`ReqSourceCount${n}`)]);
+  const rewItem = [1, 2, 3, 4].map((n) => [at(`RewItemId${n}`), at(`RewItemCount${n}`)]);
+  const choiceItem = [1, 2, 3, 4, 5, 6].map((n) => [at(`RewChoiceItemId${n}`), at(`RewChoiceItemCount${n}`)]);
+  const reqCreature = [1, 2, 3, 4].map((n) => [at(`ReqCreatureOrGOId${n}`), at(`ReqCreatureOrGOCount${n}`)]);
+  const repReward = [1, 2, 3, 4, 5].map((n) => [at(`RewRepFaction${n}`), at(`RewRepValue${n}`)]);
 
-  db.exec(`CREATE TABLE quests (entry INTEGER PRIMARY KEY, title TEXT, zone INTEGER, minlevel INTEGER, level INTEGER)`);
+  db.exec(`CREATE TABLE quests (entry INTEGER PRIMARY KEY, title TEXT, zone INTEGER, type INTEGER,
+    minlevel INTEGER, level INTEGER, reqclasses INTEGER, reqraces INTEGER, reqskill INTEGER, reqskillvalue INTEGER,
+    details TEXT, objectives TEXT, requesttext TEXT, offertext TEXT, endtext TEXT, objtext TEXT,
+    money INTEGER, xp INTEGER, rewspell INTEGER, srcitem INTEGER, prevquest INTEGER, nextquest INTEGER)`);
   db.exec(`CREATE TABLE quest_item (quest INTEGER, item INTEGER, role TEXT, count INTEGER)`);
-  const sQ = db.prepare(`INSERT OR REPLACE INTO quests VALUES (?,?,?,?,?)`);
+  db.exec(`CREATE TABLE quest_creature_objective (quest INTEGER, target INTEGER, is_go INTEGER, count INTEGER)`);
+  db.exec(`CREATE TABLE quest_reward_rep (quest INTEGER, faction INTEGER, value INTEGER)`);
+  const sQ = db.prepare(`INSERT OR REPLACE INTO quests VALUES (${Array(22).fill("?").join(",")})`);
   const sQI = db.prepare(`INSERT INTO quest_item VALUES (?,?,?,?)`);
-  let nq = 0, nqi = 0;
+  const sCO = db.prepare(`INSERT INTO quest_creature_objective VALUES (?,?,?,?)`);
+  const sRep = db.prepare(`INSERT INTO quest_reward_rep VALUES (?,?,?)`);
+  let nq = 0, nqi = 0, nco = 0, nrep = 0;
   const addItems = (e, pairs, role, row) => {
     for (const [ii, ci] of pairs) {
       const item = clean(row[ii]);
@@ -427,17 +446,41 @@ console.log("Importing quests + quest items...");
   };
   db.transaction(() => {
     for (const row of iterRows(sql, "quest_template")) {
-      const e = clean(row[iEntry]);
-      sQ.run(e, clean(row[iTitle]), clean(row[iZone]), clean(row[iMin]), clean(row[iLvl]));
+      const e = clean(row[cols.entry]);
+      const ot = objText.map((i) => clean(row[i])).filter((s) => s && String(s).trim()).join("\n") || null;
+      sQ.run(
+        e, clean(row[cols.title]), clean(row[cols.zone]), clean(row[cols.type]),
+        clean(row[cols.min]), clean(row[cols.level]), clean(row[cols.reqclasses]), clean(row[cols.reqraces]),
+        clean(row[cols.reqskill]), clean(row[cols.reqskillvalue]),
+        clean(row[cols.details]), clean(row[cols.objectives]), clean(row[cols.requesttext]),
+        clean(row[cols.offertext]), clean(row[cols.endtext]), ot,
+        clean(row[cols.money]), clean(row[cols.xp]), clean(row[cols.rewspell]),
+        clean(row[cols.srcitem]), clean(row[cols.prevquest]), clean(row[cols.nextquest]),
+      );
       nq++;
-      addItems(e, req, "req", row);
-      addItems(e, rew, "reward", row);
-      addItems(e, choice, "choice", row);
+      addItems(e, reqItem, "req", row);
+      addItems(e, srcItem, "source", row);
+      addItems(e, rewItem, "reward", row);
+      addItems(e, choiceItem, "choice", row);
+      for (const [ii, ci] of reqCreature) {
+        const id = clean(row[ii]);
+        if (id) { sCO.run(e, Math.abs(id), id < 0 ? 1 : 0, clean(row[ci]) || 1); nco++; }
+      }
+      for (const [fi, vi] of repReward) {
+        const fac = clean(row[fi]), val = clean(row[vi]);
+        if (fac && val) { sRep.run(e, fac, val); nrep++; }
+      }
     }
   })();
   db.exec(`CREATE INDEX idx_quest_item_item ON quest_item(item)`);
   db.exec(`CREATE INDEX idx_quest_item_quest ON quest_item(quest)`);
-  console.log(`  quests: ${nq} | quest_item links: ${nqi}`);
+  db.exec(`CREATE INDEX idx_qco_quest ON quest_creature_objective(quest)`);
+  db.exec(`CREATE INDEX idx_qco_target ON quest_creature_objective(target)`);
+  db.exec(`CREATE INDEX idx_qrr_quest ON quest_reward_rep(quest)`);
+  db.exec(`CREATE INDEX idx_quests_zone ON quests(zone)`);
+  db.exec(`CREATE INDEX idx_quests_level ON quests(level)`);
+  db.exec(`CREATE INDEX idx_quests_type ON quests(type)`);
+  console.log(`  quests: ${nq} | items: ${nqi} | creature/GO objectives: ${nco} | rep rewards: ${nrep}`);
 }
 
 // ---- Derived per-item gear stats (powers the multi-criteria browse filter) ----
@@ -510,10 +553,14 @@ console.log("Deriving item_sources...");
   console.log(`  item_sources: ${n} rows (unobtainable: ${nu})`);
 }
 
-// ---- Full-text search over item names ----
-console.log("Building FTS index...");
+// ---- Full-text search over item / creature / quest names (unified search) ----
+console.log("Building FTS indexes...");
 db.exec(`CREATE VIRTUAL TABLE items_fts USING fts5(name, content='items', content_rowid='entry', tokenize='unicode61')`);
 db.exec(`INSERT INTO items_fts(rowid, name) SELECT entry, name FROM items`);
+db.exec(`CREATE VIRTUAL TABLE creatures_fts USING fts5(name, content='creatures', content_rowid='entry', tokenize='unicode61')`);
+db.exec(`INSERT INTO creatures_fts(rowid, name) SELECT entry, name FROM creatures WHERE name IS NOT NULL AND name <> ''`);
+db.exec(`CREATE VIRTUAL TABLE quests_fts USING fts5(title, content='quests', content_rowid='entry', tokenize='unicode61')`);
+db.exec(`INSERT INTO quests_fts(rowid, title) SELECT entry, title FROM quests WHERE title IS NOT NULL AND title <> ''`);
 
 console.log("Optimizing...");
 db.pragma("journal_mode = DELETE");

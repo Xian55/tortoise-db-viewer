@@ -67,6 +67,46 @@ export const IMPORTS = [
     pk: null,
     indexes: ["item", "entry"],
   },
+  {
+    // Zone-name lookup for quests (positive ZoneOrSort -> area_template.entry).
+    file: "tw_world_area_template.sql",
+    table: "area_template",
+    target: "areas",
+    columns: ["entry", "name"],
+    text: ["name"],
+    pk: "entry",
+    indexes: [],
+  },
+  {
+    // Faction names for quest reputation rewards (id + English name only).
+    file: "tw_world_faction.sql",
+    table: "faction",
+    target: "faction_names",
+    columns: ["id", "name1"],
+    text: ["name1"],
+    pk: "id",
+    indexes: [],
+  },
+  {
+    // GameObjects that start a quest (e.g. a book/altar).
+    file: "tw_world_gameobject_questrelation.sql",
+    table: "gameobject_questrelation",
+    target: "gameobject_quest_start",
+    columns: ["id", "quest"],
+    text: [],
+    pk: null,
+    indexes: ["id", "quest"],
+  },
+  {
+    // GameObjects that complete a quest.
+    file: "tw_world_gameobject_involvedrelation.sql",
+    table: "gameobject_involvedrelation",
+    target: "gameobject_quest_end",
+    columns: ["id", "quest"],
+    text: [],
+    pk: null,
+    indexes: ["id", "quest"],
+  },
 ];
 
 // Loot tables share the same shape; loaded in a loop.

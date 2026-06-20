@@ -138,6 +138,45 @@ export function classRestrictions(mask) {
   return out;
 }
 
+// allowable_race bitmask (1.12). Goblin (256) isn't playable.
+export const RACE_MASK = [
+  [1, "Human"], [2, "Orc"], [4, "Dwarf"], [8, "Night Elf"],
+  [16, "Undead"], [32, "Tauren"], [64, "Gnome"], [128, "Troll"],
+];
+const RACE_ALL = RACE_MASK.reduce((a, [b]) => a | b, 0);
+
+export function raceRestrictions(mask) {
+  if (!mask || mask === -1 || (mask & RACE_ALL) === RACE_ALL) return null;
+  if (mask === RACE_ALLIANCE) return ["Alliance"];
+  if (mask === RACE_HORDE) return ["Horde"];
+  const out = RACE_MASK.filter(([b]) => mask & b).map(([, n]) => n);
+  return out.length ? out : null;
+}
+
+// quest_template.Type -> label (1.12 subset present in the data; unknown -> blank)
+export const QUEST_TYPE = { 1: "Group", 41: "PvP", 62: "Raid", 81: "Dungeon", 82: "World Event" };
+
+// Negative ZoneOrSort -> category, from the client QuestSort.dbc (positive
+// ZoneOrSort is an areas.entry zone name instead). Authoritative, extracted once.
+export const QUEST_SORT = {
+  "-1": "Epic", "-22": "Seasonal", "-24": "Herbalism", "-25": "Survival",
+  "-61": "Warlock", "-81": "Warrior", "-82": "Shaman", "-101": "Fishing",
+  "-121": "Blacksmithing", "-141": "Paladin", "-161": "Mage", "-162": "Rogue",
+  "-181": "Alchemy", "-182": "Leatherworking", "-201": "Engineering", "-221": "Treasure Map",
+  "-241": "Daily Quest", "-261": "Hunter", "-262": "Priest", "-263": "Druid",
+  "-264": "Tailoring", "-284": "Special", "-304": "Cooking", "-324": "First Aid",
+  "-344": "Legendary", "-364": "Darkmoon Faire", "-365": "Ahn'Qiraj War",
+  "-366": "Lunar Festival", "-367": "Reputation", "-368": "Invasion",
+  "-369": "Midsummer", "-371": "Inscription", "-374": "Noblegarden",
+};
+
+// Quest "zone" field: positive -> area name (passed in), negative -> sort category.
+export function questZoneLabel(zone, zoneName) {
+  if (zone > 0) return zoneName || "";
+  if (zone < 0) return QUEST_SORT[zone] || "";
+  return "";
+}
+
 export function money(copper) {
   const g = Math.floor(copper / 10000);
   const s = Math.floor((copper % 10000) / 100);

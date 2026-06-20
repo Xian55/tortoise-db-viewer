@@ -1,11 +1,12 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, npcRoles } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
+import { runSearch, initSearchDropdown } from "./search.js";
 
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
@@ -63,11 +64,13 @@ function route() {
   const params = new URLSearchParams(location.search);
   const item = params.get("item");
   const npc = params.get("npc");
+  const quest = params.get("quest");
   const dungeon = params.get("dungeon");
   const browse = params.get("browse");
   const term = params.get("search");
   if (item) showItem(Number(item));
   else if (npc) showNpc(Number(npc));
+  else if (quest) showQuest(Number(quest));
   else if (dungeon) showDungeon(Number(dungeon));
   else if (params.get("dungeons") !== null) showDungeons();
   else if (browse) showBrowse(browse, navigate);
@@ -82,8 +85,9 @@ function showHome() {
     <h1>Tortoise-WoW Database</h1>
     <p>Search above, or browse <a class="nav" href="?browse=items">items</a> /
        <a class="nav" href="?browse=npcs">NPCs</a> /
+       <a class="nav" href="?browse=quests">quests</a> /
        <a class="nav" href="?dungeons">dungeons &amp; raids</a>.
-       Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, or <code>?dungeon=ID</code>.</p>
+       Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, or <code>?dungeon=ID</code>.</p>
     <p class="muted">Examples:
       <a class="ilink" href="?item=2770">Copper Ore</a> ·
       <a class="ilink" href="?item=7909">Aquamarine</a> ·
@@ -94,19 +98,42 @@ function showHome() {
 async function showSearch(term) {
   document.title = `Search: ${term}`;
   app.innerHTML = `<div class="loading">Searching…</div>`;
-  let rows;
-  try { rows = await query(Q.Q_SEARCH, [`%${term}%`, term]); }
+  let res;
+  try { res = await runSearch(term, 100); }
   catch (e) { app.innerHTML = errorBox(e); return; }
-  if (!rows.length) { app.innerHTML = `<div class="home"><p>No items match “${esc(term)}”.</p></div>`; return; }
-  const cols = [
+
+  const itemCols = [
     { label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
     { label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
     { label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
-    { label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
   ];
-  const t = regTable(cols, rows, { pageSize: 100 });
-  app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${t.html}</div>`;
+  const npcCols = [
+    { label: "Name", cell: (r) => npcLink(r.entry, r.name), value: (r) => r.name },
+    { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
+    { label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
+  ];
+  const questCols = [
+    { label: "Title", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
+    { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
+    { label: "Zone", cls: "muted", cell: (r) => esc(questZoneLabel(r.zone, r.zone_name)), value: (r) => questZoneLabel(r.zone, r.zone_name) },
+  ];
+  const dungeonCols = [
+    { label: "Name", cell: (r) => dungeonLink(r.id, r.name), value: (r) => r.name },
+    { label: "Type", cls: "muted", cell: (r) => (r.type === 2 ? "Raid" : "Dungeon"), value: (r) => r.type },
+  ];
+
+  const tabDefs = [
+    { id: "items", label: "Items", ...regTable(itemCols, res.items, { pageSize: 100 }) },
+    { id: "npcs", label: "NPCs", ...regTable(npcCols, res.npcs, { pageSize: 100 }) },
+    { id: "quests", label: "Quests", ...regTable(questCols, res.quests, { pageSize: 100 }) },
+    { id: "dungeons", label: "Dungeons", ...regTable(dungeonCols, res.dungeons) },
+  ];
+  const total = res.items.length + res.npcs.length + res.quests.length + res.dungeons.length;
+  if (!total) { app.innerHTML = `<div class="home"><p>No results for “${esc(term)}”.</p></div>`; return; }
+
+  app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${tabs(tabDefs)}</div>`;
   mountTables();
+  wireTabs();
 }
 
 async function showItem(id) {
@@ -158,7 +185,7 @@ async function showItem(id) {
     { label: "Chance", num: true, cell: (d) => pct(d.chance), value: (d) => d.chance || 0 },
   ];
   const questCols = (showQty, showChoice) => [
-    { label: "Quest", cell: (q) => esc(q.title) + (showChoice && q.role === "choice" ? ' <span class="muted">(choice)</span>' : ""), value: (q) => q.title },
+    { label: "Quest", cell: (q) => questLink(q.entry, q.title) + (showChoice && q.role === "choice" ? ' <span class="muted">(choice)</span>' : ""), value: (q) => q.title },
     { label: "Level", num: true, cls: "muted", cell: (q) => q.level || "", value: (q) => q.level || 0 },
     ...(showQty ? [{ label: "Qty", num: true, cls: "muted", cell: (q) => q.count, value: (q) => q.count || 0 }] : []),
   ];
@@ -216,10 +243,10 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [loot, skin, pick, sells, starts, ends, maps] = await Promise.all([
+  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps] = await Promise.all([
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
-    query(Q.Q_NPC_MAPS, [id]),
+    query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]),
   ]);
   const mapHtml = maps.map((m) => {
     const tag = m.type === 2 ? "Raid" : m.type === 1 ? "Dungeon" : null;
@@ -244,8 +271,13 @@ async function showNpc(id) {
     { label: "Stock", num: true, cls: "muted", cell: (s) => (s.maxcount > 0 ? s.maxcount : "∞"), value: (s) => (s.maxcount > 0 ? s.maxcount : Infinity) },
   ];
   const questCols = [
-    { label: "Quest", cell: (q) => esc(q.title), value: (q) => q.title },
+    { label: "Quest", cell: (q) => questLink(q.entry, q.title), value: (q) => q.title },
     { label: "Level", num: true, cls: "muted", cell: (q) => q.level || "", value: (q) => q.level || 0 },
+  ];
+  const objectiveCols = [
+    { label: "Quest", cell: (q) => questLink(q.entry, q.title), value: (q) => q.title },
+    { label: "Level", num: true, cls: "muted", cell: (q) => q.level || "", value: (q) => q.level || 0 },
+    { label: "Needed", num: true, cls: "muted", cell: (q) => (q.count > 1 ? q.count : ""), value: (q) => q.count || 0 },
   ];
 
   const tabDefs = [
@@ -255,6 +287,7 @@ async function showNpc(id) {
     { id: "sells", label: "Sells", ...regTable(sellCols, sells) },
     { id: "starts", label: "Starts quests", ...regTable(questCols, starts) },
     { id: "ends", label: "Ends quests", ...regTable(questCols, ends) },
+    { id: "objective", label: "Objective of", ...regTable(objectiveCols, objectiveOf) },
   ];
 
   app.innerHTML =
@@ -267,6 +300,116 @@ async function showNpc(id) {
           <span class="dim">· NPC #${npc.entry}</span></div>
         ${mapHtml ? `<div class="npc-meta muted">Location: ${mapHtml}</div>` : ""}
       </div>
+      ${tabs(tabDefs)}
+    </div>`;
+  mountTables();
+  wireTabs();
+}
+
+// Render mangos quest text: escape, then turn $B/$b into breaks and replace the
+// $N/$C/$R name/class/race tokens + $gMale:Female; gender switches.
+function questText(t) {
+  if (!t) return "";
+  return esc(t)
+    .replace(/\$[bB]/g, "<br>")
+    .replace(/\$[nN]/g, "&lt;name&gt;")
+    .replace(/\$[cC]/g, "&lt;class&gt;")
+    .replace(/\$[rR]/g, "&lt;race&gt;")
+    .replace(/\$[gG]\s*([^:]*):([^;]*);/g, "$1/$2")
+    .replace(/\r?\n/g, "<br>");
+}
+
+async function showQuest(id) {
+  app.innerHTML = `<div class="loading">Loading quest ${id}…</div>`;
+  let q;
+  try { q = await queryOne(Q.Q_QUEST, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (!q) { app.innerHTML = `<div class="home"><p>No quest with ID ${id}.</p></div>`; return; }
+  document.title = `${q.title} - Tortoise-WoW DB`;
+
+  const [giversN, endersN, giversG, endersG, qitems, qcreatures, qrep, rewSpell, prev, next] =
+    await Promise.all([
+      query(Q.Q_QUEST_GIVERS_NPC, [id]), query(Q.Q_QUEST_ENDERS_NPC, [id]),
+      query(Q.Q_QUEST_GIVERS_GO, [id]), query(Q.Q_QUEST_ENDERS_GO, [id]),
+      query(Q.Q_QUEST_ITEMS, [id]), query(Q.Q_QUEST_CREATURES, [id]), query(Q.Q_QUEST_REP, [id]),
+      q.rewspell ? queryOne(Q.Q_SPELL, [q.rewspell]) : null,
+      q.prevquest > 0 ? queryOne(Q.Q_QUEST_BRIEF, [q.prevquest]) : null,
+      q.nextquest > 0 ? queryOne(Q.Q_QUEST_BRIEF, [q.nextquest]) : null,
+    ]);
+
+  const byRole = (role) => qitems.filter((r) => r.role === role);
+
+  // ---- header meta ----
+  const bits = [];
+  if (q.level > 0) bits.push(`Level ${q.level}`);
+  if (q.minlevel > 0) bits.push(`Requires level ${q.minlevel}`);
+  const zoneLabel = questZoneLabel(q.zone, q.zone_name);
+  if (zoneLabel) bits.push(esc(zoneLabel));
+  if (QUEST_TYPE[q.type]) bits.push(QUEST_TYPE[q.type]);
+
+  const restr = [];
+  const cls = classRestrictions(q.reqclasses);
+  if (cls) restr.push(`Classes: ${cls.join(", ")}`);
+  const race = raceRestrictions(q.reqraces);
+  if (race) restr.push(`Races: ${race.join(", ")}`);
+  if (q.reqskill > 0) {
+    restr.push(`Requires ${PROFESSION_LABEL[q.reqskill] || `skill ${q.reqskill}`}` +
+      (q.reqskillvalue > 0 ? ` (${q.reqskillvalue})` : ""));
+  }
+
+  const chain = [];
+  if (prev) chain.push(`<span class="dim">← Previous:</span> ${questLink(prev.entry, prev.title)}`);
+  if (next) chain.push(`<span class="dim">Next →:</span> ${questLink(next.entry, next.title)}`);
+
+  // ---- reward summary ----
+  const rewBits = [];
+  if (q.money > 0) rewBits.push(moneyHtml(q.money));
+  if (q.xp > 0) rewBits.push(`${q.xp.toLocaleString()} XP`);
+  for (const r of qrep) if (r.value) rewBits.push(`+${r.value} ${esc(r.faction_name || `faction ${r.faction}`)}`);
+  if (rewSpell) rewBits.push(`Learn: ${esc(rewSpell.name)}`);
+
+  const desc = [];
+  if (q.objectives) desc.push(`<p class="quest-obj">${questText(q.objectives)}</p>`);
+  if (q.details) desc.push(`<h3>Description</h3><p>${questText(q.details)}</p>`);
+  if (q.objtext) desc.push(`<h3>Quest Objectives</h3><p>${questText(q.objtext)}</p>`);
+  if (q.offertext) desc.push(`<h3>Completion</h3><p>${questText(q.offertext)}</p>`);
+  if (rewBits.length) desc.push(`<h3>Rewards</h3><p class="quest-rew">${rewBits.join('<span class="dim"> · </span>')}</p>`);
+
+  // ---- relation tables ----
+  const npcCols = [
+    { label: "NPC", cell: (c) => npcLink(c.entry, c.name), value: (c) => c.name },
+    { label: "Level", num: true, cls: "muted", cell: (c) => lvlRange(c), value: (c) => c.level_max || c.level_min || 0 },
+  ];
+  const goCols = [{ label: "Object", cell: (g) => esc(g.name), value: (g) => g.name }];
+  const itemCols = [
+    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+    { label: "Qty", num: true, cls: "muted", cell: (r) => (r.count > 1 ? r.count : ""), value: (r) => r.count || 0 },
+  ];
+  const targetCols = [
+    { label: "Target", cell: (o) => (o.is_go ? esc(o.name || `Object #${o.target}`) : npcLink(o.target, o.name || `NPC #${o.target}`)), value: (o) => o.name || "" },
+    { label: "Count", num: true, cls: "muted", cell: (o) => (o.count > 1 ? o.count : ""), value: (o) => o.count || 0 },
+  ];
+
+  const tabDefs = [
+    { id: "giverN", label: "Starts (NPC)", ...regTable(npcCols, giversN) },
+    { id: "enderN", label: "Ends (NPC)", ...regTable(npcCols, endersN) },
+    { id: "giverG", label: "Starts (Object)", ...regTable(goCols, giversG) },
+    { id: "enderG", label: "Ends (Object)", ...regTable(goCols, endersG) },
+    { id: "objcre", label: "Kill / Use", ...regTable(targetCols, qcreatures) },
+    { id: "reqitem", label: "Required items", ...regTable(itemCols, byRole("req")) },
+    { id: "srcitem", label: "Provided items", ...regTable(itemCols, byRole("source")) },
+    { id: "reward", label: "Rewards", ...regTable(itemCols, byRole("reward")) },
+    { id: "choice", label: "Choice of", ...regTable(itemCols, byRole("choice")) },
+  ];
+
+  app.innerHTML =
+    `<div class="npc-page quest-page">
+      <div class="npc-head">
+        <h1>${esc(q.title)}</h1>
+        <div class="npc-meta muted">${bits.join(" · ")}<span class="dim"> · Quest #${q.entry}</span></div>
+        ${restr.length ? `<div class="npc-meta muted">${restr.map(esc).join(" · ")}</div>` : ""}
+        ${chain.length ? `<div class="npc-meta quest-chain">${chain.join('<span class="dim"> · </span>')}</div>` : ""}
+      </div>
+      ${desc.length ? `<div class="panel quest-desc">${desc.join("")}</div>` : ""}
       ${tabs(tabDefs)}
     </div>`;
   mountTables();
@@ -350,6 +493,7 @@ async function loadIconAtlas() {
 // ---- boot ----
 preconnect();
 initHovercards();
+initSearchDropdown(searchInput, document.getElementById("searchForm"), navigate);
 // Wait for the atlas (small JSON) so the first paint shows custom icons; route
 // anyway if it fails or is missing.
 loadIconAtlas().finally(route);

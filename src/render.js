@@ -208,6 +208,20 @@ export function dungeonLink(id, name) {
   return `<a class="ilink" href="?dungeon=${id}">${esc(name)}</a>`;
 }
 
+export function questLink(entry, title) {
+  return `<a class="ilink quest" href="?quest=${entry}">${esc(title)}</a>`;
+}
+
+// gold/silver/copper coin spans from a raw copper amount (mirrors the tooltip).
+export function moneyHtml(copper) {
+  const { g, s, c } = money(copper);
+  const p = [];
+  if (g) p.push(`<span class="coin g">${g}</span>`);
+  if (s) p.push(`<span class="coin s">${s}</span>`);
+  p.push(`<span class="coin c">${c}</span>`);
+  return p.join(" ");
+}
+
 export function pct(v) {
   if (v == null) return "";
   return v >= 100 ? "100%" : v >= 1 ? `${v.toFixed(1)}%` : `${v.toFixed(2)}%`;

@@ -3,12 +3,13 @@
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
 import { Q_CRAFTING } from "./queries.js";
-import { itemLink, npcLink, sourceTags, esc } from "./render.js";
+import { itemLink, npcLink, questLink, sourceTags, esc } from "./render.js";
 import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
   CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
   BONDING, CLASS_MASK, PROFESSION, PROFESSION_LABEL, RACE_ALLIANCE, RACE_HORDE,
+  QUEST_TYPE, questZoneLabel,
 } from "./constants.js";
 
 const PAGE = 100;
@@ -312,16 +313,65 @@ async function browseCrafting(p) {
   return { rows: crafts, cols, filters, noun: "crafts" };
 }
 
+async function browseQuests(p) {
+  const f = {
+    q: p.get("q") || "", zone: p.get("zone") || "", type: p.get("type") || "",
+    minlvl: p.get("minlvl") || "", maxlvl: p.get("maxlvl") || "",
+    class: p.get("class") || "", faction: p.get("faction") || "",
+  };
+  const where = ["q.title <> ''"], binds = [];
+  const add = (cond, val) => { where.push(cond); binds.push(val); };
+  if (f.q) add("q.title LIKE ?", `%${f.q}%`);
+  if (f.zone !== "") add("q.zone = ?", +f.zone);
+  if (f.type !== "") add("q.type = ?", +f.type);
+  if (f.minlvl !== "") add("q.level >= ?", +f.minlvl);
+  if (f.maxlvl !== "") add("q.level <= ?", +f.maxlvl);
+  // required class: unrestricted (0) or the class bit is set.
+  if (f.class !== "") { where.push("(q.reqclasses = 0 OR (q.reqclasses & ?) <> 0)"); binds.push(+f.class); }
+  // faction: quest restricted to one side's races only.
+  const factionCond = "(q.reqraces <> 0 AND (q.reqraces & ?) <> 0 AND (q.reqraces & ?) = 0)";
+  if (f.faction === "a") { where.push(factionCond); binds.push(RACE_ALLIANCE, RACE_HORDE); }
+  else if (f.faction === "h") { where.push(factionCond); binds.push(RACE_HORDE, RACE_ALLIANCE); }
+  const whereSql = "WHERE " + where.join(" AND ");
+  const rows = await query(
+    `SELECT q.entry, q.title, q.level, q.zone, q.type, a.name AS zone_name
+     FROM quests q LEFT JOIN areas a ON a.entry = q.zone ${whereSql}
+     ORDER BY q.level, q.title`, binds);
+
+  // Zone dropdown: only zones/categories that actually carry quests, labeled.
+  const zrows = await query(`SELECT DISTINCT q.zone, a.name AS zone_name FROM quests q LEFT JOIN areas a ON a.entry = q.zone WHERE q.title <> ''`);
+  const zopts = zrows.map((z) => [String(z.zone), questZoneLabel(z.zone, z.zone_name)])
+    .filter(([, l]) => l).sort((a, b) => a[1].localeCompare(b[1]));
+
+  const cols = [
+    { key: "name", label: "Title", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
+    { key: "level", label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
+    { key: "zone", label: "Zone", cls: "muted", cell: (r) => esc(questZoneLabel(r.zone, r.zone_name)), value: (r) => questZoneLabel(r.zone, r.zone_name) },
+    { key: "type", label: "Type", cls: "muted", cell: (r) => QUEST_TYPE[r.type] || "", value: (r) => QUEST_TYPE[r.type] || "" },
+  ];
+  const filters = `<div class="filters">
+    ${textField("q", "Name", f.q)}
+    ${selectField("zone", "Zone", options(zopts, f.zone, "Any zone"))}
+    ${selectField("type", "Type", options(Object.entries(QUEST_TYPE), f.type, "Any type"))}
+    ${numField("minlvl", "Level ≥", f.minlvl)} ${numField("maxlvl", "Level ≤", f.maxlvl)}
+    ${selectField("class", "Class", options(CLASS_MASK, f.class, "Any class"))}
+    ${selectField("faction", "Faction", options([["a", "Alliance"], ["h", "Horde"]], f.faction, "Any"))}
+    <button class="reset" data-reset="1">Reset</button>
+  </div>`;
+  return { rows, cols, filters, noun: "quests" };
+}
+
 export async function showBrowse(kind, navigate) {
   const app = document.getElementById("app");
   const isNpc = kind === "npcs";
   const isItems = kind === "items";
-  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : "Items";
+  const isQuests = kind === "quests";
+  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : "Items";
   document.title = `Browse ${heading} - Tortoise-WoW DB`;
   app.innerHTML = `<div class="loading">Loading…</div>`;
   const p = new URLSearchParams(location.search);
   let view;
-  try { view = kind === "crafting" ? await browseCrafting(p) : isNpc ? await browseNpcs(p) : await browseItems(p); }
+  try { view = kind === "crafting" ? await browseCrafting(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : await browseItems(p); }
   catch (e) { app.innerHTML = `<div class="error">Failed: ${esc(e.message || e)}</div>`; return; }
 
   // items get row selection + clipboard/external operations on the selection.

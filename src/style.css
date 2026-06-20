@@ -40,6 +40,24 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 }
 #searchForm button:hover { background: #262a35; }
 
+/* live search autocomplete (search.js): fixed panel under the input */
+.search-dropdown {
+  position: fixed; z-index: 200; max-width: 520px; max-height: 70vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .6); padding: 4px;
+}
+.sd-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: 5px; cursor: pointer; white-space: nowrap;
+}
+.sd-row:hover, .sd-row.active { background: var(--panel2); }
+.sd-row .ilink { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.sd-tag {
+  flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); border: 1px solid var(--border); border-radius: 9px; padding: 0 7px;
+}
+.sd-all { color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); margin-top: 4px; }
+
 #app { max-width: 1100px; margin: 22px auto; padding: 0 18px; }
 .loading, .home, .results { padding: 8px 2px; }
 .muted { color: var(--muted); }
@@ -108,6 +126,17 @@ h1 { font-size: 22px; }
 .npc-meta .dim { opacity: .7; }
 .tagx { display: inline-block; padding: 1px 8px; margin-left: 4px; font-size: 12px;
   background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
+
+/* quest links + detail card */
+a.ilink.quest { color: var(--gold); }
+.quest-chain { margin-top: 6px; }
+.quest-desc { padding: 12px 16px; margin-bottom: 16px; line-height: 1.5; }
+.quest-desc h3 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase;
+  letter-spacing: .03em; color: var(--muted); }
+.quest-desc h3:first-child { margin-top: 0; }
+.quest-desc p { margin: 0; }
+.quest-obj { color: var(--gold); font-style: italic; }
+.quest-rew .coin { margin-left: 2px; }
 
 /* item source tags (browse column + item-detail header). subtle accents per source. */
 .item-sources { margin-top: 8px; }

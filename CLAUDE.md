@@ -41,8 +41,12 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
   content hash. `db.js` keys the download URL (`?v=`) and the OPFS filename by
   that hash and wipes old copies, so a new deploy auto-refreshes clients.
 - **Routing** is query-param based (SPA, no server rewrites): `?item=`, `?npc=`,
-  `?dungeon=`, `?dungeons`, `?browse=items|npcs`, `?search=`. See `route()` in
-  `src/main.js`.
+  `?quest=`, `?dungeon=`, `?dungeons`, `?browse=items|npcs|quests|crafting`,
+  `?search=`. See `route()` in `src/main.js`.
+- **Search is unified + FTS-backed.** `?search=` renders a tabbed page across
+  items/NPCs/quests/dungeons; the top-bar input also shows a live flat top-5
+  dropdown (`src/search.js`, `runSearch()` + `initSearchDropdown()`). Items,
+  creatures, and quests have FTS5 tables (`*_fts`); dungeons (maps) use LIKE.
 
 ## Commands
 
@@ -81,8 +85,10 @@ items, then commit. Set `TW_CLIENT` / `STORMLIB` / `SQL_DIR` to relocate inputs.
 - `scripts/build-db.mjs` — the whole build. Imports the SQL tables, **resolves
   effective drop chances** into a `drops` table (mangos loot groups +
   references), then **drops the raw loot tables**. Also builds `maps`/`spawns`
-  (location), `quest_item`/`spell_creates`/`spell_reagent` link tables, an
-  `item_display_info` icon map, and `version.json`.
+  (location), the `quests` table + `quest_item`/`quest_creature_objective`/
+  `quest_reward_rep` links + `areas`/`faction_names` lookups,
+  `spell_creates`/`spell_reagent` link tables, an `item_display_info` icon map,
+  the `*_fts` search indexes (items/creatures/quests), and `version.json`.
 - `scripts/extract-icons.py` — LOCAL: pulls Turtle custom BLP icons from the
   client MPQs (StormLib) → `assets/icons/custom/*.webp`, plus `scripts/data/
   item-display-supplement.json` (the `display_id → icon` corrective rows build-db
@@ -96,13 +102,16 @@ items, then commit. Set `TW_CLIENT` / `STORMLIB` / `SQL_DIR` to relocate inputs.
 - `src/queries.js` — all SQL (positional `?1`). Loot reads come from `drops`.
 - `src/table.js` — the one reusable table: client-side sort + paginate + group
   (collapsible) used everywhere. `createTable(container, {columns, rows, ...})`.
-- `src/browse.js` — filter UI + the item/NPC finder; feeds `createTable`.
-- `src/render.js` — `renderTooltip`, `tabs`, `itemLink`/`npcLink`/`dungeonLink`,
-  `iconImg`, helpers.
-- `src/hovercard.js` — item tooltip on hover.
+- `src/browse.js` — filter UI + the item/NPC/quest finder; feeds `createTable`.
+- `src/search.js` — unified search: `runSearch()` (shared multi-entity query,
+  used by the results page) + `initSearchDropdown()` (live flat top-5 panel).
+- `src/render.js` — `renderTooltip`, `tabs`, `itemLink`/`npcLink`/`dungeonLink`/
+  `questLink`, `iconImg`, `moneyHtml`, helpers.
+- `src/hovercard.js` — item + quest tooltip on hover.
 - `src/constants.js` — WoW 1.12 enum maps (quality, class/slot/stat, creature
-  type/rank, etc.).
-- `src/main.js` — routing + the item/NPC/dungeon views.
+  type/rank, quest type/sort, etc.) + `questZoneLabel`/`classRestrictions`/
+  `raceRestrictions` helpers.
+- `src/main.js` — routing + the item/NPC/quest/dungeon/search views.
 
 ## Conventions
 

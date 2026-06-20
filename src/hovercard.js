@@ -1,11 +1,12 @@
-// Floating item tooltip shown when hovering an item link. Reuses renderTooltip;
-// queries the item (+ its spell text) lazily and caches per id.
+// Floating tooltip shown when hovering an item or quest link. Items reuse
+// renderTooltip; quests get a compact card. Queried lazily, cached per key.
 import { queryOne } from "./db.js";
-import { renderTooltip } from "./render.js";
-import { Q_ITEM, Q_SPELL } from "./queries.js";
+import { renderTooltip, esc } from "./render.js";
+import { Q_ITEM, Q_SPELL, Q_QUEST } from "./queries.js";
+import { QUEST_TYPE, questZoneLabel } from "./constants.js";
 
-const cache = new Map();
-let card = null, currentId = null, mx = 0, my = 0, raf = 0;
+const cache = new Map();              // `${kind}:${id}` -> rendered HTML (or null)
+let card = null, currentKey = null, mx = 0, my = 0, raf = 0;
 
 function ensureCard() {
   if (!card) {
@@ -17,18 +18,35 @@ function ensureCard() {
   return card;
 }
 
-async function getItem(id) {
-  if (cache.has(id)) return cache.get(id);
-  const it = await queryOne(Q_ITEM, [id]);
-  let data = null;
-  if (it) {
-    const spellMap = new Map();
-    const sids = [1, 2, 3, 4, 5].map((i) => it[`spellid_${i}`]).filter(Boolean);
-    await Promise.all(sids.map(async (sid) => { const sp = await queryOne(Q_SPELL, [sid]); if (sp) spellMap.set(sid, sp); }));
-    data = { it, spellMap };
+function questCardHtml(q) {
+  const bits = [];
+  if (q.level > 0) bits.push(`Level ${q.level}`);
+  const z = questZoneLabel(q.zone, q.zone_name);
+  if (z) bits.push(esc(z));
+  if (QUEST_TYPE[q.type]) bits.push(QUEST_TYPE[q.type]);
+  const obj = q.objectives ? `<div class="tt-line">${esc(q.objectives)}</div>` : "";
+  return `<div class="tooltip"><div class="tt-name" style="color:var(--gold)">${esc(q.title)}</div>` +
+    `<div class="tt-line muted">${bits.join(" · ")}</div>${obj}</div>`;
+}
+
+async function getHtml(kind, id) {
+  const key = `${kind}:${id}`;
+  if (cache.has(key)) return cache.get(key);
+  let html = null;
+  if (kind === "item") {
+    const it = await queryOne(Q_ITEM, [id]);
+    if (it) {
+      const spellMap = new Map();
+      const sids = [1, 2, 3, 4, 5].map((i) => it[`spellid_${i}`]).filter(Boolean);
+      await Promise.all(sids.map(async (sid) => { const sp = await queryOne(Q_SPELL, [sid]); if (sp) spellMap.set(sid, sp); }));
+      html = renderTooltip(it, { spellMap });
+    }
+  } else if (kind === "quest") {
+    const q = await queryOne(Q_QUEST, [id]);
+    if (q) html = questCardHtml(q);
   }
-  cache.set(id, data);
-  return data;
+  cache.set(key, html);
+  return html;
 }
 
 function position() {
@@ -42,19 +60,20 @@ function position() {
 }
 
 function hide() {
-  currentId = null;
+  currentKey = null;
   if (card) card.style.display = "none";
 }
 
-async function showFor(a) {
-  const id = Number(new URLSearchParams(a.getAttribute("href").slice(1)).get("item"));
-  if (!id || id === currentId) return;
-  currentId = id;
-  const data = await getItem(id);
-  if (currentId !== id) return;        // pointer moved away during the query
-  if (!data) { hide(); return; }
+async function showFor(kind, id) {
+  if (!id) return;
+  const key = `${kind}:${id}`;
+  if (key === currentKey) return;
+  currentKey = key;
+  const html = await getHtml(kind, id);
+  if (currentKey !== key) return;      // pointer moved away during the query
+  if (!html) { hide(); return; }
   const c = ensureCard();
-  c.innerHTML = renderTooltip(data.it, { spellMap: data.spellMap });
+  c.innerHTML = html;
   c.style.display = "block";
   position();
 }
@@ -62,13 +81,16 @@ async function showFor(a) {
 export function initHovercards() {
   document.addEventListener("mouseover", (e) => {
     mx = e.clientX; my = e.clientY;
-    const a = e.target.closest('a.ilink[href^="?item="]');
-    if (a) showFor(a);
-    else if (currentId !== null) hide();
+    const a = e.target.closest('a.ilink[href^="?item="], a.ilink[href^="?quest="]');
+    if (a) {
+      const p = new URLSearchParams(a.getAttribute("href").slice(1));
+      if (p.get("item")) showFor("item", Number(p.get("item")));
+      else if (p.get("quest")) showFor("quest", Number(p.get("quest")));
+    } else if (currentKey !== null) hide();
   });
   document.addEventListener("mousemove", (e) => {
     mx = e.clientX; my = e.clientY;
-    if (currentId !== null && !raf) raf = requestAnimationFrame(() => { raf = 0; position(); });
+    if (currentKey !== null && !raf) raf = requestAnimationFrame(() => { raf = 0; position(); });
   });
   // hide while scrolling (the anchor moves out from under the pointer)
   window.addEventListener("scroll", hide, { passive: true });

@@ -266,6 +266,44 @@ async function testHover() {
   return name !== "(none)";
 }
 
+// quest detail: header + tabs (givers/objectives/rewards) + sortable pane + desc.
+async function testQuest(id, expectName) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".quest-page .npc-head h1", { timeout: 40000 });
+  const name = await page.$eval(".quest-page .npc-head h1", (e) => e.textContent);
+  const tabList = await page.$$eval(".quest-page .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+  const sortableH = await page.$$eval(".quest-page .tabpane:not(.hidden) th.sortable", (e) => e.length);
+  const descBlocks = await page.$$eval(".quest-desc h3", (e) => e.length);
+  console.log(`quest ${id}: name="${name}" tabs=[${tabList.join(", ")}] sortableHdrs=${sortableH} descBlocks=${descBlocks}`);
+  return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
+}
+
+// unified search renders a tabbed results page spanning multiple entity types.
+async function testSearchTabs(term) {
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".results .tabbar .tab", { timeout: 40000 });
+  const tabList = await page.$$eval(".results .tabbar .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+  const rows = await page.$$eval(".results .tabpane:not(.hidden) table tbody tr", (r) => r.length);
+  console.log(`search tabs "${term}": [${tabList.join(", ")}] firstPaneRows=${rows}`);
+  return tabList.length > 1 && rows > 0;
+}
+
+// live dropdown: typing yields rows; ArrowDown+Enter navigates to a detail page.
+async function testSearchDropdown(term) {
+  await page.goto(`${BASE}?`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector("#search", { timeout: 40000 });
+  await page.click("#search");
+  await page.type("#search", term, { delay: 30 });
+  await page.waitForSelector(".search-dropdown .sd-row", { timeout: 10000 });
+  const rows = await page.$$eval(".search-dropdown .sd-row", (e) => e.length);
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => /[?&](item|npc|quest|dungeon|search)=/.test(location.search), { timeout: 10000 }).catch(() => {});
+  const url = await page.evaluate(() => location.search);
+  console.log(`dropdown "${term}": rows=${rows} navigatedTo="${url}"`);
+  return rows > 1 && /[?&](item|npc|quest|dungeon|search)=/.test(url);
+}
+
 let ok = true;
 const t = Date.now();
 ok = (await testItem(7909, "Aquamarine")) && ok;
@@ -274,6 +312,10 @@ ok = (await testItem(55356, "Netherwrought")) && ok;
 ok = (await testItem(647, "Destiny")) && ok;
 ok = (await testCustomIcon(9376, "Jang")) && ok;
 ok = (await testSearch("thunder")) && ok;
+ok = (await testQuest(14, "Militia")) && ok;
+ok = (await testSearchTabs("defias")) && ok;
+ok = (await testSearchDropdown("defias")) && ok;
+ok = (await testBrowse("quests", "&minlvl=1&maxlvl=12", "Zone")) && ok;
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
