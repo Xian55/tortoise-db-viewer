@@ -159,14 +159,35 @@ async function showItem(id) {
     if (sp) spellMap.set(sid, sp);
   }));
 
-  const [dropped, objects, sold, contained, disen, quests, starts, createdBy, reagentFor, srcRows] =
+  const [dropped, objects, sold, contained, disen, quests, starts, createdBy, reagentFor, srcRows, gatherSpawns] =
     await Promise.all([
       query(Q.Q_DROPPED_BY, [id]), query(Q.Q_OBJECT_SOURCE, [id]), query(Q.Q_SOLD_BY, [id]),
       query(Q.Q_CONTAINED_IN, [id]), query(Q.Q_DISENCHANTS_INTO, [id]), query(Q.Q_QUEST_ITEM, [id]),
       query(Q.Q_STARTS_QUEST, [id]), query(Q.Q_CREATED_BY, [id]), query(Q.Q_REAGENT_FOR, [id]),
-      query(Q.Q_ITEM_SOURCES, [id]),
+      query(Q.Q_ITEM_SOURCES, [id]), query(Q.Q_ITEM_OBJECT_SPAWNS, [id]),
     ]);
   const srcCsv = srcRows.map((r) => r.source).join(",");
+
+  // Gathering breakdown: assign each node spawn to its zone (largest containing
+  // WMA box), count per (object, zone) -> best farm zones (wowhead-style list).
+  let gatherRows = [];
+  if (gatherSpawns.length) {
+    const boxes = await query(Q.Q_ZONE_BOXES);
+    const agg = new Map();
+    for (const p of gatherSpawns) {
+      let best = null, bestA = -1;
+      for (const z of boxes) {
+        if (z.mapid !== p.map || p.x < z.locbottom || p.x > z.loctop || p.y < z.locright || p.y > z.locleft) continue;
+        const a = (z.loctop - z.locbottom) * (z.locleft - z.locright);
+        if (a > bestA) { bestA = a; best = z; }
+      }
+      const areaid = best ? best.areaid : 0, zone = best ? best.name : (CONTINENT[p.map] || "Unknown");
+      const key = `${p.name}|${areaid}`;
+      const g = agg.get(key) || { object: p.name, areaid, zone, count: 0 };
+      g.count++; agg.set(key, g);
+    }
+    gatherRows = [...agg.values()].sort((a, b) => b.count - a.count);
+  }
 
   const dchance = (d) => d.drop_chance ?? d.skin_chance ?? d.pick_chance;
   const srcTag = (d) => (d.skin_chance != null ? ' <span class="muted">(skin)</span>' : d.pick_chance != null ? ' <span class="muted">(pickpocket)</span>' : "");
@@ -179,6 +200,11 @@ async function showItem(id) {
   const objectCols = [
     { label: "Object", cell: (o) => esc(o.name), value: (o) => o.name },
     { label: "Chance", num: true, cell: (o) => pct(o.chance), value: (o) => o.chance || 0 },
+  ];
+  const gatherCols = [
+    { label: "Object", cell: (r) => esc(r.object), value: (r) => r.object },
+    { label: "Zone", cell: (r) => (r.areaid ? zoneLink(r.areaid, r.zone) : esc(r.zone)), value: (r) => r.zone },
+    { label: "Spawns", num: true, cell: (r) => r.count, value: (r) => r.count },
   ];
   const soldCols = [
     { label: "Vendor", cell: (s) => npcLink(s.entry, s.name), value: (s) => s.name },
@@ -223,6 +249,7 @@ async function showItem(id) {
   const tabDefs = [
     { id: "dropped", label: "Dropped by", ...regTable(droppedCols, dropped, { groupable: true }) },
     { id: "object", label: "Found in object", ...regTable(objectCols, objects) },
+    { id: "gather", label: "Gathered in", ...regTable(gatherCols, gatherRows, { pageSize: 200, groupable: true, group: 0, sort: "Spawns", dir: "d" }) },
     { id: "sold", label: "Sold by", ...regTable(soldCols, sold) },
     { id: "contained", label: "Contained in", ...regTable(itemChanceCols, contained) },
     { id: "disen", label: "Disenchants into", ...regTable(disenCols, disen) },

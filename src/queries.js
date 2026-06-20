@@ -98,6 +98,18 @@ export const Q_REAGENT_FOR = `
 
 export const Q_ITEM_SOURCES = `SELECT source FROM item_sources WHERE item = ?1`;
 
+// Every spawn point of the gathering object(s) that yield this item (herb/ore
+// nodes etc.), for the per-zone farm breakdown. Grouped into zones client-side.
+export const Q_ITEM_OBJECT_SPAWNS = `
+  SELECT g.name, s.x, s.y, s.map
+  FROM drops d
+  JOIN gameobjects g ON g.data1 = d.owner
+  JOIN spawn_points s INDEXED BY idx_spawn_id ON s.kind = 'o' AND s.id = g.entry
+  WHERE d.src = 'o' AND d.item = ?1 LIMIT 30000`;
+
+// All zone rectangles (for assigning a spawn point to its zone).
+export const Q_ZONE_BOXES = `SELECT areaid, name, mapid, locleft, locright, loctop, locbottom FROM zones`;
+
 // All crafts (browse Crafting view). One row per (craft spell, reagent); the view
 // groups reagents per spell client-side. skill_min/skill_max give the yellow/grey
 // skill-up thresholds (green = midpoint). craft_source resolves trainer vs recipe.
