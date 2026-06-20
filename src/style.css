@@ -89,6 +89,8 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--panel2); }
 .ilink:hover { text-decoration: underline; }
 .il-icon { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; border-radius: 3px; border: 1px solid #000; background: #000; }
+/* custom-icon sprite from the atlas (render.js); span needs inline-block to size like the img */
+.icon-sprite { display: inline-block; background-repeat: no-repeat; background-color: #000; }
 
 /* hover tooltip card */
 .hovercard { position: fixed; z-index: 1000; pointer-events: none; max-width: 340px; }

@@ -33,6 +33,18 @@ async function testItem(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
+// Turtle custom icon (not on Blizzard CDN) renders from the sprite atlas as a
+// <span class="icon-sprite"> backed by custom-atlas.webp. Item 9376 Jang'thraze
+// uses custom icon "gensword1h_4".
+async function testCustomIcon(id, expectName) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
+  const name = await page.$eval(".tooltip .tt-name", (e) => e.textContent);
+  const bg = await page.$eval(".tooltip .tt-head .icon-sprite", (e) => e.style.backgroundImage).catch(() => "");
+  console.log(`custom icon ${id}: name="${name}" spriteBg="${bg}"`);
+  return name.includes(expectName) && /custom-atlas\.webp/.test(bg);
+}
+
 async function testSearch(term) {
   await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
@@ -260,6 +272,7 @@ ok = (await testItem(7909, "Aquamarine")) && ok;
 ok = (await testItem(2770, "Copper Ore")) && ok;
 ok = (await testItem(55356, "Netherwrought")) && ok;
 ok = (await testItem(647, "Destiny")) && ok;
+ok = (await testCustomIcon(9376, "Jang")) && ok;
 ok = (await testSearch("thunder")) && ok;
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;

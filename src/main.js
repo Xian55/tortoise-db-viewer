@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, iconImg, sourceTags, pct, esc } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -335,7 +335,21 @@ function errorBox(e) {
   return `<div class="error">Failed: ${esc(e.message || e)}</div>`;
 }
 
+// Load the Turtle custom-icon sprite-sheet manifest, then resolve `url` against
+// the app base so render.js can draw custom icons (no-op if absent).
+async function loadIconAtlas() {
+  try {
+    const base = import.meta.env.BASE_URL;
+    const res = await fetch(`${base}icons/custom-atlas.json`);
+    if (!res.ok) return;
+    const m = await res.json();
+    setIconAtlas({ ...m, url: `${base}icons/custom-atlas.webp` });
+  } catch { /* fall back to CDN icons */ }
+}
+
 // ---- boot ----
 preconnect();
 initHovercards();
-route();
+// Wait for the atlas (small JSON) so the first paint shows custom icons; route
+// anyway if it fails or is missing.
+loadIconAtlas().finally(route);
