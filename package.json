@@ -8,6 +8,8 @@
     "build:db": "node scripts/build-db.mjs",
     "build:json": "node scripts/build-json.mjs",
     "build:data": "node scripts/build-db.mjs && node scripts/build-json.mjs",
+    "build:icons": "python scripts/extract-icons.py",
+    "build:atlas": "python scripts/build-atlas.py",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

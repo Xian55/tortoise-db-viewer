@@ -20,8 +20,30 @@ export function iconUrl(name) {
   return `${ICON_BASE}/${(name || PLACEHOLDER).toLowerCase()}.jpg`;
 }
 
+// Turtle custom icons (not on Blizzard's CDN) are shipped as one sprite-sheet.
+// main.js loads the manifest at boot; until then custom icons fall back to CDN.
+// { url, cols, rows, count, icons: { <name>: index } }  -- see build-atlas.py
+let ATLAS = null;
+export function setIconAtlas(atlas) { ATLAS = atlas; }
+
+// Background-position for cell `i` in the grid, as percentages so the one atlas
+// scales to any on-screen icon size (18px lists, 48px tooltip).
+function spriteStyle(i) {
+  const { url, cols, rows } = ATLAS;
+  const x = cols > 1 ? ((i % cols) / (cols - 1)) * 100 : 0;
+  const y = rows > 1 ? (Math.floor(i / cols) / (rows - 1)) * 100 : 0;
+  return `background-image:url(${url});background-size:${cols * 100}% ${rows * 100}%;` +
+    `background-position:${x}% ${y}%`;
+}
+
 // small inline icon (for item links / lists), lazy-loaded, placeholder on error
 export function iconImg(name, cls = "il-icon") {
+  const key = (name || "").toLowerCase();
+  const i = ATLAS && ATLAS.icons[key];
+  if (i !== undefined && i !== null && i !== false) {
+    return `<span class="${cls} icon-sprite" style="${spriteStyle(i)}" ` +
+      `role="img" aria-label="${esc(name)}"></span>`;
+  }
   return `<img class="${cls}" loading="lazy" src="${iconUrl(name)}" alt="" ` +
     `onerror="this.src='${iconUrl(PLACEHOLDER)}'">`;
 }
