@@ -577,6 +577,17 @@ async function showZone(id, gatherItem = null) {
     { id: "objects", label: "Objects", ...regTable(objCols, objs, { pageSize: 100 }) },
   ];
 
+  // A few client-defined zones (e.g. not-yet-populated Turtle areas) have a map
+  // texture but no spawns recorded within their bounds -> three blank tabs. Show
+  // an explanatory note instead.
+  const hasData = npcs.length || objs.length || loot.length;
+  const body = hasData
+    ? tabs(tabDefs)
+    : `<div class="zone-empty muted">No NPCs, items, or objects are recorded within this
+        zone's bounds in the current Tortoise-WoW data. The zone map exists in the client, but
+        the server data has no spawns here yet — this is usually a newly added zone that hasn't
+        been populated upstream.</div>`;
+
   app.innerHTML =
     `<div class="zone-page">
       <div class="npc-head">
@@ -584,7 +595,7 @@ async function showZone(id, gatherItem = null) {
         <div class="npc-meta muted">${meta.join(" · ")}<span class="dim"> · Zone #${z.areaid}</span></div>
       </div>
       <div id="zonemap"></div>
-      ${tabs(tabDefs)}
+      ${body}
     </div>`;
   mountTables();
   wireTabs();

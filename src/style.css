@@ -62,6 +62,7 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .loading, .home, .results { padding: 8px 2px; }
 .muted { color: var(--muted); }
 .error { color: #ff6b6b; padding: 12px; border: 1px solid #5a2530; border-radius: 8px; background: #1d1216; }
+.zone-empty { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); max-width: 60ch; line-height: 1.5; }
 
 /* item view layout */
 .item-view { display: grid; grid-template-columns: 340px 1fr; gap: 26px; align-items: start; }
