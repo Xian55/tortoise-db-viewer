@@ -548,10 +548,17 @@ async function showZone(id, gatherItem = null) {
     { label: "iLvl", num: true, cls: "muted", cell: (i) => i.item_level || "", value: (i) => i.item_level || 0 },
     { label: "Req", num: true, cls: "muted", cell: (i) => i.required_level || "", value: (i) => i.required_level || 0 },
   ];
+  // per-object map toggles: shownObjects survives table re-render (sort/page);
+  // objColors remembers the layer color assigned by the map for the row swatch.
+  const shownObjects = new Set(), objColors = new Map();
   const objCols = [
     { label: "Object", cell: (o) => esc(o.name), value: (o) => o.name },
     { label: "Type", cls: "muted", cell: (o) => GAMEOBJECT_TYPE[o.type] || "", value: (o) => GAMEOBJECT_TYPE[o.type] || "" },
     { label: "Spawns", num: true, cls: "muted", cell: (o) => o.count, value: (o) => o.count },
+    { label: "Map", cls: "mapcol",
+      cell: (o) => `<label class="mapchk"><input type="checkbox" data-mapobj="${o.entry}"${shownObjects.has(o.entry) ? " checked" : ""}>` +
+        `<span class="swatch" style="background:${shownObjects.has(o.entry) ? (objColors.get(o.entry) || "transparent") : "transparent"}"></span></label>`,
+      value: (o) => (shownObjects.has(o.entry) ? 1 : 0) },
   ];
   const tabDefs = [
     { id: "npcs", label: "NPCs", ...regTable(npcCols, npcs, { pageSize: 100 }) },
@@ -574,7 +581,19 @@ async function showZone(id, gatherItem = null) {
   try {
     const { initZoneMap } = await import("./zonemap.js");
     const imgUrl = `${import.meta.env.BASE_URL}maps/${z.areaid}.webp`;
-    initZoneMap(el, { ...z, imgUrl }, spawns, objects, navigate, focus);
+    const zmap = initZoneMap(el, { ...z, imgUrl }, spawns, objects, navigate, focus);
+    // Objects tab checkboxes add/remove that object's spawns on the map.
+    const pane = app.querySelector('[data-pane="objects"]');
+    if (pane && zmap) pane.addEventListener("change", (e) => {
+      const cb = e.target.closest("[data-mapobj]");
+      if (!cb) return;
+      const entry = Number(cb.dataset.mapobj);
+      const color = zmap.toggleObject(entry, cb.checked);
+      if (cb.checked) { shownObjects.add(entry); if (color) objColors.set(entry, color); }
+      else shownObjects.delete(entry);
+      const sw = cb.parentElement.querySelector(".swatch");
+      if (sw) sw.style.background = cb.checked ? (objColors.get(entry) || "transparent") : "transparent";
+    });
   } catch (e) { el.innerHTML = errorBox(e); }
 }
 

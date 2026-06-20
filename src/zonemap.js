@@ -89,8 +89,13 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     const label = `${s.name || "?"} <span class="dim">(${lvl(s)})</span>`;
     for (const role of npcRolesFor(s)) marker(role, NPC_COLOR[role], ll, label, `?npc=${s.entry}`);
   }
+  const objByEntry = new Map(); // entry -> { name, lls:[latlng] } for per-object toggles
   for (const o of objects) {
-    marker(objTypeLabel(o.type), OBJ_COLOR, toLatLng(o.x, o.y), o.name || `Object #${o.entry}`, null);
+    const ll = toLatLng(o.x, o.y);
+    marker(objTypeLabel(o.type), OBJ_COLOR, ll, o.name || `Object #${o.entry}`, null);
+    let e = objByEntry.get(o.entry);
+    if (!e) { e = { name: o.name || `Object #${o.entry}`, lls: [] }; objByEntry.set(o.entry, e); }
+    e.lls.push(ll);
   }
 
   // focus layer (e.g. only Earthroot nodes): bright, on; everything else off.
@@ -126,5 +131,32 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   L.control.layers(null, overlays, { collapsed: false }).addTo(map);
   if (focusBounds && focusBounds.isValid()) map.fitBounds(focusBounds.pad(0.3));
   setTimeout(() => map.invalidateSize(), 0);
-  return map;
+
+  // Per-object layers toggled from the zone page's Objects tab. Each gets a
+  // distinct palette color; returns the color so the row can show a swatch.
+  const PALETTE = ["#ff5e5e", "#5ec8ff", "#ffd24d", "#7dff7d", "#c98bff", "#ff9f4d", "#4dffd2", "#ff7de0", "#ff4da6", "#9dd34d"];
+  const objLayers = new Map();
+  let palIdx = 0;
+  function toggleObject(entry, on) {
+    let rec = objLayers.get(entry);
+    if (on) {
+      if (!rec) {
+        const color = PALETTE[palIdx++ % PALETTE.length];
+        const layer = L.layerGroup();
+        const e = objByEntry.get(entry);
+        if (e) for (const ll of e.lls) {
+          L.circleMarker(ll, { radius: 5, color: "#000", weight: 1, fillColor: color, fillOpacity: 0.9 })
+            .bindTooltip(e.name, { direction: "top" }).addTo(layer);
+        }
+        rec = { layer, color };
+        objLayers.set(entry, rec);
+      }
+      rec.layer.addTo(map);
+      return rec.color;
+    }
+    if (rec) map.removeLayer(rec.layer);
+    return rec ? rec.color : null;
+  }
+
+  return { map, toggleObject };
 }
