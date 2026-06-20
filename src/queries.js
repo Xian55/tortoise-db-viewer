@@ -5,8 +5,10 @@
 // already resolves equal-chance groups and reference multipliers.
 
 export const Q_ITEM = `
-  SELECT i.*, di.icon FROM items i
+  SELECT i.*, di.icon, rf.name1 AS req_rep_faction
+  FROM items i
   LEFT JOIN item_display_info di ON di.ID = i.display_id
+  LEFT JOIN faction_names rf ON rf.id = i.required_reputation_faction
   WHERE i.entry = ?1`;
 
 // ---- Unified search (items/NPCs/quests via FTS5; dungeons via LIKE) ----
@@ -191,3 +193,21 @@ export const Q_QUEST_REP = `SELECT r.faction, r.value, f.name1 AS faction_name F
 
 // Reverse: quests that require killing this creature ("Objective of" on NPC page).
 export const Q_NPC_OBJECTIVE_OF = `SELECT q.entry, q.title, q.level, o.count FROM quest_creature_objective o JOIN quests q ON q.entry = o.quest WHERE o.target = ?1 AND o.is_go = 0 ORDER BY q.level LIMIT 100`;
+
+// ---- factions / reputation ----
+export const Q_FACTIONS = `SELECT id, name, items, repquests FROM factions ORDER BY name`;
+export const Q_FACTION = `SELECT id, name, listid, items, repquests FROM factions WHERE id = ?1`;
+
+// Items unlocked at each standing with this faction (grouped by rank in the view).
+export const Q_FACTION_ITEMS = `
+  SELECT i.entry, i.name, i.quality, i.item_level, i.required_level,
+         i.required_reputation_rank AS rank, di.icon
+  FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE i.required_reputation_faction = ?1
+  ORDER BY i.required_reputation_rank, i.quality DESC, i.item_level DESC LIMIT 1000`;
+
+// Quests that grant reputation with this faction.
+export const Q_FACTION_QUESTS = `
+  SELECT q.entry, q.title, q.level, r.value
+  FROM quest_reward_rep r JOIN quests q ON q.entry = r.quest
+  WHERE r.faction = ?1 ORDER BY r.value DESC, q.level LIMIT 500`;

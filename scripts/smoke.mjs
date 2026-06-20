@@ -304,6 +304,27 @@ async function testSearchDropdown(term) {
   return rows > 1 && /[?&](item|npc|quest|dungeon|search)=/.test(url);
 }
 
+// faction detail: header + tabs, items grouped by standing, sortable pane.
+async function testFaction(id, expectName) {
+  await page.goto(`${BASE}?faction=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-page .npc-head h1", { timeout: 40000 });
+  const name = await page.$eval(".npc-page .npc-head h1", (e) => e.textContent);
+  const tabList = await page.$$eval(".npc-page .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+  const groupRows = await page.$$eval(".npc-page .tabpane:not(.hidden) .grouprow", (e) => e.length);
+  const sortableH = await page.$$eval(".npc-page .tabpane:not(.hidden) th.sortable", (e) => e.length);
+  console.log(`faction ${id}: name="${name}" tabs=[${tabList.join(", ")}] groupRows=${groupRows} sortableHdrs=${sortableH}`);
+  return name.includes(expectName) && tabList.length > 0 && groupRows > 0 && sortableH > 0;
+}
+
+// a quest that grants reputation renders its faction as a link.
+async function testQuestRepLink(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".quest-desc", { timeout: 40000 });
+  const links = await page.$$eval(".quest-desc a.ilink.faction", (e) => e.length);
+  console.log(`quest ${id} rep faction links: ${links}`);
+  return links > 0;
+}
+
 let ok = true;
 const t = Date.now();
 ok = (await testItem(7909, "Aquamarine")) && ok;
@@ -316,6 +337,9 @@ ok = (await testQuest(14, "Militia")) && ok;
 ok = (await testSearchTabs("defias")) && ok;
 ok = (await testSearchDropdown("defias")) && ok;
 ok = (await testBrowse("quests", "&minlvl=1&maxlvl=12", "Zone")) && ok;
+ok = (await testFaction(509, "League of Arathor")) && ok;
+ok = (await testQuestRepLink(14)) && ok;
+ok = (await testBrowse("factions", "", "Items")) && ok;
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;

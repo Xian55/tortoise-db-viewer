@@ -1,6 +1,6 @@
 import {
   QUALITY, ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, STAT_TYPE,
-  BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, ITEM_SOURCE, classRestrictions, money,
+  BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, ITEM_SOURCE, REP_STANDING, classRestrictions, money,
 } from "./constants.js";
 
 const SRC_LABEL = Object.fromEntries(ITEM_SOURCE);
@@ -141,6 +141,11 @@ export function renderTooltip(it, { spellMap = new Map() } = {}) {
   if (cls) reqs.push(`Classes: ${cls.join(", ")}`);
   if (it.required_level) reqs.push(`Requires Level ${it.required_level}`);
   for (const r of reqs) line(esc(r), "tt-req");
+  // reputation requirement renders as a faction link (raw HTML, not escaped)
+  if (it.required_reputation_faction) {
+    const rep = REP_STANDING[it.required_reputation_rank] || "";
+    line(`Requires: ${factionLink(it.required_reputation_faction, it.req_rep_faction)}${rep ? " – " + rep : ""}`, "tt-req");
+  }
 
   // spell effects (green)
   for (let i = 1; i <= 5; i++) {
@@ -210,6 +215,10 @@ export function dungeonLink(id, name) {
 
 export function questLink(entry, title) {
   return `<a class="ilink quest" href="?quest=${entry}">${esc(title)}</a>`;
+}
+
+export function factionLink(id, name) {
+  return `<a class="ilink faction" href="?faction=${id}">${esc(name || `Faction #${id}`)}</a>`;
 }
 
 // gold/silver/copper coin spans from a raw copper amount (mirrors the tooltip).

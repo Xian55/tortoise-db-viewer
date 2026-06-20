@@ -156,6 +156,12 @@ export function raceRestrictions(mask) {
 // quest_template.Type -> label (1.12 subset present in the data; unknown -> blank)
 export const QUEST_TYPE = { 1: "Group", 41: "PvP", 62: "Raid", 81: "Dungeon", 82: "World Event" };
 
+// reputation standing index (required_reputation_rank / quest gates)
+export const REP_STANDING = {
+  0: "Hated", 1: "Hostile", 2: "Unfriendly", 3: "Neutral",
+  4: "Friendly", 5: "Honored", 6: "Revered", 7: "Exalted",
+};
+
 // Negative ZoneOrSort -> category, from the client QuestSort.dbc (positive
 // ZoneOrSort is an areas.entry zone name instead). Authoritative, extracted once.
 export const QUEST_SORT = {

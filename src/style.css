@@ -129,6 +129,7 @@ h1 { font-size: 22px; }
 
 /* quest links + detail card */
 a.ilink.quest { color: var(--gold); }
+a.ilink.faction { color: #66c2cc; }
 .quest-chain { margin-top: 6px; }
 .quest-desc { padding: 12px 16px; margin-bottom: 16px; line-height: 1.5; }
 .quest-desc h3 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase;

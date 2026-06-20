@@ -1,9 +1,9 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, questZoneLabel, classRestrictions, raceRestrictions, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
@@ -65,15 +65,19 @@ function route() {
   const item = params.get("item");
   const npc = params.get("npc");
   const quest = params.get("quest");
+  const faction = params.get("faction");
   const dungeon = params.get("dungeon");
   const browse = params.get("browse");
   const term = params.get("search");
-  if (item) showItem(Number(item));
+  // Browse first: browse URLs carry filter params (e.g. faction=a|h) that would
+  // otherwise collide with the singular entity-detail routes below.
+  if (browse) showBrowse(browse, navigate);
+  else if (item) showItem(Number(item));
   else if (npc) showNpc(Number(npc));
   else if (quest) showQuest(Number(quest));
+  else if (faction) showFaction(Number(faction));
   else if (dungeon) showDungeon(Number(dungeon));
   else if (params.get("dungeons") !== null) showDungeons();
-  else if (browse) showBrowse(browse, navigate);
   else if (term) { searchInput.value = term; showSearch(term); }
   else showHome();
 }
@@ -86,8 +90,9 @@ function showHome() {
     <p>Search above, or browse <a class="nav" href="?browse=items">items</a> /
        <a class="nav" href="?browse=npcs">NPCs</a> /
        <a class="nav" href="?browse=quests">quests</a> /
+       <a class="nav" href="?browse=factions">factions</a> /
        <a class="nav" href="?dungeons">dungeons &amp; raids</a>.
-       Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, or <code>?dungeon=ID</code>.</p>
+       Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?faction=ID</code>, or <code>?dungeon=ID</code>.</p>
     <p class="muted">Examples:
       <a class="ilink" href="?item=2770">Copper Ore</a> ·
       <a class="ilink" href="?item=7909">Aquamarine</a> ·
@@ -364,7 +369,7 @@ async function showQuest(id) {
   const rewBits = [];
   if (q.money > 0) rewBits.push(moneyHtml(q.money));
   if (q.xp > 0) rewBits.push(`${q.xp.toLocaleString()} XP`);
-  for (const r of qrep) if (r.value) rewBits.push(`+${r.value} ${esc(r.faction_name || `faction ${r.faction}`)}`);
+  for (const r of qrep) if (r.value) rewBits.push(`+${r.value} ${factionLink(r.faction, r.faction_name)}`);
   if (rewSpell) rewBits.push(`Learn: ${esc(rewSpell.name)}`);
 
   const desc = [];
@@ -410,6 +415,49 @@ async function showQuest(id) {
         ${chain.length ? `<div class="npc-meta quest-chain">${chain.join('<span class="dim"> · </span>')}</div>` : ""}
       </div>
       ${desc.length ? `<div class="panel quest-desc">${desc.join("")}</div>` : ""}
+      ${tabs(tabDefs)}
+    </div>`;
+  mountTables();
+  wireTabs();
+}
+
+async function showFaction(id) {
+  app.innerHTML = `<div class="loading">Loading faction ${id}…</div>`;
+  let fac;
+  try { fac = await queryOne(Q.Q_FACTION, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (!fac) { app.innerHTML = `<div class="home"><p>No faction with ID ${id}.</p></div>`; return; }
+  const name = fac.name || `Faction #${fac.id}`;
+  document.title = `${name} - Tortoise-WoW DB`;
+
+  const [items, quests] = await Promise.all([
+    query(Q.Q_FACTION_ITEMS, [id]), query(Q.Q_FACTION_QUESTS, [id]),
+  ]);
+
+  // Standing column: value=rank (orders Friendly→Exalted), cell=label (group header).
+  const itemCols = [
+    { key: "name", label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+    { key: "standing", label: "Standing", cls: "muted", cell: (r) => REP_STANDING[r.rank] || "", value: (r) => r.rank || 0 },
+    { key: "ilvl", label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
+    { key: "req", label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
+  ];
+  const questColsF = [
+    { label: "Quest", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
+    { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
+    { label: "Rep", num: true, cls: "muted", cell: (r) => `+${r.value}`, value: (r) => r.value || 0 },
+  ];
+
+  const meta = [`${fac.items} item${fac.items === 1 ? "" : "s"}`, `${fac.repquests} rep quest${fac.repquests === 1 ? "" : "s"}`];
+  const tabDefs = [
+    { id: "items", label: "Items", ...regTable(itemCols, items, { pageSize: 200, groupable: true, group: 1 }) },
+    { id: "quests", label: "Rep from quests", ...regTable(questColsF, quests, { pageSize: 100 }) },
+  ];
+
+  app.innerHTML =
+    `<div class="npc-page">
+      <div class="npc-head">
+        <h1>${esc(name)}</h1>
+        <div class="npc-meta muted">${meta.join(" · ")}<span class="dim"> · Faction #${fac.id}</span></div>
+      </div>
       ${tabs(tabDefs)}
     </div>`;
   mountTables();

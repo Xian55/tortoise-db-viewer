@@ -41,8 +41,9 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
   content hash. `db.js` keys the download URL (`?v=`) and the OPFS filename by
   that hash and wipes old copies, so a new deploy auto-refreshes clients.
 - **Routing** is query-param based (SPA, no server rewrites): `?item=`, `?npc=`,
-  `?quest=`, `?dungeon=`, `?dungeons`, `?browse=items|npcs|quests|crafting`,
-  `?search=`. See `route()` in `src/main.js`.
+  `?quest=`, `?faction=`, `?dungeon=`, `?dungeons`,
+  `?browse=items|npcs|quests|factions|crafting`, `?search=`. See `route()` in
+  `src/main.js`.
 - **Search is unified + FTS-backed.** `?search=` renders a tabbed page across
   items/NPCs/quests/dungeons; the top-bar input also shows a live flat top-5
   dropdown (`src/search.js`, `runSearch()` + `initSearchDropdown()`). Items,
@@ -86,7 +87,8 @@ items, then commit. Set `TW_CLIENT` / `STORMLIB` / `SQL_DIR` to relocate inputs.
   effective drop chances** into a `drops` table (mangos loot groups +
   references), then **drops the raw loot tables**. Also builds `maps`/`spawns`
   (location), the `quests` table + `quest_item`/`quest_creature_objective`/
-  `quest_reward_rep` links + `areas`/`faction_names` lookups,
+  `quest_reward_rep` links + `areas`/`faction_names` lookups, the derived
+  `factions` summary (rep-gated item + rep-quest counts per faction),
   `spell_creates`/`spell_reagent` link tables, an `item_display_info` icon map,
   the `*_fts` search indexes (items/creatures/quests), and `version.json`.
 - `scripts/extract-icons.py` — LOCAL: pulls Turtle custom BLP icons from the
@@ -106,12 +108,13 @@ items, then commit. Set `TW_CLIENT` / `STORMLIB` / `SQL_DIR` to relocate inputs.
 - `src/search.js` — unified search: `runSearch()` (shared multi-entity query,
   used by the results page) + `initSearchDropdown()` (live flat top-5 panel).
 - `src/render.js` — `renderTooltip`, `tabs`, `itemLink`/`npcLink`/`dungeonLink`/
-  `questLink`, `iconImg`, `moneyHtml`, helpers.
+  `questLink`/`factionLink`, `iconImg`, `moneyHtml`, helpers. Factions are linked
+  wherever named (quest reward rep, item tooltip reputation requirement).
 - `src/hovercard.js` — item + quest tooltip on hover.
 - `src/constants.js` — WoW 1.12 enum maps (quality, class/slot/stat, creature
   type/rank, quest type/sort, etc.) + `questZoneLabel`/`classRestrictions`/
   `raceRestrictions` helpers.
-- `src/main.js` — routing + the item/NPC/quest/dungeon/search views.
+- `src/main.js` — routing + the item/NPC/quest/faction/dungeon/search views.
 
 ## Conventions
 

@@ -553,6 +553,24 @@ console.log("Deriving item_sources...");
   console.log(`  item_sources: ${n} rows (unobtainable: ${nu})`);
 }
 
+// ---- Factions summary (reputation feature) ----
+// One row per faction that gates >=1 item (items.required_reputation_faction) OR
+// grants reputation via a quest (quest_reward_rep). Counts power the browse list
+// + detail header without runtime aggregation.
+console.log("Deriving factions...");
+{
+  db.exec(`CREATE TABLE factions (id INTEGER PRIMARY KEY, name TEXT, listid INTEGER, items INTEGER, repquests INTEGER)`);
+  db.exec(`INSERT INTO factions (id, name, listid, items, repquests)
+    SELECT fn.id, fn.name1, fn.reputation_list_id,
+           (SELECT COUNT(*) FROM items i WHERE i.required_reputation_faction = fn.id) AS items,
+           (SELECT COUNT(DISTINCT r.quest) FROM quest_reward_rep r WHERE r.faction = fn.id) AS repquests
+    FROM faction_names fn
+    WHERE EXISTS (SELECT 1 FROM items i WHERE i.required_reputation_faction = fn.id)
+       OR EXISTS (SELECT 1 FROM quest_reward_rep r WHERE r.faction = fn.id)`);
+  const n = db.prepare(`SELECT COUNT(*) c FROM factions`).get().c;
+  console.log(`  factions: ${n} rows`);
+}
+
 // ---- Full-text search over item / creature / quest names (unified search) ----
 console.log("Building FTS indexes...");
 db.exec(`CREATE VIRTUAL TABLE items_fts USING fts5(name, content='items', content_rowid='entry', tokenize='unicode61')`);

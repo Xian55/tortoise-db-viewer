@@ -2,8 +2,8 @@
 // against the in-memory DB; sorting + pagination are handled client-side by the
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
-import { Q_CRAFTING } from "./queries.js";
-import { itemLink, npcLink, questLink, sourceTags, esc } from "./render.js";
+import { Q_CRAFTING, Q_FACTIONS } from "./queries.js";
+import { itemLink, npcLink, questLink, factionLink, sourceTags, esc } from "./render.js";
 import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
@@ -361,17 +361,31 @@ async function browseQuests(p) {
   return { rows, cols, filters, noun: "quests" };
 }
 
+async function browseFactions(p) {
+  const f = { q: p.get("q") || "" };
+  let rows = await query(Q_FACTIONS, []);
+  if (f.q) { const ql = f.q.toLowerCase(); rows = rows.filter((r) => (r.name || "").toLowerCase().includes(ql)); }
+  const cols = [
+    { key: "name", label: "Faction", cell: (r) => factionLink(r.id, r.name), value: (r) => r.name || "" },
+    { key: "items", label: "Items", num: true, cls: "muted", cell: (r) => r.items || "", value: (r) => r.items || 0 },
+    { key: "repquests", label: "Rep Quests", num: true, cls: "muted", cell: (r) => r.repquests || "", value: (r) => r.repquests || 0 },
+  ];
+  const filters = `<div class="filters">${textField("q", "Name", f.q)}<button class="reset" data-reset="1">Reset</button></div>`;
+  return { rows, cols, filters, noun: "factions" };
+}
+
 export async function showBrowse(kind, navigate) {
   const app = document.getElementById("app");
   const isNpc = kind === "npcs";
   const isItems = kind === "items";
   const isQuests = kind === "quests";
-  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : "Items";
+  const isFactions = kind === "factions";
+  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : isFactions ? "Factions" : "Items";
   document.title = `Browse ${heading} - Tortoise-WoW DB`;
   app.innerHTML = `<div class="loading">Loading…</div>`;
   const p = new URLSearchParams(location.search);
   let view;
-  try { view = kind === "crafting" ? await browseCrafting(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : await browseItems(p); }
+  try { view = kind === "crafting" ? await browseCrafting(p) : isFactions ? await browseFactions(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : await browseItems(p); }
   catch (e) { app.innerHTML = `<div class="error">Failed: ${esc(e.message || e)}</div>`; return; }
 
   // items get row selection + clipboard/external operations on the selection.

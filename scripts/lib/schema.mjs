@@ -78,11 +78,12 @@ export const IMPORTS = [
     indexes: [],
   },
   {
-    // Faction names for quest reputation rewards (id + English name only).
+    // Faction names for quest reputation rewards + the factions feature
+    // (id + English name + reputation_list_id; skip the large desc columns).
     file: "tw_world_faction.sql",
     table: "faction",
     target: "faction_names",
-    columns: ["id", "name1"],
+    columns: ["id", "name1", "reputation_list_id"],
     text: ["name1"],
     pk: "id",
     indexes: [],
