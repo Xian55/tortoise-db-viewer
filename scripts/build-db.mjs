@@ -73,12 +73,12 @@ function importSpec(spec) {
 console.log("Importing core tables...");
 for (const spec of IMPORTS) importSpec(spec);
 
-// Turtle custom item icons are absent from the server SQL dump -- their
-// display->icon mapping lives only in the client ItemDisplayInfo.dbc. The
-// supplement below is extracted once (scripts/extract-icons.py) and committed,
-// then merged here so custom items resolve their (custom) icon name.
+// The server SQL item_display_info dump is missing or stale for Turtle's newer
+// items (both custom AND standard icons). The supplement -- extracted once from
+// the client ItemDisplayInfo.dbc (scripts/extract-icons.py) and committed --
+// corrects those display->icon rows so every item resolves its real icon.
 {
-  const f = join(ROOT, "scripts", "data", "custom-display.json");
+  const f = join(ROOT, "scripts", "data", "item-display-supplement.json");
   if (existsSync(f)) {
     const map = JSON.parse(readFileSync(f, "utf8"));
     const stmt = db.prepare(`INSERT OR REPLACE INTO item_display_info (ID, icon) VALUES (?, ?)`);
@@ -86,9 +86,9 @@ for (const spec of IMPORTS) importSpec(spec);
     db.transaction(() => {
       for (const [id, icon] of Object.entries(map)) { stmt.run([Number(id), icon]); n++; }
     })();
-    console.log(`  item_display_info: +${n} custom rows`);
+    console.log(`  item_display_info: +${n} corrective rows`);
   } else {
-    console.log("  (no custom-display.json -- run scripts/extract-icons.py to add Turtle custom icons)");
+    console.log("  (no item-display-supplement.json -- run scripts/extract-icons.py for Turtle icons)");
   }
 }
 

@@ -12,9 +12,12 @@ display->icon supplement are committed to the repo as *source* (see README /
 CLAUDE.md). The shippable atlas is built from them by ``build-atlas.py``.
 
 OUTPUTS (committed source)
-  assets/icons/custom/<icon>.webp   one lossless WebP per custom icon (RGBA)
-  scripts/data/custom-display.json  { "<display_id>": "<icon>" } supplement,
-                                    merged into item_display_info by build-db.mjs
+  assets/icons/custom/<icon>.webp        one lossless WebP per custom icon (RGBA)
+  scripts/data/item-display-supplement.json
+        { "<display_id>": "<icon>" } -- every item display row the server SQL
+        dump is missing or has stale vs the client DBC (covers BOTH the custom
+        icons above AND standard CDN icons on Turtle's newer items). Merged into
+        item_display_info by build-db.mjs.
 
 REQUIREMENTS
   pip install Pillow            (BLP2 decode + WebP encode)
@@ -56,7 +59,7 @@ CDN = os.environ.get("CDN", "https://render-us.worldofwarcraft.com/icons/56/{}.j
 
 DATA = os.path.join(CLIENT, "Data")
 OUT_ICONS = os.path.join(ROOT, "assets", "icons", "custom")
-OUT_SUPPLEMENT = os.path.join(ROOT, "scripts", "data", "custom-display.json")
+OUT_SUPPLEMENT = os.path.join(ROOT, "scripts", "data", "item-display-supplement.json")
 
 # Archive load order, lowest precedence first. A file (BLP or DBC) present in a
 # later archive overrides an earlier one -- this is how the client patches data.
@@ -379,18 +382,31 @@ def main():
             storm.close(h)
     print(f"wrote {written} icons -> {os.path.relpath(OUT_ICONS, ROOT)}")
 
-    # 6. display_id -> icon supplement for items mapping to a custom icon
-    custom_set = set(custom)
-    supplement = {
-        str(d): id_icon[d]
-        for d in sorted(display_ids)
-        if d in id_icon and id_icon[d] in custom_set
-    }
+    # 6. display_id -> icon supplement: correct EVERY item display row that the
+    # server SQL dump is missing or has stale vs the client DBC. This covers the
+    # custom icons above AND standard CDN icons on Turtle's newer items (whose
+    # display rows are simply absent from the server dump). Empty DBC icons are
+    # genuinely iconless and skipped.
+    disp_sql = open(os.path.join(SQL_DIR, "tw_world_item_display_info.sql"), encoding="latin1").read()
+    dcols = parse_columns(disp_sql)
+    d_id, d_icon = dcols.index("ID"), dcols.index("icon")
+    sqlmap = {}
+    for row in iter_rows(disp_sql, "item_display_info"):
+        if row[d_id] is not None:
+            sqlmap[int(row[d_id])] = (row[d_icon] or "").lower()
+    supplement = {}
+    for d in sorted(display_ids):
+        icon = id_icon.get(d, "")
+        if icon and (d not in sqlmap or sqlmap[d] != icon):
+            supplement[str(d)] = icon
     os.makedirs(os.path.dirname(OUT_SUPPLEMENT), exist_ok=True)
     with open(OUT_SUPPLEMENT, "w", encoding="utf-8") as f:
         json.dump(supplement, f, indent=0, sort_keys=True)
         f.write("\n")
-    print(f"wrote {len(supplement)} display rows -> {os.path.relpath(OUT_SUPPLEMENT, ROOT)}")
+    n_custom = sum(1 for v in supplement.values() if v in set(custom))
+    print(f"wrote {len(supplement)} corrective display rows "
+          f"({n_custom} custom, {len(supplement) - n_custom} standard) "
+          f"-> {os.path.relpath(OUT_SUPPLEMENT, ROOT)}")
 
 
 if __name__ == "__main__":
