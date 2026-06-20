@@ -221,6 +221,10 @@ export function factionLink(id, name) {
   return `<a class="ilink faction" href="?faction=${id}">${esc(name || `Faction #${id}`)}</a>`;
 }
 
+export function zoneLink(areaid, name) {
+  return `<a class="ilink zone" href="?zone=${areaid}">${esc(name)}</a>`;
+}
+
 // gold/silver/copper coin spans from a raw copper amount (mirrors the tooltip).
 export function moneyHtml(copper) {
   const { g, s, c } = money(copper);

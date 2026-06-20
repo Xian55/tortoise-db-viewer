@@ -571,6 +571,61 @@ console.log("Deriving factions...");
   console.log(`  factions: ${n} rows`);
 }
 
+// ---- Zones (committed bounds/images from the client) + spawn points ----
+// zones.json (areaId -> WorldMapArea bounds + image dims) is extracted from the
+// client by scripts/extract-maps.py and committed; spawn_points are built here
+// from the SQL dumps (which carry position_x/y per spawn). The zone page filters
+// spawns to a zone by point-in-rectangle against the zone's world bounds.
+console.log("Importing zones + spawn points...");
+{
+  db.exec(`CREATE TABLE zones (areaid INTEGER PRIMARY KEY, name TEXT, mapid INTEGER, dir TEXT,
+    locleft REAL, locright REAL, loctop REAL, locbottom REAL, img_w INTEGER, img_h INTEGER, spawns INTEGER)`);
+  const zf = join(ROOT, "scripts", "data", "zones.json");
+  if (existsSync(zf)) {
+    const zones = JSON.parse(readFileSync(zf, "utf8"));
+    const nameOf = db.prepare(`SELECT name FROM areas WHERE entry = ?`);
+    const sZ = db.prepare(`INSERT OR REPLACE INTO zones
+      (areaid,name,mapid,dir,locleft,locright,loctop,locbottom,img_w,img_h) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+    let nz = 0;
+    db.transaction(() => {
+      for (const z of zones) {
+        const a = nameOf.get(z.areaId);
+        sZ.run(z.areaId, (a && a.name) || z.dir, z.mapId, z.dir,
+          z.locleft, z.locright, z.loctop, z.locbottom, z.w, z.h);
+        nz++;
+      }
+    })();
+    console.log(`  zones: ${nz}`);
+  } else {
+    console.log("  (no zones.json -- run scripts/extract-maps.py for the zone maps)");
+  }
+
+  db.exec(`CREATE TABLE spawn_points (kind TEXT, id INTEGER, map INTEGER, x REAL, y REAL)`);
+  const sSp = db.prepare(`INSERT INTO spawn_points VALUES (?,?,?,?,?)`);
+  const loadSpawns = (file, table, kind) => {
+    const sql = read(file);
+    const cols = parseColumns(sql);
+    const iId = cols.indexOf("id"), iMap = cols.indexOf("map"), iX = cols.indexOf("position_x"), iY = cols.indexOf("position_y");
+    let n = 0;
+    db.transaction(() => {
+      for (const row of iterRows(sql, table)) {
+        sSp.run(kind, clean(row[iId]), clean(row[iMap]), clean(row[iX]), clean(row[iY]));
+        n++;
+      }
+    })();
+    return n;
+  };
+  const nc = loadSpawns("tw_world_creature.sql", "creature", "c");
+  const ngo = existsSync(join(SQL_DIR, "tw_world_gameobject.sql")) ? loadSpawns("tw_world_gameobject.sql", "gameobject", "o") : 0;
+  db.exec(`CREATE INDEX idx_spawn_map ON spawn_points(map)`);
+  console.log(`  spawn_points: ${nc} creatures + ${ngo} objects`);
+
+  // precompute per-zone spawn count (point-in-rectangle) for the browse list
+  db.exec(`UPDATE zones SET spawns = (SELECT COUNT(*) FROM spawn_points s
+    WHERE s.map = zones.mapid AND s.x BETWEEN zones.locbottom AND zones.loctop
+      AND s.y BETWEEN zones.locright AND zones.locleft)`);
+}
+
 // ---- Full-text search over item / creature / quest names (unified search) ----
 console.log("Building FTS indexes...");
 db.exec(`CREATE VIRTUAL TABLE items_fts USING fts5(name, content='items', content_rowid='entry', tokenize='unicode61')`);

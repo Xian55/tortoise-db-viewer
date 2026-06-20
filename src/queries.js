@@ -211,3 +211,24 @@ export const Q_FACTION_QUESTS = `
   SELECT q.entry, q.title, q.level, r.value
   FROM quest_reward_rep r JOIN quests q ON q.entry = r.quest
   WHERE r.faction = ?1 ORDER BY r.value DESC, q.level LIMIT 500`;
+
+// ---- zones (Leaflet maps) ----
+export const Q_ZONES = `SELECT areaid, name, mapid, spawns FROM zones WHERE name <> '' ORDER BY name`;
+export const Q_ZONE = `SELECT * FROM zones WHERE areaid = ?1`;
+
+// Spawns inside a zone's world rectangle (?1=mapid, ?2=locbottom, ?3=loctop,
+// ?4=locright, ?5=locleft). Creature markers carry the inputs the classifier
+// needs (npc_flags + whether the NPC starts/ends a quest).
+export const Q_ZONE_SPAWNS = `
+  SELECT s.x, s.y, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags,
+         (EXISTS(SELECT 1 FROM creature_quest_start q WHERE q.id = c.entry)
+       OR EXISTS(SELECT 1 FROM creature_quest_end q WHERE q.id = c.entry)) AS questgiver
+  FROM spawn_points s JOIN creatures c ON c.entry = s.id
+  WHERE s.kind = 'c' AND s.map = ?1 AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5
+  LIMIT 8000`;
+
+export const Q_ZONE_OBJECTS = `
+  SELECT s.x, s.y, g.entry, g.name, g.type
+  FROM spawn_points s JOIN gameobjects g ON g.entry = s.id
+  WHERE s.kind = 'o' AND s.map = ?1 AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5
+  LIMIT 4000`;

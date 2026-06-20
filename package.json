@@ -23,6 +23,7 @@
     "better-sqlite3": "^11.8.1"
   },
   "dependencies": {
-    "@sqlite.org/sqlite-wasm": "^3.53.0-build1"
+    "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
+    "leaflet": "^1.9.4"
   }
 }

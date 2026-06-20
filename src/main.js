@@ -1,9 +1,9 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, questZoneLabel, classRestrictions, raceRestrictions, npcRoles } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, questZoneLabel, classRestrictions, raceRestrictions, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
@@ -66,6 +66,7 @@ function route() {
   const npc = params.get("npc");
   const quest = params.get("quest");
   const faction = params.get("faction");
+  const zone = params.get("zone");
   const dungeon = params.get("dungeon");
   const browse = params.get("browse");
   const term = params.get("search");
@@ -76,6 +77,7 @@ function route() {
   else if (npc) showNpc(Number(npc));
   else if (quest) showQuest(Number(quest));
   else if (faction) showFaction(Number(faction));
+  else if (zone) showZone(Number(zone));
   else if (dungeon) showDungeon(Number(dungeon));
   else if (params.get("dungeons") !== null) showDungeons();
   else if (term) { searchInput.value = term; showSearch(term); }
@@ -91,6 +93,7 @@ function showHome() {
        <a class="nav" href="?browse=npcs">NPCs</a> /
        <a class="nav" href="?browse=quests">quests</a> /
        <a class="nav" href="?browse=factions">factions</a> /
+       <a class="nav" href="?browse=zones">zones</a> /
        <a class="nav" href="?dungeons">dungeons &amp; raids</a>.
        Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?faction=ID</code>, or <code>?dungeon=ID</code>.</p>
     <p class="muted">Examples:
@@ -462,6 +465,35 @@ async function showFaction(id) {
     </div>`;
   mountTables();
   wireTabs();
+}
+
+async function showZone(id) {
+  app.innerHTML = `<div class="loading">Loading zone ${id}…</div>`;
+  let z;
+  try { z = await queryOne(Q.Q_ZONE, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (!z) { app.innerHTML = `<div class="home"><p>No zone with ID ${id}.</p></div>`; return; }
+  document.title = `${z.name} - Tortoise-WoW DB`;
+
+  const rect = [z.mapid, z.locbottom, z.loctop, z.locright, z.locleft];
+  const [spawns, objects] = await Promise.all([
+    query(Q.Q_ZONE_SPAWNS, rect), query(Q.Q_ZONE_OBJECTS, rect),
+  ]);
+  const meta = [CONTINENT[z.mapid], `${spawns.length + objects.length} spawns`].filter(Boolean);
+
+  app.innerHTML =
+    `<div class="zone-page">
+      <div class="npc-head">
+        <h1>${esc(z.name)}</h1>
+        <div class="npc-meta muted">${meta.join(" · ")}<span class="dim"> · Zone #${z.areaid}</span></div>
+      </div>
+      <div id="zonemap"></div>
+    </div>`;
+  const el = document.getElementById("zonemap");
+  try {
+    const { initZoneMap } = await import("./zonemap.js");
+    const imgUrl = `${import.meta.env.BASE_URL}maps/${z.areaid}.webp`;
+    initZoneMap(el, { ...z, imgUrl }, spawns, objects, navigate);
+  } catch (e) { el.innerHTML = errorBox(e); }
 }
 
 async function showDungeons() {

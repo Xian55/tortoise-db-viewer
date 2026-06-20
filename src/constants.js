@@ -156,6 +156,9 @@ export function raceRestrictions(mask) {
 // quest_template.Type -> label (1.12 subset present in the data; unknown -> blank)
 export const QUEST_TYPE = { 1: "Group", 41: "PvP", 62: "Raid", 81: "Dungeon", 82: "World Event" };
 
+// map id -> continent label (open-world). Others are instances.
+export const CONTINENT = { 0: "Eastern Kingdoms", 1: "Kalimdor", 530: "Outland" };
+
 // reputation standing index (required_reputation_rank / quest gates)
 export const REP_STANDING = {
   0: "Hated", 1: "Hostile", 2: "Unfriendly", 3: "Neutral",

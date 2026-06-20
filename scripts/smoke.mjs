@@ -325,6 +325,18 @@ async function testQuestRepLink(id) {
   return links > 0;
 }
 
+// zone page: Leaflet renders the parchment image + per-category marker toggles.
+// (markers use a canvas renderer, so assert the image layer + layer control.)
+async function testZone(id, expectName) {
+  await page.goto(`${BASE}?zone=${id}`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector(".zone-page .npc-head h1", { timeout: 40000 });
+  const name = await page.$eval(".zone-page .npc-head h1", (e) => e.textContent);
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  const cats = await page.$$eval(".leaflet-control-layers-overlays label", (e) => e.length);
+  console.log(`zone ${id}: name="${name}" mapImg=yes categories=${cats}`);
+  return name.includes(expectName) && cats > 0;
+}
+
 let ok = true;
 const t = Date.now();
 ok = (await testItem(7909, "Aquamarine")) && ok;
@@ -340,6 +352,8 @@ ok = (await testBrowse("quests", "&minlvl=1&maxlvl=12", "Zone")) && ok;
 ok = (await testFaction(509, "League of Arathor")) && ok;
 ok = (await testQuestRepLink(14)) && ok;
 ok = (await testBrowse("factions", "", "Items")) && ok;
+ok = (await testZone(12, "Elwynn")) && ok;
+ok = (await testBrowse("zones", "", "Continent")) && ok;
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
