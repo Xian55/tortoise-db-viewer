@@ -251,15 +251,26 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps] = await Promise.all([
+  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, zoneCand] = await Promise.all([
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
-    query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]),
+    query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]), query(Q.Q_NPC_ZONES, [id]),
   ]);
+  // Resolve the open-world zone per continent. WMA boxes overlap at borders and
+  // the dumps lack true coord->area, so among the boxes containing a spawn we take
+  // the largest = the encompassing zone (e.g. Camp Taurajo -> The Barrens, not the
+  // clipped Mulgore corner; cities resolve to their parent zone).
+  const zoneByMap = {};
+  for (const z of zoneCand) {
+    const area = (z.loctop - z.locbottom) * (z.locleft - z.locright);
+    if (!zoneByMap[z.mapid] || area > zoneByMap[z.mapid].area) zoneByMap[z.mapid] = { ...z, area };
+  }
   const mapHtml = maps.map((m) => {
     const tag = m.type === 2 ? "Raid" : m.type === 1 ? "Dungeon" : null;
-    const nm = tag ? dungeonLink(m.id, m.name) : esc(m.name);
-    return tag ? `${nm} <span class="dim">(${tag})</span>` : nm;
+    if (tag) return `${dungeonLink(m.id, m.name)} <span class="dim">(${tag})</span>`;
+    // continent: append the resolved zone link -> "Kalimdor › The Barrens"
+    const z = zoneByMap[m.id];
+    return `${esc(m.name)}${z ? ` <span class="dim">›</span> ${zoneLink(z.areaid, z.name)}` : ""}`;
   }).join(", ");
 
   const lvl = lvlRange(npc) || "??";

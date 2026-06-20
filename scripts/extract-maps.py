@@ -22,6 +22,7 @@ Run:          python scripts/extract-maps.py
 import ctypes as C
 import io
 import json
+import math
 import os
 import struct
 import sys
@@ -50,7 +51,16 @@ ARCHIVE_ORDER = [
 
 TILE = 256        # WorldMap BLP tile size
 COLS, ROWS = 4, 3  # 12 tiles, row-major
-W, H = COLS * TILE, ROWS * TILE  # 1024 x 768
+W, H = COLS * TILE, ROWS * TILE  # 1024 x 768 tile grid
+# Actual map content is 1002x668 at the top-left; the rest is black tile padding.
+# Crop to it (CW x CH) -> removes the dark right/bottom bands AND makes the image
+# exactly the rectangle the WorldMapArea world-bounds map to, so Leaflet markers
+# align (fraction-based; size-independent as long as dims match the bounds).
+CW, CH = 1002, 668
+# The 1002x668 art keeps a decorative burnt-parchment frame at the edges -- this
+# is authentic and wowhead's own Classic zone maps show the SAME frame, so we do
+# NOT crop it (cropping would also need the bounds recomputed). (l, t, r, b) px.
+FRAME = (0, 0, 0, 0)
 
 
 class Storm:
@@ -126,10 +136,39 @@ def parse_worldmaparea(data):
         diroff = struct.unpack_from("<I", data, o + 12)[0]
         loc_l, loc_r, loc_t, loc_b = struct.unpack_from("<ffff", data, o + 16)
         out.append({
-            "areaId": areaid, "mapId": mapid, "dir": s(diroff),
+            "wmaId": _id, "areaId": areaid, "mapId": mapid, "dir": s(diroff),
             "locleft": loc_l, "locright": loc_r, "loctop": loc_t, "locbottom": loc_b,
         })
     return out
+
+
+# WorldMapOverlay.dbc (1.12, 17 fields, recsize 68): field 1 = worldMapAreaId,
+# field 8 = textureName(str), 9 = textureWidth, 10 = textureHeight,
+# 11 = offsetX, 12 = offsetY (fields 2-5 areaId[4], 6-7 mapPoint, 13-16 hitRect).
+def parse_worldmapoverlay(data):
+    magic, rec, fields, recsize, strsize = struct.unpack_from("<4sIIII", data, 0)
+    if magic != b"WDBC":
+        return {}
+    base = 20
+    strbase = base + rec * recsize
+
+    def s(off):
+        if not off:
+            return ""
+        end = data.index(b"\0", strbase + off)
+        return data[strbase + off:end].decode("latin1")
+
+    by_area = {}
+    for r in range(rec):
+        o = base + r * recsize
+        wma = struct.unpack_from("<i", data, o + 4)[0]              # field 1
+        texoff = struct.unpack_from("<I", data, o + 32)[0]         # field 8 = textureName
+        tw, th, ox, oy = struct.unpack_from("<iiii", data, o + 36)  # fields 9-12
+        tex = s(texoff)
+        if not tex:
+            continue
+        by_area.setdefault(wma, []).append({"tex": tex, "w": tw, "h": th, "ox": ox, "oy": oy})
+    return by_area
 
 
 def main():
@@ -141,41 +180,73 @@ def main():
         sys.exit("WorldMapArea.dbc not found in client")
     rows = parse_worldmaparea(dbc)
     print(f"WorldMapArea rows: {len(rows)}")
+    ovl_dbc = storm.read("DBFilesClient\\WorldMapOverlay.dbc")
+    overlays = parse_worldmapoverlay(ovl_dbc) if ovl_dbc else {}
+    print(f"WorldMapOverlay: {sum(len(v) for v in overlays.values())} overlays across {len(overlays)} zones")
+
+    def load_grid(d, name, w, h):
+        """Stitch <d>\\<name>1..N.blp (row-major) into a w*h RGBA image, or None."""
+        cols = max(1, math.ceil(w / TILE)), max(1, math.ceil(h / TILE))
+        cx, cy = cols
+        sub = Image.new("RGBA", (cx * TILE, cy * TILE), (0, 0, 0, 0))
+        got = 0
+        for i in range(1, cx * cy + 1):
+            b = storm.read(f"Interface\\WorldMap\\{d}\\{name}{i}.blp")
+            if not b:
+                continue
+            try:
+                t = Image.open(io.BytesIO(b)).convert("RGBA")
+            except Exception:
+                continue
+            sub.paste(t, (((i - 1) % cx) * TILE, ((i - 1) // cx) * TILE))
+            got += 1
+        return sub.crop((0, 0, w, h)) if got else None
 
     os.makedirs(OUT_MAPS, exist_ok=True)
     zones = []
     skipped = 0
+    n_ovl = 0
     for z in rows:
         d = z["dir"]
         if not d or z["areaId"] <= 0:
             skipped += 1
             continue
-        first = storm.read(f"Interface\\WorldMap\\{d}\\{d}1.blp")
-        if not first:
+        base = load_grid(d, d, W, H)   # unexplored parchment (full 1024x768)
+        if base is None:
             skipped += 1
             continue
-        canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        for i in range(1, COLS * ROWS + 1):
-            blp = first if i == 1 else storm.read(f"Interface\\WorldMap\\{d}\\{d}{i}.blp")
-            if not blp:
+        canvas = base
+        # composite explored-detail overlays on top at their pixel offsets
+        for o in overlays.get(z["wmaId"], []):
+            sub = load_grid(d, o["tex"], o["w"], o["h"])
+            if sub is None:
                 continue
-            try:
-                tile = Image.open(io.BytesIO(blp)).convert("RGBA")
-            except Exception as e:
-                print(f"  ! {d}{i}.blp decode failed: {e}")
-                continue
-            col, row = (i - 1) % COLS, (i - 1) // COLS
-            canvas.paste(tile, (col * TILE, row * TILE))
+            canvas.paste(sub, (o["ox"], o["oy"]), sub)  # paste clips to canvas + uses alpha
+            n_ovl += 1
+        # crop black padding + decorative frame in one go (content is 0,0..CW,CH)
+        fl, ft, fr, fb = FRAME
+        canvas = canvas.crop((fl, ft, CW - fr, CH - fb))
+        cw, ch = CW - fl - fr, CH - ft - fb
         canvas.save(os.path.join(OUT_MAPS, f"{z['areaId']}.webp"), "WEBP", quality=82, method=6)
-        zones.append({**z, "w": W, "h": H})
+        # recompute world bounds for the cropped rectangle (locleft/right span y over
+        # image width CW; loctop/bottom span x over image height CH)
+        dy = z["locleft"] - z["locright"]
+        dx = z["loctop"] - z["locbottom"]
+        zones.append({
+            **z, "w": cw, "h": ch,
+            "locleft": z["locleft"] - fl / CW * dy,
+            "locright": z["locright"] + fr / CW * dy,
+            "loctop": z["loctop"] - ft / CH * dx,
+            "locbottom": z["locbottom"] + fb / CH * dx,
+        })
 
     storm.close()
     os.makedirs(os.path.dirname(OUT_ZONES), exist_ok=True)
     with open(OUT_ZONES, "w", encoding="utf-8") as f:
         json.dump(zones, f, indent=0)
         f.write("\n")
-    print(f"wrote {len(zones)} zone maps -> {os.path.relpath(OUT_MAPS, ROOT)} "
-          f"(skipped {skipped} without a WorldMap image)")
+    print(f"wrote {len(zones)} zone maps ({n_ovl} overlays composited) "
+          f"-> {os.path.relpath(OUT_MAPS, ROOT)} (skipped {skipped} without a WorldMap image)")
     print(f"wrote bounds -> {os.path.relpath(OUT_ZONES, ROOT)}")
 
 

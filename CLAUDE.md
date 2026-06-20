@@ -104,11 +104,16 @@ items, then commit. Set `TW_CLIENT` / `STORMLIB` / `SQL_DIR` to relocate inputs.
   merges — every item row the server SQL dump is missing or has stale vs the DBC).
 - `scripts/build-atlas.py` — packs `assets/icons/custom/*.webp` into the shipped
   sprite sheet `public/icons/custom-atlas.{webp,json}`.
-- `scripts/extract-maps.py` — LOCAL: parses the client `WorldMapArea.dbc` + stitches
-  `Interface\WorldMap\<dir>` BLP tiles → committed `public/maps/<areaId>.webp` +
-  `scripts/data/zones.json` (zone world-coord bounds). `spawn_points`/`zones`
-  tables are then built in CI from these + the SQL dumps (which carry spawn coords).
-  Future seamless-continent minimap: `X:\Programming\WoWTools.Minimaps` (.NET).
+- `scripts/extract-maps.py` — LOCAL: parses the client `WorldMapArea.dbc`, stitches
+  the base `Interface\WorldMap\<dir>` BLP tiles AND composites the explored-detail
+  `WorldMapOverlay` textures, then crops to the 1002×668 content (drops the black
+  tile padding; keeps the authentic burnt frame, like wowhead) → committed
+  `public/maps/<areaId>.webp` + `scripts/data/zones.json` (zone bounds + dims; image
+  dims MUST equal the world-bound rectangle or Leaflet markers misalign).
+  `spawn_points`/`zones` tables are built in CI from these + the SQL dumps (which
+  carry spawn coords). NPC pages resolve their open-world zone from spawn coords by
+  the largest containing WMA box (boxes overlap at borders; no true coord→area in
+  the dumps). Future seamless minimap: `X:\Programming\WoWTools.Minimaps` (.NET).
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
 - `scripts/lib/sqlite.mjs` — Bun/Node SQLite wrapper.

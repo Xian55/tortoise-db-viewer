@@ -142,6 +142,15 @@ export const Q_NPC_MAPS = `
   SELECT DISTINCT m.id, m.name, m.type FROM spawns s JOIN maps m ON m.id = s.map
   WHERE s.id = ?1 AND m.name <> '' ORDER BY m.type DESC, m.name`;
 
+// Candidate zones whose rectangle contains a spawn of this NPC (with bounds, so
+// showNpc can pick the most-interior zone per spawn -- WMA boxes overlap at
+// borders, so plain containment is ambiguous).
+export const Q_NPC_ZONES = `
+  SELECT DISTINCT z.areaid, z.name, z.mapid, z.locleft, z.locright, z.loctop, z.locbottom
+  FROM spawn_points s JOIN zones z ON z.mapid = s.map
+    AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
+  WHERE s.kind = 'c' AND s.id = ?1 AND z.name <> ''`;
+
 // ---- dungeons / raids ----
 export const Q_DUNGEONS = `SELECT id, name, type FROM maps WHERE type IN (1,2) AND name <> '' ORDER BY type, name`;
 export const Q_DUNGEON = `SELECT id, name, type FROM maps WHERE id = ?1`;

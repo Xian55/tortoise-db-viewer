@@ -1,5 +1,6 @@
 [
 {
+"wmaId": 4,
 "areaId": 14,
 "mapId": 1,
 "dir": "Durotar",
@@ -7,10 +8,11 @@
 "locright": -7250.0,
 "loctop": 1808.3299560546875,
 "locbottom": -1716.6700439453125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 9,
 "areaId": 215,
 "mapId": 1,
 "dir": "Mulgore",
@@ -18,10 +20,11 @@
 "locright": -3089.580078125,
 "loctop": -272.9200134277344,
 "locbottom": -3697.919921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 11,
 "areaId": 17,
 "mapId": 1,
 "dir": "Barrens",
@@ -29,10 +32,11 @@
 "locright": -7510.419921875,
 "loctop": 1612.5,
 "locbottom": -5143.75,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 15,
 "areaId": 36,
 "mapId": 0,
 "dir": "Alterac",
@@ -40,10 +44,11 @@
 "locright": -2016.6700439453125,
 "loctop": 1500.0,
 "locbottom": -366.6700134277344,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 16,
 "areaId": 45,
 "mapId": 0,
 "dir": "Arathi",
@@ -51,10 +56,11 @@
 "locright": -4466.669921875,
 "loctop": -133.3300018310547,
 "locbottom": -2533.330078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 17,
 "areaId": 3,
 "mapId": 0,
 "dir": "Badlands",
@@ -62,10 +68,11 @@
 "locright": -4566.669921875,
 "loctop": -5889.580078125,
 "locbottom": -7547.919921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 19,
 "areaId": 4,
 "mapId": 0,
 "dir": "BlastedLands",
@@ -73,10 +80,11 @@
 "locright": -4591.669921875,
 "loctop": -10566.669921875,
 "locbottom": -12800.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 20,
 "areaId": 85,
 "mapId": 0,
 "dir": "Tirisfal",
@@ -84,10 +92,11 @@
 "locright": -1485.4200439453125,
 "loctop": 3837.5,
 "locbottom": 825.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 21,
 "areaId": 130,
 "mapId": 0,
 "dir": "Silverpine",
@@ -95,10 +104,11 @@
 "locright": -750.0,
 "loctop": 1666.6700439453125,
 "locbottom": -1133.3299560546875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 22,
 "areaId": 28,
 "mapId": 0,
 "dir": "WesternPlaguelands",
@@ -106,10 +116,11 @@
 "locright": -3883.330078125,
 "loctop": 3366.669921875,
 "locbottom": 500.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 23,
 "areaId": 139,
 "mapId": 0,
 "dir": "EasternPlaguelands",
@@ -117,10 +128,11 @@
 "locright": -6056.25,
 "loctop": 3800.0,
 "locbottom": 1218.75,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 24,
 "areaId": 267,
 "mapId": 0,
 "dir": "Hilsbrad",
@@ -128,10 +140,11 @@
 "locright": -2133.330078125,
 "loctop": 400.0,
 "locbottom": -1733.3299560546875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 26,
 "areaId": 47,
 "mapId": 0,
 "dir": "Hinterlands",
@@ -139,10 +152,11 @@
 "locright": -5425.0,
 "loctop": 1466.6700439453125,
 "locbottom": -1100.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 27,
 "areaId": 1,
 "mapId": 0,
 "dir": "DunMorogh",
@@ -150,10 +164,11 @@
 "locright": -3122.919921875,
 "loctop": -3877.080078125,
 "locbottom": -7160.419921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 28,
 "areaId": 51,
 "mapId": 0,
 "dir": "SearingGorge",
@@ -161,10 +176,11 @@
 "locright": -2554.169921875,
 "loctop": -6100.0,
 "locbottom": -7587.5,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 29,
 "areaId": 46,
 "mapId": 0,
 "dir": "BurningSteppes",
@@ -172,10 +188,11 @@
 "locright": -3195.830078125,
 "loctop": -7031.25,
 "locbottom": -8983.330078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 30,
 "areaId": 12,
 "mapId": 0,
 "dir": "Elwynn",
@@ -183,10 +200,11 @@
 "locright": -1935.4200439453125,
 "loctop": -7939.580078125,
 "locbottom": -10254.169921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 32,
 "areaId": 41,
 "mapId": 0,
 "dir": "DeadwindPass",
@@ -194,10 +212,11 @@
 "locright": -3333.330078125,
 "loctop": -9866.669921875,
 "locbottom": -11533.330078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 34,
 "areaId": 10,
 "mapId": 0,
 "dir": "Duskwood",
@@ -205,10 +224,11 @@
 "locright": -1866.6700439453125,
 "loctop": -9716.669921875,
 "locbottom": -11516.669921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 35,
 "areaId": 38,
 "mapId": 0,
 "dir": "LochModan",
@@ -216,10 +236,11 @@
 "locright": -4752.080078125,
 "loctop": -4487.5,
 "locbottom": -6327.080078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 36,
 "areaId": 44,
 "mapId": 0,
 "dir": "Redridge",
@@ -227,10 +248,11 @@
 "locright": -3741.669921875,
 "loctop": -8575.0,
 "locbottom": -10022.919921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 37,
 "areaId": 33,
 "mapId": 0,
 "dir": "Stranglethorn",
@@ -238,10 +260,11 @@
 "locright": -4160.419921875,
 "loctop": -11168.75,
 "locbottom": -15422.919921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 38,
 "areaId": 8,
 "mapId": 0,
 "dir": "SwampOfSorrows",
@@ -249,10 +272,11 @@
 "locright": -4516.669921875,
 "loctop": -9620.830078125,
 "locbottom": -11150.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 39,
 "areaId": 40,
 "mapId": 0,
 "dir": "Westfall",
@@ -260,10 +284,11 @@
 "locright": -483.3299865722656,
 "loctop": -9400.0,
 "locbottom": -11733.330078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 40,
 "areaId": 11,
 "mapId": 0,
 "dir": "Wetlands",
@@ -271,10 +296,11 @@
 "locright": -4525.0,
 "loctop": -2147.919921875,
 "locbottom": -4904.169921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 41,
 "areaId": 141,
 "mapId": 1,
 "dir": "Teldrassil",
@@ -282,10 +308,11 @@
 "locright": -1277.0799560546875,
 "loctop": 11831.25,
 "locbottom": 8437.5,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 42,
 "areaId": 148,
 "mapId": 1,
 "dir": "Darkshore",
@@ -293,10 +320,11 @@
 "locright": -3608.330078125,
 "loctop": 8333.330078125,
 "locbottom": 3966.669921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 43,
 "areaId": 331,
 "mapId": 1,
 "dir": "Ashenvale",
@@ -304,10 +332,11 @@
 "locright": -4066.669921875,
 "loctop": 4672.919921875,
 "locbottom": 829.1699829101562,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 61,
 "areaId": 400,
 "mapId": 1,
 "dir": "ThousandNeedles",
@@ -315,10 +344,11 @@
 "locright": -4833.330078125,
 "loctop": -3966.669921875,
 "locbottom": -6900.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 81,
 "areaId": 406,
 "mapId": 1,
 "dir": "StonetalonMountains",
@@ -326,10 +356,11 @@
 "locright": -2069.0,
 "loctop": 3441.0,
 "locbottom": -569.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 101,
 "areaId": 405,
 "mapId": 1,
 "dir": "Desolace",
@@ -337,10 +368,11 @@
 "locright": -262.5,
 "loctop": 452.0799865722656,
 "locbottom": -2545.830078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 121,
 "areaId": 357,
 "mapId": 1,
 "dir": "Feralas",
@@ -348,10 +380,11 @@
 "locright": -1508.3299560546875,
 "loctop": -2366.669921875,
 "locbottom": -7000.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 141,
 "areaId": 15,
 "mapId": 1,
 "dir": "Dustwallow",
@@ -359,10 +392,11 @@
 "locright": -6225.0,
 "loctop": -2033.3299560546875,
 "locbottom": -5533.330078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 161,
 "areaId": 440,
 "mapId": 1,
 "dir": "Tanaris",
@@ -370,10 +404,11 @@
 "locright": -7118.75,
 "loctop": -5875.0,
 "locbottom": -10475.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 181,
 "areaId": 16,
 "mapId": 1,
 "dir": "Aszhara",
@@ -381,10 +416,11 @@
 "locright": -8347.919921875,
 "loctop": 5341.669921875,
 "locbottom": 1960.4200439453125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 182,
 "areaId": 361,
 "mapId": 1,
 "dir": "Felwood",
@@ -392,10 +428,11 @@
 "locright": -4108.330078125,
 "loctop": 7133.330078125,
 "locbottom": 3300.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 201,
 "areaId": 490,
 "mapId": 1,
 "dir": "UngoroCrater",
@@ -403,10 +440,11 @@
 "locright": -3166.669921875,
 "loctop": -5966.669921875,
 "locbottom": -8433.330078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 241,
 "areaId": 493,
 "mapId": 1,
 "dir": "Moonglade",
@@ -414,10 +452,11 @@
 "locright": -3689.580078125,
 "loctop": 8491.669921875,
 "locbottom": 6952.080078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 261,
 "areaId": 1377,
 "mapId": 1,
 "dir": "Silithus",
@@ -425,10 +464,11 @@
 "locright": -945.8300170898438,
 "loctop": -5958.330078125,
 "locbottom": -8281.25,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 281,
 "areaId": 618,
 "mapId": 1,
 "dir": "Winterspring",
@@ -436,10 +476,11 @@
 "locright": -7416.669921875,
 "loctop": 8533.330078125,
 "locbottom": 3800.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 301,
 "areaId": 1519,
 "mapId": 0,
 "dir": "Stormwind",
@@ -447,10 +488,11 @@
 "locright": -14.579999923706055,
 "loctop": -7995.830078125,
 "locbottom": -9154.169921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 321,
 "areaId": 1637,
 "mapId": 1,
 "dir": "Orgrimmar",
@@ -458,10 +500,11 @@
 "locright": -5083.2099609375,
 "loctop": 2273.8798828125,
 "locbottom": 1338.4599609375,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 341,
 "areaId": 1537,
 "mapId": 0,
 "dir": "Ironforge",
@@ -469,10 +512,11 @@
 "locright": -1504.219970703125,
 "loctop": -4569.240234375,
 "locbottom": -5096.85009765625,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 362,
 "areaId": 1638,
 "mapId": 1,
 "dir": "ThunderBluff",
@@ -480,10 +524,11 @@
 "locright": -527.0800170898438,
 "loctop": -850.0,
 "locbottom": -1545.8299560546875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 381,
 "areaId": 1657,
 "mapId": 1,
 "dir": "Darnassus",
@@ -491,10 +536,11 @@
 "locright": 1880.030029296875,
 "loctop": 10238.3203125,
 "locbottom": 9532.58984375,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 382,
 "areaId": 1497,
 "mapId": 0,
 "dir": "Undercity",
@@ -502,10 +548,11 @@
 "locright": -86.18000030517578,
 "loctop": 1877.949951171875,
 "locbottom": 1237.8399658203125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 401,
 "areaId": 2597,
 "mapId": 30,
 "dir": "AlteracValley",
@@ -513,10 +560,11 @@
 "locright": -2456.25,
 "loctop": 1085.4200439453125,
 "locbottom": -1739.5799560546875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 443,
 "areaId": 3277,
 "mapId": 489,
 "dir": "WarsongGulch",
@@ -524,10 +572,11 @@
 "locright": 895.8300170898438,
 "loctop": 1627.0799560546875,
 "locbottom": 862.5,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 461,
 "areaId": 3358,
 "mapId": 529,
 "dir": "ArathiBasin",
@@ -535,10 +584,11 @@
 "locright": 102.08000183105469,
 "loctop": 1508.3299560546875,
 "locbottom": 337.5,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 500,
 "areaId": 876,
 "mapId": 1,
 "dir": "GMIsland",
@@ -546,10 +596,11 @@
 "locright": 15920.0,
 "loctop": 16525.0,
 "locbottom": 15984.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 501,
 "areaId": 616,
 "mapId": 1,
 "dir": "Hyjal",
@@ -557,10 +608,11 @@
 "locright": -4286.0,
 "loctop": 6125.0,
 "locbottom": 3983.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 502,
 "areaId": 4012,
 "mapId": 0,
 "dir": "ScarletEnclave",
@@ -568,10 +620,11 @@
 "locright": -7209.0,
 "loctop": 3087.0,
 "locbottom": 979.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 503,
 "areaId": 5023,
 "mapId": 27,
 "dir": "Sunnyglade",
@@ -579,10 +632,11 @@
 "locright": -435.0,
 "loctop": 1823.0,
 "locbottom": 858.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 504,
 "areaId": 409,
 "mapId": 0,
 "dir": "Lapidis",
@@ -590,10 +644,11 @@
 "locright": 2031.8800048828125,
 "loctop": -11043.48046875,
 "locbottom": -12959.419921875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 505,
 "areaId": 408,
 "mapId": 0,
 "dir": "Gillijim",
@@ -601,10 +656,11 @@
 "locright": 1344.1199951171875,
 "loctop": -12528.7099609375,
 "locbottom": -14575.7197265625,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 507,
 "areaId": 5121,
 "mapId": 1,
 "dir": "TelAbim",
@@ -612,10 +668,11 @@
 "locright": -8406.0,
 "loctop": -7184.0,
 "locbottom": -9371.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 509,
 "areaId": 2040,
 "mapId": 0,
 "dir": "AlahThalas",
@@ -623,10 +680,11 @@
 "locright": -3637.0,
 "loctop": 4907.0,
 "locbottom": 3931.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 510,
 "areaId": 5179,
 "mapId": 0,
 "dir": "Gilneas",
@@ -634,10 +692,11 @@
 "locright": -413.0,
 "loctop": -359.0,
 "locbottom": -2801.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 511,
 "areaId": 5024,
 "mapId": 1,
 "dir": "Icepoint",
@@ -645,10 +704,11 @@
 "locright": -7203.0,
 "loctop": 14405.0,
 "locbottom": 13330.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 512,
 "areaId": 5536,
 "mapId": 1,
 "dir": "BlackstoneIsland",
@@ -656,10 +716,11 @@
 "locright": -8746.0,
 "loctop": 799.0,
 "locbottom": -866.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 513,
 "areaId": 5225,
 "mapId": 0,
 "dir": "ThalassianHighlands",
@@ -667,10 +728,11 @@
 "locright": -4087.0,
 "loctop": 4952.0,
 "locbottom": 2891.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 514,
 "areaId": 1581,
 "mapId": 0,
 "dir": "DeadminesEntrance",
@@ -678,10 +740,11 @@
 "locright": 1343.2900390625,
 "loctop": -11054.9404296875,
 "locbottom": -11354.8603515625,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 516,
 "areaId": 718,
 "mapId": 1,
 "dir": "WailingCavernsEntrance",
@@ -689,10 +752,11 @@
 "locright": -2473.64990234375,
 "loctop": -488.6400146484375,
 "locbottom": -870.489990234375,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 517,
 "areaId": 2100,
 "mapId": 1,
 "dir": "MaraudonEntrance",
@@ -700,10 +764,11 @@
 "locright": 2384.0,
 "loctop": -1096.0,
 "locbottom": -1646.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 518,
 "areaId": 721,
 "mapId": 0,
 "dir": "GnomereganEntrance",
@@ -711,10 +776,11 @@
 "locright": 456.45001220703125,
 "loctop": -4806.31982421875,
 "locbottom": -5185.4599609375,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 519,
 "areaId": 25,
 "mapId": 0,
 "dir": "BlackrockMountain",
@@ -722,10 +788,11 @@
 "locright": -1472.5,
 "loctop": -7327.81982421875,
 "locbottom": -7796.5,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 520,
 "areaId": 796,
 "mapId": 0,
 "dir": "ScarletMonasteryEntrance",
@@ -733,10 +800,11 @@
 "locright": -863.6199951171875,
 "loctop": 2947.3701171875,
 "locbottom": 2812.330078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 521,
 "areaId": 1337,
 "mapId": 0,
 "dir": "UldamanEntrance",
@@ -744,10 +812,11 @@
 "locright": -3310.4599609375,
 "loctop": -5953.41015625,
 "locbottom": -6329.509765625,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 522,
 "areaId": 3478,
 "mapId": 1,
 "dir": "AhnQirajEntrance",
@@ -755,10 +824,11 @@
 "locright": -206.35000610351562,
 "loctop": -8005.2001953125,
 "locbottom": -10951.25,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 523,
 "areaId": 1941,
 "mapId": 1,
 "dir": "CavernsOfTime",
@@ -766,10 +836,11 @@
 "locright": -5044.08984375,
 "loctop": -8023.08984375,
 "locbottom": -8911.1796875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 601,
 "areaId": 5130,
 "mapId": 813,
 "dir": "WinterVeilVale",
@@ -777,10 +848,11 @@
 "locright": 484.0,
 "loctop": -2332.0,
 "locbottom": -3309.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 603,
 "areaId": 2437,
 "mapId": 389,
 "dir": "Ragefire",
@@ -788,10 +860,11 @@
 "locright": -285.989990234375,
 "loctop": 39.619998931884766,
 "locbottom": -452.95001220703125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 605,
 "areaId": 1176,
 "mapId": 209,
 "dir": "ZulFarrak",
@@ -799,10 +872,11 @@
 "locright": 241.6699981689453,
 "loctop": 2052.080078125,
 "locbottom": 1129.1700439453125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 607,
 "areaId": 1477,
 "mapId": 109,
 "dir": "TheTempleOfAtalHakkar",
@@ -810,10 +884,11 @@
 "locright": -252.27000427246094,
 "loctop": -255.1699981689453,
 "locbottom": -718.52001953125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 609,
 "areaId": 719,
 "mapId": 48,
 "dir": "BlackFathomDeeps",
@@ -821,10 +896,11 @@
 "locright": -736.4600219726562,
 "loctop": -107.91000366210938,
 "locbottom": -914.3300170898438,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 611,
 "areaId": 717,
 "mapId": 34,
 "dir": "TheStockade",
@@ -832,10 +908,11 @@
 "locright": -188.3300018310547,
 "loctop": 220.6300048828125,
 "locbottom": -31.469999313354492,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 613,
 "areaId": 721,
 "mapId": 90,
 "dir": "Gnomeregan",
@@ -843,10 +920,11 @@
 "locright": -262.0,
 "loctop": -245.0,
 "locbottom": -985.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 615,
 "areaId": 1337,
 "mapId": 70,
 "dir": "Uldaman",
@@ -854,10 +932,11 @@
 "locright": -248.5500030517578,
 "loctop": 204.30999755859375,
 "locbottom": -391.4700012207031,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 617,
 "areaId": 2717,
 "mapId": 409,
 "dir": "MoltenCore",
@@ -865,10 +944,11 @@
 "locright": -1506.0,
 "loctop": 1439.0,
 "locbottom": 456.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 619,
 "areaId": 1977,
 "mapId": 309,
 "dir": "ZulGurub",
@@ -876,10 +956,11 @@
 "locright": -2733.330078125,
 "loctop": -11225.0,
 "locbottom": -12639.580078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 621,
 "areaId": 2557,
 "mapId": 429,
 "dir": "DireMaul",
@@ -887,10 +968,11 @@
 "locright": -912.0,
 "loctop": 955.0,
 "locbottom": -295.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 623,
 "areaId": 1584,
 "mapId": 230,
 "dir": "BlackrockDepths",
@@ -898,10 +980,11 @@
 "locright": -1110.0,
 "loctop": 1513.0,
 "locbottom": 245.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 625,
 "areaId": 3429,
 "mapId": 509,
 "dir": "RuinsofAhnQiraj",
@@ -909,10 +992,11 @@
 "locright": 522.9199829101562,
 "loctop": -8233.330078125,
 "locbottom": -9908.330078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 627,
 "areaId": 2159,
 "mapId": 249,
 "dir": "OnyxiasLair",
@@ -920,10 +1004,11 @@
 "locright": -366.0,
 "loctop": 86.0,
 "locbottom": -262.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 629,
 "areaId": 1583,
 "mapId": 229,
 "dir": "BlackrockSpire",
@@ -931,10 +1016,11 @@
 "locright": -876.25,
 "loctop": 304.3999938964844,
 "locbottom": -286.8299865722656,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 631,
 "areaId": 718,
 "mapId": 43,
 "dir": "WailingCaverns",
@@ -942,10 +1028,11 @@
 "locright": -380.0,
 "loctop": 215.0,
 "locbottom": -570.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 633,
 "areaId": 2100,
 "mapId": 349,
 "dir": "Maraudon",
@@ -953,10 +1040,11 @@
 "locright": -1626.6800537109375,
 "loctop": 1199.760009765625,
 "locbottom": -211.1300048828125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 635,
 "areaId": 2677,
 "mapId": 469,
 "dir": "BlackwingLair",
@@ -964,10 +1052,11 @@
 "locright": -1422.0,
 "loctop": -7255.0,
 "locbottom": -7760.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 637,
 "areaId": 5138,
 "mapId": 36,
 "dir": "TheDeadmines",
@@ -975,10 +1064,11 @@
 "locright": -979.530029296875,
 "loctop": 36.93000030517578,
 "locbottom": -398.0400085449219,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 639,
 "areaId": 722,
 "mapId": 129,
 "dir": "RazorfenDowns",
@@ -986,10 +1076,11 @@
 "locright": 390.0,
 "loctop": 2683.0,
 "locbottom": 2094.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 641,
 "areaId": 491,
 "mapId": 47,
 "dir": "RazorfenKraul",
@@ -997,10 +1088,11 @@
 "locright": 1322.469970703125,
 "loctop": 2349.639892578125,
 "locbottom": 1858.6800537109375,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 643,
 "areaId": 5136,
 "mapId": 189,
 "dir": "ScarletMonastery",
@@ -1008,10 +1100,11 @@
 "locright": 947.989990234375,
 "loctop": 2030.1800537109375,
 "locbottom": 1616.8599853515625,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 644,
 "areaId": 5135,
 "mapId": 189,
 "dir": "ScarletMonastery2f",
@@ -1019,10 +1112,11 @@
 "locright": -482.4599914550781,
 "loctop": 307.3699951171875,
 "locbottom": 93.91000366210938,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 645,
 "areaId": 5153,
 "mapId": 189,
 "dir": "ScarletMonastery3f",
@@ -1030,10 +1124,11 @@
 "locright": -562.4199829101562,
 "loctop": 2009.0999755859375,
 "locbottom": 1600.6400146484375,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 646,
 "areaId": 5163,
 "mapId": 189,
 "dir": "ScarletMonastery4f",
@@ -1041,10 +1136,11 @@
 "locright": 1040.68994140625,
 "loctop": 1281.2900390625,
 "locbottom": 812.4199829101562,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 648,
 "areaId": 2057,
 "mapId": 289,
 "dir": "Scholomance",
@@ -1052,10 +1148,11 @@
 "locright": -68.63999938964844,
 "loctop": 317.70001220703125,
 "locbottom": 104.33000183105469,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 650,
 "areaId": 209,
 "mapId": 33,
 "dir": "ShadowfangKeep",
@@ -1063,10 +1160,11 @@
 "locright": 2055.0,
 "loctop": -61.0,
 "locbottom": -315.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 652,
 "areaId": 2017,
 "mapId": 329,
 "dir": "Stratholme",
@@ -1074,10 +1172,11 @@
 "locright": -3825.179931640625,
 "loctop": 4163.89990234375,
 "locbottom": 3374.0400390625,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 654,
 "areaId": 3428,
 "mapId": 531,
 "dir": "AhnQiraj",
@@ -1085,10 +1184,11 @@
 "locright": 1538.0699462890625,
 "loctop": -8051.7998046875,
 "locbottom": -8703.5,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 655,
 "areaId": 5147,
 "mapId": 531,
 "dir": "AhnQiraj2f",
@@ -1096,10 +1196,11 @@
 "locright": 138.0800018310547,
 "loctop": -7659.2900390625,
 "locbottom": -9510.98046875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 657,
 "areaId": 3457,
 "mapId": 532,
 "dir": "Karazhan",
@@ -1107,10 +1208,11 @@
 "locright": -2165.0,
 "loctop": -10789.0,
 "locbottom": -11199.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 659,
 "areaId": 2257,
 "mapId": 369,
 "dir": "DeeprunTram",
@@ -1118,10 +1220,11 @@
 "locright": 2311.5,
 "loctop": 95.5,
 "locbottom": -112.5,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 662,
 "areaId": 5204,
 "mapId": 269,
 "dir": "BlackMorass",
@@ -1129,10 +1232,11 @@
 "locright": 6066.47998046875,
 "loctop": -1247.550048828125,
 "locbottom": -2093.030029296875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 663,
 "areaId": 2366,
 "mapId": 269,
 "dir": "BlackMorass2f",
@@ -1140,10 +1244,11 @@
 "locright": 6565.990234375,
 "loctop": -1500.469970703125,
 "locbottom": -2227.080078125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 665,
 "areaId": 5208,
 "mapId": 815,
 "dir": "GilneasCity",
@@ -1151,10 +1256,11 @@
 "locright": 2040.1400146484375,
 "loctop": -760.719970703125,
 "locbottom": -1598.1600341796875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 667,
 "areaId": 3456,
 "mapId": 533,
 "dir": "Naxxramas",
@@ -1162,10 +1268,11 @@
 "locright": -4366.9599609375,
 "loctop": 3656.699951171875,
 "locbottom": 2338.280029296875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 668,
 "areaId": 5148,
 "mapId": 533,
 "dir": "Naxxramas2f",
@@ -1173,10 +1280,11 @@
 "locright": -5521.4599609375,
 "loctop": 3816.56005859375,
 "locbottom": 3376.889892578125,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 670,
 "areaId": 5077,
 "mapId": 802,
 "dir": "CrescentGrove",
@@ -1184,10 +1292,11 @@
 "locright": -1435.489990234375,
 "loctop": 882.97998046875,
 "locbottom": -868.1799926757812,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 672,
 "areaId": 5103,
 "mapId": 808,
 "dir": "HateforgeQuarry",
@@ -1195,10 +1304,11 @@
 "locright": -3776.449951171875,
 "loctop": -7888.27978515625,
 "locbottom": -8398.6103515625,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 674,
 "areaId": 5086,
 "mapId": 800,
 "dir": "KarazhanCrypt",
@@ -1206,10 +1316,11 @@
 "locright": -1849.260009765625,
 "loctop": -10916.169921875,
 "locbottom": -11308.1396484375,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 676,
 "areaId": 5087,
 "mapId": 35,
 "dir": "StormwindVault",
@@ -1217,10 +1328,11 @@
 "locright": -40.15999984741211,
 "loctop": 89.30000305175781,
 "locbottom": -145.44000244140625,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 678,
 "areaId": 5097,
 "mapId": 807,
 "dir": "EmeraldSanctum",
@@ -1228,10 +1340,11 @@
 "locright": 2666.0,
 "loctop": 3519.719970703125,
 "locbottom": 2666.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 680,
 "areaId": 5053,
 "mapId": 801,
 "dir": "Moomoo",
@@ -1239,10 +1352,11 @@
 "locright": 16288.6201171875,
 "loctop": 17158.51953125,
 "locbottom": 16486.73046875,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 682,
 "areaId": 3457,
 "mapId": 814,
 "dir": "UpperKarazhan",
@@ -1250,10 +1364,11 @@
 "locright": -2201.0,
 "loctop": -10887.0,
 "locbottom": -11436.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 683,
 "areaId": 5557,
 "mapId": 814,
 "dir": "UpperKarazhan2f",
@@ -1261,10 +1376,11 @@
 "locright": -4283.0,
 "loctop": -5800.0,
 "locbottom": -7668.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 684,
 "areaId": 5602,
 "mapId": 0,
 "dir": "GrimReaches",
@@ -1272,10 +1388,11 @@
 "locright": -7459.0,
 "loctop": -2904.0,
 "locbottom": -6488.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 685,
 "areaId": 5561,
 "mapId": 0,
 "dir": "Balor",
@@ -1283,10 +1400,11 @@
 "locright": 1630.0,
 "loctop": -7577.0,
 "locbottom": -9645.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 686,
 "areaId": 5581,
 "mapId": 0,
 "dir": "Northwind",
@@ -1294,10 +1412,11 @@
 "locright": -983.0,
 "loctop": -6327.0,
 "locbottom": -8484.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 689,
 "areaId": 2557,
 "mapId": 1,
 "dir": "DireMaulEntrance",
@@ -1305,10 +1424,11 @@
 "locright": 690.0,
 "loctop": -3401.0,
 "locbottom": -4270.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 691,
 "areaId": 5601,
 "mapId": 816,
 "dir": "DragonmawRetreat",
@@ -1316,10 +1436,11 @@
 "locright": -5062.0,
 "loctop": -5599.0,
 "locbottom": -6672.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 693,
 "areaId": 5628,
 "mapId": 818,
 "dir": "StormwroughtRuins",
@@ -1327,10 +1448,11 @@
 "locright": -5345.0,
 "loctop": -5424.0,
 "locbottom": -6774.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 696,
 "areaId": 5640,
 "mapId": 819,
 "dir": "Timbermaw",
@@ -1338,10 +1460,11 @@
 "locright": -4416.0,
 "loctop": -7195.0,
 "locbottom": -8157.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 698,
 "areaId": 5641,
 "mapId": 820,
 "dir": "WindhornCanyon",
@@ -1349,10 +1472,11 @@
 "locright": -4418.0,
 "loctop": -7163.0,
 "locbottom": -7992.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 699,
 "areaId": 5642,
 "mapId": 1,
 "dir": "Moonwhisper",
@@ -1360,10 +1484,11 @@
 "locright": -9210.0,
 "loctop": 10204.0,
 "locbottom": 4963.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 700,
 "areaId": 1769,
 "mapId": 1,
 "dir": "TimbermawTunnels",
@@ -1371,10 +1496,11 @@
 "locright": -2723.0,
 "loctop": 7395.0,
 "locbottom": 6788.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 701,
 "areaId": 5640,
 "mapId": 1,
 "dir": "TimbermawEntrance",
@@ -1382,10 +1508,11 @@
 "locright": -5993.0,
 "loctop": 5175.0,
 "locbottom": 4204.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 702,
 "areaId": 5722,
 "mapId": 821,
 "dir": "ThornGorge",
@@ -1393,10 +1520,11 @@
 "locright": 1058.0,
 "loctop": 2522.0,
 "locbottom": 1828.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 704,
 "areaId": 5734,
 "mapId": 822,
 "dir": "FrostmaneHollow",
@@ -1404,10 +1532,11 @@
 "locright": -4168.0,
 "loctop": -7453.0,
 "locbottom": -8106.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 },
 {
+"wmaId": 705,
 "areaId": 5731,
 "mapId": 1,
 "dir": "WindhornCanyonEntrance",
@@ -1415,7 +1544,7 @@
 "locright": -3671.0,
 "loctop": -5053.0,
 "locbottom": -5332.0,
-"w": 1024,
-"h": 768
+"w": 1002,
+"h": 668
 }
 ]
