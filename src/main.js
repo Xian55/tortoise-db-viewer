@@ -43,6 +43,7 @@ function wireTabs() {
 function navigate(url, replace = false) {
   history[replace ? "replaceState" : "pushState"]({}, "", url);
   route();
+  window.scrollTo(0, 0); // new view starts at the top (SPA nav keeps scroll otherwise)
 }
 window.addEventListener("popstate", route);
 
