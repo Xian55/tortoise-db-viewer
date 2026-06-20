@@ -55,10 +55,12 @@ JOIN creatures c ON (d.src='c' AND c.loot_id=d.owner) OR (d.src='s' AND c.skinni
 WHERE d.item = ?1 AND d.src IN ('c','s','p')
 GROUP BY c.entry ORDER BY COALESCE(drop_chance, skin_chance, pick_chance) DESC LIMIT 100`;
 
+// Group by name: gathering nodes (herbs/ore) have several gameobject_template
+// entries with the same name (different models/phases, same loot) -> one row each.
 export const Q_OBJECT_SOURCE = `
-  SELECT g.entry, g.name, MAX(d.chance) AS chance
+  SELECT MIN(g.entry) AS entry, g.name, MAX(d.chance) AS chance
   FROM drops d JOIN gameobjects g ON g.data1 = d.owner
-  WHERE d.src='o' AND d.item = ?1 GROUP BY g.entry ORDER BY chance DESC LIMIT 50`;
+  WHERE d.src='o' AND d.item = ?1 GROUP BY g.name ORDER BY chance DESC LIMIT 50`;
 
 export const Q_SOLD_BY = `SELECT c.entry, c.name, c.level_min, c.level_max, v.maxcount FROM npc_vendor v JOIN creatures c ON c.entry = v.entry WHERE v.item = ?1 ORDER BY c.name LIMIT 100`;
 
