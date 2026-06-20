@@ -3,7 +3,7 @@ import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
 import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, questZoneLabel, classRestrictions, raceRestrictions, npcRoles } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
@@ -486,10 +486,43 @@ async function showZone(id) {
   document.title = `${z.name} - Tortoise-WoW DB`;
 
   const rect = [z.mapid, z.locbottom, z.loctop, z.locright, z.locleft];
-  const [spawns, objects] = await Promise.all([
-    query(Q.Q_ZONE_SPAWNS, rect), query(Q.Q_ZONE_OBJECTS, rect),
+  const [spawns, objects, loot] = await Promise.all([
+    query(Q.Q_ZONE_SPAWNS, rect), query(Q.Q_ZONE_OBJECTS, rect), query(Q.Q_ZONE_LOOT, rect),
   ]);
   const meta = [CONTINENT[z.mapid], `${spawns.length + objects.length} spawns`].filter(Boolean);
+
+  // dedupe spawn rows into distinct NPCs / objects (with a spawn-point count)
+  const dedupe = (rows) => {
+    const m = new Map();
+    for (const r of rows) {
+      const g = m.get(r.entry);
+      if (g) g.count++; else m.set(r.entry, { ...r, count: 1 });
+    }
+    return [...m.values()];
+  };
+  const npcs = dedupe(spawns), objs = dedupe(objects);
+
+  const npcCols = [
+    { label: "NPC", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
+    { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
+    { label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
+    { label: "Spawns", num: true, cls: "muted", cell: (r) => r.count, value: (r) => r.count },
+  ];
+  const lootCols = [
+    { label: "Item", cell: (i) => itemLink(i.entry, i.name, i.quality, i.icon), value: (i) => i.name },
+    { label: "iLvl", num: true, cls: "muted", cell: (i) => i.item_level || "", value: (i) => i.item_level || 0 },
+    { label: "Req", num: true, cls: "muted", cell: (i) => i.required_level || "", value: (i) => i.required_level || 0 },
+  ];
+  const objCols = [
+    { label: "Object", cell: (o) => esc(o.name), value: (o) => o.name },
+    { label: "Type", cls: "muted", cell: (o) => GAMEOBJECT_TYPE[o.type] || "", value: (o) => GAMEOBJECT_TYPE[o.type] || "" },
+    { label: "Spawns", num: true, cls: "muted", cell: (o) => o.count, value: (o) => o.count },
+  ];
+  const tabDefs = [
+    { id: "npcs", label: "NPCs", ...regTable(npcCols, npcs, { pageSize: 100 }) },
+    { id: "items", label: "Items", ...regTable(lootCols, loot, { pageSize: 100 }) },
+    { id: "objects", label: "Objects", ...regTable(objCols, objs, { pageSize: 100 }) },
+  ];
 
   app.innerHTML =
     `<div class="zone-page">
@@ -498,7 +531,10 @@ async function showZone(id) {
         <div class="npc-meta muted">${meta.join(" · ")}<span class="dim"> · Zone #${z.areaid}</span></div>
       </div>
       <div id="zonemap"></div>
+      ${tabs(tabDefs)}
     </div>`;
+  mountTables();
+  wireTabs();
   const el = document.getElementById("zonemap");
   try {
     const { initZoneMap } = await import("./zonemap.js");
@@ -527,8 +563,11 @@ async function showDungeon(id) {
   try { map = await queryOne(Q.Q_DUNGEON, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
   if (!map) { app.innerHTML = `<div class="home"><p>No map with ID ${id}.</p></div>`; return; }
   document.title = `${map.name} - Tortoise-WoW DB`;
-  const [bossLoot, npcs, loot] = await Promise.all([
+  const zone = await queryOne(Q.Q_DUNGEON_ZONE, [id]);
+  const rect = zone ? [zone.mapid, zone.locbottom, zone.loctop, zone.locright, zone.locleft] : null;
+  const [bossLoot, npcs, loot, spawns, objects] = await Promise.all([
     query(Q.Q_DUNGEON_BOSS_LOOT, [id]), query(Q.Q_DUNGEON_NPCS, [id]), query(Q.Q_DUNGEON_LOOT, [id]),
+    rect ? query(Q.Q_ZONE_SPAWNS, rect) : [], rect ? query(Q.Q_ZONE_OBJECTS, rect) : [],
   ]);
   const typeLabel = map.type === 2 ? "Raid" : "Dungeon";
 
@@ -554,15 +593,24 @@ async function showDungeon(id) {
   ];
 
   app.innerHTML =
-    `<div class="npc-page">
+    `<div class="npc-page zone-page">
       <div class="npc-head">
         <h1>${esc(map.name)}</h1>
         <div class="npc-meta muted">${typeLabel} · Map #${map.id}</div>
       </div>
+      ${zone ? `<div id="zonemap"></div>` : ""}
       ${tabs(tabDefs)}
     </div>`;
   mountTables();
   wireTabs();
+  if (zone) {
+    const el = document.getElementById("zonemap");
+    try {
+      const { initZoneMap } = await import("./zonemap.js");
+      const imgUrl = `${import.meta.env.BASE_URL}maps/${zone.areaid}.webp`;
+      initZoneMap(el, { ...zone, imgUrl }, spawns, objects, navigate);
+    } catch (e) { el.innerHTML = errorBox(e); }
+  }
 }
 
 function errorBox(e) {

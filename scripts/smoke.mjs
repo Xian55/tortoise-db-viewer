@@ -259,6 +259,8 @@ async function testDungeon(id, expectName) {
   await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".npc-head h1", { timeout: 40000 });
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
+  const hasMap = (await page.$("#zonemap .leaflet-image-layer")) !== null;
   const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const groupRows = await page.$$eval(".tabpane:not(.hidden) .grouprow", (e) => e.length);
   const hasGroupCtl = (await page.$(".tabpane:not(.hidden) [data-groupby]")) !== null;
@@ -271,8 +273,8 @@ async function testDungeon(id, expectName) {
       .filter((t) => !t.classList.contains("grouprow") && t.getAttribute("data-group") === key);
     return rows.length > 0 && rows.every((t) => t.style.display === "none");
   });
-  console.log(`dungeon ${id}: name="${name}" tabs=[${tabList.join(", ")}] groupRows=${groupRows} groupCtl=${hasGroupCtl} collapse=${collapseOk}`);
-  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && groupRows > 0 && hasGroupCtl && collapseOk;
+  console.log(`dungeon ${id}: name="${name}" tabs=[${tabList.join(", ")}] groupRows=${groupRows} groupCtl=${hasGroupCtl} collapse=${collapseOk} map=${hasMap}`);
+  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && groupRows > 0 && hasGroupCtl && collapseOk && hasMap;
 }
 
 async function testHover() {
@@ -352,8 +354,10 @@ async function testZone(id, expectName) {
   const name = await page.$eval(".zone-page .npc-head h1", (e) => e.textContent);
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
   const cats = await page.$$eval(".leaflet-control-layers-overlays label", (e) => e.length);
-  console.log(`zone ${id}: name="${name}" mapImg=yes categories=${cats}`);
-  return name.includes(expectName) && cats > 0;
+  const tabList = await page.$$eval(".zone-page .tabbar .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) table tbody tr", (r) => r.length);
+  console.log(`zone ${id}: name="${name}" mapImg=yes categories=${cats} tabs=[${tabList.join(", ")}] firstPaneRows=${rows}`);
+  return name.includes(expectName) && cats > 0 && tabList.length === 3 && rows > 0;
 }
 
 let ok = true;

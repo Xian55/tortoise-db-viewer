@@ -228,6 +228,12 @@ export const Q_FACTION_QUESTS = `
 // ---- zones (Leaflet maps) ----
 export const Q_ZONES = `SELECT areaid, name, mapid, spawns FROM zones WHERE name <> '' ORDER BY name`;
 export const Q_ZONE = `SELECT * FROM zones WHERE areaid = ?1`;
+// The primary (largest) WorldMap zone for an instance map id -> lets a dungeon/raid
+// page render the same Leaflet map + spawn markers as an open-world zone.
+export const Q_DUNGEON_ZONE = `
+  SELECT areaid, name, mapid, locleft, locright, loctop, locbottom, img_w, img_h
+  FROM zones WHERE mapid = ?1
+  ORDER BY (loctop - locbottom) * (locleft - locright) DESC LIMIT 1`;
 
 // Spawns inside a zone's world rectangle (?1=mapid, ?2=locbottom, ?3=loctop,
 // ?4=locright, ?5=locleft). Creature markers carry the inputs the classifier
@@ -245,3 +251,14 @@ export const Q_ZONE_OBJECTS = `
   FROM spawn_points s JOIN gameobjects g ON g.entry = s.id
   WHERE s.kind = 'o' AND s.map = ?1 AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5
   LIMIT 4000`;
+
+// Items dropped by creatures that spawn in the zone (for the zone's Items tab).
+export const Q_ZONE_LOOT = `
+  SELECT DISTINCT i.entry, i.name, i.quality, i.item_level, i.required_level, di.icon
+  FROM spawn_points s INDEXED BY idx_spawn_map
+  JOIN creatures c ON c.entry = s.id
+  JOIN drops d ON d.src = 'c' AND d.owner = c.loot_id
+  JOIN items i ON i.entry = d.item
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE s.kind = 'c' AND s.map = ?1 AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5
+  ORDER BY i.quality DESC, i.item_level DESC LIMIT 1000`;

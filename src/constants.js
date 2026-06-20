@@ -159,6 +159,14 @@ export const QUEST_TYPE = { 1: "Group", 41: "PvP", 62: "Raid", 81: "Dungeon", 82
 // map id -> continent label (open-world). Others are instances.
 export const CONTINENT = { 0: "Eastern Kingdoms", 1: "Kalimdor", 530: "Outland" };
 
+// gameobject_template.type -> label (1.12; only the player-facing ones named).
+export const GAMEOBJECT_TYPE = {
+  0: "Door", 1: "Button", 2: "Quest Giver", 3: "Chest", 5: "Generic", 6: "Trap",
+  7: "Chair", 8: "Spell Focus", 9: "Text", 10: "Goober", 11: "Transport",
+  17: "Fishing Node", 18: "Summoning Ritual", 19: "Mailbox", 22: "Spell Caster",
+  23: "Meeting Stone", 25: "Fishing Hole",
+};
+
 // reputation standing index (required_reputation_rank / quest gates)
 export const REP_STANDING = {
   0: "Hated", 1: "Hostile", 2: "Unfriendly", 3: "Neutral",
