@@ -7,6 +7,7 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { GAMEOBJECT_TYPE } from "./constants.js";
+import { iconImg } from "./render.js";
 
 // NPC categories: key -> [label, color]. Order = control order.
 const NPC_CATS = [
@@ -96,12 +97,13 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   let focusBounds = null;
   const FKEY = focus ? `★ ${focus.label}` : null;
   if (focus && focus.points.length) {
+    // marker uses the item's own icon (atlas sprite or CDN img via iconImg)
+    const poi = L.divIcon({ html: iconImg(focus.icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] });
     const lls = [];
     for (const p of focus.points) {
       const ll = toLatLng(p.x, p.y);
       lls.push(ll);
-      L.circleMarker(ll, { radius: 5, color: "#000", weight: 1, fillColor: "#ffd700", fillOpacity: 0.95 })
-        .bindTooltip(focus.label, { direction: "top" }).addTo(group(FKEY));
+      L.marker(ll, { icon: poi }).bindTooltip(focus.label, { direction: "top" }).addTo(group(FKEY));
     }
     focusBounds = L.latLngBounds(lls);
   }

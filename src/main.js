@@ -515,12 +515,15 @@ async function showZone(id, gatherItem = null) {
   document.title = `${z.name} - Tortoise-WoW DB`;
 
   const rect = [z.mapid, z.locbottom, z.loctop, z.locright, z.locleft];
-  const [spawns, objects, loot, focusPts] = await Promise.all([
+  const [spawns, objects, loot, focusPts, focusItem] = await Promise.all([
     query(Q.Q_ZONE_SPAWNS, rect), query(Q.Q_ZONE_OBJECTS, rect), query(Q.Q_ZONE_LOOT, rect),
     gatherItem ? query(Q.Q_ZONE_FOCUS_SPAWNS, [...rect, gatherItem]) : [],
+    gatherItem ? queryOne(Q.Q_ITEM_ICON, [gatherItem]) : null,
   ]);
-  // focus mode: only the gathered node's spawns highlighted, other layers off
-  const focus = focusPts.length ? { label: focusPts[0].name || "Node", points: focusPts } : null;
+  // focus mode: only the gathered node's spawns, drawn with the item's icon
+  const focus = focusPts.length
+    ? { label: (focusItem && focusItem.name) || focusPts[0].name || "Node", icon: focusItem && focusItem.icon, points: focusPts }
+    : null;
   const meta = [CONTINENT[z.mapid], `${spawns.length + objects.length} spawns`].filter(Boolean);
 
   // dedupe spawn rows into distinct NPCs / objects (with a spawn-point count)

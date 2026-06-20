@@ -143,6 +143,10 @@ a.ilink.zone { color: #8fd18f; }
 .leaflet-control-layers-overlays { max-height: 60vh; overflow-y: auto; }
 .leaflet-control-layers-overlays label { white-space: nowrap; }
 .leaflet-bar a { color: var(--text); }
+/* focused gather marker: the item's icon as a map POI */
+.poi-div { background: none; border: none; }
+.map-poi { width: 22px; height: 22px; border-radius: 4px; border: 1px solid #000;
+  background: #000; display: block; margin: 0; }
 .quest-chain { margin-top: 6px; }
 .quest-desc { padding: 12px 16px; margin-bottom: 16px; line-height: 1.5; }
 .quest-desc h3 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase;

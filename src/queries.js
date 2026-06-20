@@ -110,6 +110,8 @@ export const Q_ITEM_OBJECT_SPAWNS = `
 // All zone rectangles (for assigning a spawn point to its zone).
 export const Q_ZONE_BOXES = `SELECT areaid, name, mapid, locleft, locright, loctop, locbottom FROM zones`;
 
+export const Q_ITEM_ICON = `SELECT i.name, di.icon FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id WHERE i.entry = ?1`;
+
 // Spawn points within a zone of the object(s) that yield a given item -- powers
 // the focused "show only Earthroot nodes" view. ?1=map, ?2-5=rect, ?6=item.
 export const Q_ZONE_FOCUS_SPAWNS = `
