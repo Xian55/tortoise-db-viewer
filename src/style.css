@@ -140,6 +140,8 @@ a.ilink.zone { color: #8fd18f; }
 .leaflet-control-layers, .leaflet-bar a {
   background: var(--panel); color: var(--text); border-color: var(--border); }
 .leaflet-control-layers-expanded { padding: 8px 10px; color: var(--text); }
+.leaflet-control-layers-overlays { max-height: 60vh; overflow-y: auto; }
+.leaflet-control-layers-overlays label { white-space: nowrap; }
 .leaflet-bar a { color: var(--text); }
 .quest-chain { margin-top: 6px; }
 .quest-desc { padding: 12px 16px; margin-bottom: 16px; line-height: 1.5; }

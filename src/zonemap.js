@@ -1,12 +1,15 @@
-// Leaflet zone map: a per-zone parchment image (L.CRS.Simple) with one toggleable
-// circle-marker layer per category. World coords -> image pixels via the zone's
-// WorldMapArea bounds (same math as the reference WowClassicGrindBot viewer).
-// Lazy-imported by main.js so Leaflet stays out of the main bundle.
+// Leaflet zone map: a per-zone parchment image (L.CRS.Simple) with toggleable
+// circle-marker layers. NPCs split by role; objects split by gameobject type so
+// the clutter (doors/signs) can be hidden and only nodes/chests shown. World
+// coords -> image pixels via the zone's WorldMapArea bounds (same math as the
+// reference WowClassicGrindBot viewer). Lazy-imported so Leaflet stays out of
+// the main bundle.
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { GAMEOBJECT_TYPE } from "./constants.js";
 
-// category -> { label, color }. Order = legend/control order.
-const CATS = [
+// NPC categories: key -> [label, color]. Order = control order.
+const NPC_CATS = [
   ["quest", "Quest Givers", "#ffd100"],
   ["vendor", "Vendors", "#39d353"],
   ["repair", "Repair", "#b9bcc4"],
@@ -15,11 +18,17 @@ const CATS = [
   ["inn", "Innkeepers", "#e08a3c"],
   ["bank", "Bankers", "#d0b020"],
   ["mob", "Enemy Mobs", "#e0524a"],
-  ["object", "Objects", "#a070d0"],
 ];
+const NPC_COLOR = Object.fromEntries(NPC_CATS.map(([k, , c]) => [k, c]));
+const NPC_DEFAULT_OFF = new Set(["mob"]);          // dense -> off by default
+const OBJ_COLOR = "#a070d0";
+// object types worth showing by default (lootable/useful); the rest (doors,
+// buttons, generic clutter) start hidden.
+const OBJ_DEFAULT_ON = new Set(["Chest", "Fishing Node", "Fishing Hole", "Mailbox", "Herb", "Mining"]);
+const objTypeLabel = (t) => `Obj: ${GAMEOBJECT_TYPE[t] || "Other"}`;
+
 // npc_flags bits -> role
 const FLAG = { vendor: 128, repair: 4096, trainer: 16, flight: 8192, inn: 131072, bank: 65536 };
-
 function npcRolesFor(s) {
   const r = [];
   if (s.questgiver || (s.npc_flags & 2)) r.push("quest");
@@ -52,45 +61,50 @@ export function initZoneMap(el, zone, spawns, objects, navigate) {
   map.fitBounds(bounds);
 
   // world (x,y) -> Leaflet latlng in image-pixel space (CRS.Simple, y up).
-  // lat = H*(x-locbottom)/(loctop-locbottom); lng = W*(locleft-y)/(locleft-locright)
   const dx = zone.loctop - zone.locbottom, dy = zone.locleft - zone.locright;
   const toLatLng = (x, y) => L.latLng(
     dx ? (H * (x - zone.locbottom)) / dx : 0,
     dy ? (W * (zone.locleft - y)) / dy : 0,
   );
 
-  const groups = {};
-  for (const [key] of CATS) groups[key] = L.layerGroup();
-
-  const addMarker = (key, latlng, label, href) => {
-    const [, , color] = CATS.find((c) => c[0] === key);
+  // a layer group per category, created on demand
+  const groups = new Map();
+  const group = (key) => {
+    let g = groups.get(key);
+    if (!g) { g = L.layerGroup(); groups.set(key, g); }
+    return g;
+  };
+  const marker = (key, color, latlng, label, href) => {
     const m = L.circleMarker(latlng, { radius: 4, color: "#000", weight: 1, fillColor: color, fillOpacity: 0.85 });
     m.bindTooltip(label, { direction: "top" });
     if (href) m.on("click", () => navigate(href));
-    m.addTo(groups[key]);
+    m.addTo(group(key));
   };
 
   for (const s of spawns) {
     const ll = toLatLng(s.x, s.y);
     const label = `${s.name || "?"} <span class="dim">(${lvl(s)})</span>`;
-    for (const role of npcRolesFor(s)) addMarker(role, ll, label, `?npc=${s.entry}`);
+    for (const role of npcRolesFor(s)) marker(role, NPC_COLOR[role], ll, label, `?npc=${s.entry}`);
   }
   for (const o of objects) {
-    addMarker("object", toLatLng(o.x, o.y), o.name || `Object #${o.entry}`, null);
+    marker(objTypeLabel(o.type), OBJ_COLOR, toLatLng(o.x, o.y), o.name || `Object #${o.entry}`, null);
   }
 
-  // add non-empty layers; build the layer control. Mobs default-off (dense).
+  // Build the overlay control: NPC categories first (control order), then object
+  // types sorted by count desc. Default-on per the whitelists above.
   const overlays = {};
-  for (const [key, label] of CATS) {
-    const g = groups[key];
-    if (!g.getLayers().length) continue;
-    const n = g.getLayers().length;
-    overlays[`${label} (${n})`] = g;
-    if (key !== "mob") g.addTo(map);
-  }
-  L.control.layers(null, overlays, { collapsed: false }).addTo(map);
+  const addLayer = (key, label, on) => {
+    const g = groups.get(key);
+    if (!g || !g.getLayers().length) return;
+    overlays[`${label} (${g.getLayers().length})`] = g;
+    if (on) g.addTo(map);
+  };
+  for (const [key, label] of NPC_CATS) addLayer(key, label, !NPC_DEFAULT_OFF.has(key));
+  const objKeys = [...groups.keys()].filter((k) => k.startsWith("Obj: "))
+    .sort((a, b) => groups.get(b).getLayers().length - groups.get(a).getLayers().length);
+  for (const key of objKeys) addLayer(key, key, OBJ_DEFAULT_ON.has(key.slice(5)));
 
-  // container may have been sized after creation; recompute once.
+  L.control.layers(null, overlays, { collapsed: false }).addTo(map);
   setTimeout(() => map.invalidateSize(), 0);
   return map;
 }
