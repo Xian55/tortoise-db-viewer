@@ -26,7 +26,12 @@ jobs:
         with:
           repository: Penqle/tortoise-wow
           path: server
-          sparse-checkout: sql/base
+          # base data + the incremental world migrations the build applies on top
+          # (mangosd applies these at runtime; we replicate that so patch-added
+          # content -- new zones, NPCs, objects, quests -- shows up).
+          sparse-checkout: |
+            sql/base
+            sql/database_updates
           sparse-checkout-cone-mode: false
 
       - uses: oven-sh/setup-bun@v2

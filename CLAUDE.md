@@ -12,8 +12,13 @@ browser with the official `@sqlite.org/sqlite-wasm` build.
 ## Architecture (how it fits together)
 
 ```
-../tortoise-wow/sql/base/*.sql        server MaNGOS SQL dumps (the data source)
-        │  scripts/build-db.mjs        parse + normalize + index + resolve chances
+../tortoise-wow/sql/base/*.sql        server MaNGOS SQL dumps (base world data)
+../tortoise-wow/sql/database_updates/  incremental world migrations (patch content:
+   *.sql                               new zones/NPCs/objects/quests). mangosd
+                                       applies these at runtime; the build does too.
+        │  scripts/build-db.mjs        stage raw tables -> apply migrations (in
+        │                              timestamp order) -> normalize + index +
+        │                              resolve chances
         ▼
 public/data/tortoise.sqlite           one indexed DB (~34 MB), fetched whole
         │  src/db.js (sqlite-wasm + OPFS cache, gzip-safe full download)
@@ -73,8 +78,25 @@ python scripts/build-atlas.py   # assets/icons/custom/*.webp -> public/icons/cus
 python scripts/extract-maps.py  # LOCAL: client -> public/maps/*.webp + scripts/data/zones.json
 ```
 
-`SQL_DIR` defaults to `../tortoise-wow/sql/base`. Built data (`*.sqlite`,
+`SQL_DIR` defaults to `../tortoise-wow/sql/base`; `UPDATES_DIR` defaults to its
+sibling `../database_updates` (the world migrations). Built data (`*.sqlite`,
 `version.json`) is **gitignored and rebuilt in CI** — never commit it.
+
+### World migrations (sql/database_updates)
+
+The server ships patch content (new zones, NPCs, objects, quests) as timestamped
+migration files in `sql/database_updates`, applied by `mangosd` **on top of**
+`sql/base` at runtime — the base dump alone is missing all of it (e.g. the 1.18.1
+zones Balor/Dragonmaw/etc. would be empty). `build-db.mjs` replicates the server:
+it **stages** the raw world tables it consumes from `sql/base`, then **applies the
+migrations in filename (timestamp) order** before deriving the viewer tables. So
+future upstream updates flow through automatically — no code change needed. The
+applier (`scripts/lib/staging.mjs` + `scripts/lib/mysqlexec.mjs`) is a *targeted*
+MySQL→SQLite executor (INSERT/REPLACE/UPDATE/DELETE/DROP for single-table DML; it
+re-escapes string literals and skips statements for tables the build doesn't
+stage), **not** a general SQL engine. CI sparse-checks out both `sql/base` **and**
+`sql/database_updates` (see `deploy.yml`); a missing updates dir falls back to
+base-only.
 
 ### Custom icons
 
@@ -90,14 +112,22 @@ items, then commit. Set `TW_CLIENT` / `STORMLIB` / `SQL_DIR` to relocate inputs.
 
 ## File map
 
-- `scripts/build-db.mjs` — the whole build. Imports the SQL tables, **resolves
-  effective drop chances** into a `drops` table (mangos loot groups +
-  references), then **drops the raw loot tables**. Also builds `maps`/`spawns`
-  (location), the `quests` table + `quest_item`/`quest_creature_objective`/
-  `quest_reward_rep` links + `areas`/`faction_names` lookups, the derived
-  `factions` summary (rep-gated item + rep-quest counts per faction),
-  `spell_creates`/`spell_reagent` link tables, an `item_display_info` icon map,
-  the `*_fts` search indexes (items/creatures/quests), and `version.json`.
+- `scripts/build-db.mjs` — the whole build. **Stages** the raw world tables from
+  `sql/base` and **applies the `sql/database_updates` migrations** on top (see
+  "World migrations"), then reads from the staged tables to: **resolve effective
+  drop chances** into a `drops` table (mangos loot groups + references) and
+  **drop the raw loot tables**; build `maps`/`spawns` (location), the `quests`
+  table + `quest_item`/`quest_creature_objective`/`quest_reward_rep` links +
+  `areas`/`faction_names` lookups, the derived `factions` summary (rep-gated item
+  + rep-quest counts per faction), `spell_creates`/`spell_reagent` link tables, an
+  `item_display_info` icon map, the `*_fts` search indexes (items/creatures/
+  quests), and `version.json`. Staging tables are dropped before the final VACUUM.
+- `scripts/lib/staging.mjs` — stages the consumed raw tables (`stg_<table>`),
+  bulk-loads base rows, then applies the migrations in timestamp order; exposes
+  positional `rows()`/`columns()` accessors the importers read instead of dump text.
+- `scripts/lib/mysqlexec.mjs` — the MySQL→SQLite statement splitter + translator
+  staging uses (string re-escaping, `INSERT IGNORE`/`ON DUPLICATE` rewrites,
+  table retargeting to `stg_*`). Targeted at the migrations' single-table DML.
 - `scripts/extract-icons.py` — LOCAL: pulls Turtle custom BLP icons from the
   client MPQs (StormLib) → `assets/icons/custom/*.webp`, plus `scripts/data/
   item-display-supplement.json` (the `display_id → icon` corrective rows build-db

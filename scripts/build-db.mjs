@@ -12,9 +12,14 @@ import { parseColumns, iterRows, NULL } from "./lib/sqldump.mjs";
 import { IMPORTS, LOOT_TABLES, LOOT_COLUMNS } from "./lib/schema.mjs";
 import { openDatabase, RUNTIME } from "./lib/sqlite.mjs";
 import { statsFromColumns, statsFromAuras } from "./lib/itemstats.mjs";
+import { buildStaging } from "./lib/staging.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SQL_DIR = process.env.SQL_DIR || join(ROOT, "..", "tortoise-wow", "sql", "base");
+// Server world migrations (applied on top of the base dump, exactly as mangosd
+// does at runtime). Sibling of SQL_DIR; override with UPDATES_DIR. Absent = the
+// build falls back to base-only (older server repos without database_updates).
+const UPDATES_DIR = process.env.UPDATES_DIR || join(SQL_DIR, "..", "database_updates");
 // Single DB file, fetched whole by the browser and loaded into sqlite-wasm.
 // GitHub Pages gzips it on the wire (~27 MB -> ~8.6 MB), decompressed by the browser.
 const OUT = join(ROOT, "public", "data", "tortoise.sqlite");
@@ -41,10 +46,48 @@ function colType(name, textSet) {
   return textSet.has(name) ? "TEXT" : "INTEGER";
 }
 
+// ---- Staging: load the raw world tables + apply server migrations ----
+// Every base table the build consumes is staged so any current or future
+// migration (sql/database_updates) to those tables flows into the viewer DB.
+// Single-column natural keys get a PRIMARY KEY so REPLACE/INSERT IGNORE upserts
+// behave like the server; the rest apply UPDATE/DELETE/INSERT without one.
+const STAGE_PK = {
+  creature: "guid", gameobject: "guid", creature_template: "entry",
+  gameobject_template: "entry", item_template: "entry", quest_template: "entry",
+  map_template: "entry", item_display_info: "ID", faction: "entry",
+  area_template: "entry", spell_template: "entry",
+};
+const STAGE_SPECS = (() => {
+  const seen = new Set(), specs = [];
+  const add = (table, file) => { if (table && file && !seen.has(table)) { seen.add(table); specs.push({ table, file, pk: STAGE_PK[table] }); } };
+  for (const s of IMPORTS) add(s.table, s.file);
+  for (const s of LOOT_TABLES) add(s.table, s.file);
+  add("creature", "tw_world_creature.sql");
+  add("gameobject", "tw_world_gameobject.sql");
+  add("map_template", "tw_world_map_template.sql");
+  add("skill_line_ability", "tw_world_skill_line_ability.sql");
+  add("spell_template", "tw_world_spell_template.sql");
+  add("quest_template", "tw_world_quest_template.sql");
+  add("npc_trainer", "tw_world_npc_trainer.sql");
+  add("npc_trainer_template", "tw_world_npc_trainer_template.sql");
+  return specs;
+})();
+
+console.log("Staging raw tables + applying migrations...");
+const src = buildStaging(db, SQL_DIR, UPDATES_DIR, STAGE_SPECS);
+console.log(`  staged ${STAGE_SPECS.length} tables | migrations: ${src.stats.files} files, ${src.stats.applied} applied, ${src.stats.skipped} skipped, ${src.stats.errors} errors`);
+
+// Source accessors: prefer the migrated staging table, fall back to dump text
+// for any table that wasn't staged (keeps the importers working unchanged).
+const srcColumns = (table, file) => (src.has(table) ? src.columns(table) : parseColumns(read(file)));
+function* srcRows(table, file) {
+  if (src.has(table)) yield* src.rows(table);
+  else yield* iterRows(read(file), table);
+}
+
 // ---- Generic importers (items, creatures, gameobjects, npc_vendor) ----
 function importSpec(spec) {
-  const sql = read(spec.file);
-  const srcCols = parseColumns(sql);
+  const srcCols = srcColumns(spec.table, spec.file);
   const cols = spec.columns || srcCols;
   const idx = cols.map((c) => srcCols.indexOf(c));
   const missing = cols.filter((c, i) => idx[i] < 0);
@@ -60,7 +103,7 @@ function importSpec(spec) {
   const stmt = db.prepare(`INSERT OR REPLACE INTO ${spec.target} VALUES (${placeholders})`);
   let n = 0;
   const tx = db.transaction(() => {
-    for (const row of iterRows(sql, spec.table)) {
+    for (const row of srcRows(spec.table, spec.file)) {
       stmt.run(idx.map((i) => clean(row[i])));
       n++;
     }
@@ -95,12 +138,11 @@ for (const spec of IMPORTS) importSpec(spec);
 // ---- Loot tables (shared shape) ----
 console.log("Importing loot tables...");
 for (const lt of LOOT_TABLES) {
-  if (!existsSync(join(SQL_DIR, lt.file))) {
+  if (!src.has(lt.table)) {
     console.log(`  (skip ${lt.target}: ${lt.file} not found)`);
     continue;
   }
-  const sql = read(lt.file);
-  const srcCols = parseColumns(sql);
+  const srcCols = srcColumns(lt.table, lt.file);
   const idx = LOOT_COLUMNS.map((c) => srcCols.indexOf(c));
   db.exec(
     `CREATE TABLE ${lt.target} (entry INTEGER, item INTEGER, chance REAL, groupid INTEGER, mincountOrRef INTEGER, maxcount INTEGER)`
@@ -108,7 +150,7 @@ for (const lt of LOOT_TABLES) {
   const stmt = db.prepare(`INSERT INTO ${lt.target} VALUES (?,?,?,?,?,?)`);
   let n = 0;
   db.transaction(() => {
-    for (const row of iterRows(sql, lt.table)) {
+    for (const row of srcRows(lt.table, lt.file)) {
       stmt.run(idx.map((i) => clean(row[i])));
       n++;
     }
@@ -121,21 +163,19 @@ for (const lt of LOOT_TABLES) {
 // ---- Maps + distinct creature spawns (for dungeon/raid + NPC location) ----
 console.log("Importing maps + spawns...");
 {
-  const ms = read("tw_world_map_template.sql");
-  const mc = parseColumns(ms);
+  const mc = srcColumns("map_template", "tw_world_map_template.sql");
   const iE = mc.indexOf("entry"), iN = mc.indexOf("map_name"), iT = mc.indexOf("map_type");
   db.exec(`CREATE TABLE maps (id INTEGER PRIMARY KEY, name TEXT, type INTEGER)`);
   const sm = db.prepare(`INSERT OR REPLACE INTO maps VALUES (?,?,?)`);
   let nm = 0;
-  db.transaction(() => { for (const r of iterRows(ms, "map_template")) { sm.run(clean(r[iE]), clean(r[iN]), clean(r[iT])); nm++; } })();
+  db.transaction(() => { for (const r of srcRows("map_template", "tw_world_map_template.sql")) { sm.run(clean(r[iE]), clean(r[iN]), clean(r[iT])); nm++; } })();
   db.exec(`CREATE INDEX idx_maps_type ON maps(type)`);
 
-  const cs = read("tw_world_creature.sql");
-  const cc = parseColumns(cs);
+  const cc = srcColumns("creature", "tw_world_creature.sql");
   const iId = cc.indexOf("id"), iMap = cc.indexOf("map");
   // spawn count per (creature, map) — cnt=1 marks a unique spawn (a boss heuristic)
   const counts = new Map();
-  for (const r of iterRows(cs, "creature")) {
+  for (const r of srcRows("creature", "tw_world_creature.sql")) {
     const k = `${clean(r[iId])}:${clean(r[iMap])}`;
     counts.set(k, (counts.get(k) || 0) + 1);
   }
@@ -264,11 +304,10 @@ console.log("Importing spells + crafting graph...");
   // spell with its profession (+ required skill) on the item page. First row wins.
   const spellSkill = new Map();
   {
-    const slaSql = read("tw_world_skill_line_ability.sql");
-    const sc = parseColumns(slaSql);
+    const sc = srcColumns("skill_line_ability", "tw_world_skill_line_ability.sql");
     const iSp = sc.indexOf("spell_id"), iSk = sc.indexOf("skill_id"), iRq = sc.indexOf("req_skill_value");
     const iMin = sc.indexOf("min_value"), iMax = sc.indexOf("max_value"), iLearn = sc.indexOf("learn_on_get_skill");
-    for (const r of iterRows(slaSql, "skill_line_ability")) {
+    for (const r of srcRows("skill_line_ability", "tw_world_skill_line_ability.sql")) {
       const sp = clean(r[iSp]);
       // min_value/max_value are the yellow/grey skill-up thresholds (green is their
       // midpoint); kept so the crafting view can color recipe difficulty.
@@ -277,8 +316,7 @@ console.log("Importing spells + crafting graph...");
     }
     console.log(`  skill_line_ability: ${spellSkill.size} spells`);
   }
-  const sql = read("tw_world_spell_template.sql");
-  const c = parseColumns(sql);
+  const c = srcColumns("spell_template", "tw_world_spell_template.sql");
   const at = (name) => c.indexOf(name);
   const iEntry = at("entry"), iName = at("name"), iDesc = at("description"), iAura = at("auraDescription"), iIcon = at("spellIconId");
   const bp = [1, 2, 3].map((n) => at(`effectBasePoints${n}`));
@@ -297,7 +335,7 @@ console.log("Importing spells + crafting graph...");
   const sReag = db.prepare(`INSERT INTO spell_reagent VALUES (?,?,?)`);
   let ns = 0, nc = 0, nr = 0;
   db.transaction(() => {
-    for (const row of iterRows(sql, "spell_template")) {
+    for (const row of srcRows("spell_template", "tw_world_spell_template.sql")) {
       const e = clean(row[iEntry]);
       // $sN in spell text resolves to basePoints+1 (.. +dieSides for ranges)
       const s = bp.map((bi, k) => (clean(row[bi]) || 0) + 1);
@@ -345,10 +383,9 @@ console.log("Deriving craft sources...");
     ["tw_world_npc_trainer.sql", "npc_trainer"],
     ["tw_world_npc_trainer_template.sql", "npc_trainer_template"],
   ]) {
-    const sql = read(file);
-    const cols = parseColumns(sql);
+    const cols = srcColumns(table, file);
     const iSpell = cols.indexOf("spell"), iReq = cols.indexOf("reqskillvalue");
-    for (const r of iterRows(sql, table)) {
+    for (const r of srcRows(table, file)) {
       const sp = clean(r[iSpell]);
       if (!sp) continue;
       const req = clean(r[iReq]) || 0;
@@ -405,8 +442,7 @@ console.log("Deriving craft sources...");
 // ---- Quests + quest link tables (items, creature/GO objectives, rep rewards) ----
 console.log("Importing quests + quest links...");
 {
-  const sql = read("tw_world_quest_template.sql");
-  const c = parseColumns(sql);
+  const c = srcColumns("quest_template", "tw_world_quest_template.sql");
   const at = (name) => c.indexOf(name);
   const cols = {
     entry: at("entry"), title: at("Title"), zone: at("ZoneOrSort"), type: at("Type"),
@@ -445,7 +481,7 @@ console.log("Importing quests + quest links...");
     }
   };
   db.transaction(() => {
-    for (const row of iterRows(sql, "quest_template")) {
+    for (const row of srcRows("quest_template", "tw_world_quest_template.sql")) {
       const e = clean(row[cols.entry]);
       const ot = objText.map((i) => clean(row[i])).filter((s) => s && String(s).trim()).join("\n") || null;
       sQ.run(
@@ -603,12 +639,11 @@ console.log("Importing zones + spawn points...");
   db.exec(`CREATE TABLE spawn_points (kind TEXT, id INTEGER, map INTEGER, x REAL, y REAL)`);
   const sSp = db.prepare(`INSERT INTO spawn_points VALUES (?,?,?,?,?)`);
   const loadSpawns = (file, table, kind) => {
-    const sql = read(file);
-    const cols = parseColumns(sql);
+    const cols = srcColumns(table, file);
     const iId = cols.indexOf("id"), iMap = cols.indexOf("map"), iX = cols.indexOf("position_x"), iY = cols.indexOf("position_y");
     let n = 0;
     db.transaction(() => {
-      for (const row of iterRows(sql, table)) {
+      for (const row of srcRows(table, file)) {
         sSp.run(kind, clean(row[iId]), clean(row[iMap]), clean(row[iX]), clean(row[iY]));
         n++;
       }
@@ -616,7 +651,7 @@ console.log("Importing zones + spawn points...");
     return n;
   };
   const nc = loadSpawns("tw_world_creature.sql", "creature", "c");
-  const ngo = existsSync(join(SQL_DIR, "tw_world_gameobject.sql")) ? loadSpawns("tw_world_gameobject.sql", "gameobject", "o") : 0;
+  const ngo = src.has("gameobject") ? loadSpawns("tw_world_gameobject.sql", "gameobject", "o") : 0;
   db.exec(`CREATE INDEX idx_spawn_map ON spawn_points(map)`);
   db.exec(`CREATE INDEX idx_spawn_id ON spawn_points(kind, id)`); // NPC-page zone lookup
   console.log(`  spawn_points: ${nc} creatures + ${ngo} objects`);
@@ -626,6 +661,10 @@ console.log("Importing zones + spawn points...");
     WHERE s.map = zones.mapid AND s.x BETWEEN zones.locbottom AND zones.loctop
       AND s.y BETWEEN zones.locright AND zones.locleft)`);
 }
+
+// staging tables have served their purpose; drop them so VACUUM reclaims the
+// space (they hold the full raw mangos rows, much larger than the viewer tables).
+src.drop();
 
 // ---- Full-text search over item / creature / quest names (unified search) ----
 console.log("Building FTS indexes...");

@@ -17,7 +17,11 @@ await page.evaluateOnNewDocument(() => {
   });
 });
 const errors = [];
-const BENIGN = /favicon\.ico|icons\.json/;
+// Ignore: favicon, the optional icon atlas manifest, and the third-party WoW
+// icon CDN. CDN item icons are decorative (render.js falls back to the atlas /
+// renders without them) and headless Chrome intermittently ORB-blocks them after
+// the CDN's render-us -> render/us redirect, which would flake the run.
+const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com/;
 page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 page.on("requestfailed", (r) => { if (!BENIGN.test(r.url())) errors.push("reqfail: " + r.url() + " " + r.failure()?.errorText); });
 page.on("response", (r) => { if (r.status() >= 400 && !BENIGN.test(r.url())) errors.push(`http ${r.status()}: ${r.url()}`); });
@@ -360,6 +364,19 @@ async function testZone(id, expectName) {
   return name.includes(expectName) && cats > 0 && tabList.length === 3 && rows > 0;
 }
 
+// client-only zones (map texture, no spawns in the public SQL export) render the
+// parchment map + an explanatory note instead of three blank tabs.
+async function testEmptyZone(id, expectName) {
+  await page.goto(`${BASE}?zone=${id}`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector(".zone-page .npc-head h1", { timeout: 40000 });
+  const name = await page.$eval(".zone-page .npc-head h1", (e) => e.textContent);
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  const hasNote = (await page.$(".zone-page .zone-empty")) !== null;
+  const hasTabs = (await page.$(".zone-page .tabbar")) !== null;
+  console.log(`empty zone ${id}: name="${name}" mapImg=yes note=${hasNote} tabs=${hasTabs}`);
+  return name.includes(expectName) && hasNote && !hasTabs;
+}
+
 let ok = true;
 const t = Date.now();
 ok = (await testItem(7909, "Aquamarine")) && ok;
@@ -376,6 +393,8 @@ ok = (await testFaction(509, "League of Arathor")) && ok;
 ok = (await testQuestRepLink(14)) && ok;
 ok = (await testBrowse("factions", "", "Items")) && ok;
 ok = (await testZone(12, "Elwynn")) && ok;
+ok = (await testZone(5561, "Balor")) && ok;             // 1.18.1 zone, populated via migrations
+ok = (await testEmptyZone(5722, "Thorn Gorge")) && ok; // 1.18.1 zone with no spawns upstream yet
 ok = (await testBrowse("zones", "", "Continent")) && ok;
 ok = (await testNpcLoad(15379, 400)) && ok;  // AQ NPC, many spawns; ~4ms healthy, 726ms if zone lookup unindexed
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
