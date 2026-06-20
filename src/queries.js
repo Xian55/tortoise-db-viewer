@@ -110,6 +110,16 @@ export const Q_ITEM_OBJECT_SPAWNS = `
 // All zone rectangles (for assigning a spawn point to its zone).
 export const Q_ZONE_BOXES = `SELECT areaid, name, mapid, locleft, locright, loctop, locbottom FROM zones`;
 
+// Spawn points within a zone of the object(s) that yield a given item -- powers
+// the focused "show only Earthroot nodes" view. ?1=map, ?2-5=rect, ?6=item.
+export const Q_ZONE_FOCUS_SPAWNS = `
+  SELECT g.name, s.x, s.y
+  FROM drops d
+  JOIN gameobjects g ON g.data1 = d.owner
+  JOIN spawn_points s INDEXED BY idx_spawn_id ON s.kind = 'o' AND s.id = g.entry
+  WHERE d.src = 'o' AND d.item = ?6 AND s.map = ?1
+    AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5 LIMIT 5000`;
+
 // All crafts (browse Crafting view). One row per (craft spell, reagent); the view
 // groups reagents per spell client-side. skill_min/skill_max give the yellow/grey
 // skill-up thresholds (green = midpoint). craft_source resolves trainer vs recipe.

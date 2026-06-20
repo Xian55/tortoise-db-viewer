@@ -46,8 +46,10 @@ const lvl = (s) => (s.level_max && s.level_max !== s.level_min ? `${s.level_min}
 
 let currentMap = null;
 
-// zone: row from Q_ZONE (+ imgUrl). spawns/objects: Q_ZONE_SPAWNS / Q_ZONE_OBJECTS rows.
-export function initZoneMap(el, zone, spawns, objects, navigate) {
+// zone: row from Q_ZONE (+ imgUrl). spawns/objects: Q_ZONE_SPAWNS / Q_ZONE_OBJECTS
+// rows. focus (optional): { label, points:[{x,y}] } -> a highlighted layer with
+// every other category off + the view zoomed to it (e.g. only Earthroot nodes).
+export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   if (currentMap) { currentMap.remove(); currentMap = null; }
 
   const W = zone.img_w, H = zone.img_h;
@@ -90,8 +92,22 @@ export function initZoneMap(el, zone, spawns, objects, navigate) {
     marker(objTypeLabel(o.type), OBJ_COLOR, toLatLng(o.x, o.y), o.name || `Object #${o.entry}`, null);
   }
 
-  // Build the overlay control: NPC categories first (control order), then object
-  // types sorted by count desc. Default-on per the whitelists above.
+  // focus layer (e.g. only Earthroot nodes): bright, on; everything else off.
+  let focusBounds = null;
+  const FKEY = focus ? `★ ${focus.label}` : null;
+  if (focus && focus.points.length) {
+    const lls = [];
+    for (const p of focus.points) {
+      const ll = toLatLng(p.x, p.y);
+      lls.push(ll);
+      L.circleMarker(ll, { radius: 5, color: "#000", weight: 1, fillColor: "#ffd700", fillOpacity: 0.95 })
+        .bindTooltip(focus.label, { direction: "top" }).addTo(group(FKEY));
+    }
+    focusBounds = L.latLngBounds(lls);
+  }
+
+  // Build the overlay control. In focus mode only the focus layer is on; otherwise
+  // NPC categories (control order) then object types by count desc, per whitelist.
   const overlays = {};
   const addLayer = (key, label, on) => {
     const g = groups.get(key);
@@ -99,12 +115,14 @@ export function initZoneMap(el, zone, spawns, objects, navigate) {
     overlays[`${label} (${g.getLayers().length})`] = g;
     if (on) g.addTo(map);
   };
-  for (const [key, label] of NPC_CATS) addLayer(key, label, !NPC_DEFAULT_OFF.has(key));
+  if (FKEY) addLayer(FKEY, FKEY, true);
+  for (const [key, label] of NPC_CATS) addLayer(key, label, !focus && !NPC_DEFAULT_OFF.has(key));
   const objKeys = [...groups.keys()].filter((k) => k.startsWith("Obj: "))
     .sort((a, b) => groups.get(b).getLayers().length - groups.get(a).getLayers().length);
-  for (const key of objKeys) addLayer(key, key, OBJ_DEFAULT_ON.has(key.slice(5)));
+  for (const key of objKeys) addLayer(key, key, !focus && OBJ_DEFAULT_ON.has(key.slice(5)));
 
   L.control.layers(null, overlays, { collapsed: false }).addTo(map);
+  if (focusBounds && focusBounds.isValid()) map.fitBounds(focusBounds.pad(0.3));
   setTimeout(() => map.invalidateSize(), 0);
   return map;
 }

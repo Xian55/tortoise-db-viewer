@@ -78,7 +78,7 @@ function route() {
   else if (npc) showNpc(Number(npc));
   else if (quest) showQuest(Number(quest));
   else if (faction) showFaction(Number(faction));
-  else if (zone) showZone(Number(zone));
+  else if (zone) showZone(Number(zone), params.get("gather") ? Number(params.get("gather")) : null);
   else if (dungeon) showDungeon(Number(dungeon));
   else if (params.get("dungeons") !== null) showDungeons();
   else if (term) { searchInput.value = term; showSearch(term); }
@@ -203,7 +203,8 @@ async function showItem(id) {
   ];
   const gatherCols = [
     { label: "Object", cell: (r) => esc(r.object), value: (r) => r.object },
-    { label: "Zone", cell: (r) => (r.areaid ? zoneLink(r.areaid, r.zone) : esc(r.zone)), value: (r) => r.zone },
+    // zone link carries &gather=<item> so the zone map opens focused on this node
+    { label: "Zone", cell: (r) => (r.areaid ? `<a class="ilink zone" href="?zone=${r.areaid}&gather=${id}">${esc(r.zone)}</a>` : esc(r.zone)), value: (r) => r.zone },
     { label: "Spawns", num: true, cell: (r) => r.count, value: (r) => r.count },
   ];
   const soldCols = [
@@ -506,7 +507,7 @@ async function showFaction(id) {
   wireTabs();
 }
 
-async function showZone(id) {
+async function showZone(id, gatherItem = null) {
   app.innerHTML = `<div class="loading">Loading zone ${id}…</div>`;
   let z;
   try { z = await queryOne(Q.Q_ZONE, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
@@ -514,9 +515,12 @@ async function showZone(id) {
   document.title = `${z.name} - Tortoise-WoW DB`;
 
   const rect = [z.mapid, z.locbottom, z.loctop, z.locright, z.locleft];
-  const [spawns, objects, loot] = await Promise.all([
+  const [spawns, objects, loot, focusPts] = await Promise.all([
     query(Q.Q_ZONE_SPAWNS, rect), query(Q.Q_ZONE_OBJECTS, rect), query(Q.Q_ZONE_LOOT, rect),
+    gatherItem ? query(Q.Q_ZONE_FOCUS_SPAWNS, [...rect, gatherItem]) : [],
   ]);
+  // focus mode: only the gathered node's spawns highlighted, other layers off
+  const focus = focusPts.length ? { label: focusPts[0].name || "Node", points: focusPts } : null;
   const meta = [CONTINENT[z.mapid], `${spawns.length + objects.length} spawns`].filter(Boolean);
 
   // dedupe spawn rows into distinct NPCs / objects (with a spawn-point count)
@@ -567,7 +571,7 @@ async function showZone(id) {
   try {
     const { initZoneMap } = await import("./zonemap.js");
     const imgUrl = `${import.meta.env.BASE_URL}maps/${z.areaid}.webp`;
-    initZoneMap(el, { ...z, imgUrl }, spawns, objects, navigate);
+    initZoneMap(el, { ...z, imgUrl }, spawns, objects, navigate, focus);
   } catch (e) { el.innerHTML = errorBox(e); }
 }
 
