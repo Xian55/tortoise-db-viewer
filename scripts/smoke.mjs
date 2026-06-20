@@ -64,6 +64,25 @@ async function testNpc(id, expectName, expectTab) {
   return name.includes(expectName) && tabsList.length > 0 && sortableH > 0 && (!expectTab || tabsList.some((t) => t.includes(expectTab)));
 }
 
+// Measure the in-app (SPA) navigation render time — the actual "click an NPC"
+// path (DB already in memory; just queries + render). Catches query regressions
+// like an unindexed spawn_points scan. App must already be loaded (warm).
+async function testNpcLoad(id, maxMs) {
+  await page.goto(`${BASE}?item=2770`, { waitUntil: "networkidle0", timeout: 40000 }); // warm the DB
+  await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
+  const ms = await page.evaluate((id) => {
+    const t0 = performance.now();
+    history.pushState({}, "", `?npc=${id}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    return new Promise((res) => {
+      const check = () => (document.querySelector(".npc-head h1") ? res(performance.now() - t0) : requestAnimationFrame(check));
+      check();
+    });
+  }, id);
+  console.log(`npc ${id} in-app load: ${ms.toFixed(0)}ms (budget ${maxMs}ms)`);
+  return ms < maxMs;
+}
+
 async function testBrowseSource(src) {
   await page.goto(`${BASE}?browse=items&source=${src}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
@@ -354,6 +373,7 @@ ok = (await testQuestRepLink(14)) && ok;
 ok = (await testBrowse("factions", "", "Items")) && ok;
 ok = (await testZone(12, "Elwynn")) && ok;
 ok = (await testBrowse("zones", "", "Continent")) && ok;
+ok = (await testNpcLoad(15379, 400)) && ok;  // AQ NPC, many spawns; ~4ms healthy, 726ms if zone lookup unindexed
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;

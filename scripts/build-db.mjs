@@ -618,6 +618,7 @@ console.log("Importing zones + spawn points...");
   const nc = loadSpawns("tw_world_creature.sql", "creature", "c");
   const ngo = existsSync(join(SQL_DIR, "tw_world_gameobject.sql")) ? loadSpawns("tw_world_gameobject.sql", "gameobject", "o") : 0;
   db.exec(`CREATE INDEX idx_spawn_map ON spawn_points(map)`);
+  db.exec(`CREATE INDEX idx_spawn_id ON spawn_points(kind, id)`); // NPC-page zone lookup
   console.log(`  spawn_points: ${nc} creatures + ${ngo} objects`);
 
   // precompute per-zone spawn count (point-in-rectangle) for the browse list

@@ -145,9 +145,13 @@ export const Q_NPC_MAPS = `
 // Candidate zones whose rectangle contains a spawn of this NPC (with bounds, so
 // showNpc can pick the most-interior zone per spawn -- WMA boxes overlap at
 // borders, so plain containment is ambiguous).
+// INDEXED BY forces the spawn-first plan (find this NPC's few spawns via
+// idx_spawn_id, then test the ~129 zone boxes). Without the hint the planner
+// scans zones and reads every spawn per continent map -> ~700ms/page.
 export const Q_NPC_ZONES = `
   SELECT DISTINCT z.areaid, z.name, z.mapid, z.locleft, z.locright, z.loctop, z.locbottom
-  FROM spawn_points s JOIN zones z ON z.mapid = s.map
+  FROM spawn_points s INDEXED BY idx_spawn_id
+  JOIN zones z ON z.mapid = s.map
     AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
   WHERE s.kind = 'c' AND s.id = ?1 AND z.name <> ''`;
 
