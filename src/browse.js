@@ -261,15 +261,26 @@ async function browseNpcs(p) {
   return { rows, cols: NPC_COLS, filters, noun: "NPCs" };
 }
 
-// Skill-up difficulty colors (recipe orange→yellow→green→grey). green is the
-// midpoint of the yellow (min_value) and grey (max_value) thresholds; some recipes
-// never go grey (min=max=0) and just show the orange requirement.
+// Effective craft skill: many Turtle recipes have a bogus skill_req=1 while the
+// real trivial range is e.g. 175-210, so use skill_min when it's higher -- this is
+// also the sort/progression key (see craftSkill()).
+function craftSkill(c) {
+  return Math.max(c.min || 0, c.req || 0);
+}
+
+// Skill-up difficulty colors (orange→yellow→green→grey): orange = the effective
+// start, then the trivial range yellow(min) / green(mid) / grey(max). Adjacent
+// equal values are deduped so a recipe doesn't read "175 175 193 210".
 function craftSkillCell(c) {
   const span = (v, col) => `<span style="color:${col}">${v}</span>`;
-  const o = span(c.req || 0, "#ff8040");
-  if (!c.min && !c.max) return o;
-  const green = Math.round((c.min + c.max) / 2);
-  return `<span style="white-space:nowrap">${o} ${span(c.min, "#ffd100")} ${span(green, "#40c040")} ${span(c.max, "#808080")}</span>`;
+  const start = craftSkill(c);
+  if (!c.max) return span(start, "#ff8040");
+  const min = c.min || start, green = Math.round((min + c.max) / 2);
+  const bands = [[start, "#ff8040"], [min, "#ffd100"], [green, "#40c040"], [c.max, "#808080"]];
+  const out = [];
+  let prev = null;
+  for (const [v, col] of bands) { if (v !== prev) out.push(span(v, col)); prev = v; }
+  return `<span style="white-space:nowrap">${out.join(" ")}</span>`;
 }
 
 async function browseCrafting(p) {
@@ -297,7 +308,7 @@ async function browseCrafting(p) {
   const cols = [
     { key: "name", label: "Name", cell: (c) => itemLink(c.item, c.item_name, c.quality, c.item_icon), value: (c) => c.item_name },
     { key: "prof", label: "Profession", cls: "muted", cell: (c) => esc(PROFESSION_LABEL[c.skill] || ""), value: (c) => PROFESSION_LABEL[c.skill] || "" },
-    { key: "skill", label: "Skill", num: true, cell: (c) => craftSkillCell(c), value: (c) => c.req || 0 },
+    { key: "skill", label: "Skill", num: true, cell: (c) => craftSkillCell(c), value: (c) => craftSkill(c) },
     { key: "reagents", label: "Reagents", cls: "muted", cell: (c) => c.reagents.map((r) => `${itemLink(r.item, r.name, r.quality, r.icon)}${r.count > 1 ? ` ×${r.count}` : ""}`).join(", "), value: (c) => c.reagents.length },
     { key: "source", label: "Source",
       cell: (c) => (c.recipe_item ? itemLink(c.recipe_item, c.recipe_name, c.recipe_quality, c.recipe_icon)
