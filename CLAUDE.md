@@ -214,6 +214,10 @@ supplement).
 - **World-drop reference pools are intentionally excluded** from `drops`
   (`REF_THRESHOLD` in build-db). Items reachable only via those won't list
   individual creatures — by design (they're world drops).
+- **`items.world_drop`** (build-db, set when an item drops from ≥25 distinct
+  creature loot tables — ubiquitous greens/gems/cloth) flags world drops so the
+  **zone Items tab excludes them** (`Q_ZONE_LOOT`); they aren't characteristic of
+  any zone. Item/NPC pages still show them normally.
 - **Boss = unique spawn** (`spawns.cnt == 1`) within a map.
 - **PowerShell is the shell.** Avoid backticks inside `node -e`/`bun -e` one
   liners (they break); write a temp `.mjs` and run it instead. Bash tool is also

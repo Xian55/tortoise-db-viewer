@@ -84,15 +84,22 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     m.addTo(group(key));
   };
 
-  for (const s of spawns) {
-    const ll = toLatLng(s.x, s.y);
-    const label = `${s.name || "?"} <span class="dim">(${lvl(s)})</span>`;
-    for (const role of npcRolesFor(s)) marker(role, NPC_COLOR[role], ll, label, `?npc=${s.entry}`);
+  // In focus mode (a gathered node) the NPC/object category layers are off by
+  // default, so don't build their markers at all -- a huge zone like the Barrens
+  // has ~12k, and creating them just to leave them hidden is what made gather
+  // links slow. objByEntry is still populated (cheap) so the Objects-tab toggle
+  // works.
+  if (!focus) {
+    for (const s of spawns) {
+      const ll = toLatLng(s.x, s.y);
+      const label = `${s.name || "?"} <span class="dim">(${lvl(s)})</span>`;
+      for (const role of npcRolesFor(s)) marker(role, NPC_COLOR[role], ll, label, `?npc=${s.entry}`);
+    }
   }
   const objByEntry = new Map(); // entry -> { name, lls:[latlng] } for per-object toggles
   for (const o of objects) {
     const ll = toLatLng(o.x, o.y);
-    marker(objTypeLabel(o.type), OBJ_COLOR, ll, o.name || `Object #${o.entry}`, null);
+    if (!focus) marker(objTypeLabel(o.type), OBJ_COLOR, ll, o.name || `Object #${o.entry}`, null);
     let e = objByEntry.get(o.entry);
     if (!e) { e = { name: o.name || `Object #${o.entry}`, lls: [] }; objByEntry.set(o.entry, e); }
     e.lls.push(ll);

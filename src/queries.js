@@ -316,12 +316,21 @@ export const Q_ZONE_OBJECTS = `
   LIMIT 4000`;
 
 // Items dropped by creatures that spawn in the zone (for the zone's Items tab).
+// Items dropped by creatures spawning in the zone. Collapse the ~8000 spawns to
+// their distinct loot tables FIRST (a few hundred), then join drops -> items;
+// otherwise the loot join runs per-spawn (12x redundant) and a huge zone like the
+// Barrens takes ~1.4s.
 export const Q_ZONE_LOOT = `
-  SELECT DISTINCT i.entry, i.name, i.quality, i.item_level, i.required_level, di.icon
-  FROM spawn_points s INDEXED BY idx_spawn_map
-  JOIN creatures c ON c.entry = s.id
-  JOIN drops d ON d.src = 'c' AND d.owner = c.loot_id
-  JOIN items i ON i.entry = d.item
+  WITH lids(lid) AS (
+    SELECT DISTINCT c.loot_id
+    FROM spawn_points s INDEXED BY idx_spawn_map
+    JOIN creatures c ON c.entry = s.id
+    WHERE s.kind = 'c' AND s.map = ?1 AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5
+      AND c.loot_id <> 0)
+  SELECT i.entry, i.name, i.quality, i.item_level, i.required_level, di.icon
+  FROM lids
+  JOIN drops d ON d.src = 'c' AND d.owner = lids.lid
+  JOIN items i ON i.entry = d.item AND i.world_drop = 0
   LEFT JOIN item_display_info di ON di.ID = i.display_id
-  WHERE s.kind = 'c' AND s.map = ?1 AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5
+  GROUP BY i.entry
   ORDER BY i.quality DESC, i.item_level DESC LIMIT 1000`;
