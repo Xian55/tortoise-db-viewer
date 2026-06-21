@@ -463,6 +463,24 @@ console.log("Deriving craft sources...");
   })();
   db.exec(`CREATE INDEX idx_craft_source_spell ON craft_source(spell)`);
   console.log(`  craft_source: ${ncs} spells (trainer: ${ntr}, recipe: ${nrec}, recipe pool: ${itemBySpell.size})`);
+
+  // Flag "learn" spells: a recipe's Use-effect spell whose only job is to teach the
+  // real craft spell (which it triggers). They duplicate the craft's name, carry no
+  // reagents/result, and would otherwise show as a confusing twin in search/browse.
+  // spells.teaches = the craft spell taught -> excluded from FTS/browse, and the
+  // recipe item's "Teaches you how to craft X" link points at the craft, not this stub.
+  db.exec(`ALTER TABLE spells ADD COLUMN teaches INTEGER`);
+  {
+    const setTeaches = db.prepare(`UPDATE spells SET teaches = ? WHERE entry = ?`);
+    let n = 0;
+    db.transaction(() => {
+      for (const { spell } of db.prepare(`SELECT spell FROM craft_source`).all()) {
+        for (const learner of (spellTriggers.get(spell) || [])) { setTeaches.run(spell, learner); n++; }
+      }
+    })();
+    db.exec(`CREATE INDEX idx_spells_teaches ON spells(teaches)`);
+    console.log(`  learn spells flagged (teaches set): ${n}`);
+  }
 }
 
 // ---- Quests + quest link tables (items, creature/GO objectives, rep rewards) ----
@@ -701,7 +719,7 @@ db.exec(`INSERT INTO creatures_fts(rowid, name) SELECT entry, name FROM creature
 db.exec(`CREATE VIRTUAL TABLE quests_fts USING fts5(title, content='quests', content_rowid='entry', tokenize='unicode61')`);
 db.exec(`INSERT INTO quests_fts(rowid, title) SELECT entry, title FROM quests WHERE title IS NOT NULL AND title <> ''`);
 db.exec(`CREATE VIRTUAL TABLE spells_fts USING fts5(name, description, content='spells', content_rowid='entry', tokenize='unicode61')`);
-db.exec(`INSERT INTO spells_fts(rowid, name, description) SELECT entry, name, description FROM spells WHERE name IS NOT NULL AND name <> ''`);
+db.exec(`INSERT INTO spells_fts(rowid, name, description) SELECT entry, name, description FROM spells WHERE name IS NOT NULL AND name <> '' AND teaches IS NULL`);
 
 console.log("Optimizing...");
 db.pragma("journal_mode = DELETE");

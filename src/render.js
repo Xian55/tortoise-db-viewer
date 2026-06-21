@@ -177,7 +177,8 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false } =
     const txt = sp ? resolveSpellText(sp.description || sp.auraDescription, sp) : "";
     const body = txt || (sp && sp.name) || "";
     if (!body) continue;
-    const inner = linkSpells && sp ? spellLink(sid, body, sp.icon) : esc(body);
+    // a recipe's "learn" spell (sp.teaches) is a stub -> link to the real craft.
+    const inner = linkSpells && sp ? spellLink(sp.teaches || sid, body, sp.icon) : esc(body);
     line(`${label} ${inner}`, "tt-spell");
   }
 
