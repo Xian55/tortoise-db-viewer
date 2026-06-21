@@ -1,17 +1,17 @@
 // Zone map: a per-zone parchment image (L.CRS.Simple) with toggleable marker
-// layers, rendered on a GPU Pixi overlay (leaflet-pixi-overlay) so huge zones
-// (the Barrens has ~12k spawns) stay smooth. NPCs split by role, objects by
-// gameobject type, so clutter can be hidden. World coords -> image pixels via the
-// zone's WorldMapArea bounds. Lazy-imported so Pixi/Leaflet stay out of the main
-// bundle.
+// layers. The high-volume category markers (NPC roles, object types -- the
+// Barrens has ~12k) are GPU sprites on a Pixi overlay (leaflet-pixi-overlay) so
+// pan/zoom stays smooth. The few icon markers (a gathered node's icon, a toggled
+// object) stay as Leaflet HTML markers -- no WebGL texture / CORS fuss, and there
+// are not many. World coords -> image px via the zone's WorldMapArea bounds.
+// Lazy-imported so Pixi/Leaflet stay out of the main bundle.
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import * as PIXI from "pixi.js";
 import "leaflet-pixi-overlay";
 import { GAMEOBJECT_TYPE } from "./constants.js";
-import { iconUrl, getIconAtlas } from "./render.js";
+import { iconMarker } from "./render.js";
 
-// NPC categories: key -> [label, color]. Order = control order.
 const NPC_CATS = [
   ["quest", "Quest Givers", "#ffd100"],
   ["vendor", "Vendors", "#39d353"],
@@ -23,7 +23,7 @@ const NPC_CATS = [
   ["mob", "Enemy Mobs", "#e0524a"],
 ];
 const NPC_COLOR = Object.fromEntries(NPC_CATS.map(([k, , c]) => [k, c]));
-const NPC_DEFAULT_OFF = new Set(["mob"]);          // dense -> off by default
+const NPC_DEFAULT_OFF = new Set(["mob"]);
 const OBJ_COLOR = "#a070d0";
 const OBJ_DEFAULT_ON = new Set(["Chest", "Fishing Node", "Fishing Hole", "Mailbox", "Herb", "Mining"]);
 const objTypeLabel = (t) => `Obj: ${GAMEOBJECT_TYPE[t] || "Other"}`;
@@ -58,27 +58,6 @@ function discTexture() {
   return discTex;
 }
 
-// Texture for an item/object icon: an atlas frame (Turtle custom icons) or the
-// CDN image. Atlas frame dims come from the shared base texture once it loads.
-let atlasBase = null;
-function iconTexture(icon) {
-  const atlas = getIconAtlas();
-  const key = (icon || "").toLowerCase();
-  if (atlas && atlas.icons && atlas.icons[key] != null) {
-    if (!atlasBase) atlasBase = PIXI.BaseTexture.from(atlas.url);
-    const i = atlas.icons[key];
-    const frame = () => {
-      const cw = atlasBase.width / atlas.cols, ch = atlasBase.height / atlas.rows;
-      return new PIXI.Rectangle((i % atlas.cols) * cw, Math.floor(i / atlas.cols) * ch, cw, ch);
-    };
-    if (atlasBase.valid) return new PIXI.Texture(atlasBase, frame());
-    const tex = new PIXI.Texture(atlasBase);
-    atlasBase.once("loaded", () => { tex.frame = frame(); tex.updateUvs(); });
-    return tex;
-  }
-  return PIXI.Texture.from(iconUrl(icon));
-}
-
 let currentMap = null, currentOverlay = null;
 
 // zone: row from Q_ZONE (+ imgUrl). spawns/objects: Q_ZONE_SPAWNS / Q_ZONE_OBJECTS
@@ -87,7 +66,7 @@ let currentMap = null, currentOverlay = null;
 export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   // destroy the previous overlay first -> frees its WebGL context (browsers cap
   // these, so leaking one per zone navigation would eventually break the map).
-  if (currentOverlay) { try { currentOverlay.destroy(); } catch (_) { /* already gone */ } currentOverlay = null; }
+  if (currentOverlay) { try { currentOverlay.destroy(); } catch (_) { /* gone */ } currentOverlay = null; }
   if (currentMap) { currentMap.remove(); currentMap = null; }
 
   const W = zone.img_w, H = zone.img_h;
@@ -97,7 +76,8 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   });
   currentMap = map;
   const bounds = [[0, 0], [H, W]];
-  L.imageOverlay(zone.imgUrl, bounds).addTo(map);
+  // parchment in tilePane (below overlayPane) so the Pixi markers draw on top
+  L.imageOverlay(zone.imgUrl, bounds, { pane: "tilePane" }).addTo(map);
   map.fitBounds(bounds);
 
   const dx = zone.loctop - zone.locbottom, dy = zone.locleft - zone.locright;
@@ -106,45 +86,33 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     dy ? (W * (zone.locleft - y)) / dy : 0,
   );
 
-  // ---- Pixi overlay: one container of sprites; categories toggle visibility ----
+  // ---- Pixi overlay: category dots (high volume) ----
   const container = new PIXI.Container();
-  const cats = new Map(); // key -> { label, sprites:[], on }
+  const cats = new Map(); // key -> { label, sprites:[] }
   const cat = (key, label) => {
     let g = cats.get(key);
     if (!g) { g = { label, sprites: [] }; cats.set(key, g); }
     return g;
   };
   const disc = discTexture();
-
-  // sprite carries .ll (latlng), .label (tooltip html), .href (click target)
   const addDot = (key, label, color, ll, html, href) => {
     const sp = new PIXI.Sprite(disc);
     sp.anchor.set(0.5);
     sp.tint = color;
-    sp.ll = ll; sp.label = html; sp.href = href;
+    sp.ll = ll; sp.label = html; sp.href = href; sp.visible = false;
     container.addChild(sp);
     cat(key, label).sprites.push(sp);
-    return sp;
-  };
-  const addIcon = (key, label, tex, ll, html, href) => {
-    const sp = new PIXI.Sprite(tex);
-    sp.anchor.set(0.5);
-    sp.ll = ll; sp.label = html; sp.href = href; sp.isIcon = true;
-    container.addChild(sp);
-    cat(key, label).sprites.push(sp);
-    return sp;
   };
 
-  // In focus mode the category layers are off by default, so don't build them;
-  // a huge zone's ~12k dots would just be hidden. objByEntry is still populated
-  // for the Objects-tab toggle.
+  // In focus mode the category layers are off by default; don't build the ~12k
+  // hidden dots. objByEntry is still populated for the Objects-tab toggle.
   if (!focus) {
     for (const s of spawns) {
       const ll = toLatLng(s.x, s.y);
       const html = `${esc(s.name) || "?"} <span class="dim">(${lvl(s)})</span>`;
       for (const role of npcRolesFor(s)) {
-        const [, label] = NPC_CATS.find((c) => c[0] === role) || [role, role];
-        addDot(role, label, hexToNum(NPC_COLOR[role]), ll, html, `?npc=${s.entry}`);
+        const def = NPC_CATS.find((c) => c[0] === role);
+        addDot(role, def ? def[1] : role, hexToNum(NPC_COLOR[role]), ll, html, `?npc=${s.entry}`);
       }
     }
   }
@@ -157,57 +125,57 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     e.lls.push(ll);
   }
 
-  // focus layer: the gathered node's own icon, bright, zoomed-to.
-  let focusBounds = null;
-  const FKEY = focus ? `★ ${focus.label}` : null;
-  if (focus && focus.points.length) {
-    const tex = iconTexture(focus.icon);
-    const lls = [];
-    for (const p of focus.points) {
-      const ll = toLatLng(p.x, p.y);
-      lls.push(ll);
-      addIcon(FKEY, FKEY, tex, ll, esc(focus.label), null);
-    }
-    focusBounds = L.latLngBounds(lls);
-  }
-
-  // project + scale every visible sprite each redraw
   const overlay = L.pixiOverlay((utils) => {
     const zoom = utils.getMap().getZoom();
     const scale = utils.getMap().getZoomScale(zoom, 0);
-    const renderer = utils.getRenderer();
-    const dotScale = Math.max(0.5, Math.min(2, scale)); // keep dots readable
+    const dotScale = Math.max(0.5, Math.min(2, scale));
     for (const sp of container.children) {
       if (!sp.visible) continue;
       const p = utils.latLngToLayerPoint(sp.ll);
       sp.x = p.x; sp.y = p.y;
-      if (sp.isIcon) sp.scale.set((22 / sp.texture.width) * Math.max(0.6, Math.min(2.2, scale)));
-      else sp.scale.set(dotScale);
+      sp.scale.set(dotScale);
     }
-    renderer.render(container);
+    utils.getRenderer().render(container);
   }, container, { autoPreventDefault: false });
   overlay.addTo(map);
   currentOverlay = overlay;
 
-  // ---- category visibility as toggleable Leaflet layers ----
   const redraw = () => overlay.redraw();
-  const GroupLayer = L.Layer.extend({
+  const DotLayer = L.Layer.extend({
     initialize(sprites) { this._s = sprites; },
     onAdd() { for (const s of this._s) s.visible = true; redraw(); },
     onRemove() { for (const s of this._s) s.visible = false; redraw(); },
   });
-  // start hidden; addLayer below turns the default-on ones on
-  for (const g of cats.values()) for (const s of g.sprites) s.visible = false;
 
+  // ---- icon markers (few): a gathered node + toggled objects, as HTML ----
+  const iconMark = (ll, icon, label) => L.marker(ll, {
+    icon: L.divIcon({ html: iconMarker(icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] }),
+  }).bindTooltip(label, { direction: "top" });
+
+  // focus layer: the gathered node's own icon, bright, zoomed-to.
+  let focusBounds = null, focusLayer = null;
+  const FKEY = focus ? `★ ${focus.label}` : null;
+  if (focus && focus.points.length) {
+    const lls = [];
+    focusLayer = L.layerGroup();
+    for (const p of focus.points) {
+      const ll = toLatLng(p.x, p.y);
+      lls.push(ll);
+      iconMark(ll, focus.icon, focus.label).addTo(focusLayer);
+    }
+    focusBounds = L.latLngBounds(lls);
+  }
+
+  // ---- layer control: dot categories + the focus layer ----
   const overlays = {};
   const addCat = (key, on) => {
     const g = cats.get(key);
     if (!g || !g.sprites.length) return;
-    const layer = new GroupLayer(g.sprites);
+    const layer = new DotLayer(g.sprites);
     overlays[`${g.label} (${g.sprites.length})`] = layer;
     if (on) layer.addTo(map);
   };
-  if (FKEY) addCat(FKEY, true);
+  if (focusLayer) { overlays[FKEY] = focusLayer; focusLayer.addTo(map); }
   for (const [key] of NPC_CATS) addCat(key, !focus && !NPC_DEFAULT_OFF.has(key));
   const objKeys = [...cats.keys()].filter((k) => k.startsWith("Obj: "))
     .sort((a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length);
@@ -217,13 +185,13 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   if (focusBounds && focusBounds.isValid()) map.fitBounds(focusBounds.pad(0.3));
   setTimeout(() => { map.invalidateSize(); redraw(); }, 0);
 
-  // ---- hover tooltip + click, via nearest-visible-sprite hit-test ----
+  // ---- hover tooltip + click for the Pixi dots (no per-marker DOM) ----
   const tip = L.DomUtil.create("div", "pixi-tip", el);
   tip.style.cssText = "position:absolute;z-index:1000;pointer-events:none;display:none;" +
     "background:#16181f;border:1px solid #2a2e3a;border-radius:6px;padding:3px 7px;" +
     "font-size:12px;color:#e6e8ee;white-space:nowrap;transform:translate(-50%,-140%)";
-  const HIT = 9; // px
-  let hover = null, raf = 0;
+  const HIT = 9;
+  let raf = 0;
   const nearest = (cp) => {
     let best = null, bd = HIT * HIT;
     for (const sp of container.children) {
@@ -239,7 +207,6 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     raf = requestAnimationFrame(() => {
       raf = 0;
       const sp = nearest(e.containerPoint);
-      hover = sp;
       el.style.cursor = sp && sp.href ? "pointer" : "";
       if (!sp) { tip.style.display = "none"; return; }
       tip.innerHTML = sp.label;
@@ -254,17 +221,15 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     if (sp && sp.href) navigate(sp.href);
   });
 
-  // ---- Objects-tab toggle: show/hide one object's icon markers ----
+  // ---- Objects-tab toggle: show/hide one object's icon markers (HTML) ----
   const objLayers = new Map();
   function toggleObject(entry, on, icon) {
     let rec = objLayers.get(entry);
     if (on) {
       if (!rec) {
         const e = objByEntry.get(entry);
-        const tex = iconTexture(icon);
-        const sprites = [];
-        if (e) for (const ll of e.lls) sprites.push(addIcon(`obj-${entry}`, e.name, tex, ll, esc(e.name), null));
-        rec = new GroupLayer(sprites);
+        rec = L.layerGroup();
+        if (e) for (const ll of e.lls) iconMark(ll, icon, e.name).addTo(rec);
         objLayers.set(entry, rec);
       }
       rec.addTo(map);
