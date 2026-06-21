@@ -21,7 +21,7 @@ browser with the official `@sqlite.org/sqlite-wasm` build.
         │                              resolve chances
         ▼
 public/data/tortoise.sqlite           one indexed DB (~34 MB), fetched whole
-        │  src/db.js (sqlite-wasm + OPFS cache, gzip-safe full download)
+        │  src/db.js + src/db-worker.js (sqlite-wasm in a Worker, OPFS cache)
         ▼
 src/queries.js  → src/table.js / src/render.js / src/hovercard.js / src/browse.js
 
@@ -39,9 +39,15 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
 - **Whole-DB load, not HTTP range.** GitHub Pages gzips responses (including 206
   partials) with `Content-Range` reporting the *compressed* size, which corrupts
   byte-range reads — so sql.js-httpvfs is unusable here. We download the whole
-  file once (gzip is transparent for a full GET) and query it in memory. The DB
-  is cached in **OPFS** (SAHPool VFS, no COOP/COEP needed); falls back to an
-  in-memory deserialize when OPFS is unavailable.
+  file once (gzip is transparent for a full GET). SQLite runs in a **Web Worker**
+  (`src/db-worker.js`); `src/db.js` is a thin message client. The worker is
+  required for the durable **OPFS** cache: the SAHPool VFS's
+  `FileSystemSyncAccessHandle` is **Worker-only** (it's `undefined` on the main
+  thread in Chrome), so the old main-thread SAHPool always failed and re-fetched
+  the ~58 MB DB every visit. In the worker OPFS persists (no COOP/COEP needed,
+  SAHPool not the Atomics VFS); falls back to an in-memory deserialize when OPFS
+  is unavailable. Trade-off: query results cross the worker boundary (structured
+  clone) — negligible even for the big zone queries.
 - **Cache invalidation:** `build-db.mjs` writes `data/version.json` with a
   content hash. `db.js` keys the download URL (`?v=`) and the OPFS filename by
   that hash and wipes old copies, so a new deploy auto-refreshes clients.
@@ -163,7 +169,9 @@ supplement).
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
 - `scripts/lib/sqlite.mjs` — Bun/Node SQLite wrapper.
-- `src/db.js` — sqlite-wasm init, OPFS cache, versioned download, `query()`.
+- `src/db.js` — thin client to the DB worker (`query()`/`queryOne()` post
+  messages; resolves by id). `src/db-worker.js` — owns sqlite-wasm, installs the
+  OPFS SAHPool VFS (Worker-only API), imports/opens the versioned DB, runs exec.
 - `src/queries.js` — all SQL (positional `?1`). Loot reads come from `drops`.
 - `src/table.js` — the one reusable table: client-side sort + paginate + group
   (collapsible) used everywhere. `createTable(container, {columns, rows, ...})`.

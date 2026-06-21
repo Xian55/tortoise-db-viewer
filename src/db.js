@@ -1,16 +1,25 @@
-// Official SQLite WASM build. The whole DB is fetched once and loaded into the
-// engine; all queries then run locally. Persisted to OPFS (when available) so
-// repeat visits skip the download. No COOP/COEP headers needed (OPFS SAHPool).
+// Thin client over a Web Worker that owns the SQLite engine (src/db-worker.js).
+// The worker is required for the durable OPFS cache: the SAHPool VFS's
+// FileSystemSyncAccessHandle only exists in a Worker, so a new deploy is fetched
+// once and then served from OPFS on repeat visits (no ~58 MB re-download).
 //
-// Cache invalidation: build-db.mjs writes data/version.json with a content hash.
-// The client keys both the download URL (?v=) and the OPFS filename by that hash,
-// and wipes stale OPFS copies — so a new deploy is picked up automatically.
-import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
+// Cache invalidation: build-db.mjs writes data/version.json with a content hash;
+// the worker keys the OPFS filename by it and wipes stale copies.
 
 const BASE = import.meta.env.BASE_URL;
-const OPFS_POOL = "tortoise-db";
 
-let dbPromise = null;
+let worker = null;
+let readyPromise = null;
+let seq = 0;
+const pending = new Map();
+
+function send(msg) {
+  return new Promise((resolve, reject) => {
+    const id = ++seq;
+    pending.set(id, { resolve, reject });
+    worker.postMessage({ id, ...msg });
+  });
+}
 
 async function getVersion() {
   try {
@@ -20,56 +29,37 @@ async function getVersion() {
   return "0";
 }
 
-async function fetchDbBytes(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`DB download failed: HTTP ${res.status}`);
-  return new Uint8Array(await res.arrayBuffer());
-}
-
 async function init() {
+  worker = new Worker(new URL("./db-worker.js", import.meta.url), { type: "module" });
+  worker.onmessage = (e) => {
+    const { id, result, error } = e.data;
+    const p = pending.get(id);
+    if (!p) return;
+    pending.delete(id);
+    if (error) p.reject(new Error(error)); else p.resolve(result);
+  };
+  worker.onerror = (e) => {
+    for (const p of pending.values()) p.reject(new Error(e.message || "DB worker error"));
+    pending.clear();
+  };
   const version = await getVersion();
   const url = `${BASE}data/tortoise.sqlite?v=${version}`;
-  const opfsFile = `/tortoise-${version}.sqlite`;
-  const sqlite3 = await sqlite3InitModule();
-
-  // Preferred: OPFS SAHPool — durable, survives reloads, works on GitHub Pages.
-  try {
-    const pool = await sqlite3.installOpfsSAHPoolVfs({ name: OPFS_POOL });
-    if (!pool.getFileNames().includes(opfsFile)) {
-      // a new version: drop any older cached DBs, then import this one
-      for (const f of pool.getFileNames()) {
-        if (f.startsWith("/tortoise-") && f.endsWith(".sqlite")) {
-          try { pool.unlink(f); } catch { /* ignore */ }
-        }
-      }
-      pool.importDb(opfsFile, await fetchDbBytes(url));
-    }
-    return new pool.OpfsSAHPoolDb(opfsFile);
-  } catch (e) {
-    console.warn("OPFS unavailable; loading DB in-memory.", e?.message || e);
+  const mode = await send({ type: "open", version, url });
+  if (typeof mode === "string" && mode.startsWith("memory")) {
+    console.warn("OPFS unavailable; loading DB in-memory.", mode.slice(7));
   }
-
-  // Fallback: deserialize into an in-memory database (relies on HTTP cache).
-  const bytes = await fetchDbBytes(url);
-  const db = new sqlite3.oo1.DB();
-  const p = sqlite3.wasm.allocFromTypedArray(bytes);
-  const rc = sqlite3.capi.sqlite3_deserialize(
-    db.pointer, "main", p, bytes.length, bytes.length,
-    sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE | sqlite3.capi.SQLITE_DESERIALIZE_RESIZEABLE,
-  );
-  db.checkRc(rc);
-  return db;
+  return true;
 }
 
-function getDb() {
-  if (!dbPromise) dbPromise = init();
-  return dbPromise;
+function ready() {
+  if (!readyPromise) readyPromise = init();
+  return readyPromise;
 }
 
 /** Run a query; returns an array of row objects. */
 export async function query(sql, params = []) {
-  const db = await getDb();
-  return db.exec({ sql, bind: params, rowMode: "object", returnValue: "resultRows" });
+  await ready();
+  return send({ type: "query", sql, params });
 }
 
 /** Run a query and return the first row (or null). */
@@ -79,5 +69,5 @@ export async function queryOne(sql, params = []) {
 
 /** Start loading the engine + DB in the background. */
 export function preconnect() {
-  getDb().catch(() => {});
+  ready().catch(() => {});
 }
