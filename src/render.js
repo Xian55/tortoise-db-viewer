@@ -25,6 +25,9 @@ export function iconUrl(name) {
 // { url, cols, rows, count, icons: { <name>: index } }  -- see build-atlas.py
 let ATLAS = null;
 export function setIconAtlas(atlas) { ATLAS = atlas; }
+// the loaded atlas manifest ({ url, cols, rows, icons }) for consumers that need
+// to draw sprites directly (e.g. the Pixi zone map). null until loaded.
+export function getIconAtlas() { return ATLAS; }
 
 // Background-position for cell `i` in the grid, as percentages so the one atlas
 // scales to any on-screen icon size (18px lists, 48px tooltip).
