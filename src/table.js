@@ -2,8 +2,11 @@
 // Sorting happens in JS over the already-loaded rows (no re-query). Each table
 // owns its container and re-renders on header click / pager click / group change.
 //
-// columns: [{ label, cell:(row)=>html, value?:(row)=>primitive, num?:bool, cls?:string }]
+// columns: [{ label, cell:(row)=>html, value?:(row)=>primitive, num?:bool, cls?:string, group?:(row)=>html }]
 //   value() supplies the sort/group key; defaults to the cell's text. num => numeric.
+//   group() renders the group-header label when grouped by this column (defaults to
+//   the cell) -- use it when the cell shows a member (e.g. a recipe link) but the
+//   group key is a category (e.g. "Recipe").
 // opts: { pageSize, groupable, group } — groupable shows a "Group by" selector;
 //   group is the default column index to group by (null = none).
 // Selection (opt-in): pass selectable:true + rowKey:(row)=>id to add a checkbox
@@ -81,8 +84,11 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
         const g = keyOf(gcol, r), gk = String(g), col = state.collapsed.has(gk);
         if (g !== prev) {
           const gsel = selectable ? `<td class="selcol"><input type="checkbox" data-selgroup="${esc(gk)}"></td>` : "";
+          // header labels the group; gcol.group(row) lets a column show the group
+          // key (e.g. "Recipe") instead of a member's cell (a specific recipe link)
+          const ghead = gcol.group ? gcol.group(r) : gcol.cell(r);
           body += `<tr class="grouprow${col ? " collapsed" : ""}" data-group="${esc(gk)}">${gsel}<td colspan="${dcols.length}">` +
-            `<span class="caret">${col ? "▸" : "▾"}</span>${gcol.cell(r)}</td></tr>`;
+            `<span class="caret">${col ? "▸" : "▾"}</span>${ghead}</td></tr>`;
           prev = g;
         }
         body += `<tr data-group="${esc(gk)}"${col ? ' style="display:none"' : ""}>${selTd(r)}${cells}</tr>`;

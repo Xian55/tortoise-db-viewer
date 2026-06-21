@@ -314,7 +314,9 @@ async function browseCrafting(p) {
       cell: (c) => (c.recipe_item ? itemLink(c.recipe_item, c.recipe_name, c.recipe_quality, c.recipe_icon)
         : c.trainer ? `<span class="tagx src-crafted">Trainer</span>`
           : c.auto ? `<span class="tagx" title="Learned automatically with the profession">Auto</span>` : "—"),
-      value: (c) => (c.recipe_item ? "Recipe" : c.trainer ? "Trainer" : c.auto ? "Auto" : "") },
+      value: (c) => (c.recipe_item ? "Recipe" : c.trainer ? "Trainer" : c.auto ? "Auto" : ""),
+      // group by source TYPE; the header shows the type, not the first recipe's name
+      group: (c) => (c.recipe_item ? "Recipe" : c.trainer ? "Trainer" : c.auto ? "Auto" : "Other") },
   ];
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
