@@ -242,7 +242,11 @@ export const Q_DUNGEON_BOSS_LOOT = `
   WHERE s.map = ?1 ORDER BY c.name, d.chance DESC LIMIT 2000`;
 
 // ---- quests ----
-export const Q_QUEST = `SELECT q.*, a.name AS zone_name FROM quests q LEFT JOIN areas a ON a.entry = q.zone WHERE q.entry = ?1`;
+// zone_page is non-null when q.zone is a zone that has a map page (-> link it).
+export const Q_QUEST = `SELECT q.*, a.name AS zone_name, z.areaid AS zone_page
+  FROM quests q LEFT JOIN areas a ON a.entry = q.zone
+  LEFT JOIN zones z ON z.areaid = q.zone
+  WHERE q.entry = ?1`;
 export const Q_QUEST_BRIEF = `SELECT entry, title, level FROM quests WHERE entry = ?1`;
 
 export const Q_QUEST_GIVERS_NPC = `SELECT c.entry, c.name, c.level_min, c.level_max, c.rank FROM creature_quest_start r JOIN creatures c ON c.entry = r.id WHERE r.quest = ?1 ORDER BY c.level_max, c.name`;
