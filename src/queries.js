@@ -95,7 +95,7 @@ export const Q_QUEST_ITEM = `SELECT q.entry, q.title, q.level, qi.role, qi.count
 export const Q_STARTS_QUEST = `SELECT q.entry, q.title, q.level FROM quests q WHERE q.entry = (SELECT start_quest FROM items WHERE entry = ?1) AND q.entry > 0`;
 
 export const Q_CREATED_BY = `
-  SELECT s.entry, s.name, sc.skill, sc.skill_req, ci.entry AS reagent_item, ci.name AS reagent_name, di.icon AS reagent_icon, sr.count
+  SELECT s.entry, s.name, sc.skill, sc.skill_req, ci.entry AS reagent_item, ci.name AS reagent_name, ci.quality AS reagent_quality, di.icon AS reagent_icon, sr.count
   FROM spell_creates sc JOIN spells s ON s.entry = sc.spell
   LEFT JOIN spell_reagent sr ON sr.spell = sc.spell
   LEFT JOIN items ci ON ci.entry = sr.item
@@ -114,11 +114,14 @@ export const Q_ITEM_SOURCES = `SELECT source FROM item_sources WHERE item = ?1`;
 
 // Every spawn point of the gathering object(s) that yield this item (herb/ore
 // nodes etc.), for the per-zone farm breakdown. Grouped into zones client-side.
+// CROSS JOIN pins the join order to the selective driver (drops.item) instead of
+// letting the planner scan every object spawn (kind='o'): ~272ms -> ~1ms for a
+// common ore. drops -> gameobjects(data1) -> spawn_points(kind,id), all indexed.
 export const Q_ITEM_OBJECT_SPAWNS = `
   SELECT g.name, s.x, s.y, s.map
   FROM drops d
-  JOIN gameobjects g ON g.data1 = d.owner
-  JOIN spawn_points s INDEXED BY idx_spawn_id ON s.kind = 'o' AND s.id = g.entry
+  CROSS JOIN gameobjects g ON g.data1 = d.owner
+  CROSS JOIN spawn_points s ON s.kind = 'o' AND s.id = g.entry
   WHERE d.src = 'o' AND d.item = ?1 LIMIT 30000`;
 
 // All zone rectangles (for assigning a spawn point to its zone).
@@ -128,11 +131,14 @@ export const Q_ITEM_ICON = `SELECT i.name, di.icon FROM items i LEFT JOIN item_d
 
 // Spawn points within a zone of the object(s) that yield a given item -- powers
 // the focused "show only Earthroot nodes" view. ?1=map, ?2-5=rect, ?6=item.
+// CROSS JOIN pins the order (drops -> gameobjects -> spawn_points); INDEXED BY
+// keeps s on idx_spawn_id (kind,id) -- otherwise the s.map predicate lures the
+// planner onto idx_spawn_map (all of map 0) and it balloons to ~400ms.
 export const Q_ZONE_FOCUS_SPAWNS = `
   SELECT g.name, s.x, s.y
   FROM drops d
-  JOIN gameobjects g ON g.data1 = d.owner
-  JOIN spawn_points s INDEXED BY idx_spawn_id ON s.kind = 'o' AND s.id = g.entry
+  CROSS JOIN gameobjects g ON g.data1 = d.owner
+  CROSS JOIN spawn_points s INDEXED BY idx_spawn_id ON s.kind = 'o' AND s.id = g.entry
   WHERE d.src = 'o' AND d.item = ?6 AND s.map = ?1
     AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5 LIMIT 5000`;
 

@@ -7,7 +7,7 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { GAMEOBJECT_TYPE } from "./constants.js";
-import { iconImg } from "./render.js";
+import { iconMarker } from "./render.js";
 
 // NPC categories: key -> [label, color]. Order = control order.
 const NPC_CATS = [
@@ -102,8 +102,8 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   let focusBounds = null;
   const FKEY = focus ? `★ ${focus.label}` : null;
   if (focus && focus.points.length) {
-    // marker uses the item's own icon (atlas sprite or CDN img via iconImg)
-    const poi = L.divIcon({ html: iconImg(focus.icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] });
+    // marker uses the item's own icon (atlas sprite or CDN background via iconMarker)
+    const poi = L.divIcon({ html: iconMarker(focus.icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] });
     const lls = [];
     for (const p of focus.points) {
       const ll = toLatLng(p.x, p.y);
@@ -141,7 +141,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
       if (!rec) {
         const layer = L.layerGroup();
         const e = objByEntry.get(entry);
-        const poi = L.divIcon({ html: iconImg(icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] });
+        const poi = L.divIcon({ html: iconMarker(icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] });
         if (e) for (const ll of e.lls) L.marker(ll, { icon: poi }).bindTooltip(e.name, { direction: "top" }).addTo(layer);
         rec = { layer };
         objLayers.set(entry, rec);

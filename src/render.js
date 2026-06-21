@@ -48,6 +48,21 @@ export function iconImg(name, cls = "il-icon") {
     `onerror="this.src='${iconUrl(PLACEHOLDER)}'">`;
 }
 
+// Map-marker icon: a <span> with a CSS background (atlas sprite or CDN image),
+// not an <img>. Leaflet reparents the marker element when it builds the icon,
+// which aborts an in-flight <img> load and fires its onerror -> the question-mark
+// placeholder (the bug where toggled map nodes all showed "?"). A background
+// image is immune to reparenting, so the real icon shows.
+export function iconMarker(name, cls = "il-icon") {
+  const key = (name || "").toLowerCase();
+  const i = ATLAS && ATLAS.icons[key];
+  if (i !== undefined && i !== null && i !== false) {
+    return `<span class="${cls} icon-sprite" style="${spriteStyle(i)}" role="img" aria-label="${esc(name)}"></span>`;
+  }
+  return `<span class="${cls}" style="background-image:url(${iconUrl(name)});background-size:cover" ` +
+    `role="img" aria-label="${esc(name)}"></span>`;
+}
+
 export function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
