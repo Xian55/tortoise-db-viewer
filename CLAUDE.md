@@ -50,11 +50,17 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
   `?browse=items|npcs|quests|factions|zones|crafting`, `?search=`. `route()`
   checks `?browse=` **before** the singular entity params (browse URLs carry
   filter params like `faction=a` that collide otherwise). See `src/main.js`.
-- **Zone maps use Leaflet** (`L.CRS.Simple`, npm dep, lazy-loaded as its own
-  chunk via `src/zonemap.js`). A zone page renders the in-game parchment image
+- **Zone maps use Leaflet + a Pixi GPU overlay** (`L.CRS.Simple`,
+  `leaflet-pixi-overlay` + `pixi.js`, all npm, lazy-loaded as one chunk via
+  `src/zonemap.js`). A zone page renders the in-game parchment image
   (`public/maps/<areaId>.webp`) and plots spawn markers; world (x,y) → image px
   via the zone's WorldMapArea bounds (`lat=H*(x-locbottom)/(loctop-locbottom)`,
-  `lng=W*(locleft-y)/(locleft-locright)`). Markers use a canvas renderer.
+  `lng=W*(locleft-y)/(locleft-locright)`). Markers are **Pixi sprites** in one
+  `PIXI.Container` (a tinted disc texture for category dots, atlas/CDN textures
+  for focus/object icons) so huge zones (~12k spawns) pan/zoom on the GPU.
+  Category toggles are tiny `L.Layer`s flipping `sprite.visible`; hover tooltip +
+  click-nav use a throttled nearest-visible-sprite hit-test (no per-marker DOM).
+  The previous overlay is `destroy()`ed on re-init to free its WebGL context.
 - **Search is unified + FTS-backed.** `?search=` renders a tabbed page across
   items/NPCs/quests/dungeons/zones; the top-bar input also shows a live flat
   top-5 dropdown (`src/search.js`, `runSearch()` + `initSearchDropdown()`). Items,
