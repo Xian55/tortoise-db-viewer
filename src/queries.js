@@ -3,6 +3,11 @@
 // Drop chances come from the precomputed `drops` table (src: c=creature,
 // s=skinning, p=pickpocket, o=object, i=item-container, e=disenchant), which
 // already resolves equal-chance groups and reference multipliers.
+import { PROFESSION } from "./constants.js";
+
+// profession skill ids the crafting view recognises (kept in sync with the
+// PROFESSION list so adding one there is enough).
+const CRAFT_SKILLS = PROFESSION.map(([id]) => id).join(",");
 
 export const Q_ITEM = `
   SELECT i.*, di.icon, rf.name1 AS req_rep_faction
@@ -177,7 +182,7 @@ export const Q_CRAFTING = `
   LEFT JOIN craft_source cs ON cs.spell = sc.spell
   LEFT JOIN items rc ON rc.entry = cs.recipe_item
   LEFT JOIN item_display_info rcdi ON rcdi.ID = rc.display_id
-  WHERE sc.skill IN (171,164,185,333,202,129,356,182,755,165,186,393,197)
+  WHERE sc.skill IN (${CRAFT_SKILLS})
   ORDER BY sc.skill, ci.name, sc.spell`;
 
 export const Q_SPELL = `SELECT entry, name, description, auraDescription, s1, s2, s3, d1, d2, d3 FROM spells WHERE entry = ?1`;
