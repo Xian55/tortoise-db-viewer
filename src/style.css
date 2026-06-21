@@ -83,6 +83,8 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .tt-stat { color: #ffffff; }
 .tt-req { color: #ffffff; }
 .tt-spell { color: #1eff00; }
+/* spell links in the tooltip keep the green effect color (not the .ilink blue) */
+.tt-spell a.ilink { color: inherit; }
 .tt-flavor { color: var(--gold); font-style: italic; margin-top: 4px; }
 .tt-sell { color: var(--muted); margin-top: 6px; }
 .coin { padding-left: 14px; background-size: 12px; background-repeat: no-repeat; background-position: right center; }
