@@ -1,6 +1,6 @@
 import {
   QUALITY, ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, STAT_TYPE,
-  BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, ITEM_SOURCE, REP_STANDING, classRestrictions, money,
+  BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, ITEM_SOURCE, REP_STANDING, POWER_TYPE, classRestrictions, money,
 } from "./constants.js";
 
 const SRC_LABEL = Object.fromEntries(ITEM_SOURCE);
@@ -268,6 +268,28 @@ export function zoneLink(areaid, name) {
 export function spellLink(entry, name, icon) {
   return `<a class="ilink spell" href="?spell=${entry}">` +
     `${icon ? iconImg(icon) : ""}${esc(name)}</a>`;
+}
+
+const spellSecs = (ms) => { const v = ms / 1000; return `${Number.isInteger(v) ? v : v.toFixed(v < 1 ? 2 : 1)} ${v === 1 ? "second" : "seconds"}`; };
+
+// Parchment summary card for a spell (the page header + the hover tooltip share
+// this). sp is a full Q_SPELL row (icon/rank/cost/range/cast + description).
+export function spellTooltip(sp) {
+  const cost = sp.mana_cost ? `${sp.mana_cost} ${POWER_TYPE[sp.power_type] || "Mana"}`
+    : (sp.mana_cost_pct ? `${sp.mana_cost_pct}% of base mana` : "");
+  const cast = sp.channeled ? "Channeled" : (sp.cast_ms ? spellSecs(sp.cast_ms) : "Instant");
+  const desc = resolveSpellText(sp.description || sp.auraDescription, sp);
+  const lines = [];
+  if (cost || sp.range_max != null) {
+    lines.push(`<div class="tt-split"><span class="tt-l">${esc(cost)}</span>` +
+      `<span class="tt-r">${sp.range_max != null ? `${sp.range_max} yd range` : ""}</span></div>`);
+  }
+  lines.push(`<div>${esc(cast)}</div>`);
+  if (desc) lines.push(`<div class="tt-spell">${esc(desc)}</div>`);
+  return `<div class="tooltip spell-card">
+    <div class="tt-head">${sp.icon ? iconImg(sp.icon, "tt-icon") : ""}` +
+    `<div class="tt-name">${esc(sp.name)}${sp.rank ? `<span class="dim"> · ${esc(sp.rank)}</span>` : ""}</div></div>` +
+    `${lines.map((l) => `<div class="tt-line">${l}</div>`).join("")}</div>`;
 }
 
 // gold/silver/copper coin spans from a raw copper amount (mirrors the tooltip).

@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, spellTooltip, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -336,8 +336,6 @@ async function showSpell(id) {
     query(Q.Q_SPELL_USED_BY, [id]), queryOne(Q.Q_SPELL_SOURCE, [id]),
   ]);
 
-  const desc = resolveSpellText(sp.description, sp);
-  const aura = resolveSpellText(sp.auraDescription, sp);
   const prof = PROFESSION_LABEL[sp.skill] || "";
 
   // "Learned from": the recipe/pattern/plans item, or Trainer / Auto -- mirrors
@@ -392,17 +390,8 @@ async function showSpell(id) {
   const flagsHtml = flags.length
     ? `<div class="spell-flags"><span class="kv-k">Flags</span> <span class="muted">${flags.map(esc).join(", ")}</span></div>` : "";
 
-  // ---- summary card (parchment tooltip header) ----
-  const cardLines = [
-    `<div class="tt-split"><span class="tt-l">${esc(costStr)}</span><span class="tt-r">${sp.range_max != null ? `${sp.range_max} yd range` : ""}</span></div>`,
-    `<div>${esc(castStr)}</div>`,
-  ];
-  if (desc) cardLines.push(`<div class="tt-spell">${esc(desc)}</div>`);
-  else if (aura) cardLines.push(`<div class="tt-spell">${esc(aura)}</div>`);
-  const card = `<div class="tooltip spell-card">
-    <div class="tt-head">${sp.icon ? iconImg(sp.icon, "tt-icon") : ""}<div class="tt-name">${esc(sp.name)}${sp.rank ? `<span class="dim"> · ${esc(sp.rank)}</span>` : ""}</div></div>
-    ${cardLines.map((l) => `<div class="tt-line">${l}</div>`).join("")}
-  </div>`;
+  // summary card (parchment header) -- shared with the hover tooltip
+  const card = spellTooltip(sp);
 
   const producesCols = [
     { label: "Creates", cell: (r) => itemLink(r.item, r.item_name, r.quality, r.item_icon), value: (r) => r.item_name },

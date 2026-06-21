@@ -1,7 +1,7 @@
 // Floating tooltip shown when hovering an item or quest link. Items reuse
 // renderTooltip; quests get a compact card. Queried lazily, cached per key.
 import { queryOne } from "./db.js";
-import { renderTooltip, esc } from "./render.js";
+import { renderTooltip, spellTooltip, esc } from "./render.js";
 import { Q_ITEM, Q_SPELL, Q_QUEST } from "./queries.js";
 import { QUEST_TYPE, questZoneLabel } from "./constants.js";
 
@@ -44,6 +44,9 @@ async function getHtml(kind, id) {
   } else if (kind === "quest") {
     const q = await queryOne(Q_QUEST, [id]);
     if (q) html = questCardHtml(q);
+  } else if (kind === "spell") {
+    const sp = await queryOne(Q_SPELL, [id]);
+    if (sp) html = spellTooltip(sp);
   }
   cache.set(key, html);
   return html;
@@ -81,11 +84,12 @@ async function showFor(kind, id) {
 export function initHovercards() {
   document.addEventListener("mouseover", (e) => {
     mx = e.clientX; my = e.clientY;
-    const a = e.target.closest('a.ilink[href^="?item="], a.ilink[href^="?quest="]');
+    const a = e.target.closest('a.ilink[href^="?item="], a.ilink[href^="?quest="], a.ilink[href^="?spell="]');
     if (a) {
       const p = new URLSearchParams(a.getAttribute("href").slice(1));
       if (p.get("item")) showFor("item", Number(p.get("item")));
       else if (p.get("quest")) showFor("quest", Number(p.get("quest")));
+      else if (p.get("spell")) showFor("spell", Number(p.get("spell")));
     } else if (currentKey !== null) hide();
   });
   document.addEventListener("mousemove", (e) => {
