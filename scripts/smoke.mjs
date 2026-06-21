@@ -152,15 +152,21 @@ async function testCrafted(id, expectProf) {
 // crafting browse: filtered to one profession, grouped, with skill-up brackets
 // (orange #ff8040 span) and a Source column (recipe link / Trainer badge).
 async function testCrafting() {
+  // prof-filtered view: the redundant Profession column is hidden; skill-up
+  // brackets render. (Grouping by the single profession is moot, so it ungroups.)
   await page.goto(`${BASE}?browse=crafting&prof=171`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
-  const groupRows = await page.$$eval(".browse .grouprow", (e) => e.length);
   const profSel = await page.$eval(".filters [data-f='prof']", (e) => e.value).catch(() => "?");
   const brackets = await page.$$eval(".browse tbody td span[style*='ff8040']", (e) => e.length);
-  console.log(`crafting prof=171: rows=${rows} headers=[${headers.join(",")}] groupRows=${groupRows} profSel=${profSel} brackets=${brackets}`);
-  return rows > 0 && headers.includes("Skill") && headers.includes("Source") && profSel === "171" && groupRows > 0 && brackets > 0;
+  // grouping still works (group by source TYPE, header = Recipe/Trainer/Auto)
+  await page.goto(`${BASE}?browse=crafting&prof=171&groupby=source`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse .grouprow", { timeout: 40000 });
+  const groupHeads = await page.$$eval(".browse .grouprow", (e) => e.map((g) => g.textContent.replace(/[▸▾\s]+/g, " ").trim()));
+  const typeGroups = groupHeads.every((g) => /Recipe|Trainer|Auto|Other/.test(g));
+  console.log(`crafting prof=171: rows=${rows} headers=[${headers.join(",")}] profSel=${profSel} brackets=${brackets} groups=[${groupHeads.join(",")}]`);
+  return rows > 0 && headers.includes("Skill") && headers.includes("Source") && !headers.includes("Profession") && profSel === "171" && brackets > 0 && groupHeads.length > 0 && typeGroups;
 }
 
 // row selection: ID column gone, ops disabled until a row is picked, prefix copy.

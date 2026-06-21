@@ -113,8 +113,8 @@ export const Q_REAGENT_FOR = `
 // What a recipe/pattern/plans item teaches: the craft it unlocks and the item
 // that craft produces (recipe item -> craft_source -> spell -> spell_creates).
 export const Q_TEACHES = `
-  SELECT s.entry AS spell, s.name AS spell_name, sc.skill, sc.skill_min, sc.skill_max,
-         ci.entry AS item, ci.name AS item_name, ci.quality, di.icon AS item_icon
+  SELECT s.entry AS spell, s.name AS spell_name, sc.skill, sc.skill_req, sc.skill_min, sc.skill_max,
+         cs.learn_req, ci.entry AS item, ci.name AS item_name, ci.quality, di.icon AS item_icon
   FROM craft_source cs
   JOIN spell_creates sc ON sc.spell = cs.spell
   JOIN spells s ON s.entry = cs.spell
