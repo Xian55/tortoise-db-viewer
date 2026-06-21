@@ -577,11 +577,16 @@ async function showZone(id, gatherItem = null) {
     for (const r of rows) if (r.icon) iconByEntry.set(r.entry, r.icon);
   }
 
+  // per-NPC map toggles: shownNpcs survives table re-render (sort/page)
+  const shownNpcs = new Set();
   const npcCols = [
     { label: "NPC", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
     { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
     { label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
     { label: "Spawns", num: true, cls: "muted", cell: (r) => r.count, value: (r) => r.count },
+    { label: "Map", cls: "mapcol",
+      cell: (r) => `<label class="mapchk"><input type="checkbox" data-mapnpc="${r.entry}"${shownNpcs.has(r.entry) ? " checked" : ""}></label>`,
+      value: (r) => (shownNpcs.has(r.entry) ? 1 : 0) },
   ];
   const lootCols = [
     { label: "Item", cell: (i) => itemLink(i.entry, i.name, i.quality, i.icon), value: (i) => i.name },
@@ -632,13 +637,22 @@ async function showZone(id, gatherItem = null) {
     const imgUrl = `${import.meta.env.BASE_URL}maps/${z.areaid}.webp`;
     const zmap = initZoneMap(el, { ...z, imgUrl }, spawns, objects, navigate, focus);
     // Objects tab checkboxes add/remove that object's spawns on the map.
-    const pane = app.querySelector('[data-pane="objects"]');
-    if (pane && zmap) pane.addEventListener("change", (e) => {
+    const objPane = app.querySelector('[data-pane="objects"]');
+    if (objPane && zmap) objPane.addEventListener("change", (e) => {
       const cb = e.target.closest("[data-mapobj]");
       if (!cb) return;
       const entry = Number(cb.dataset.mapobj);
       zmap.toggleObject(entry, cb.checked, iconByEntry.get(entry));
       if (cb.checked) shownObjects.add(entry); else shownObjects.delete(entry);
+    });
+    // NPCs tab checkboxes do the same for a creature's spawns.
+    const npcPane = app.querySelector('[data-pane="npcs"]');
+    if (npcPane && zmap) npcPane.addEventListener("change", (e) => {
+      const cb = e.target.closest("[data-mapnpc]");
+      if (!cb) return;
+      const entry = Number(cb.dataset.mapnpc);
+      zmap.toggleNpc(entry, cb.checked);
+      if (cb.checked) shownNpcs.add(entry); else shownNpcs.delete(entry);
     });
   } catch (e) { el.innerHTML = errorBox(e); }
 }

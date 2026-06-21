@@ -169,6 +169,9 @@ a.ilink.zone { color: #8fd18f; }
 .poi-div { background: none; border: none; }
 .map-poi { width: 22px; height: 22px; border-radius: 4px; border: 1px solid #000;
   background: #000; display: block; margin: 0; }
+/* toggled NPC spawn pin: a bright marker that stands out over the category dots */
+.map-pin { width: 16px; height: 16px; border-radius: 50%; background: #ff4d4d;
+  border: 2px solid #fff; box-shadow: 0 0 0 1px #000, 0 0 6px rgba(255, 77, 77, .85); }
 /* Objects-tab "add to map" toggle */
 .mapchk { display: inline-flex; align-items: center; cursor: pointer; }
 .quest-chain { margin-top: 6px; }

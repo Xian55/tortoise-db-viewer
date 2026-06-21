@@ -109,11 +109,16 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     cat(key, label).sprites.push(sp);
   };
 
-  // In focus mode the category layers are off by default; don't build the ~12k
-  // hidden dots. objByEntry is still populated for the Objects-tab toggle.
-  if (!focus) {
-    for (const s of spawns) {
-      const ll = toLatLng(s.x, s.y);
+  // npcByEntry/objByEntry power the per-row "show on map" toggles; built always
+  // (cheap). In focus mode the category dots are off by default, so don't build
+  // the ~12k hidden sprites -- just the lat/lng index.
+  const npcByEntry = new Map();
+  for (const s of spawns) {
+    const ll = toLatLng(s.x, s.y);
+    let e = npcByEntry.get(s.entry);
+    if (!e) { e = { name: s.name || `NPC #${s.entry}`, lls: [] }; npcByEntry.set(s.entry, e); }
+    e.lls.push(ll);
+    if (!focus) {
       const html = `${esc(s.name) || "?"} <span class="dim">(${lvl(s)})</span>`;
       for (const role of npcRolesFor(s)) {
         const def = NPC_CATS.find((c) => c[0] === role);
@@ -156,6 +161,10 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   // ---- icon markers (few): a gathered node + toggled objects, as HTML ----
   const iconMark = (ll, icon, label) => L.marker(ll, {
     icon: L.divIcon({ html: iconMarker(icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] }),
+  }).bindTooltip(label, { direction: "top" });
+  // toggled NPC spawns: a bright pin (creatures have no item icon)
+  const npcMark = (ll, label) => L.marker(ll, {
+    icon: L.divIcon({ html: "", className: "poi-div map-pin", iconSize: [16, 16], iconAnchor: [8, 8] }),
   }).bindTooltip(label, { direction: "top" });
 
   // focus layer: the gathered node's own icon, bright, zoomed-to.
@@ -242,7 +251,22 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     } else if (rec) map.removeLayer(rec);
   }
 
-  return { map, toggleObject };
+  // ---- NPCs-tab toggle: show/hide one creature's spawn pins ----
+  const npcLayers = new Map();
+  function toggleNpc(entry, on) {
+    let rec = npcLayers.get(entry);
+    if (on) {
+      if (!rec) {
+        const e = npcByEntry.get(entry);
+        rec = L.layerGroup();
+        if (e) for (const ll of e.lls) npcMark(ll, e.name).addTo(rec);
+        npcLayers.set(entry, rec);
+      }
+      rec.addTo(map);
+    } else if (rec) map.removeLayer(rec);
+  }
+
+  return { map, toggleObject, toggleNpc };
 }
 
 function esc(s) {
