@@ -223,6 +223,21 @@ export const Q_SPELL_USED_BY = `
   WHERE i.spellid_1 = ?1 OR i.spellid_2 = ?1 OR i.spellid_3 = ?1 OR i.spellid_4 = ?1 OR i.spellid_5 = ?1
   ORDER BY i.quality DESC, i.name LIMIT 200`;
 
+// Trainer NPCs that teach this spell (resolved through the learn-spell indirection
+// in build-db). Capped; the page notes the total separately if needed.
+export const Q_SPELL_TRAINERS = `
+  SELECT c.entry, c.name, c.level_min, c.level_max
+  FROM spell_trainer st JOIN creatures c ON c.entry = st.npc
+  WHERE st.spell = ?1 AND c.name <> ''
+  ORDER BY c.level_min, c.name LIMIT 200`;
+
+// Items (book/tome/recipe) whose Use "learn" effect teaches this spell.
+export const Q_SPELL_BOOKS = `
+  SELECT i.entry, i.name, i.quality, di.icon
+  FROM spell_taught_item sti JOIN items i ON i.entry = sti.item
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE sti.spell = ?1 ORDER BY i.quality DESC, i.name LIMIT 100`;
+
 // How the craft is learned: the recipe/pattern/plans item, or Trainer / Auto.
 export const Q_SPELL_SOURCE = `
   SELECT cs.recipe_item, cs.trainer, cs.auto, cs.learn_req,
@@ -234,7 +249,7 @@ export const Q_SPELL_SOURCE = `
 
 // Browse Spells finder: all named spells (profession label resolved client-side).
 // teaches IS NULL drops "learn" stub spells (a recipe's twin of the real craft).
-export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, school, mana_cost, cast_ms, channeled, range_max
+export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, rank, school, mana_cost, cast_ms, channeled, range_max
   FROM spells WHERE name <> '' AND teaches IS NULL ORDER BY name`;
 
 // ---- NPC (creature) pages ----

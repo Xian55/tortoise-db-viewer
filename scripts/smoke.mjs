@@ -373,8 +373,11 @@ async function testSpellDetail(id, expectText) {
   const keys = await page.$$eval(".spell-page .kv-grid .kv-k", (e) => e.length);
   const effects = await page.$$eval(".spell-page .spell-effect", (e) => e.length);
   const text = await page.$eval(".spell-page .spell-details", (e) => e.textContent.replace(/\s+/g, " "));
-  console.log(`spell detail ${id}: kvKeys=${keys} effects=${effects} hasText(${expectText})=${text.includes(expectText)}`);
-  return keys >= 6 && effects > 0 && text.includes(expectText);
+  const tabList = await page.$$eval(".spell-page .tab", (e) => e.map((x) => x.textContent.replace(/\s+/g, " ").trim()));
+  const learnable = await page.$$eval(".spell-page .npc-head .tagx", (e) => e.length);
+  const trained = tabList.some((t) => /^Trained by\b/.test(t));
+  console.log(`spell detail ${id}: kvKeys=${keys} effects=${effects} learnable=${learnable} trainedTab=${trained} hasText(${expectText})=${text.includes(expectText)}`);
+  return keys >= 6 && effects > 0 && text.includes(expectText) && learnable > 0 && trained;
 }
 
 // item tooltip green spell lines are now spell links (item -> ?spell=).

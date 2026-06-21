@@ -153,7 +153,9 @@ the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
   table + `quest_item`/`quest_creature_objective`/`quest_reward_rep` links +
   `areas`/`faction_names` lookups, the derived `factions` summary (rep-gated item
   + rep-quest counts per faction), `spell_creates`/`spell_reagent` link tables, the
-  `spells` table (incl. `icon` from `spell-icon-map.json` + `skill` profession),
+  `spells` table (incl. `icon` from `spell-icon-map.json`, `skill` profession, and
+  detailed combat columns resolved via `spell-lookups.json`), the spell teach
+  sources (`spell_trainer` NPCs + `spell_taught_item` books, plus `spells.learnable`),
   an `item_display_info` icon map, the `*_fts` search indexes (items/creatures/
   quests/spells), and `version.json`. Staging tables are dropped before the final VACUUM.
 - `scripts/lib/staging.mjs` — stages the consumed raw tables (`stg_<table>`),

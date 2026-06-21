@@ -331,9 +331,10 @@ async function showSpell(id) {
   if (!sp) { app.innerHTML = `<div class="home"><p>No spell with ID ${id}.</p></div>`; return; }
   document.title = `${sp.name} - Tortoise-WoW DB`;
 
-  const [produces, reagents, usedBy, source] = await Promise.all([
+  const [produces, reagents, usedBy, source, trainers, books] = await Promise.all([
     query(Q.Q_SPELL_PRODUCES, [id]), query(Q.Q_SPELL_REAGENTS, [id]),
     query(Q.Q_SPELL_USED_BY, [id]), queryOne(Q.Q_SPELL_SOURCE, [id]),
+    query(Q.Q_SPELL_TRAINERS, [id]), query(Q.Q_SPELL_BOOKS, [id]),
   ]);
 
   const prof = PROFESSION_LABEL[sp.skill] || "";
@@ -404,15 +405,31 @@ async function showSpell(id) {
   const usedByCols = [
     { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
   ];
+  const trainerCols = [
+    { label: "Trainer", cell: (r) => npcLink(r.entry, r.name), value: (r) => r.name },
+    { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
+  ];
+  const bookCols = [
+    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+  ];
 
   const tabDefs = [
     { id: "produces", label: "Creates", ...regTable(producesCols, produces) },
     { id: "reagents", label: "Reagents", ...regTable(reagentCols, reagents) },
+    { id: "trained", label: "Trained by", ...regTable(trainerCols, trainers) },
+    { id: "books", label: "Taught by item", ...regTable(bookCols, books) },
     { id: "usedby", label: "Used by items", ...regTable(usedByCols, usedBy) },
   ];
 
   const meta = [`Spell #${sp.entry}`];
   if (prof) meta.push(`<a class="nav" href="?browse=crafting&prof=${sp.skill}">${esc(prof)}</a>`);
+  // learnable annotation: which sources teach this spell to players
+  if (sp.learnable) {
+    const srcs = [];
+    if (trainers.length) srcs.push("Trainer");
+    if (books.length) srcs.push("Book");
+    meta.push(`<span class="tagx" title="A player can learn this spell">Learnable${srcs.length ? ` · ${srcs.join(" / ")}` : ""}</span>`);
+  }
   if (learned) meta.push(`Learned from: ${learned}`);
 
   app.innerHTML =

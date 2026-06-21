@@ -352,8 +352,10 @@ async function browseSpells(p) {
   if (f.prof) rows = rows.filter((r) => String(r.skill) === f.prof);
   if (f.school !== "") rows = rows.filter((r) => String(r.school) === f.school);
   const secs = (ms) => (ms ? `${+(ms / 1000).toFixed(ms % 1000 ? 1 : 0)}s` : "");
+  const rankNum = (r) => { const m = (r.rank || "").match(/\d+/); return m ? +m[0] : 0; };
   const cols = [
     { key: "name", label: "Name", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
+    { key: "rank", label: "Rank", num: true, cls: "muted", cell: (r) => esc(r.rank || ""), value: rankNum },
     { key: "school", label: "School", cls: "muted", cell: (r) => esc(SPELL_SCHOOL[r.school] || ""), value: (r) => SPELL_SCHOOL[r.school] || "" },
     { key: "cost", label: "Cost", num: true, cls: "muted", cell: (r) => (r.mana_cost ? `${r.mana_cost}` : ""), value: (r) => r.mana_cost || 0 },
     { key: "cast", label: "Cast", num: true, cls: "muted", cell: (r) => (r.channeled ? "Channeled" : r.cast_ms ? secs(r.cast_ms) : ""), value: (r) => r.cast_ms || 0 },

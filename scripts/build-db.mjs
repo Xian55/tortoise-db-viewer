@@ -306,6 +306,10 @@ const spellStats = new Map();
 // craftSpell -> [learn spells that trigger it]. Recipe items and trainers reference
 // the learn spell, which teaches the actual trade-skill craft. Used by craft_source.
 const spellTriggers = new Map();
+// learn-spell id -> the spell it teaches. ONLY spells with a LEARN_SPELL (effect
+// 36) effect, so trainers/books resolve to the real player spell without the
+// false positives a raw effectTriggerSpell (procs, missiles) would add.
+const learnTeaches = new Map();
 // spellId -> 1 when the skill grants the craft automatically (learn_on_get_skill):
 // these have no trainer/recipe source — you just know them with the profession.
 const craftAuto = new Map();
@@ -449,9 +453,12 @@ console.log("Importing spells + crafting graph...");
         if (item) { sReag.run(e, item, clean(row[rc]) || 1); nr++; }
       }
       // record learn-spell -> craft chains (triggered craft spell -> [learn spells])
-      for (const ti of triggers) {
-        const t = clean(row[ti]);
-        if (t) { const a = spellTriggers.get(t); if (a) a.push(e); else spellTriggers.set(t, [e]); }
+      for (let k = 0; k < 3; k++) {
+        const t = clean(row[triggers[k]]);
+        if (!t) continue;
+        const a = spellTriggers.get(t); if (a) a.push(e); else spellTriggers.set(t, [e]);
+        // a genuine "learn" spell (effect 36 = LEARN_SPELL) teaches its trigger target
+        if ((clean(row[effType[k]]) || 0) === 36 && !learnTeaches.has(e)) learnTeaches.set(e, t);
       }
     }
   })();
@@ -547,6 +554,73 @@ console.log("Deriving craft sources...");
     db.exec(`CREATE INDEX idx_spells_teaches ON spells(teaches)`);
     console.log(`  learn spells flagged (teaches set): ${n}`);
   }
+}
+
+// ---- Spell teach sources (which spells a player can learn, and from where) ----
+// Trainers: npc_trainer (per-creature) + npc_trainer_template (shared pools linked
+// by creature_template.trainer_id). Books: items whose Use "learn" spell triggers
+// the taught spell (same indirection recipes use). Powers the spell page's
+// "Learnable" badge + "Trained by" / "Taught by item" tabs.
+console.log("Deriving spell teach sources...");
+{
+  const addTo = (map, k, v) => { let s = map.get(k); if (!s) map.set(k, s = new Set()); s.add(v); };
+  // trainers/books reference the "learn" spell; resolve to the real player spell.
+  const real = (s) => learnTeaches.get(s) ?? s;
+  // spell -> teaching creature entries (direct npc_trainer rows)
+  const trainerNpcs = new Map();
+  {
+    const cols = srcColumns("npc_trainer", "tw_world_npc_trainer.sql");
+    const iE = cols.indexOf("entry"), iSp = cols.indexOf("spell");
+    for (const r of srcRows("npc_trainer", "tw_world_npc_trainer.sql")) {
+      const sp = clean(r[iSp]), e = clean(r[iE]);
+      if (sp && e) addTo(trainerNpcs, real(sp), e);
+    }
+  }
+  // template id -> spells; then expand onto creatures referencing that trainer_id
+  const tmplSpells = new Map();
+  {
+    const cols = srcColumns("npc_trainer_template", "tw_world_npc_trainer_template.sql");
+    const iE = cols.indexOf("entry"), iSp = cols.indexOf("spell");
+    for (const r of srcRows("npc_trainer_template", "tw_world_npc_trainer_template.sql")) {
+      const t = clean(r[iE]), sp = clean(r[iSp]);
+      if (t && sp) addTo(tmplSpells, t, sp);
+    }
+  }
+  {
+    const cols = srcColumns("creature_template", "tw_world_creature_template.sql");
+    const iE = cols.indexOf("entry"), iT = cols.indexOf("trainer_id");
+    for (const r of srcRows("creature_template", "tw_world_creature_template.sql")) {
+      const t = clean(r[iT]); if (!t) continue;
+      const spells = tmplSpells.get(t); if (!spells) continue;
+      const e = clean(r[iE]);
+      for (const sp of spells) addTo(trainerNpcs, real(sp), e);
+    }
+  }
+  db.exec(`CREATE TABLE spell_trainer (spell INTEGER, npc INTEGER)`);
+  const insST = db.prepare(`INSERT INTO spell_trainer VALUES (?,?)`);
+  let nst = 0;
+  db.transaction(() => { for (const [sp, set] of trainerNpcs) for (const e of set) { insST.run(sp, e); nst++; } })();
+  db.exec(`CREATE INDEX idx_spell_trainer_spell ON spell_trainer(spell)`);
+
+  // book/tome/recipe items: an item's Use LEARN_SPELL effect teaches a spell.
+  db.exec(`CREATE TABLE spell_taught_item (spell INTEGER, item INTEGER)`);
+  const insTI = db.prepare(`INSERT INTO spell_taught_item VALUES (?,?)`);
+  let nti = 0;
+  db.transaction(() => {
+    for (const it of db.prepare(`SELECT entry, spellid_1, spellid_2, spellid_3, spellid_4, spellid_5 FROM items`).all()) {
+      const seen = new Set();
+      for (const n of [1, 2, 3, 4, 5]) {
+        const t = it[`spellid_${n}`] && learnTeaches.get(it[`spellid_${n}`]);
+        if (t && !seen.has(t)) { seen.add(t); insTI.run(t, it.entry); nti++; }
+      }
+    }
+  })();
+  db.exec(`CREATE INDEX idx_spell_taught_item_spell ON spell_taught_item(spell)`);
+
+  // learnable flag (taught by a trainer or a book) for the page badge + browse hint
+  db.exec(`ALTER TABLE spells ADD COLUMN learnable INTEGER DEFAULT 0`);
+  db.exec(`UPDATE spells SET learnable = 1 WHERE entry IN (SELECT spell FROM spell_trainer) OR entry IN (SELECT spell FROM spell_taught_item)`);
+  console.log(`  spell_trainer: ${nst} | spell_taught_item: ${nti}`);
 }
 
 // ---- Quests + quest link tables (items, creature/GO objectives, rep rewards) ----
