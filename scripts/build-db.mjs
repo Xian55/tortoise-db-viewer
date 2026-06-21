@@ -279,6 +279,17 @@ console.log("Resolving loot chances...");
   db.exec(`CREATE INDEX idx_drops_owner ON drops(owner, src)`);
   db.exec(`CREATE INDEX idx_drops_item ON drops(item, src)`);
 
+  // Flag "world drop" items: dropped by many distinct creature loot tables (the
+  // ubiquitous BoE greens, gems, cloth). They aren't characteristic of any zone,
+  // so the zone Items tab excludes them (Q_ZONE_LOOT). Threshold is deliberate:
+  // zone-specific drops come from a handful of loot tables; world drops from 25+.
+  const WORLD_DROP_BREADTH = 25;
+  db.exec(`ALTER TABLE items ADD COLUMN world_drop INTEGER NOT NULL DEFAULT 0`);
+  const nwd = db.prepare(`UPDATE items SET world_drop = 1 WHERE entry IN (
+    SELECT item FROM drops WHERE src = 'c' GROUP BY item
+    HAVING COUNT(DISTINCT owner) >= ?)`).run(WORLD_DROP_BREADTH);
+  console.log(`  world_drop items: ${nwd.changes ?? "?"} (>= ${WORLD_DROP_BREADTH} creature loot tables)`);
+
   // raw loot tables are no longer needed at runtime
   for (const t of ["loot_creature", "loot_skinning", "loot_pickpocket", "loot_object",
     "loot_item", "loot_disenchant", "loot_fishing", "loot_reference"]) {
