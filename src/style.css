@@ -156,6 +156,15 @@ a.ilink.zone { color: #8fd18f; }
   background: var(--panel); color: var(--text); border-bottom: 1px solid var(--border); }
 #zonemap .leaflet-bar a:hover { background: var(--panel2); color: var(--text); }
 #zonemap .leaflet-bar a.leaflet-disabled { background: var(--panel); color: var(--muted); opacity: .45; }
+/* native Leaflet tooltips (toggled NPC/object markers) -> match the dark pixi-tip */
+#zonemap .leaflet-tooltip {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .4); font-size: 12px; }
+#zonemap .leaflet-tooltip-top::before { border-top-color: var(--border); }
+#zonemap .leaflet-tooltip-bottom::before { border-bottom-color: var(--border); }
+#zonemap .leaflet-tooltip-left::before { border-left-color: var(--border); }
+#zonemap .leaflet-tooltip-right::before { border-right-color: var(--border); }
 /* collapsed layer control: a dark button with a themed layers glyph (leaflet's
    default png is dark-on-transparent -> invisible on our panel). */
 #zonemap .leaflet-control-layers-toggle {
