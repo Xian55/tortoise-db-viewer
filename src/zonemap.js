@@ -24,6 +24,8 @@ const NPC_CATS = [
 ];
 const NPC_COLOR = Object.fromEntries(NPC_CATS.map(([k, , c]) => [k, c]));
 const OBJ_COLOR = "#a070d0";
+// rare (rank 2) + rare elite (rank 4): one cross-cutting category, distinct hue
+const RARE_COLOR = "#ff66cc";
 const objTypeLabel = (t) => `Obj: ${GAMEOBJECT_TYPE[t] || "Other"}`;
 
 const FLAG = { vendor: 128, repair: 4096, trainer: 16, flight: 8192, inn: 131072, bank: 65536 };
@@ -122,6 +124,12 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
         const def = NPC_CATS.find((c) => c[0] === role);
         addDot(role, def ? def[1] : role, hexToNum(NPC_COLOR[role]), ll, html, `?npc=${s.entry}`);
       }
+      // rares get an extra dot in their own cross-cutting category (rank 2/4)
+      if (s.rank === 2 || s.rank === 4) {
+        const rk = s.rank === 4 ? "Rare Elite" : "Rare";
+        addDot("rare", "Rare / Rare Elite", hexToNum(RARE_COLOR), ll,
+          `${esc(s.name) || "?"} <span class="dim">(${lvl(s)}) · ${rk}</span>`, `?npc=${s.entry}`);
+      }
     }
   }
   const objByEntry = new Map();
@@ -160,10 +168,17 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   const iconMark = (ll, icon, label) => L.marker(ll, {
     icon: L.divIcon({ html: iconMarker(icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] }),
   }).bindTooltip(label, { direction: "top" });
-  // toggled NPC spawns: a bright pin (creatures have no item icon)
-  const npcMark = (ll, label) => L.marker(ll, {
-    icon: L.divIcon({ html: "", className: "poi-div map-pin", iconSize: [16, 16], iconAnchor: [8, 8] }),
-  }).bindTooltip(label, { direction: "top" });
+  // toggled NPC spawns: a bright pin (creatures have no item icon), a distinct
+  // colour per creature so multiple toggled NPCs are tellable apart; clicking it
+  // opens the NPC page.
+  const npcColor = (entry) => `hsl(${(entry * 47) % 360} 70% 55%)`;
+  const npcMark = (ll, label, entry) => {
+    const m = L.marker(ll, {
+      icon: L.divIcon({ html: `<span class="map-pin" style="background:${npcColor(entry)}"></span>`, className: "poi-div", iconSize: [16, 16], iconAnchor: [8, 8] }),
+    }).bindTooltip(label, { direction: "top" });
+    if (entry) m.on("click", () => navigate(`?npc=${entry}`));
+    return m;
+  };
 
   // focus layer: the gathered node's own icon, bright, zoomed-to.
   let focusBounds = null, focusLayer = null;
@@ -192,6 +207,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   // via the layer control); only the gather/focus layer is on by default.
   if (focusLayer) { overlays[FKEY] = focusLayer; focusLayer.addTo(map); }
   for (const [key] of NPC_CATS) addCat(key, false);
+  addCat("rare", false); // single toggle for all rare / rare-elite spawns
   const objKeys = [...cats.keys()].filter((k) => k.startsWith("Obj: "))
     .sort((a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length);
   for (const key of objKeys) addCat(key, false);
@@ -259,7 +275,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
       if (!rec) {
         const e = npcByEntry.get(entry);
         rec = L.layerGroup();
-        if (e) for (const ll of e.lls) npcMark(ll, e.name).addTo(rec);
+        if (e) for (const ll of e.lls) npcMark(ll, e.name, entry).addTo(rec);
         npcLayers.set(entry, rec);
       }
       rec.addTo(map);
