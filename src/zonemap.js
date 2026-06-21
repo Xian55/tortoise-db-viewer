@@ -71,7 +71,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
 
   const W = zone.img_w, H = zone.img_h;
   const map = L.map(el, {
-    crs: L.CRS.Simple, minZoom: -2, maxZoom: 3, preferCanvas: true,
+    crs: L.CRS.Simple, maxZoom: 3, preferCanvas: true,
     attributionControl: false, zoomControl: true,
   });
   currentMap = map;
@@ -79,6 +79,11 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   // parchment in tilePane (below overlayPane) so the Pixi markers draw on top
   L.imageOverlay(zone.imgUrl, bounds, { pane: "tilePane" }).addTo(map);
   map.fitBounds(bounds);
+  // don't let the zone shrink into a sea of grey: floor zoom at the whole-zone
+  // fit, and keep panning within the image.
+  const fitZoom = map.getBoundsZoom(bounds);
+  map.setMinZoom(fitZoom);
+  map.setMaxBounds(L.latLngBounds(bounds).pad(0.2));
 
   const dx = zone.loctop - zone.locbottom, dy = zone.locleft - zone.locright;
   const toLatLng = (x, y) => L.latLng(
@@ -125,10 +130,11 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     e.lls.push(ll);
   }
 
+  const DOT_PX = 11; // on-screen diameter, constant across zoom
   const overlay = L.pixiOverlay((utils) => {
-    const zoom = utils.getMap().getZoom();
-    const scale = utils.getMap().getZoomScale(zoom, 0);
-    const dotScale = Math.max(0.5, Math.min(2, scale));
+    // the overlay scales the whole container by utils.getScale(zoom); counter it
+    // so dots stay a fixed screen size instead of growing as you zoom in.
+    const dotScale = (DOT_PX / disc.width) / utils.getScale(utils.getMap().getZoom());
     for (const sp of container.children) {
       if (!sp.visible) continue;
       const p = utils.latLngToLayerPoint(sp.ll);
