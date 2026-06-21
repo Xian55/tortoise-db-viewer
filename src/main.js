@@ -116,10 +116,26 @@ async function showSearch(term) {
     { label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
     { label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
   ];
+  // Resolve a representative zone per NPC result (the largest WMA box that
+  // contains one of its spawns -- same heuristic as the NPC detail page).
+  const npcZone = new Map();
+  if (res.npcs.length) {
+    const ids = res.npcs.map((n) => n.entry);
+    const ph = ids.map(() => "?").join(",");
+    const rows = await query(`SELECT entry, areaid, name FROM (
+        SELECT s.id AS entry, z.areaid, z.name,
+          ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY (z.loctop - z.locbottom) * (z.locleft - z.locright) DESC) AS rn
+        FROM spawn_points s INDEXED BY idx_spawn_id
+        JOIN zones z ON z.mapid = s.map AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
+        WHERE s.kind = 'c' AND s.id IN (${ph}) AND z.name <> ''
+      ) WHERE rn = 1`, ids);
+    for (const r of rows) npcZone.set(r.entry, r);
+  }
   const npcCols = [
     { label: "Name", cell: (r) => npcLink(r.entry, r.name), value: (r) => r.name },
     { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
     { label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
+    { label: "Location", cls: "muted", cell: (r) => { const z = npcZone.get(r.entry); return z ? zoneLink(z.areaid, z.name) : ""; }, value: (r) => npcZone.get(r.entry)?.name || "" },
   ];
   const questCols = [
     { label: "Title", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
@@ -418,7 +434,7 @@ async function showQuest(id) {
   if (q.level > 0) bits.push(`Level ${q.level}`);
   if (q.minlevel > 0) bits.push(`Requires level ${q.minlevel}`);
   const zoneLabel = questZoneLabel(q.zone, q.zone_name);
-  if (zoneLabel) bits.push(esc(zoneLabel));
+  if (zoneLabel) bits.push(q.zone_page ? zoneLink(q.zone, zoneLabel) : esc(zoneLabel));
   if (QUEST_TYPE[q.type]) bits.push(QUEST_TYPE[q.type]);
 
   const restr = [];
