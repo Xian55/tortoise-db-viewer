@@ -771,6 +771,17 @@ console.log("Deriving item_sources...");
   db.exec(`CREATE INDEX idx_item_sources_item ON item_sources(item)`);
   const n = db.prepare(`SELECT COUNT(*) c FROM item_sources`).get().c;
   console.log(`  item_sources: ${n} rows (unobtainable: ${nu})`);
+
+  // Only keep "Taught by item" rows for items a player can actually obtain. Many
+  // spell tomes are unobtainable dev placeholders with mislabeled spellids (e.g.
+  // the "Tome of Mana Shield" items point at the learn-Blizzard spell), so an item
+  // with no real source must not be presented as a teach source. Then recompute
+  // the learnable flag from the surviving trainer + book sources.
+  const before = db.prepare(`SELECT COUNT(*) c FROM spell_taught_item`).get().c;
+  db.exec(`DELETE FROM spell_taught_item WHERE item NOT IN (SELECT item FROM item_sources WHERE source <> 'unobtainable')`);
+  db.exec(`UPDATE spells SET learnable = (entry IN (SELECT spell FROM spell_trainer) OR entry IN (SELECT spell FROM spell_taught_item))`);
+  const after = db.prepare(`SELECT COUNT(*) c FROM spell_taught_item`).get().c;
+  console.log(`  spell_taught_item: ${after} obtainable (dropped ${before - after} unobtainable)`);
 }
 
 // ---- Factions summary (reputation feature) ----

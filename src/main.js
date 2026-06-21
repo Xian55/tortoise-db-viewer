@@ -348,6 +348,22 @@ async function showSpell(id) {
     else if (source.auto) learned = `<span class="tagx" title="Learned automatically with the profession">Auto</span>`;
   }
 
+  // Resolve a location per trainer NPC (largest WMA box containing one of its
+  // spawns -- same heuristic as the NPC search/detail Location column).
+  const trainerZone = new Map();
+  if (trainers.length) {
+    const ids = trainers.map((n) => n.entry);
+    const ph = ids.map(() => "?").join(",");
+    const rows = await query(`SELECT entry, areaid, name FROM (
+        SELECT s.id AS entry, z.areaid, z.name,
+          ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY (z.loctop - z.locbottom) * (z.locleft - z.locright) DESC) AS rn
+        FROM spawn_points s INDEXED BY idx_spawn_id
+        JOIN zones z ON z.mapid = s.map AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
+        WHERE s.kind = 'c' AND s.id IN (${ph}) AND z.name <> ''
+      ) WHERE rn = 1`, ids);
+    for (const r of rows) trainerZone.set(r.entry, r);
+  }
+
   // ---- formatters (wowhead-style values) ----
   const secs = (ms) => { const v = ms / 1000; return `${Number.isInteger(v) ? v : v.toFixed(v < 1 ? 2 : 1)} ${v === 1 ? "second" : "seconds"}`; };
   const castStr = sp.channeled ? "Channeled" : (sp.cast_ms ? secs(sp.cast_ms) : "Instant");
@@ -408,6 +424,7 @@ async function showSpell(id) {
   const trainerCols = [
     { label: "Trainer", cell: (r) => npcLink(r.entry, r.name), value: (r) => r.name },
     { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
+    { label: "Location", cls: "muted", cell: (r) => { const z = trainerZone.get(r.entry); return z ? zoneLink(z.areaid, z.name) : ""; }, value: (r) => trainerZone.get(r.entry)?.name || "" },
   ];
   const bookCols = [
     { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
