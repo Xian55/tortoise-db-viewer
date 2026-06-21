@@ -145,8 +145,10 @@ async function testCrafted(id, expectProf) {
   // Created-by reagents must be clickable item links, not plain text
   await page.$$eval(".item-rel .tab", (tabs) => { const t = tabs.find((x) => /Created by/.test(x.textContent)); if (t) t.click(); });
   const reagentLinks = await page.$$eval('.item-rel .tabpane:not(.hidden) td a.ilink', (a) => a.length).catch(() => 0);
-  console.log(`crafted ${id}: profession "${expectProf}" present=${hit} reagentLinks=${reagentLinks}`);
-  return hit && reagentLinks > 0;
+  // profession links to the crafting browse filtered to that profession
+  const profLink = await page.$$eval('.item-rel .tabpane:not(.hidden) a.nav[href*="browse=crafting&prof"]', (a) => a.length).catch(() => 0);
+  console.log(`crafted ${id}: profession "${expectProf}" present=${hit} reagentLinks=${reagentLinks} profLink=${profLink}`);
+  return hit && reagentLinks > 0 && profLink > 0;
 }
 
 // crafting browse: filtered to one profession, grouped, with skill-up brackets

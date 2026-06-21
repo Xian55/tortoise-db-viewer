@@ -248,15 +248,25 @@ async function showItem(id) {
   // created-by: group reagents per spell
   const bySpell = new Map();
   for (const r of createdBy) {
-    if (!bySpell.has(r.entry)) bySpell.set(r.entry, { name: r.name, skill: r.skill, req: r.skill_req, reagents: [] });
+    if (!bySpell.has(r.entry)) bySpell.set(r.entry, {
+      name: r.name, skill: r.skill, req: r.skill_req,
+      recipe_item: r.recipe_item, recipe_name: r.recipe_name, recipe_quality: r.recipe_quality, recipe_icon: r.recipe_icon,
+      trainer: r.trainer, auto: r.auto, reagents: [],
+    });
     if (r.reagent_item) bySpell.get(r.entry).reagents.push(`${itemLink(r.reagent_item, r.reagent_name, r.reagent_quality, r.reagent_icon)} ×${r.count || 1}`);
   }
   const createdRows = [...bySpell.values()];
   const profOf = (s) => PROFESSION_LABEL[s.skill] || "";
   const createdCols = [
     { label: "Spell", cell: (s) => esc(s.name), value: (s) => s.name },
-    { label: "Profession", cls: "muted", cell: (s) => (profOf(s) ? esc(profOf(s)) + (s.req > 1 ? ` <span class="dim">(${s.req})</span>` : "") : ""), value: (s) => profOf(s) },
+    // profession links to the crafting browse filtered to that profession
+    { label: "Profession", cls: "muted", cell: (s) => (profOf(s) ? `<a class="nav" href="?browse=crafting&prof=${s.skill}">${esc(profOf(s))}</a>` + (s.req > 1 ? ` <span class="dim">(${s.req})</span>` : "") : ""), value: (s) => profOf(s) },
     { label: "Reagents", cls: "muted", cell: (s) => s.reagents.join(", "), value: (s) => s.reagents.length },
+    // how the craft is learned: the recipe/pattern item, or Trainer / Auto
+    { label: "Source", cls: "muted", cell: (s) => (s.recipe_item ? itemLink(s.recipe_item, s.recipe_name, s.recipe_quality, s.recipe_icon)
+      : s.trainer ? `<span class="tagx src-crafted">Trainer</span>`
+        : s.auto ? `<span class="tagx" title="Learned automatically with the profession">Auto</span>` : "—"),
+      value: (s) => (s.recipe_item ? s.recipe_name || "Recipe" : s.trainer ? "Trainer" : s.auto ? "Auto" : "") },
   ];
 
   const reqQuests = quests.filter((q) => q.role === "req");
