@@ -187,7 +187,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     .sort((a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length);
   for (const key of objKeys) addCat(key, !focus && OBJ_DEFAULT_ON.has(key.slice(5)));
 
-  L.control.layers(null, overlays, { collapsed: false }).addTo(map);
+  L.control.layers(null, overlays, { collapsed: true }).addTo(map);
   if (focusBounds && focusBounds.isValid()) map.fitBounds(focusBounds.pad(0.3));
   setTimeout(() => { map.invalidateSize(); redraw(); }, 0);
 
