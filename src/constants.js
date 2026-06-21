@@ -74,7 +74,7 @@ export const PROFESSION = [
   [171, "Alchemy"], [164, "Blacksmithing"], [185, "Cooking"], [333, "Enchanting"],
   [202, "Engineering"], [129, "First Aid"], [356, "Fishing"], [182, "Herbalism"],
   [755, "Jewelcrafting"], [165, "Leatherworking"], [186, "Mining"], [393, "Skinning"],
-  [197, "Tailoring"],
+  [142, "Survival"], [197, "Tailoring"],
 ];
 export const PROFESSION_LABEL = Object.fromEntries(PROFESSION);
 
