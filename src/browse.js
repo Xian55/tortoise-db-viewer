@@ -76,6 +76,11 @@ const NPC_COLS = [
   { key: "id", label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
 ];
 
+// Drop columns made redundant by an active single-value filter: once one
+// profession / type / zone is selected, that column shows the same value on
+// every row. `keys` is the list of such column keys to hide.
+const hideCols = (cols, keys) => (keys.length ? cols.filter((c) => !keys.includes(c.key)) : cols);
+
 function opt(value, label, cur) {
   return `<option value="${value}"${String(cur) === String(value) ? " selected" : ""}>${esc(label)}</option>`;
 }
@@ -258,14 +263,19 @@ async function browseNpcs(p) {
     ${numField("minlvl", "Level ≥", f.minlvl)} ${numField("maxlvl", "Level ≤", f.maxlvl)}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  return { rows, cols: NPC_COLS, filters, noun: "NPCs" };
+  const hide = [f.type !== "" && "type", f.rank !== "" && "rank"].filter(Boolean);
+  return { rows, cols: hideCols(NPC_COLS, hide), filters, noun: "NPCs" };
 }
 
 // Effective craft skill: many Turtle recipes have a bogus skill_req=1 while the
 // real trivial range is e.g. 175-210, so use skill_min when it's higher -- this is
 // also the sort/progression key (see craftSkill()).
 function craftSkill(c) {
-  return Math.max(c.min || 0, c.req || 0);
+  // orange = the required/learn skill (when you can first craft, 100% skill-up).
+  // NOT max(min, req): with req < min (e.g. a 300-recipe whose trivial band is
+  // 320/340) max() would equal yellow and drop the real orange (-> "320 330 340"
+  // instead of wowhead's "300 320 330 340").
+  return c.req || c.min || 0;
 }
 
 // Skill-up difficulty colors (orange→yellow→green→grey): orange = the effective
@@ -323,7 +333,7 @@ async function browseCrafting(p) {
     ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any"))}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  return { rows: crafts, cols, filters, noun: "crafts" };
+  return { rows: crafts, cols: hideCols(cols, f.prof ? ["prof"] : []), filters, noun: "crafts" };
 }
 
 async function browseQuests(p) {
@@ -371,7 +381,8 @@ async function browseQuests(p) {
     ${selectField("faction", "Faction", options([["a", "Alliance"], ["h", "Horde"]], f.faction, "Any"))}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  return { rows, cols, filters, noun: "quests" };
+  const hide = [f.zone !== "" && "zone", f.type !== "" && "type"].filter(Boolean);
+  return { rows, cols: hideCols(cols, hide), filters, noun: "quests" };
 }
 
 async function browseFactions(p) {

@@ -235,10 +235,14 @@ async function showItem(id) {
     { label: "Via spell", cls: "muted", cell: (r) => esc(r.spell_name), value: (r) => r.spell_name },
   ];
   // recipe/pattern/plans -> the item it teaches you to craft
+  // orange/required skill (when you can first craft) = learn_req, falling back to
+  // the spell's req then the trivial yellow. NOT skill_min alone -- that's the
+  // yellow trivial level and can exceed the 300 cap (e.g. a 300-recipe at 320).
+  const orangeSkill = (t) => t.learn_req || t.skill_req || t.skill_min || 0;
   const teachesCols = [
     { label: "Teaches", cell: (t) => itemLink(t.item, t.item_name, t.quality, t.item_icon), value: (t) => t.item_name },
     { label: "Profession", cls: "muted", cell: (t) => esc(PROFESSION_LABEL[t.skill] || ""), value: (t) => PROFESSION_LABEL[t.skill] || "" },
-    { label: "Skill", num: true, cls: "muted", cell: (t) => t.skill_min || "", value: (t) => t.skill_min || 0 },
+    { label: "Skill", num: true, cls: "muted", cell: (t) => orangeSkill(t) || "", value: (t) => orangeSkill(t) },
   ];
 
   // created-by: group reagents per spell
