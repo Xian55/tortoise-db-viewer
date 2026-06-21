@@ -171,6 +171,24 @@ async function testCrafting() {
   return rows > 0 && headers.includes("Skill") && headers.includes("Source") && !headers.includes("Profession") && profSel === "171" && brackets > 0 && groupHeads.length > 0 && typeGroups;
 }
 
+// "Obtainable only" checkbox (default on) hides crafts with no recipe/trainer/auto
+async function testCraftObtainable() {
+  const count = async (qs) => {
+    await page.goto(`${BASE}?browse=crafting&prof=755${qs}`, { waitUntil: "networkidle0", timeout: 40000 });
+    await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+    return page.evaluate(() => ({
+      rows: document.querySelectorAll(".browse table tbody tr").length,
+      checked: document.querySelector('input[data-f="obtainable"]')?.checked,
+      dash: [...document.querySelectorAll(".browse table tbody tr")].filter((r) => r.lastElementChild?.textContent.trim() === "—").length,
+    }));
+  };
+  const on = await count("");
+  const all = await count("&obtainable=0");
+  console.log(`craft obtainable: default rows=${on.rows} checked=${on.checked} dash=${on.dash} | all rows=${all.rows} checked=${all.checked} dash=${all.dash}`);
+  // rows are page-capped at 100; the sourceless ("—") rows are the proof
+  return on.checked === true && on.dash === 0 && all.checked === false && all.dash > 0;
+}
+
 // row selection: ID column gone, ops disabled until a row is picked, prefix copy.
 async function testSelection() {
   await page.goto(`${BASE}?browse=items`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -468,6 +486,7 @@ ok = (await testFilter("prof", "197")) && ok;
 ok = (await testFilter("unique", "1")) && ok;
 ok = (await testCrafted(2575, "Tailoring")) && ok;
 ok = (await testCrafting()) && ok;
+ok = (await testCraftObtainable()) && ok;
 ok = (await testSelection()) && ok;
 ok = (await testGroupSelection()) && ok;
 console.log(`\nelapsed ${Date.now() - t}ms`);

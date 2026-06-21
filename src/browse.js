@@ -98,6 +98,10 @@ function numField(name, label, cur) {
 function textField(name, label, cur) {
   return `<div class="fld"><label>${esc(label)}</label><input type="search" data-f="${name}" value="${esc(cur ?? "")}" placeholder="name…"></div>`;
 }
+// default-on checkbox (see collect(): omitted from the URL when checked, =0 when off)
+function checkField(name, label, checked) {
+  return `<div class="fld fld-check"><label><input type="checkbox" data-f="${name}"${checked ? " checked" : ""}> ${esc(label)}</label></div>`;
+}
 
 // multi-select checkbox dropdown; value persisted as a comma list (e.g. quality=3,4)
 let openMulti = null;
@@ -294,7 +298,7 @@ function craftSkillCell(c) {
 }
 
 async function browseCrafting(p) {
-  const f = { q: p.get("q") || "", prof: p.get("prof") || "" };
+  const f = { q: p.get("q") || "", prof: p.get("prof") || "", obtainable: p.get("obtainable") !== "0" };
   const rows = await query(Q_CRAFTING, []);
   // one query row per (craft spell, reagent); fold reagents into one craft per spell.
   const bySpell = new Map();
@@ -314,6 +318,8 @@ async function browseCrafting(p) {
   let crafts = [...bySpell.values()];
   if (f.prof) crafts = crafts.filter((c) => String(c.skill) === f.prof);
   if (f.q) { const ql = f.q.toLowerCase(); crafts = crafts.filter((c) => (c.item_name || "").toLowerCase().includes(ql)); }
+  // hide crafts with no way to learn them (no recipe/trainer/auto) -- on by default
+  if (f.obtainable) crafts = crafts.filter((c) => c.recipe_item || c.trainer || c.auto);
 
   const cols = [
     { key: "name", label: "Name", cell: (c) => itemLink(c.item, c.item_name, c.quality, c.item_icon), value: (c) => c.item_name },
@@ -331,6 +337,7 @@ async function browseCrafting(p) {
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
     ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any"))}
+    ${checkField("obtainable", "Obtainable only", f.obtainable)}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
   return { rows: crafts, cols: hideCols(cols, f.prof ? ["prof"] : []), filters, noun: "crafts" };
@@ -470,7 +477,11 @@ export async function showBrowse(kind, navigate) {
   const collect = () => {
     const np = new URLSearchParams();
     np.set("browse", kind);
-    app.querySelectorAll("[data-f]").forEach((el) => { if (el.value !== "") np.set(el.dataset.f, el.value); });
+    app.querySelectorAll("[data-f]").forEach((el) => {
+      // default-on checkbox: omit when checked (the default), emit =0 when off
+      if (el.type === "checkbox") { if (!el.checked) np.set(el.dataset.f, "0"); return; }
+      if (el.value !== "") np.set(el.dataset.f, el.value);
+    });
     const multi = {};
     app.querySelectorAll("[data-mv]:checked").forEach((cb) => { (multi[cb.dataset.mv] ??= []).push(cb.value); });
     for (const k in multi) np.set(k, multi[k].join(","));
