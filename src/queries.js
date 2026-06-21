@@ -269,6 +269,12 @@ export const Q_NPC_SELLS = `
   FROM npc_vendor v JOIN items i ON i.entry = v.item
   LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE v.entry = ?1 ORDER BY i.quality DESC, i.name LIMIT 300`;
+// Spells a trainer NPC teaches (reverse of the spell page's "Trained by").
+export const Q_NPC_TRAINS = `
+  SELECT s.entry, s.name, s.icon, s.rank, s.skill, s.spell_level
+  FROM spell_trainer st JOIN spells s ON s.entry = st.spell
+  WHERE st.npc = ?1 AND s.name <> ''
+  ORDER BY s.spell_level, s.name LIMIT 500`;
 export const Q_NPC_STARTS = `SELECT q.entry, q.title, q.level FROM creature_quest_start r JOIN quests q ON q.entry = r.quest WHERE r.id = ?1 ORDER BY q.level`;
 export const Q_NPC_ENDS = `SELECT q.entry, q.title, q.level FROM creature_quest_end r JOIN quests q ON q.entry = r.quest WHERE r.id = ?1 ORDER BY q.level`;
 export const Q_NPC_MAPS = `

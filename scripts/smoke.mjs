@@ -514,6 +514,7 @@ ok = (await testEmptyZone(5722, "Thorn Gorge")) && ok; // 1.18.1 zone with no sp
 ok = (await testBrowse("zones", "", "Continent")) && ok;
 ok = (await testNpcLoad(15379, 400)) && ok;  // AQ NPC, many spawns; ~4ms healthy, 726ms if zone lookup unindexed
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
+ok = (await testNpc(80402, "Aemara Sunsorrow", "Teaches")) && ok;  // trainer -> Teaches tab
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
 ok = (await testDungeons()) && ok;

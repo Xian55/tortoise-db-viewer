@@ -478,10 +478,11 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, zoneCand] = await Promise.all([
+  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, zoneCand, trains] = await Promise.all([
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
     query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]), query(Q.Q_NPC_ZONES, [id]),
+    query(Q.Q_NPC_TRAINS, [id]),
   ]);
   // Resolve the open-world zone per continent. WMA boxes overlap at borders and
   // the dumps lack true coord->area, so among the boxes containing a spawn we take
@@ -525,8 +526,16 @@ async function showNpc(id) {
     { label: "Level", num: true, cls: "muted", cell: (q) => q.level || "", value: (q) => q.level || 0 },
     { label: "Needed", num: true, cls: "muted", cell: (q) => (q.count > 1 ? q.count : ""), value: (q) => q.count || 0 },
   ];
+  const rankNum = (r) => { const m = (r.rank || "").match(/\d+/); return m ? +m[0] : 0; };
+  const teachesCols = [
+    { label: "Spell", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
+    { label: "Rank", num: true, cls: "muted", cell: (r) => esc(r.rank || ""), value: rankNum },
+    { label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
+    { label: "Level", num: true, cls: "muted", cell: (r) => r.spell_level || "", value: (r) => r.spell_level || 0 },
+  ];
 
   const tabDefs = [
+    { id: "teaches", label: "Teaches", ...regTable(teachesCols, trains) },
     { id: "drops", label: "Drops", ...regTable(lootCols, loot) },
     { id: "skinning", label: "Skinning", ...regTable(lootCols, skin) },
     { id: "pickpocketing", label: "Pickpocketing", ...regTable(lootCols, pick) },
