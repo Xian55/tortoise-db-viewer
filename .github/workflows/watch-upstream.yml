@@ -1,0 +1,42 @@
+name: Watch upstream server repo
+
+# Penqle/tortoise-wow is a third-party repo we cannot add workflows to, so we
+# poll its main branch on a schedule and re-run deploy.yml when its commit SHA
+# changes (the build pulls that repo's SQL dumps).
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6h (UTC)
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get upstream main SHA
+        id: up
+        run: |
+          sha=$(gh api repos/Penqle/tortoise-wow/commits/main --jq .sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Restore last-seen SHA
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: .upstream-sha
+          key: upstream-sha-${{ steps.up.outputs.sha }}
+
+      - name: Trigger deploy if changed
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          echo "${{ steps.up.outputs.sha }}" > .upstream-sha
+          echo "Upstream changed to ${{ steps.up.outputs.sha }} -- triggering deploy"
+          gh workflow run deploy.yml --repo "${{ github.repository }}" --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
