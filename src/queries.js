@@ -110,6 +110,19 @@ export const Q_REAGENT_FOR = `
   LEFT JOIN item_display_info di ON di.ID = ci.display_id
   WHERE sr.item = ?1 GROUP BY s.entry, ci.entry ORDER BY ci.quality DESC LIMIT 100`;
 
+// What a recipe/pattern/plans item teaches: the craft it unlocks and the item
+// that craft produces (recipe item -> craft_source -> spell -> spell_creates).
+export const Q_TEACHES = `
+  SELECT s.entry AS spell, s.name AS spell_name, sc.skill, sc.skill_min, sc.skill_max,
+         ci.entry AS item, ci.name AS item_name, ci.quality, di.icon AS item_icon
+  FROM craft_source cs
+  JOIN spell_creates sc ON sc.spell = cs.spell
+  JOIN spells s ON s.entry = cs.spell
+  JOIN items ci ON ci.entry = sc.item
+  LEFT JOIN item_display_info di ON di.ID = ci.display_id
+  WHERE cs.recipe_item = ?1
+  GROUP BY ci.entry ORDER BY ci.quality DESC LIMIT 50`;
+
 export const Q_ITEM_SOURCES = `SELECT source FROM item_sources WHERE item = ?1`;
 
 // Every spawn point of the gathering object(s) that yield this item (herb/ore

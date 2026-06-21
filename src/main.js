@@ -164,12 +164,12 @@ async function showItem(id) {
     if (sp) spellMap.set(sid, sp);
   }));
 
-  const [dropped, objects, sold, contained, contains, disen, quests, starts, createdBy, reagentFor, srcRows, gatherSpawns] =
+  const [dropped, objects, sold, contained, contains, disen, quests, starts, createdBy, reagentFor, teaches, srcRows, gatherSpawns] =
     await Promise.all([
       query(Q.Q_DROPPED_BY, [id]), query(Q.Q_OBJECT_SOURCE, [id]), query(Q.Q_SOLD_BY, [id]),
       query(Q.Q_CONTAINED_IN, [id]), query(Q.Q_CONTAINS, [id]), query(Q.Q_DISENCHANTS_INTO, [id]), query(Q.Q_QUEST_ITEM, [id]),
       query(Q.Q_STARTS_QUEST, [id]), query(Q.Q_CREATED_BY, [id]), query(Q.Q_REAGENT_FOR, [id]),
-      query(Q.Q_ITEM_SOURCES, [id]), query(Q.Q_ITEM_OBJECT_SPAWNS, [id]),
+      query(Q.Q_TEACHES, [id]), query(Q.Q_ITEM_SOURCES, [id]), query(Q.Q_ITEM_OBJECT_SPAWNS, [id]),
     ]);
   const srcCsv = srcRows.map((r) => r.source).join(",");
 
@@ -234,6 +234,12 @@ async function showItem(id) {
     { label: "Creates", cell: (r) => itemLink(r.created, r.created_name, r.quality, r.created_icon), value: (r) => r.created_name },
     { label: "Via spell", cls: "muted", cell: (r) => esc(r.spell_name), value: (r) => r.spell_name },
   ];
+  // recipe/pattern/plans -> the item it teaches you to craft
+  const teachesCols = [
+    { label: "Teaches", cell: (t) => itemLink(t.item, t.item_name, t.quality, t.item_icon), value: (t) => t.item_name },
+    { label: "Profession", cls: "muted", cell: (t) => esc(PROFESSION_LABEL[t.skill] || ""), value: (t) => PROFESSION_LABEL[t.skill] || "" },
+    { label: "Skill", num: true, cls: "muted", cell: (t) => t.skill_min || "", value: (t) => t.skill_min || 0 },
+  ];
 
   // created-by: group reagents per spell
   const bySpell = new Map();
@@ -257,6 +263,7 @@ async function showItem(id) {
     { id: "object", label: "Found in object", ...regTable(objectCols, objects) },
     { id: "gather", label: "Gathered in", ...regTable(gatherCols, gatherRows, { pageSize: 200, groupable: true, group: 0, sort: "Spawns", dir: "d" }) },
     { id: "sold", label: "Sold by", ...regTable(soldCols, sold) },
+    { id: "teaches", label: "Teaches", ...regTable(teachesCols, teaches) },
     { id: "contains", label: "Contains", ...regTable(itemChanceCols, contains) },
     { id: "contained", label: "Contained in", ...regTable(itemChanceCols, contained) },
     { id: "disen", label: "Disenchants into", ...regTable(disenCols, disen) },

@@ -297,7 +297,23 @@ def main():
     di = cols.index("display_id")
     display_ids = {row[di] for row in iter_rows(item_sql, "item_template")}
     display_ids = {int(x) for x in display_ids if x is not None}
-    print(f"items: {len(display_ids)} distinct display_ids")
+    # The build applies sql/database_updates on top of sql/base, which shifts item
+    # display_ids (e.g. Iron Ore -> 68822). SQL_DIR alone is pre-migration, so also
+    # take the migrated display_ids from the built DB (run build-db first) -- else
+    # migration items' icons are never considered for extraction.
+    db_path = os.path.join(ROOT, "public", "data", "tortoise.sqlite")
+    if os.path.exists(db_path):
+        import sqlite3
+        con = sqlite3.connect(db_path)
+        mig = {int(r[0]) for r in con.execute(
+            "SELECT DISTINCT display_id FROM items WHERE display_id IS NOT NULL")}
+        con.close()
+        added = len(mig - display_ids)
+        display_ids |= mig
+        print(f"items: {len(display_ids)} distinct display_ids (+{added} from migrated DB)")
+    else:
+        print(f"items: {len(display_ids)} distinct display_ids "
+              "(no built DB -- run build-db first to include migrated display_ids)")
 
     # 2. id -> icon from the highest-precedence ItemDisplayInfo.dbc
     id_icon = {}
@@ -350,6 +366,27 @@ def main():
     custom = sorted(n for n in candidates if status[n] != 200)
     missing = sorted(i for i in used_icons if i not in icon_archive and status.get(i, 404) != 200)
     print(f"custom icons (not on CDN, present in client): {len(custom)}")
+
+    # Some custom icons live in MPQs whose listfile is incomplete, so the
+    # enumeration above (list_icons) misses them even though the BLP is present
+    # (e.g. inv_ore_iron_02 in patch-8.mpq). Probe each "missing" icon by direct
+    # path and recover the ones that really exist.
+    if missing:
+        recovered = []
+        for name in missing:
+            for arc in present:  # low..high; last wins -> highest-precedence archive
+                h = storm.open(os.path.join(DATA, arc))
+                if not h:
+                    continue
+                if storm.has(h, f"Interface\\Icons\\{name}.blp"):
+                    icon_archive[name] = arc
+                storm.close(h)
+            if name in icon_archive:
+                recovered.append(name)
+        if recovered:
+            custom = sorted(set(custom) | set(recovered))
+            missing = [m for m in missing if m not in icon_archive]
+            print(f"  recovered {len(recovered)} icon(s) via direct probe (listfile gaps): {', '.join(recovered)}")
     if missing:
         print(f"  note: {len(missing)} icons missing from both CDN and client (skipped)")
 

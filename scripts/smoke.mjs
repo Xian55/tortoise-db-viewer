@@ -37,6 +37,16 @@ async function testItem(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
+// recipe/pattern/plans item shows a "Teaches" tab with the craft it unlocks
+async function testTeaches(id, expectName) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 30000 });
+  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  const tabs = await page.$$eval(".item-rel .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const has = tabs.some((t) => /^Teaches\b/.test(t));
+  console.log(`teaches ${id}: tabs=[${tabs.join(", ")}] hasTeaches=${has}`);
+  return has;
+}
+
 // container/lockbox item shows a "Contains" tab listing what it yields
 async function testContainer(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 30000 });
@@ -408,6 +418,7 @@ ok = (await testItem(2770, "Copper Ore")) && ok;
 ok = (await testItem(55356, "Netherwrought")) && ok;
 ok = (await testItem(647, "Destiny")) && ok;
 ok = (await testContainer(16882, "Junkbox")) && ok;  // lockbox -> Contains tab
+ok = (await testTeaches(70204, "Shadowforged")) && ok;  // recipe -> Teaches tab
 ok = (await testCustomIcon(9376, "Jang")) && ok;
 ok = (await testSearch("thunder")) && ok;
 ok = (await testQuest(14, "Militia")) && ok;
