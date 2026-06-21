@@ -183,9 +183,13 @@ supplement).
   resolves equal-chance groups and reference multipliers, so queries are simple
   joins — do **not** reintroduce recursive loot CTEs.
 - Tables: define `columns` as `{ key?, label, cell(row)->html, value?(row),
-  num?, cls? }`. `value` is the sort/group key (defaults to cell text). Pass
-  `{groupable, group, pageSize, sort, dir, onState}` to `createTable`. Browse
-  persists sort/group in the URL via `onState` + `replaceState`.
+  num?, cls?, group?(row) }`. `value` is the sort/group key (defaults to cell
+  text); `group(row)` renders the group-header label when grouped by that column
+  (defaults to the cell) — use it when the cell shows a member but the group key
+  is a category (e.g. crafting Source groups by "Recipe"/"Trainer"/"Auto", not by
+  each recipe's name). Pass `{groupable, group, pageSize, sort, dir, onState}` to
+  `createTable`. Browse persists sort/group in the URL via `onState` +
+  `replaceState`.
 - Item names render via `itemLink(entry, name, quality, icon)` so they get the
   quality color, lazy icon, and hover tooltip. Icons come from the DB join
   (`item_display_info`), served from `render-us.worldofwarcraft.com/icons/56/` —
