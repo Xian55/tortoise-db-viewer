@@ -111,6 +111,15 @@ regenerated in CI). `extract-icons.py` runs locally (needs the client +
 atlas and needs only the repo. Re-run both when the client updates with new
 items, then commit. Set `TW_CLIENT` / `STORMLIB` / `SQL_DIR` to relocate inputs.
 
+**Run order: `build-db` BEFORE `extract-icons`.** Item display_ids shift with the
+world migrations, so `extract-icons.py` reads the migrated display_ids from the
+built `public/data/tortoise.sqlite` (falls back to `sql/base` with a warning if
+absent) — otherwise migration-added items' icons are never extracted. It also
+recovers icons present in the client but absent from a patch MPQ's listfile via a
+direct `SFileHasFile` probe (plain enumeration misses them). Full local refresh:
+`build-db` → `extract-icons` → `build-atlas` → `build-db` (to merge the updated
+supplement).
+
 ## File map
 
 - `scripts/build-db.mjs` — the whole build. **Stages** the raw world tables from
