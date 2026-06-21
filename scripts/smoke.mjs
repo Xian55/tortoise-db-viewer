@@ -37,6 +37,16 @@ async function testItem(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
+// container/lockbox item shows a "Contains" tab listing what it yields
+async function testContainer(id, expectName) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 30000 });
+  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  const tabs = await page.$$eval(".item-rel .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const has = tabs.some((t) => /^Contains\b/.test(t));
+  console.log(`container ${id}: tabs=[${tabs.join(", ")}] hasContains=${has}`);
+  return has;
+}
+
 // Turtle custom icon (not on Blizzard CDN) renders from the sprite atlas as a
 // <span class="icon-sprite"> backed by custom-atlas.webp. Item 9376 Jang'thraze
 // uses custom icon "gensword1h_4".
@@ -313,6 +323,17 @@ async function testSearchTabs(term) {
   return tabList.length > 1 && rows > 0;
 }
 
+// search includes zones: "Tanaris" yields a Zones tab with >=1 row
+async function testSearchZone(term) {
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".results .tabbar .tab", { timeout: 40000 });
+  const tabs = await page.$$eval(".results .tabbar .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const zoneRows = await page.$$eval('.results [data-table="zones"] tbody tr, .results [data-pane="zones"] tbody tr', (r) => r.length).catch(() => 0);
+  const has = tabs.some((t) => /^Zones\b/.test(t));
+  console.log(`search zones "${term}": tabs=[${tabs.join(", ")}] zoneTab=${has} zoneRows=${zoneRows}`);
+  return has;
+}
+
 // live dropdown: typing yields rows; ArrowDown+Enter navigates to a detail page.
 async function testSearchDropdown(term) {
   await page.goto(`${BASE}?`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -383,10 +404,12 @@ ok = (await testItem(7909, "Aquamarine")) && ok;
 ok = (await testItem(2770, "Copper Ore")) && ok;
 ok = (await testItem(55356, "Netherwrought")) && ok;
 ok = (await testItem(647, "Destiny")) && ok;
+ok = (await testContainer(16882, "Junkbox")) && ok;  // lockbox -> Contains tab
 ok = (await testCustomIcon(9376, "Jang")) && ok;
 ok = (await testSearch("thunder")) && ok;
 ok = (await testQuest(14, "Militia")) && ok;
 ok = (await testSearchTabs("defias")) && ok;
+ok = (await testSearchZone("Tanaris")) && ok;
 ok = (await testSearchDropdown("defias")) && ok;
 ok = (await testBrowse("quests", "&minlvl=1&maxlvl=12", "Zone")) && ok;
 ok = (await testFaction(509, "League of Arathor")) && ok;

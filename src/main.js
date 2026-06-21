@@ -130,14 +130,19 @@ async function showSearch(term) {
     { label: "Name", cell: (r) => dungeonLink(r.id, r.name), value: (r) => r.name },
     { label: "Type", cls: "muted", cell: (r) => (r.type === 2 ? "Raid" : "Dungeon"), value: (r) => r.type },
   ];
+  const zoneCols = [
+    { label: "Name", cell: (r) => zoneLink(r.areaid, r.name), value: (r) => r.name },
+    { label: "Continent", cls: "muted", cell: (r) => CONTINENT[r.mapid] || "", value: (r) => CONTINENT[r.mapid] || "" },
+  ];
 
   const tabDefs = [
     { id: "items", label: "Items", ...regTable(itemCols, res.items, { pageSize: 100 }) },
     { id: "npcs", label: "NPCs", ...regTable(npcCols, res.npcs, { pageSize: 100 }) },
     { id: "quests", label: "Quests", ...regTable(questCols, res.quests, { pageSize: 100 }) },
     { id: "dungeons", label: "Dungeons", ...regTable(dungeonCols, res.dungeons) },
+    { id: "zones", label: "Zones", ...regTable(zoneCols, res.zones) },
   ];
-  const total = res.items.length + res.npcs.length + res.quests.length + res.dungeons.length;
+  const total = res.items.length + res.npcs.length + res.quests.length + res.dungeons.length + res.zones.length;
   if (!total) { app.innerHTML = `<div class="home"><p>No results for “${esc(term)}”.</p></div>`; return; }
 
   app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${tabs(tabDefs)}</div>`;
@@ -159,10 +164,10 @@ async function showItem(id) {
     if (sp) spellMap.set(sid, sp);
   }));
 
-  const [dropped, objects, sold, contained, disen, quests, starts, createdBy, reagentFor, srcRows, gatherSpawns] =
+  const [dropped, objects, sold, contained, contains, disen, quests, starts, createdBy, reagentFor, srcRows, gatherSpawns] =
     await Promise.all([
       query(Q.Q_DROPPED_BY, [id]), query(Q.Q_OBJECT_SOURCE, [id]), query(Q.Q_SOLD_BY, [id]),
-      query(Q.Q_CONTAINED_IN, [id]), query(Q.Q_DISENCHANTS_INTO, [id]), query(Q.Q_QUEST_ITEM, [id]),
+      query(Q.Q_CONTAINED_IN, [id]), query(Q.Q_CONTAINS, [id]), query(Q.Q_DISENCHANTS_INTO, [id]), query(Q.Q_QUEST_ITEM, [id]),
       query(Q.Q_STARTS_QUEST, [id]), query(Q.Q_CREATED_BY, [id]), query(Q.Q_REAGENT_FOR, [id]),
       query(Q.Q_ITEM_SOURCES, [id]), query(Q.Q_ITEM_OBJECT_SPAWNS, [id]),
     ]);
@@ -252,6 +257,7 @@ async function showItem(id) {
     { id: "object", label: "Found in object", ...regTable(objectCols, objects) },
     { id: "gather", label: "Gathered in", ...regTable(gatherCols, gatherRows, { pageSize: 200, groupable: true, group: 0, sort: "Spawns", dir: "d" }) },
     { id: "sold", label: "Sold by", ...regTable(soldCols, sold) },
+    { id: "contains", label: "Contains", ...regTable(itemChanceCols, contains) },
     { id: "contained", label: "Contained in", ...regTable(itemChanceCols, contained) },
     { id: "disen", label: "Disenchants into", ...regTable(disenCols, disen) },
     { id: "reward", label: "Reward from quest", ...regTable(questCols(false, true), rewQuests) },

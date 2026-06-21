@@ -42,6 +42,13 @@ export const Q_SEARCH_DUNGEONS = `
   ORDER BY (name = ?2) DESC, name
   LIMIT ?3`;
 
+// Zones use LIKE over the ~120 named WorldMap areas (no FTS table needed).
+export const Q_SEARCH_ZONES = `
+  SELECT areaid, name, mapid FROM zones
+  WHERE name <> '' AND name LIKE ?1
+  ORDER BY (name = ?2) DESC, name
+  LIMIT ?3`;
+
 // Dropped by NPCs (creature loot / skinning / pickpocket).
 export const Q_DROPPED_BY = `
 SELECT c.entry, c.name, c.level_min, c.level_max, c.rank,
@@ -69,6 +76,13 @@ export const Q_CONTAINED_IN = `
   FROM drops d JOIN items i ON i.entry = d.owner
   LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE d.src='i' AND d.item = ?1 ORDER BY d.chance DESC LIMIT 50`;
+
+// Items this container/lockbox yields when opened (the inverse of CONTAINED_IN).
+export const Q_CONTAINS = `
+  SELECT i.entry, i.name, i.quality, di.icon, d.chance
+  FROM drops d JOIN items i ON i.entry = d.item
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE d.src='i' AND d.owner = ?1 ORDER BY d.chance DESC LIMIT 100`;
 
 export const Q_DISENCHANTS_INTO = `
   SELECT i.entry, i.name, i.quality, di.icon, d.chance

@@ -56,9 +56,10 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
   via the zone's WorldMapArea bounds (`lat=H*(x-locbottom)/(loctop-locbottom)`,
   `lng=W*(locleft-y)/(locleft-locright)`). Markers use a canvas renderer.
 - **Search is unified + FTS-backed.** `?search=` renders a tabbed page across
-  items/NPCs/quests/dungeons; the top-bar input also shows a live flat top-5
-  dropdown (`src/search.js`, `runSearch()` + `initSearchDropdown()`). Items,
-  creatures, and quests have FTS5 tables (`*_fts`); dungeons (maps) use LIKE.
+  items/NPCs/quests/dungeons/zones; the top-bar input also shows a live flat
+  top-5 dropdown (`src/search.js`, `runSearch()` + `initSearchDropdown()`). Items,
+  creatures, and quests have FTS5 tables (`*_fts`); dungeons (maps) and zones use
+  LIKE over their small tables.
 
 ## Commands
 
