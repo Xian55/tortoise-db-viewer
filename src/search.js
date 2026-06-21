@@ -2,8 +2,8 @@
 // autocomplete dropdown wired onto the top-bar input. Items/NPCs/quests are
 // FTS5-backed; dungeons use LIKE over the ~39 maps. All in-memory (no network).
 import { query } from "./db.js";
-import { Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_DUNGEONS } from "./queries.js";
-import { itemLink, npcLink, questLink, dungeonLink, esc } from "./render.js";
+import { Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES } from "./queries.js";
+import { itemLink, npcLink, questLink, dungeonLink, zoneLink, esc } from "./render.js";
 
 // FTS5 MATCH string: prefix-match each alnum token ("fire bl" -> "fire* bl*").
 function ftsQuery(term) {
@@ -11,20 +11,21 @@ function ftsQuery(term) {
   return toks && toks.length ? toks.map((t) => `${t}*`).join(" ") : null;
 }
 
-// Run all four entity searches in parallel; `limit` rows per entity.
+// Run all entity searches in parallel; `limit` rows per entity.
 export async function runSearch(term, limit) {
   const t = (term || "").trim();
-  const empty = { items: [], npcs: [], quests: [], dungeons: [] };
+  const empty = { items: [], npcs: [], quests: [], dungeons: [], zones: [] };
   if (!t) return empty;
   const fts = ftsQuery(t);
   const like = `%${t}%`;
-  const [items, npcs, quests, dungeons] = await Promise.all([
+  const [items, npcs, quests, dungeons, zones] = await Promise.all([
     fts ? query(Q_SEARCH_ITEMS, [fts, t, limit]) : [],
     fts ? query(Q_SEARCH_NPCS, [fts, t, limit]) : [],
     fts ? query(Q_SEARCH_QUESTS, [fts, t, limit]) : [],
     query(Q_SEARCH_DUNGEONS, [like, t, limit]),
+    query(Q_SEARCH_ZONES, [like, t, limit]),
   ]);
-  return { items, npcs, quests, dungeons };
+  return { items, npcs, quests, dungeons, zones };
 }
 
 // Flatten the per-type results into one ranked list (exact > prefix > other,
@@ -37,6 +38,7 @@ function rankFlat(res, term, n) {
   for (const c of res.npcs) all.push({ type: "npc", w: 1, name: c.name, tier: tier(c.name), html: npcLink(c.entry, c.name), href: `?npc=${c.entry}` });
   for (const q of res.quests) all.push({ type: "quest", w: 2, name: q.title, tier: tier(q.title), html: questLink(q.entry, q.title), href: `?quest=${q.entry}` });
   for (const d of res.dungeons) all.push({ type: "dungeon", w: 3, name: d.name, tier: tier(d.name), html: dungeonLink(d.id, d.name), href: `?dungeon=${d.id}` });
+  for (const z of res.zones) all.push({ type: "zone", w: 4, name: z.name, tier: tier(z.name), html: zoneLink(z.areaid, z.name), href: `?zone=${z.areaid}` });
   all.sort((a, b) => a.tier - b.tier || a.w - b.w || (a.name || "").localeCompare(b.name || ""));
   return all.slice(0, n);
 }
