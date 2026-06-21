@@ -352,6 +352,39 @@ async function testQuest(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
+// spell detail: header name + relation tabs + sortable pane (+ Learned-from link
+// when craft-taught -- the recipe item links back from the spell page).
+async function testSpell(id, expectName) {
+  await page.goto(`${BASE}?spell=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".spell-page .npc-head h1", { timeout: 40000 });
+  const name = await page.$eval(".spell-page .npc-head h1", (e) => e.textContent);
+  const tabList = await page.$$eval(".spell-page .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+  const sortableH = await page.$$eval(".spell-page .tabpane:not(.hidden) th.sortable", (e) => e.length);
+  const learned = await page.$$eval(".spell-page .npc-head a.ilink", (e) => e.length);
+  console.log(`spell ${id}: name="${name}" tabs=[${tabList.join(", ")}] sortableHdrs=${sortableH} learnedLinks=${learned}`);
+  return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
+}
+
+// item tooltip green spell lines are now spell links (item -> ?spell=).
+async function testItemSpellLink(id) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".item-main .tooltip", { timeout: 40000 });
+  const links = await page.$$eval(".item-main .tt-spell a.ilink.spell", (e) => e.length);
+  console.log(`item ${id} spell links: ${links}`);
+  return links > 0;
+}
+
+// search includes spells: a craft term yields a Spells tab.
+async function testSearchSpells(term) {
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".results .tabbar .tab", { timeout: 40000 });
+  const tabs = await page.$$eval(".results .tabbar .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const spellRows = await page.$$eval('.results [data-pane="spells"] tbody tr', (r) => r.length).catch(() => 0);
+  const has = tabs.some((t) => /^Spells\b/.test(t));
+  console.log(`search spells "${term}": tabs=[${tabs.join(", ")}] spellTab=${has} spellRows=${spellRows}`);
+  return has && spellRows > 0;
+}
+
 // unified search renders a tabbed results page spanning multiple entity types.
 async function testSearchTabs(term) {
   await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -451,6 +484,10 @@ ok = (await testQuest(14, "Militia")) && ok;
 ok = (await testSearchTabs("defias")) && ok;
 ok = (await testSearchZone("Tanaris")) && ok;
 ok = (await testSearchDropdown("defias")) && ok;
+ok = (await testSpell(41746, "Shadowforged Eye")) && ok;   // craft spell: Creates/Reagents tabs + Learned-from link
+ok = (await testItemSpellLink(70204)) && ok;               // recipe item: green "Teaches…" now links to ?spell=
+ok = (await testSearchSpells("Shadowforged")) && ok;       // search yields a Spells tab
+ok = (await testBrowse("spells", "", "Profession")) && ok; // ?browse=spells finder
 ok = (await testBrowse("quests", "&minlvl=1&maxlvl=12", "Zone")) && ok;
 ok = (await testFaction(509, "League of Arathor")) && ok;
 ok = (await testQuestRepLink(14)) && ok;

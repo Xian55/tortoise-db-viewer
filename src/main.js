@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -66,6 +66,7 @@ function route() {
   const item = params.get("item");
   const npc = params.get("npc");
   const quest = params.get("quest");
+  const spell = params.get("spell");
   const faction = params.get("faction");
   const zone = params.get("zone");
   const dungeon = params.get("dungeon");
@@ -77,6 +78,7 @@ function route() {
   else if (item) showItem(Number(item));
   else if (npc) showNpc(Number(npc));
   else if (quest) showQuest(Number(quest));
+  else if (spell) showSpell(Number(spell));
   else if (faction) showFaction(Number(faction));
   else if (zone) showZone(Number(zone), params.get("gather") ? Number(params.get("gather")) : null);
   else if (dungeon) showDungeon(Number(dungeon));
@@ -93,10 +95,11 @@ function showHome() {
     <p>Search above, or browse <a class="nav" href="?browse=items">items</a> /
        <a class="nav" href="?browse=npcs">NPCs</a> /
        <a class="nav" href="?browse=quests">quests</a> /
+       <a class="nav" href="?browse=spells">spells</a> /
        <a class="nav" href="?browse=factions">factions</a> /
        <a class="nav" href="?browse=zones">zones</a> /
        <a class="nav" href="?dungeons">dungeons &amp; raids</a>.
-       Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?faction=ID</code>, or <code>?dungeon=ID</code>.</p>
+       Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?dungeon=ID</code>.</p>
     <p class="muted">Examples:
       <a class="ilink" href="?item=2770">Copper Ore</a> ·
       <a class="ilink" href="?item=7909">Aquamarine</a> ·
@@ -150,15 +153,20 @@ async function showSearch(term) {
     { label: "Name", cell: (r) => zoneLink(r.areaid, r.name), value: (r) => r.name },
     { label: "Continent", cls: "muted", cell: (r) => CONTINENT[r.mapid] || "", value: (r) => CONTINENT[r.mapid] || "" },
   ];
+  const spellCols = [
+    { label: "Name", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
+    { label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
+  ];
 
   const tabDefs = [
     { id: "items", label: "Items", ...regTable(itemCols, res.items, { pageSize: 100 }) },
     { id: "npcs", label: "NPCs", ...regTable(npcCols, res.npcs, { pageSize: 100 }) },
     { id: "quests", label: "Quests", ...regTable(questCols, res.quests, { pageSize: 100 }) },
+    { id: "spells", label: "Spells", ...regTable(spellCols, res.spells, { pageSize: 100 }) },
     { id: "dungeons", label: "Dungeons", ...regTable(dungeonCols, res.dungeons) },
     { id: "zones", label: "Zones", ...regTable(zoneCols, res.zones) },
   ];
-  const total = res.items.length + res.npcs.length + res.quests.length + res.dungeons.length + res.zones.length;
+  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.dungeons.length + res.zones.length;
   if (!total) { app.innerHTML = `<div class="home"><p>No results for “${esc(term)}”.</p></div>`; return; }
 
   app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${tabs(tabDefs)}</div>`;
@@ -248,7 +256,7 @@ async function showItem(id) {
   ];
   const reagentForCols = [
     { label: "Creates", cell: (r) => itemLink(r.created, r.created_name, r.quality, r.created_icon), value: (r) => r.created_name },
-    { label: "Via spell", cls: "muted", cell: (r) => esc(r.spell_name), value: (r) => r.spell_name },
+    { label: "Via spell", cls: "muted", cell: (r) => spellLink(r.spell, r.spell_name, r.spell_icon), value: (r) => r.spell_name },
   ];
   // recipe/pattern/plans -> the item it teaches you to craft
   // orange/required skill (when you can first craft) = learn_req, falling back to
@@ -265,7 +273,7 @@ async function showItem(id) {
   const bySpell = new Map();
   for (const r of createdBy) {
     if (!bySpell.has(r.entry)) bySpell.set(r.entry, {
-      name: r.name, skill: r.skill, req: r.skill_req,
+      entry: r.entry, name: r.name, icon: r.spell_icon, skill: r.skill, req: r.skill_req,
       recipe_item: r.recipe_item, recipe_name: r.recipe_name, recipe_quality: r.recipe_quality, recipe_icon: r.recipe_icon,
       trainer: r.trainer, auto: r.auto, reagents: [],
     });
@@ -274,7 +282,7 @@ async function showItem(id) {
   const createdRows = [...bySpell.values()];
   const profOf = (s) => PROFESSION_LABEL[s.skill] || "";
   const createdCols = [
-    { label: "Spell", cell: (s) => esc(s.name), value: (s) => s.name },
+    { label: "Spell", cell: (s) => spellLink(s.entry, s.name, s.icon), value: (s) => s.name },
     // profession links to the crafting browse filtered to that profession
     { label: "Profession", cls: "muted", cell: (s) => (profOf(s) ? `<a class="nav" href="?browse=crafting&prof=${s.skill}">${esc(profOf(s))}</a>` + (s.req > 1 ? ` <span class="dim">(${s.req})</span>` : "") : ""), value: (s) => profOf(s) },
     { label: "Reagents", cls: "muted", cell: (s) => s.reagents.join(", "), value: (s) => s.reagents.length },
@@ -306,11 +314,74 @@ async function showItem(id) {
 
   app.innerHTML =
     `<div class="item-view">
-      <div class="item-main">${renderTooltip(it, { spellMap })}
+      <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true })}
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}</div>
         ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}
       </div>
       <div class="item-rel">${tabs(tabDefs)}</div>
+    </div>`;
+  mountTables();
+  wireTabs();
+}
+
+async function showSpell(id) {
+  app.innerHTML = `<div class="loading">Loading spell ${id}…</div>`;
+  let sp;
+  try { sp = await queryOne(Q.Q_SPELL, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (!sp) { app.innerHTML = `<div class="home"><p>No spell with ID ${id}.</p></div>`; return; }
+  document.title = `${sp.name} - Tortoise-WoW DB`;
+
+  const [produces, reagents, usedBy, source] = await Promise.all([
+    query(Q.Q_SPELL_PRODUCES, [id]), query(Q.Q_SPELL_REAGENTS, [id]),
+    query(Q.Q_SPELL_USED_BY, [id]), queryOne(Q.Q_SPELL_SOURCE, [id]),
+  ]);
+
+  const desc = resolveSpellText(sp.description, sp);
+  const aura = resolveSpellText(sp.auraDescription, sp);
+  const prof = PROFESSION_LABEL[sp.skill] || "";
+
+  // "Learned from": the recipe/pattern/plans item, or Trainer / Auto -- mirrors
+  // the item-page "Source" cell so a recipe-taught craft links to its item.
+  let learned = "";
+  if (source) {
+    if (source.recipe_item) learned = itemLink(source.recipe_item, source.recipe_name, source.recipe_quality, source.recipe_icon);
+    else if (source.trainer) learned = `<span class="tagx src-crafted">Trainer</span>`;
+    else if (source.auto) learned = `<span class="tagx" title="Learned automatically with the profession">Auto</span>`;
+  }
+
+  const producesCols = [
+    { label: "Creates", cell: (r) => itemLink(r.item, r.item_name, r.quality, r.item_icon), value: (r) => r.item_name },
+    { label: "Skill", num: true, cls: "muted", cell: (r) => r.skill_req || r.skill_min || "", value: (r) => r.skill_req || r.skill_min || 0 },
+  ];
+  const reagentCols = [
+    { label: "Reagent", cell: (r) => itemLink(r.item, r.item_name, r.quality, r.item_icon), value: (r) => r.item_name },
+    { label: "Qty", num: true, cls: "muted", cell: (r) => (r.count > 1 ? r.count : ""), value: (r) => r.count || 0 },
+  ];
+  const usedByCols = [
+    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+  ];
+
+  const tabDefs = [
+    { id: "produces", label: "Creates", ...regTable(producesCols, produces) },
+    { id: "reagents", label: "Reagents", ...regTable(reagentCols, reagents) },
+    { id: "usedby", label: "Used by items", ...regTable(usedByCols, usedBy) },
+  ];
+
+  const meta = [`Spell #${sp.entry}`];
+  if (prof) meta.push(`<a class="nav" href="?browse=crafting&prof=${sp.skill}">${esc(prof)}</a>`);
+  if (learned) meta.push(`Learned from: ${learned}`);
+
+  app.innerHTML =
+    `<div class="npc-page spell-page">
+      <div class="npc-head">
+        <h1>${sp.icon ? iconImg(sp.icon, "tt-icon") : ""}${esc(sp.name)}</h1>
+        <div class="npc-meta muted">${meta.join('<span class="dim"> · </span>')}</div>
+      </div>
+      ${desc || aura ? `<div class="panel quest-desc">
+        ${desc ? `<p class="tt-spell">${esc(desc)}</p>` : ""}
+        ${aura ? `<p class="tt-spell">${esc(aura)}</p>` : ""}
+      </div>` : ""}
+      ${tabs(tabDefs)}
     </div>`;
   mountTables();
   wireTabs();
@@ -456,7 +527,7 @@ async function showQuest(id) {
   if (q.money > 0) rewBits.push(moneyHtml(q.money));
   if (q.xp > 0) rewBits.push(`${q.xp.toLocaleString()} XP`);
   for (const r of qrep) if (r.value) rewBits.push(`+${r.value} ${factionLink(r.faction, r.faction_name)}`);
-  if (rewSpell) rewBits.push(`Learn: ${esc(rewSpell.name)}`);
+  if (rewSpell) rewBits.push(`Learn: ${spellLink(rewSpell.entry, rewSpell.name, rewSpell.icon)}`);
 
   const desc = [];
   if (q.objectives) desc.push(`<p class="quest-obj">${questText(q.objectives)}</p>`);

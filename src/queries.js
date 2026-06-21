@@ -41,6 +41,13 @@ export const Q_SEARCH_QUESTS = `
   ORDER BY (q.title = ?2) DESC, (q.title LIKE ?2 || '%') DESC, q.level
   LIMIT ?3`;
 
+export const Q_SEARCH_SPELLS = `
+  SELECT s.entry, s.name, s.icon, s.skill
+  FROM spells_fts f JOIN spells s ON s.entry = f.rowid
+  WHERE spells_fts MATCH ?1
+  ORDER BY (s.name = ?2) DESC, (s.name LIKE ?2 || '%') DESC, s.name, s.entry
+  LIMIT ?3`;
+
 export const Q_SEARCH_DUNGEONS = `
   SELECT id, name, type FROM maps
   WHERE type IN (1,2) AND name LIKE ?1
@@ -100,7 +107,7 @@ export const Q_QUEST_ITEM = `SELECT q.entry, q.title, q.level, qi.role, qi.count
 export const Q_STARTS_QUEST = `SELECT q.entry, q.title, q.level FROM quests q WHERE q.entry = (SELECT start_quest FROM items WHERE entry = ?1) AND q.entry > 0`;
 
 export const Q_CREATED_BY = `
-  SELECT s.entry, s.name, sc.skill, sc.skill_req, ci.entry AS reagent_item, ci.name AS reagent_name, ci.quality AS reagent_quality, di.icon AS reagent_icon, sr.count,
+  SELECT s.entry, s.name, s.icon AS spell_icon, sc.skill, sc.skill_req, ci.entry AS reagent_item, ci.name AS reagent_name, ci.quality AS reagent_quality, di.icon AS reagent_icon, sr.count,
          cs.recipe_item, cs.trainer, cs.auto, cs.learn_req, rc.name AS recipe_name, rc.quality AS recipe_quality, rcdi.icon AS recipe_icon
   FROM spell_creates sc JOIN spells s ON s.entry = sc.spell
   LEFT JOIN spell_reagent sr ON sr.spell = sc.spell
@@ -112,7 +119,7 @@ export const Q_CREATED_BY = `
   WHERE sc.item = ?1 ORDER BY s.entry`;
 
 export const Q_REAGENT_FOR = `
-  SELECT s.entry AS spell, s.name AS spell_name, ci.entry AS created, ci.name AS created_name, ci.quality, di.icon AS created_icon
+  SELECT s.entry AS spell, s.name AS spell_name, s.icon AS spell_icon, ci.entry AS created, ci.name AS created_name, ci.quality, di.icon AS created_icon
   FROM spell_reagent sr JOIN spells s ON s.entry = sr.spell
   LEFT JOIN spell_creates sc ON sc.spell = sr.spell
   LEFT JOIN items ci ON ci.entry = sc.item
@@ -185,7 +192,46 @@ export const Q_CRAFTING = `
   WHERE sc.skill IN (${CRAFT_SKILLS})
   ORDER BY sc.skill, ci.name, sc.spell`;
 
-export const Q_SPELL = `SELECT entry, name, description, auraDescription, s1, s2, s3, d1, d2, d3 FROM spells WHERE entry = ?1`;
+export const Q_SPELL = `SELECT entry, name, description, auraDescription, icon, skill, s1, s2, s3, d1, d2, d3 FROM spells WHERE entry = ?1`;
+
+// ---- Spell detail page ----
+// Items this craft spell produces (+ the skill-up thresholds for difficulty).
+export const Q_SPELL_PRODUCES = `
+  SELECT sc.item, ci.name AS item_name, ci.quality, di.icon AS item_icon,
+         sc.skill, sc.skill_req, sc.skill_min, sc.skill_max
+  FROM spell_creates sc
+  JOIN items ci ON ci.entry = sc.item
+  LEFT JOIN item_display_info di ON di.ID = ci.display_id
+  WHERE sc.spell = ?1 ORDER BY ci.quality DESC, ci.name`;
+
+// Reagents the craft consumes.
+export const Q_SPELL_REAGENTS = `
+  SELECT sr.item, ri.name AS item_name, ri.quality, di.icon AS item_icon, sr.count
+  FROM spell_reagent sr
+  JOIN items ri ON ri.entry = sr.item
+  LEFT JOIN item_display_info di ON di.ID = ri.display_id
+  WHERE sr.spell = ?1 ORDER BY ri.name`;
+
+// Items that grant/teach this spell (any of their 5 spell slots references it) --
+// the reverse of the item tooltip's green spell lines (consumables, recipes, …).
+export const Q_SPELL_USED_BY = `
+  SELECT i.entry, i.name, i.quality, di.icon
+  FROM items i
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE i.spellid_1 = ?1 OR i.spellid_2 = ?1 OR i.spellid_3 = ?1 OR i.spellid_4 = ?1 OR i.spellid_5 = ?1
+  ORDER BY i.quality DESC, i.name LIMIT 200`;
+
+// How the craft is learned: the recipe/pattern/plans item, or Trainer / Auto.
+export const Q_SPELL_SOURCE = `
+  SELECT cs.recipe_item, cs.trainer, cs.auto, cs.learn_req,
+         rc.name AS recipe_name, rc.quality AS recipe_quality, rcdi.icon AS recipe_icon
+  FROM craft_source cs
+  LEFT JOIN items rc ON rc.entry = cs.recipe_item
+  LEFT JOIN item_display_info rcdi ON rcdi.ID = rc.display_id
+  WHERE cs.spell = ?1`;
+
+// Browse Spells finder: all named spells (profession label resolved client-side).
+export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill FROM spells WHERE name <> '' ORDER BY name`;
 
 // ---- NPC (creature) pages ----
 export const Q_NPC = `SELECT entry, name, subname, level_min, level_max, rank, type, faction, health_min, health_max, npc_flags FROM creatures WHERE entry = ?1`;

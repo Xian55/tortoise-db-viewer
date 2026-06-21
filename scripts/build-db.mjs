@@ -327,6 +327,19 @@ console.log("Importing spells + crafting graph...");
     }
     console.log(`  skill_line_ability: ${spellSkill.size} spells`);
   }
+  // spellIconId -> icon basename, extracted once from the client SpellIcon.dbc
+  // (scripts/extract-spell-icons.py) and committed. Standard icons resolve from
+  // the CDN by basename; absent map = text/CDN-fallback links (graceful).
+  let spellIconMap = {};
+  {
+    const f = join(ROOT, "scripts", "data", "spell-icon-map.json");
+    if (existsSync(f)) {
+      spellIconMap = JSON.parse(readFileSync(f, "utf8"));
+      console.log(`  spell-icon-map: ${Object.keys(spellIconMap).length} icons`);
+    } else {
+      console.log("  (no spell-icon-map.json -- run scripts/extract-spell-icons.py for spell icons)");
+    }
+  }
   const c = srcColumns("spell_template", "tw_world_spell_template.sql");
   const at = (name) => c.indexOf(name);
   const iEntry = at("entry"), iName = at("name"), iDesc = at("description"), iAura = at("auraDescription"), iIcon = at("spellIconId");
@@ -338,10 +351,10 @@ console.log("Importing spells + crafting graph...");
   const triggers = [1, 2, 3].map((n) => at(`effectTriggerSpell${n}`));
 
   db.exec(`CREATE TABLE spells (entry INTEGER PRIMARY KEY, name TEXT, description TEXT, auraDescription TEXT, spellIconId INTEGER,
-    s1 INTEGER, s2 INTEGER, s3 INTEGER, d1 INTEGER, d2 INTEGER, d3 INTEGER)`);
+    icon TEXT, skill INTEGER, s1 INTEGER, s2 INTEGER, s3 INTEGER, d1 INTEGER, d2 INTEGER, d3 INTEGER)`);
   db.exec(`CREATE TABLE spell_creates (spell INTEGER, item INTEGER, skill INTEGER, skill_req INTEGER, skill_min INTEGER, skill_max INTEGER)`);
   db.exec(`CREATE TABLE spell_reagent (spell INTEGER, item INTEGER, count INTEGER)`);
-  const sSpell = db.prepare(`INSERT OR REPLACE INTO spells VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
+  const sSpell = db.prepare(`INSERT OR REPLACE INTO spells VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const sCreate = db.prepare(`INSERT INTO spell_creates VALUES (?,?,?,?,?,?)`);
   const sReag = db.prepare(`INSERT INTO spell_reagent VALUES (?,?,?)`);
   let ns = 0, nc = 0, nr = 0;
@@ -351,14 +364,16 @@ console.log("Importing spells + crafting graph...");
       // $sN in spell text resolves to basePoints+1 (.. +dieSides for ranges)
       const s = bp.map((bi, k) => (clean(row[bi]) || 0) + 1);
       const d = ds.map((di) => clean(row[di]) || 0);
-      sSpell.run(e, clean(row[iName]), clean(row[iDesc]), clean(row[iAura]), clean(row[iIcon]),
+      const iconId = clean(row[iIcon]);
+      const sk = spellSkill.get(e);
+      sSpell.run(e, clean(row[iName]), clean(row[iDesc]), clean(row[iAura]), iconId,
+        spellIconMap[iconId] || null, sk ? sk.skill : null,
         s[0], s[1], s[2], d[0], d[1], d[2]);
       ns++;
       // derive gear stats from this spell's effect auras (for item_stats)
       const effects = effIdx.map((f) => ({ aura: clean(row[f.a]) || 0, misc: clean(row[f.m]) || 0, base: clean(row[f.b]) || 0 }));
       const st = statsFromAuras(effects);
       if (Object.keys(st).length) spellStats.set(e, st);
-      const sk = spellSkill.get(e);
       for (const ci of creates) {
         const item = clean(row[ci]);
         if (item) { sCreate.run(e, item, sk ? sk.skill : null, sk ? sk.req : null, sk ? sk.min : null, sk ? sk.max : null); nc++; }
@@ -685,6 +700,8 @@ db.exec(`CREATE VIRTUAL TABLE creatures_fts USING fts5(name, content='creatures'
 db.exec(`INSERT INTO creatures_fts(rowid, name) SELECT entry, name FROM creatures WHERE name IS NOT NULL AND name <> ''`);
 db.exec(`CREATE VIRTUAL TABLE quests_fts USING fts5(title, content='quests', content_rowid='entry', tokenize='unicode61')`);
 db.exec(`INSERT INTO quests_fts(rowid, title) SELECT entry, title FROM quests WHERE title IS NOT NULL AND title <> ''`);
+db.exec(`CREATE VIRTUAL TABLE spells_fts USING fts5(name, description, content='spells', content_rowid='entry', tokenize='unicode61')`);
+db.exec(`INSERT INTO spells_fts(rowid, name, description) SELECT entry, name, description FROM spells WHERE name IS NOT NULL AND name <> ''`);
 
 console.log("Optimizing...");
 db.pragma("journal_mode = DELETE");

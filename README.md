@@ -77,6 +77,14 @@ placeholder on a 404.
 Custom Turtle displays absent from `item_display_info` show the placeholder; add
 their icons by extending that table in the source data.
 
+Spell icons work the same way. The server `spell_template` stores only a numeric
+`spellIconId`; `scripts/extract-spell-icons.py` resolves it to a texture basename
+via the client `SpellIcon.dbc`, written to a committed
+`scripts/data/spell-icon-map.json` that build-db joins onto `spells.icon`. Spells
+share the `Interface\Icons` pool with items, so standard spell icons load from the
+same CDN; only custom Turtle spell icons are packed into the atlas. Without the
+map, spell links render as clean text.
+
 ## Deploy (GitHub Pages)
 
 `.github/workflows/deploy.yml` builds and deploys on push to `main`: it

@@ -2,8 +2,8 @@
 // against the in-memory DB; sorting + pagination are handled client-side by the
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
-import { Q_CRAFTING, Q_FACTIONS, Q_ZONES } from "./queries.js";
-import { itemLink, npcLink, questLink, factionLink, zoneLink, sourceTags, esc } from "./render.js";
+import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SPELLS } from "./queries.js";
+import { itemLink, npcLink, questLink, factionLink, zoneLink, spellLink, sourceTags, esc } from "./render.js";
 import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
@@ -343,6 +343,25 @@ async function browseCrafting(p) {
   return { rows: crafts, cols: hideCols(cols, f.prof ? ["prof"] : []), filters, noun: "crafts" };
 }
 
+async function browseSpells(p) {
+  const f = { q: p.get("q") || "", prof: p.get("prof") || "" };
+  // The spells table is large but each row is tiny (name/icon/skill); load all and
+  // filter/sort/paginate client-side via createTable (consistent with crafting).
+  let rows = await query(Q_BROWSE_SPELLS, []);
+  if (f.q) { const ql = f.q.toLowerCase(); rows = rows.filter((r) => (r.name || "").toLowerCase().includes(ql)); }
+  if (f.prof) rows = rows.filter((r) => String(r.skill) === f.prof);
+  const cols = [
+    { key: "name", label: "Name", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
+    { key: "prof", label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
+  ];
+  const filters = `<div class="filters">
+    ${textField("q", "Name", f.q)}
+    ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any profession"))}
+    <button class="reset" data-reset="1">Reset</button>
+  </div>`;
+  return { rows, cols: hideCols(cols, f.prof ? ["prof"] : []), filters, noun: "spells" };
+}
+
 async function browseQuests(p) {
   const f = {
     q: p.get("q") || "", zone: p.get("zone") || "", type: p.get("type") || "",
@@ -425,12 +444,13 @@ export async function showBrowse(kind, navigate) {
   const isQuests = kind === "quests";
   const isFactions = kind === "factions";
   const isZones = kind === "zones";
-  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : isFactions ? "Factions" : isZones ? "Zones" : "Items";
+  const isSpells = kind === "spells";
+  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : isFactions ? "Factions" : isZones ? "Zones" : isSpells ? "Spells" : "Items";
   document.title = `Browse ${heading} - Tortoise-WoW DB`;
   app.innerHTML = `<div class="loading">Loading…</div>`;
   const p = new URLSearchParams(location.search);
   let view;
-  try { view = kind === "crafting" ? await browseCrafting(p) : isZones ? await browseZones(p) : isFactions ? await browseFactions(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : await browseItems(p); }
+  try { view = kind === "crafting" ? await browseCrafting(p) : isZones ? await browseZones(p) : isFactions ? await browseFactions(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : isSpells ? await browseSpells(p) : await browseItems(p); }
   catch (e) { app.innerHTML = `<div class="error">Failed: ${esc(e.message || e)}</div>`; return; }
 
   // items get row selection + clipboard/external operations on the selection.

@@ -80,7 +80,7 @@ function valStr(s, d) {
 }
 
 // Replace $s1/$s2/$s3 with resolved numbers; strip remaining $-codes.
-function resolveSpellText(text, sp) {
+export function resolveSpellText(text, sp) {
   if (!text) return "";
   return text
     .replace(/\$s1/gi, valStr(sp.s1, sp.d1))
@@ -92,8 +92,10 @@ function resolveSpellText(text, sp) {
     .trim();
 }
 
-// Build the item tooltip card. spellMap: Map<spellId, spellRow>.
-export function renderTooltip(it, { spellMap = new Map() } = {}) {
+// Build the item tooltip card. spellMap: Map<spellId, spellRow>. linkSpells wraps
+// the green effect lines in spell links (on for the item page, off for transient
+// hovercards so a popover never holds a nested link).
+export function renderTooltip(it, { spellMap = new Map(), linkSpells = false } = {}) {
   const L = [];
   const line = (html, cls = "") => L.push(`<div class="tt-line ${cls}">${html}</div>`);
 
@@ -173,8 +175,10 @@ export function renderTooltip(it, { spellMap = new Map() } = {}) {
     const sp = spellMap.get(sid);
     const label = SPELL_TRIGGER[trig] || "";
     const txt = sp ? resolveSpellText(sp.description || sp.auraDescription, sp) : "";
-    if (txt) line(`${label} ${esc(txt)}`, "tt-spell");
-    else if (sp && sp.name) line(`${label} ${esc(sp.name)}`, "tt-spell");
+    const body = txt || (sp && sp.name) || "";
+    if (!body) continue;
+    const inner = linkSpells && sp ? spellLink(sid, body, sp.icon) : esc(body);
+    line(`${label} ${inner}`, "tt-spell");
   }
 
   // flavor
@@ -241,6 +245,13 @@ export function factionLink(id, name) {
 
 export function zoneLink(areaid, name) {
   return `<a class="ilink zone" href="?zone=${areaid}">${esc(name)}</a>`;
+}
+
+// Spell link. icon is the basename (CDN or custom atlas); rendered only when set
+// (spells without an extracted icon degrade to a clean text link, no "?" image).
+export function spellLink(entry, name, icon) {
+  return `<a class="ilink spell" href="?spell=${entry}">` +
+    `${icon ? iconImg(icon) : ""}${esc(name)}</a>`;
 }
 
 // gold/silver/copper coin spans from a raw copper amount (mirrors the tooltip).
