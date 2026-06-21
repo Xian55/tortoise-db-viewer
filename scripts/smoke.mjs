@@ -132,8 +132,11 @@ async function testCrafted(id, expectProf) {
   await page.waitForSelector(".item-rel", { timeout: 40000 });
   const cells = await page.$$eval(".item-rel td", (tds) => tds.map((t) => t.textContent.trim()));
   const hit = cells.some((t) => t.includes(expectProf));
-  console.log(`crafted ${id}: profession "${expectProf}" present=${hit}`);
-  return hit;
+  // Created-by reagents must be clickable item links, not plain text
+  await page.$$eval(".item-rel .tab", (tabs) => { const t = tabs.find((x) => /Created by/.test(x.textContent)); if (t) t.click(); });
+  const reagentLinks = await page.$$eval('.item-rel .tabpane:not(.hidden) td a.ilink', (a) => a.length).catch(() => 0);
+  console.log(`crafted ${id}: profession "${expectProf}" present=${hit} reagentLinks=${reagentLinks}`);
+  return hit && reagentLinks > 0;
 }
 
 // crafting browse: filtered to one profession, grouped, with skill-up brackets

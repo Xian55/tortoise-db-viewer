@@ -239,7 +239,7 @@ async function showItem(id) {
   const bySpell = new Map();
   for (const r of createdBy) {
     if (!bySpell.has(r.entry)) bySpell.set(r.entry, { name: r.name, skill: r.skill, req: r.skill_req, reagents: [] });
-    if (r.reagent_item) bySpell.get(r.entry).reagents.push(`${iconImg(r.reagent_icon)}${esc(r.reagent_name)} ×${r.count || 1}`);
+    if (r.reagent_item) bySpell.get(r.entry).reagents.push(`${itemLink(r.reagent_item, r.reagent_name, r.reagent_quality, r.reagent_icon)} ×${r.count || 1}`);
   }
   const createdRows = [...bySpell.values()];
   const profOf = (s) => PROFESSION_LABEL[s.skill] || "";
