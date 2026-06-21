@@ -55,6 +55,7 @@ DATA = os.path.join(CLIENT, "Data")
 DB_PATH = os.path.join(ROOT, "public", "data", "tortoise.sqlite")
 OUT_ICONS = os.path.join(ROOT, "assets", "icons", "custom")
 OUT_MAP = os.path.join(ROOT, "scripts", "data", "spell-icon-map.json")
+OUT_LOOKUPS = os.path.join(ROOT, "scripts", "data", "spell-lookups.json")
 
 # Archive load order, lowest precedence first (a later archive overrides earlier).
 ARCHIVE_ORDER = [
@@ -171,6 +172,71 @@ def parse_spell_icon_dbc(data):
         name = path.replace("/", "\\").split("\\")[-1]
         name = re.sub(r"\.(blp|tga)$", "", name, flags=re.I).lower()
         out[rid] = name
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Small client DBC lookup tables that resolve spell_template *index* columns to
+# real values (cast time / range / duration / radius). The server dump stores
+# only the indices, so build-db needs these -> committed spell-lookups.json.
+# ---------------------------------------------------------------------------
+def read_dbc(storm, present, dbc_name):
+    data = None
+    for arc in present:  # low..high; last wins
+        h = storm.open(os.path.join(DATA, arc))
+        if not h:
+            continue
+        if storm.has(h, f"DBFilesClient\\{dbc_name}"):
+            d = storm.read(h, f"DBFilesClient\\{dbc_name}")
+            if d:
+                data = d
+        storm.close(h)
+    return data
+
+
+def dump_lookups(storm, present):
+    out = {"castTime": {}, "duration": {}, "radius": {}, "range": {}}
+
+    def rows_of(dbc_name):
+        data = read_dbc(storm, present, dbc_name)
+        if not data:
+            print(f"  ! {dbc_name} not found")
+            return None
+        _, rec, fields, recsize, _strsz = struct.unpack_from("<4sIIII", data, 0)
+        base = 20
+        strbase = base + rec * recsize
+
+        def s(off):
+            if not off:
+                return ""
+            end = data.index(b"\0", strbase + off)
+            return data[strbase + off:end].decode("latin1")
+        u = lambda o, idx: struct.unpack_from("<I", data, o + idx * 4)[0]
+        si = lambda o, idx: struct.unpack_from("<i", data, o + idx * 4)[0]
+        fl = lambda o, idx: struct.unpack_from("<f", data, o + idx * 4)[0]
+        return [(base + r * recsize) for r in range(rec)], fields, s, u, si, fl
+
+    r = rows_of("SpellCastTimes.dbc")          # ID, Base(ms), PerLevel, Minimum
+    if r:
+        offs, fields, s, u, si, fl = r
+        for o in offs:
+            out["castTime"][str(u(o, 0))] = si(o, 1)
+    r = rows_of("SpellDuration.dbc")           # ID, Duration(ms), PerLevel, Max
+    if r:
+        offs, fields, s, u, si, fl = r
+        for o in offs:
+            out["duration"][str(u(o, 0))] = si(o, 1)
+    r = rows_of("SpellRadius.dbc")             # ID, Radius(yd float), PerLevel, Max
+    if r:
+        offs, fields, s, u, si, fl = r
+        for o in offs:
+            out["radius"][str(u(o, 0))] = round(fl(o, 1), 3)
+    r = rows_of("SpellRange.dbc")              # ID, Min(f), Max(f), Flags, Name[8]@idx4
+    if r:
+        offs, fields, s, u, si, fl = r
+        for o in offs:
+            name = s(u(o, 4)) if fields > 4 else ""
+            out["range"][str(u(o, 0))] = {"min": round(fl(o, 1), 1), "max": round(fl(o, 2), 1), "name": name}
     return out
 
 
@@ -310,6 +376,16 @@ def main():
         f.write("\n")
     print(f"wrote {len(out)} spellIcon rows ({len(custom)} custom) "
           f"-> {os.path.relpath(OUT_MAP, ROOT)}")
+
+    # 7. index lookup tables (cast time / range / duration / radius) for the
+    # detailed spell page -- build-db resolves spell_template indices via these.
+    lookups = dump_lookups(storm, present)
+    os.makedirs(os.path.dirname(OUT_LOOKUPS), exist_ok=True)
+    with open(OUT_LOOKUPS, "w", encoding="utf-8") as f:
+        json.dump(lookups, f, indent=0, sort_keys=True)
+        f.write("\n")
+    print(f"wrote lookups: castTime={len(lookups['castTime'])} duration={len(lookups['duration'])} "
+          f"radius={len(lookups['radius'])} range={len(lookups['range'])} -> {os.path.relpath(OUT_LOOKUPS, ROOT)}")
 
 
 if __name__ == "__main__":

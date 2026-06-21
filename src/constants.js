@@ -200,3 +200,70 @@ export function money(copper) {
   const c = copper % 100;
   return { g, s, c };
 }
+
+// ---- Spell detail (WoW 1.12 enums) ----
+// Maps are partial by design: the spell page falls back to "#N" for unmapped
+// values, so only high-confidence entries are listed (no fabricated labels).
+export const SPELL_SCHOOL = { 0: "Physical", 1: "Holy", 2: "Fire", 3: "Nature", 4: "Frost", 5: "Shadow", 6: "Arcane" };
+export const POWER_TYPE = { 0: "Mana", 1: "Rage", 2: "Focus", 3: "Energy", 4: "Happiness" };
+export const SPELL_DISPEL = { 1: "Magic", 2: "Curse", 3: "Disease", 4: "Poison", 5: "Stealth", 6: "Invisibility" };
+export const SPELL_MECHANIC = {
+  1: "Charmed", 2: "Disoriented", 3: "Disarmed", 4: "Distracted", 5: "Fleeing",
+  6: "Fumbling", 7: "Rooted", 8: "Pacified", 9: "Silenced", 10: "Asleep",
+  11: "Ensnared", 12: "Stunned", 13: "Frozen", 14: "Incapacitated", 15: "Bleeding",
+  16: "Healing", 17: "Polymorphed", 18: "Banished", 19: "Shielded", 20: "Shackled",
+  21: "Mounted", 23: "Slowed", 24: "Horrified", 25: "Invulnerable", 26: "Interrupted",
+  27: "Dazed", 28: "Discovery", 29: "Immune Shield", 30: "Sapped", 31: "Enraged",
+};
+export const SPELL_EFFECT = {
+  1: "Instakill", 2: "School Damage", 3: "Dummy", 4: "Portal Teleport", 5: "Teleport Units",
+  6: "Apply Aura", 7: "Environmental Damage", 8: "Power Drain", 9: "Health Leech", 10: "Heal",
+  11: "Bind", 16: "Quest Complete", 17: "Weapon Damage", 18: "Resurrect", 19: "Extra Attacks",
+  24: "Create Item", 27: "Persistent Area Aura", 28: "Summon", 29: "Leap", 30: "Energize",
+  31: "Weapon % Damage", 32: "Trigger Missile", 33: "Open Lock", 35: "Apply Area Aura (Party)",
+  36: "Learn Spell", 38: "Dispel", 39: "Language", 40: "Dual Wield", 41: "Summon Wild",
+  42: "Summon Guardian", 44: "Skill Step", 48: "Stealth", 49: "Detect", 53: "Enchant Item",
+  54: "Enchant Item (Temporary)", 55: "Tame Creature", 56: "Summon Pet", 58: "Skill",
+  64: "Trigger Spell", 67: "Heal Max Health", 68: "Interrupt Cast", 69: "Distract", 70: "Pull",
+  71: "Pickpocket", 77: "Script Effect", 78: "Attack", 80: "Add Combo Points",
+  92: "Enchant Held Item", 94: "Self Resurrect", 95: "Skinning", 96: "Charge",
+  102: "Trigger Spell (Value)", 108: "Dispel Mechanic", 121: "Weapon Damage (No School)",
+};
+export const SPELL_AURA = {
+  1: "Bind Sight", 2: "Mod Possess", 3: "Periodic Damage", 4: "Dummy", 5: "Mod Confuse",
+  6: "Mod Charm", 7: "Mod Fear", 8: "Periodic Heal", 9: "Mod Attack Speed", 10: "Mod Threat",
+  11: "Mod Taunt", 12: "Mod Stun", 13: "Mod Damage Done", 14: "Mod Damage Taken",
+  15: "Damage Shield", 16: "Mod Stealth", 17: "Mod Stealth Detect", 18: "Mod Invisibility",
+  19: "Mod Invisibility Detection", 20: "Mod Health Regen %", 22: "Mod Resistance",
+  23: "Periodic Trigger Spell", 24: "Periodic Energize", 25: "Mod Pacify", 26: "Mod Root",
+  27: "Mod Silence", 28: "Reflect Spells", 29: "Mod Stat", 30: "Mod Skill",
+  31: "Mod Increase Speed", 32: "Mod Increase Mounted Speed", 33: "Mod Decrease Speed",
+  34: "Mod Increase Health", 35: "Mod Increase Energy", 36: "Mod Shapeshift",
+  37: "Effect Immunity", 38: "State Immunity", 39: "School Immunity", 40: "Damage Immunity",
+  41: "Dispel Immunity", 42: "Proc Trigger Spell", 43: "Proc Trigger Damage",
+  44: "Track Creatures", 45: "Track Resources", 47: "Mod Parry %", 49: "Mod Dodge %",
+  51: "Mod Block %", 52: "Mod Crit %", 53: "Periodic Leech", 54: "Mod Hit Chance",
+  55: "Mod Spell Hit Chance", 56: "Transform", 57: "Mod Spell Crit Chance",
+  58: "Mod Swim Speed", 60: "Mod Pacify Silence", 61: "Mod Scale", 64: "Periodic Mana Leech",
+  65: "Mod Casting Speed", 69: "School Absorb", 77: "Mechanic Immunity",
+  79: "Mod Damage % Done", 85: "Mod Power Regen", 99: "Mod Attack Power",
+  123: "Mod Target Resistance", 124: "Mod Ranged Attack Power", 135: "Mod Healing Done",
+  138: "Mod Melee Haste",
+};
+// Decoded spell flags: [field, bitmask, label]. field 'a' = attributes, 'e' = attributesEx.
+// Curated to high-confidence vanilla bits; unrecognized bits are simply not shown.
+export const SPELL_FLAGS = [
+  ["a", 0x00000002, "On Next Ranged"], ["a", 0x00000010, "Ability"], ["a", 0x00000020, "Trade Spell"],
+  ["a", 0x00000040, "Passive"], ["a", 0x00000080, "No Aura Icon"], ["a", 0x00000100, "Hidden in Combat Log"],
+  ["a", 0x00001000, "Daytime Only"], ["a", 0x00002000, "Night Only"], ["a", 0x00004000, "Indoors Only"],
+  ["a", 0x00008000, "Outdoors Only"], ["a", 0x00010000, "Cannot be used while shapeshifted"],
+  ["a", 0x00020000, "Only while Stealthed"], ["a", 0x00100000, "Stops Attack"],
+  ["a", 0x00200000, "Cannot Dodge/Parry/Block"], ["a", 0x00800000, "Castable while Dead"],
+  ["a", 0x01000000, "Castable while Mounted"], ["a", 0x04000000, "All spell effects are harmful"],
+  ["a", 0x08000000, "Castable while Sitting"], ["a", 0x10000000, "Cannot be used in Combat"],
+  ["a", 0x80000000, "Cannot Cancel"],
+  ["e", 0x00000001, "Dismiss Pet"], ["e", 0x00000002, "Drains all Power"], ["e", 0x00000004, "Channeled"],
+  ["e", 0x00000008, "Cannot be Redirected"], ["e", 0x00000020, "Does not break Stealth"],
+  ["e", 0x00000040, "Channeled"], ["e", 0x00000080, "Cannot be reflected"], ["e", 0x00000200, "No initial Threat"],
+  ["e", 0x00010000, "Cannot Crit"], ["e", 0x00100000, "Cannot be Stolen"],
+];

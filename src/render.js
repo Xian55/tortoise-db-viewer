@@ -79,13 +79,28 @@ function valStr(s, d) {
   return d > 1 ? `${s} to ${s + d - 1}` : String(s);
 }
 
-// Replace $s1/$s2/$s3 with resolved numbers; strip remaining $-codes.
+// Resolve spell description placeholders to numbers, then strip remaining codes.
+// $sN = effect base value, $oN = over-time total (value x ticks), $tN = tick
+// interval (sec), $aN = radius (yd), $d = duration (sec). Needs sp.duration_ms +
+// sp.effects (Q_SPELL SELECT *); degrades gracefully when absent.
 export function resolveSpellText(text, sp) {
   if (!text) return "";
+  let effs = [];
+  try { effs = sp.effects ? JSON.parse(sp.effects) : []; } catch { /* ignore */ }
+  const eff = (n) => effs.find((e) => e.i === n);
+  const dur = sp.duration_ms || 0;
+  const over = (n) => {
+    const e = eff(n), base = sp[`s${n}`] || 0;
+    const ticks = e && e.period && dur ? Math.round(dur / e.period) : 1;
+    return String(base * (ticks || 1));
+  };
+  const durStr = dur ? `${Number.isInteger(dur / 1000) ? dur / 1000 : (dur / 1000).toFixed(1)} sec` : "";
   return text
-    .replace(/\$s1/gi, valStr(sp.s1, sp.d1))
-    .replace(/\$s2/gi, valStr(sp.s2, sp.d2))
-    .replace(/\$s3/gi, valStr(sp.s3, sp.d3))
+    .replace(/\$o([123])/gi, (_, n) => over(+n))
+    .replace(/\$s([123])/gi, (_, n) => valStr(sp[`s${n}`], sp[`d${n}`]))
+    .replace(/\$t([123])/gi, (_, n) => { const e = eff(+n); return e && e.period ? String(e.period / 1000) : ""; })
+    .replace(/\$a([123])/gi, (_, n) => { const e = eff(+n); return e && e.radius != null ? String(e.radius) : ""; })
+    .replace(/\$d(?![a-zA-Z0-9])/gi, durStr)
     .replace(/\$\{[^}]*\}/g, "")
     .replace(/\$[a-zA-Z]\d*/g, "")
     .replace(/\s{2,}/g, " ")

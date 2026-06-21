@@ -3,7 +3,7 @@ import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
 import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
@@ -349,6 +349,61 @@ async function showSpell(id) {
     else if (source.auto) learned = `<span class="tagx" title="Learned automatically with the profession">Auto</span>`;
   }
 
+  // ---- formatters (wowhead-style values) ----
+  const secs = (ms) => { const v = ms / 1000; return `${Number.isInteger(v) ? v : v.toFixed(v < 1 ? 2 : 1)} ${v === 1 ? "second" : "seconds"}`; };
+  const castStr = sp.channeled ? "Channeled" : (sp.cast_ms ? secs(sp.cast_ms) : "Instant");
+  const costStr = sp.mana_cost ? `${sp.mana_cost} ${POWER_TYPE[sp.power_type] || "Mana"}` : (sp.mana_cost_pct ? `${sp.mana_cost_pct}% of base mana` : "");
+  const rangeStr = sp.range_max != null ? `${sp.range_min ? `${sp.range_min}-` : ""}${sp.range_max} yards${sp.range_name ? ` (${sp.range_name})` : ""}` : "n/a";
+
+  // ---- "Details on spell" key/value grid ----
+  const grid = [
+    ["Cost", costStr || "None"],
+    ["Duration", sp.duration_ms ? secs(sp.duration_ms) : "n/a"],
+    ["Range", rangeStr],
+    ["School", SPELL_SCHOOL[sp.school] || "n/a"],
+    ["Cast time", castStr],
+    ["Mechanic", SPELL_MECHANIC[sp.mechanic] || (sp.mechanic ? `#${sp.mechanic}` : "n/a")],
+    ["Cooldown", sp.cooldown_ms ? secs(sp.cooldown_ms) : "n/a"],
+    ["Category Cooldown", sp.cat_cooldown_ms ? secs(sp.cat_cooldown_ms) : "n/a"],
+    ["Dispel type", SPELL_DISPEL[sp.dispel] || "n/a"],
+    ["GCD", sp.gcd_ms ? secs(sp.gcd_ms) : "n/a"],
+  ];
+  if (sp.proc_chance && sp.proc_chance < 100) grid.push(["Proc chance", `${sp.proc_chance}%`]);
+  const gridHtml = grid.map(([k, v]) => `<div class="kv-k">${esc(k)}</div><div class="kv-v">${esc(String(v))}</div>`).join("");
+
+  // ---- per-effect breakdown ----
+  let effList = [];
+  try { effList = sp.effects ? JSON.parse(sp.effects) : []; } catch { /* ignore */ }
+  const effHtml = effList.map((ef) => {
+    const head = `(${ef.effect}) ${SPELL_EFFECT[ef.effect] || `Effect #${ef.effect}`}` +
+      (ef.aura ? `: ${SPELL_AURA[ef.aura] || `Aura #${ef.aura}`}` : "");
+    const lines = [];
+    if (ef.value) lines.push(`Value: ${ef.value}${ef.die > 1 ? ` to ${ef.value + ef.die - 1}` : ""}`);
+    if (ef.radius) lines.push(`Radius: ${ef.radius} yards`);
+    if (ef.period) lines.push(`Interval: ${secs(ef.period)}`);
+    return `<div class="spell-effect"><div class="eff-head">Effect #${ef.i}: ${esc(head)}</div>` +
+      `${lines.length ? `<div class="eff-body muted">${lines.map(esc).join("<br>")}</div>` : ""}</div>`;
+  }).join("");
+
+  // ---- decoded attribute flags (recognized bits only) ----
+  const flags = [...new Set(SPELL_FLAGS
+    .filter(([f, bit]) => ((f === "a" ? sp.attr : sp.attr_ex) || 0) & bit)
+    .map(([, , name]) => name))];
+  const flagsHtml = flags.length
+    ? `<div class="spell-flags"><span class="kv-k">Flags</span> <span class="muted">${flags.map(esc).join(", ")}</span></div>` : "";
+
+  // ---- summary card (parchment tooltip header) ----
+  const cardLines = [
+    `<div class="tt-split"><span class="tt-l">${esc(costStr)}</span><span class="tt-r">${sp.range_max != null ? `${sp.range_max} yd range` : ""}</span></div>`,
+    `<div>${esc(castStr)}</div>`,
+  ];
+  if (desc) cardLines.push(`<div class="tt-spell">${esc(desc)}</div>`);
+  else if (aura) cardLines.push(`<div class="tt-spell">${esc(aura)}</div>`);
+  const card = `<div class="tooltip spell-card">
+    <div class="tt-head">${sp.icon ? iconImg(sp.icon, "tt-icon") : ""}<div class="tt-name">${esc(sp.name)}${sp.rank ? `<span class="dim"> · ${esc(sp.rank)}</span>` : ""}</div></div>
+    ${cardLines.map((l) => `<div class="tt-line">${l}</div>`).join("")}
+  </div>`;
+
   const producesCols = [
     { label: "Creates", cell: (r) => itemLink(r.item, r.item_name, r.quality, r.item_icon), value: (r) => r.item_name },
     { label: "Skill", num: true, cls: "muted", cell: (r) => r.skill_req || r.skill_min || "", value: (r) => r.skill_req || r.skill_min || 0 },
@@ -377,10 +432,16 @@ async function showSpell(id) {
         <h1>${sp.icon ? iconImg(sp.icon, "tt-icon") : ""}${esc(sp.name)}</h1>
         <div class="npc-meta muted">${meta.join('<span class="dim"> · </span>')}</div>
       </div>
-      ${desc || aura ? `<div class="panel quest-desc">
-        ${desc ? `<p class="tt-spell">${esc(desc)}</p>` : ""}
-        ${aura ? `<p class="tt-spell">${esc(aura)}</p>` : ""}
-      </div>` : ""}
+      <div class="spell-cols">
+        ${card}
+        <div class="panel spell-facts"><h3>Quick Facts</h3><div class="muted">Level: ${sp.spell_level || "—"}</div></div>
+      </div>
+      <div class="panel spell-details">
+        <h3>Details on spell</h3>
+        <div class="kv-grid">${gridHtml}</div>
+        ${effHtml}
+        ${flagsHtml}
+      </div>
       ${tabs(tabDefs)}
     </div>`;
   mountTables();

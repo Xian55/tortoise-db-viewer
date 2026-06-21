@@ -9,7 +9,7 @@ import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
   CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
   BONDING, CLASS_MASK, PROFESSION, PROFESSION_LABEL, RACE_ALLIANCE, RACE_HORDE,
-  QUEST_TYPE, CONTINENT, questZoneLabel,
+  QUEST_TYPE, CONTINENT, SPELL_SCHOOL, questZoneLabel,
 } from "./constants.js";
 
 const PAGE = 100;
@@ -344,18 +344,25 @@ async function browseCrafting(p) {
 }
 
 async function browseSpells(p) {
-  const f = { q: p.get("q") || "", prof: p.get("prof") || "" };
-  // The spells table is large but each row is tiny (name/icon/skill); load all and
-  // filter/sort/paginate client-side via createTable (consistent with crafting).
+  const f = { q: p.get("q") || "", prof: p.get("prof") || "", school: p.get("school") || "" };
+  // The spells table is large but each row is tiny; load all and filter/sort/
+  // paginate client-side via createTable (consistent with crafting).
   let rows = await query(Q_BROWSE_SPELLS, []);
   if (f.q) { const ql = f.q.toLowerCase(); rows = rows.filter((r) => (r.name || "").toLowerCase().includes(ql)); }
   if (f.prof) rows = rows.filter((r) => String(r.skill) === f.prof);
+  if (f.school !== "") rows = rows.filter((r) => String(r.school) === f.school);
+  const secs = (ms) => (ms ? `${+(ms / 1000).toFixed(ms % 1000 ? 1 : 0)}s` : "");
   const cols = [
     { key: "name", label: "Name", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
+    { key: "school", label: "School", cls: "muted", cell: (r) => esc(SPELL_SCHOOL[r.school] || ""), value: (r) => SPELL_SCHOOL[r.school] || "" },
+    { key: "cost", label: "Cost", num: true, cls: "muted", cell: (r) => (r.mana_cost ? `${r.mana_cost}` : ""), value: (r) => r.mana_cost || 0 },
+    { key: "cast", label: "Cast", num: true, cls: "muted", cell: (r) => (r.channeled ? "Channeled" : r.cast_ms ? secs(r.cast_ms) : ""), value: (r) => r.cast_ms || 0 },
+    { key: "range", label: "Range", num: true, cls: "muted", cell: (r) => (r.range_max != null ? `${r.range_max} yd` : ""), value: (r) => r.range_max || 0 },
     { key: "prof", label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
   ];
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
+    ${selectField("school", "School", options(Object.entries(SPELL_SCHOOL), f.school, "Any school"))}
     ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any profession"))}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;

@@ -340,6 +340,19 @@ console.log("Importing spells + crafting graph...");
       console.log("  (no spell-icon-map.json -- run scripts/extract-spell-icons.py for spell icons)");
     }
   }
+  // index->value lookup tables (cast time/range/duration/radius) extracted from
+  // the client DBCs (scripts/extract-spell-icons.py). Absent = those detail fields
+  // resolve to null (graceful). Keyed by string id (JSON object).
+  let spellLookups = { castTime: {}, duration: {}, radius: {}, range: {} };
+  {
+    const f = join(ROOT, "scripts", "data", "spell-lookups.json");
+    if (existsSync(f)) {
+      spellLookups = JSON.parse(readFileSync(f, "utf8"));
+      console.log(`  spell-lookups: cast ${Object.keys(spellLookups.castTime).length}, range ${Object.keys(spellLookups.range).length}, duration ${Object.keys(spellLookups.duration).length}, radius ${Object.keys(spellLookups.radius).length}`);
+    } else {
+      console.log("  (no spell-lookups.json -- run scripts/extract-spell-icons.py for spell detail)");
+    }
+  }
   const c = srcColumns("spell_template", "tw_world_spell_template.sql");
   const at = (name) => c.indexOf(name);
   const iEntry = at("entry"), iName = at("name"), iDesc = at("description"), iAura = at("auraDescription"), iIcon = at("spellIconId");
@@ -349,12 +362,34 @@ console.log("Importing spells + crafting graph...");
   const reagents = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [at(`reagent${n}`), at(`reagentCount${n}`)]);
   const creates = [1, 2, 3].map((n) => at(`effectItemType${n}`));
   const triggers = [1, 2, 3].map((n) => at(`effectTriggerSpell${n}`));
+  // detailed spell-page columns (wowhead-style): combat stats + per-effect breakdown
+  const iSub = at("nameSubtext"), iSchool = at("school"), iPower = at("powerType");
+  const iMana = at("manaCost"), iManaPct = at("manaCostPercentage");
+  const iCast = at("castingTimeIndex"), iRange = at("rangeIndex"), iDur = at("durationIndex");
+  const iRec = at("recoveryTime"), iCatRec = at("categoryRecoveryTime"), iGcd = at("startRecoveryTime");
+  const iProc = at("procChance"), iDispel = at("dispel"), iMech = at("mechanic"), iLvl = at("spellLevel");
+  const iAttr = at("attributes"), iEx = at("attributesEx"), iEx2 = at("attributesEx2"), iEx3 = at("attributesEx3"), iEx4 = at("attributesEx4");
+  const effType = [1, 2, 3].map((n) => at(`effect${n}`));
+  const effRadius = [1, 2, 3].map((n) => at(`effectRadiusIndex${n}`));
+  const effAmp = [1, 2, 3].map((n) => at(`effectAmplitude${n}`));
 
-  db.exec(`CREATE TABLE spells (entry INTEGER PRIMARY KEY, name TEXT, description TEXT, auraDescription TEXT, spellIconId INTEGER,
-    icon TEXT, skill INTEGER, s1 INTEGER, s2 INTEGER, s3 INTEGER, d1 INTEGER, d2 INTEGER, d3 INTEGER)`);
+  db.exec(`CREATE TABLE spells (
+    entry INTEGER PRIMARY KEY, name TEXT, description TEXT, auraDescription TEXT, spellIconId INTEGER,
+    icon TEXT, skill INTEGER, rank TEXT, school INTEGER, power_type INTEGER,
+    mana_cost INTEGER, mana_cost_pct INTEGER, cast_ms INTEGER, channeled INTEGER,
+    range_min REAL, range_max REAL, range_name TEXT, duration_ms INTEGER,
+    cooldown_ms INTEGER, cat_cooldown_ms INTEGER, gcd_ms INTEGER, proc_chance INTEGER,
+    dispel INTEGER, mechanic INTEGER, spell_level INTEGER,
+    attr INTEGER, attr_ex INTEGER, attr_ex2 INTEGER, attr_ex3 INTEGER, attr_ex4 INTEGER,
+    effects TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER, d1 INTEGER, d2 INTEGER, d3 INTEGER)`);
   db.exec(`CREATE TABLE spell_creates (spell INTEGER, item INTEGER, skill INTEGER, skill_req INTEGER, skill_min INTEGER, skill_max INTEGER)`);
   db.exec(`CREATE TABLE spell_reagent (spell INTEGER, item INTEGER, count INTEGER)`);
-  const sSpell = db.prepare(`INSERT OR REPLACE INTO spells VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const sSpell = db.prepare(`INSERT OR REPLACE INTO spells (
+    entry, name, description, auraDescription, spellIconId, icon, skill, rank, school, power_type,
+    mana_cost, mana_cost_pct, cast_ms, channeled, range_min, range_max, range_name, duration_ms,
+    cooldown_ms, cat_cooldown_ms, gcd_ms, proc_chance, dispel, mechanic, spell_level,
+    attr, attr_ex, attr_ex2, attr_ex3, attr_ex4, effects, s1, s2, s3, d1, d2, d3
+  ) VALUES (${Array(37).fill("?").join(",")})`);
   const sCreate = db.prepare(`INSERT INTO spell_creates VALUES (?,?,?,?,?,?)`);
   const sReag = db.prepare(`INSERT INTO spell_reagent VALUES (?,?,?)`);
   let ns = 0, nc = 0, nr = 0;
@@ -366,8 +401,39 @@ console.log("Importing spells + crafting graph...");
       const d = ds.map((di) => clean(row[di]) || 0);
       const iconId = clean(row[iIcon]);
       const sk = spellSkill.get(e);
+
+      // ---- detailed spell-page fields ----
+      // resolve DBC index columns to real values via the committed lookups
+      const cast_ms = spellLookups.castTime[clean(row[iCast])] ?? null;
+      const rng = spellLookups.range[clean(row[iRange])];
+      const duration_ms = spellLookups.duration[clean(row[iDur])] ?? null;
+      const attrEx = clean(row[iEx]) || 0;
+      // CHANNELED_1 (0x4) | CHANNELED_2 (0x40)
+      const channeled = (attrEx & 0x44) ? 1 : 0;
+      const rank = clean(row[iSub]) || null;
+      // per-effect breakdown (only effects that do something), as JSON
+      const effJson = [];
+      for (let k = 0; k < 3; k++) {
+        const ef = clean(row[effType[k]]) || 0;
+        const au = clean(row[effIdx[k].a]) || 0;
+        if (!ef && !au) continue;
+        effJson.push({
+          i: k + 1, effect: ef, aura: au, value: s[k], die: d[k],
+          misc: clean(row[effIdx[k].m]) || 0,
+          radius: spellLookups.radius[clean(row[effRadius[k]])] ?? null,
+          period: clean(row[effAmp[k]]) || 0,
+        });
+      }
+
       sSpell.run(e, clean(row[iName]), clean(row[iDesc]), clean(row[iAura]), iconId,
         spellIconMap[iconId] || null, sk ? sk.skill : null,
+        rank, clean(row[iSchool]), clean(row[iPower]),
+        clean(row[iMana]), clean(row[iManaPct]), cast_ms, channeled,
+        rng ? rng.min : null, rng ? rng.max : null, rng ? rng.name : null, duration_ms,
+        clean(row[iRec]), clean(row[iCatRec]), clean(row[iGcd]), clean(row[iProc]),
+        clean(row[iDispel]), clean(row[iMech]), clean(row[iLvl]),
+        clean(row[iAttr]), attrEx, clean(row[iEx2]), clean(row[iEx3]), clean(row[iEx4]),
+        effJson.length ? JSON.stringify(effJson) : null,
         s[0], s[1], s[2], d[0], d[1], d[2]);
       ns++;
       // derive gear stats from this spell's effect auras (for item_stats)

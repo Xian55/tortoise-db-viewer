@@ -276,3 +276,18 @@ td.src-col .tagx { margin: 1px 4px 1px 0; }
 .pager button { padding: 6px 14px; background: var(--panel2); border: 1px solid var(--border);
   border-radius: 6px; color: var(--text); cursor: pointer; }
 .pager button:disabled { opacity: .4; cursor: default; }
+
+/* ---- spell detail page ---- */
+.spell-cols { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin: 12px 0; }
+.spell-card { max-width: 360px; flex: 0 1 360px; }
+.spell-facts { flex: 0 0 auto; min-width: 150px; }
+.spell-facts h3, .spell-details h3 { margin: 0 0 8px; }
+.spell-details { margin-top: 4px; }
+.kv-grid { display: grid; grid-template-columns: max-content 1fr max-content 1fr; gap: 3px 14px; align-items: baseline; }
+.kv-k { color: var(--muted); white-space: nowrap; }
+.kv-v { color: #ddd; }
+.spell-effect { margin-top: 12px; }
+.eff-head { color: #1eff00; }
+.eff-body { margin: 2px 0 0 14px; line-height: 1.4; }
+.spell-flags { margin-top: 12px; }
+@media (max-width: 640px) { .kv-grid { grid-template-columns: max-content 1fr; } }

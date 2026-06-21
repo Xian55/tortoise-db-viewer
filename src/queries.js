@@ -192,7 +192,9 @@ export const Q_CRAFTING = `
   WHERE sc.skill IN (${CRAFT_SKILLS})
   ORDER BY sc.skill, ci.name, sc.spell`;
 
-export const Q_SPELL = `SELECT entry, name, description, auraDescription, icon, skill, teaches, s1, s2, s3, d1, d2, d3 FROM spells WHERE entry = ?1`;
+// SELECT * so the detailed spell page gets every combat/effect column; the item
+// tooltip + quest callers just read the handful they need (name/desc/icon/teaches/sN).
+export const Q_SPELL = `SELECT * FROM spells WHERE entry = ?1`;
 
 // ---- Spell detail page ----
 // Items this craft spell produces (+ the skill-up thresholds for difficulty).
@@ -232,7 +234,8 @@ export const Q_SPELL_SOURCE = `
 
 // Browse Spells finder: all named spells (profession label resolved client-side).
 // teaches IS NULL drops "learn" stub spells (a recipe's twin of the real craft).
-export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill FROM spells WHERE name <> '' AND teaches IS NULL ORDER BY name`;
+export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, school, mana_cost, cast_ms, channeled, range_max
+  FROM spells WHERE name <> '' AND teaches IS NULL ORDER BY name`;
 
 // ---- NPC (creature) pages ----
 export const Q_NPC = `SELECT entry, name, subname, level_min, level_max, rank, type, faction, health_min, health_max, npc_flags FROM creatures WHERE entry = ?1`;

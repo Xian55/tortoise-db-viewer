@@ -365,6 +365,18 @@ async function testSpell(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
+// detailed spell page: "Details on spell" grid + per-effect breakdown resolved
+// from the client DBC lookups (e.g. spell 10 Blizzard -> Frost, effect rows).
+async function testSpellDetail(id, expectText) {
+  await page.goto(`${BASE}?spell=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".spell-page .kv-grid", { timeout: 40000 });
+  const keys = await page.$$eval(".spell-page .kv-grid .kv-k", (e) => e.length);
+  const effects = await page.$$eval(".spell-page .spell-effect", (e) => e.length);
+  const text = await page.$eval(".spell-page .spell-details", (e) => e.textContent.replace(/\s+/g, " "));
+  console.log(`spell detail ${id}: kvKeys=${keys} effects=${effects} hasText(${expectText})=${text.includes(expectText)}`);
+  return keys >= 6 && effects > 0 && text.includes(expectText);
+}
+
 // item tooltip green spell lines are now spell links (item -> ?spell=).
 async function testItemSpellLink(id) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -485,6 +497,7 @@ ok = (await testSearchTabs("defias")) && ok;
 ok = (await testSearchZone("Tanaris")) && ok;
 ok = (await testSearchDropdown("defias")) && ok;
 ok = (await testSpell(41746, "Shadowforged Eye")) && ok;   // craft spell: Creates/Reagents tabs + Learned-from link
+ok = (await testSpellDetail(10, "Frost")) && ok;           // Blizzard: details grid + effect breakdown (DBC-resolved)
 ok = (await testItemSpellLink(70204)) && ok;               // recipe item: green "Teaches…" now links to ?spell=
 ok = (await testSearchSpells("Shadowforged")) && ok;       // search yields a Spells tab
 ok = (await testBrowse("spells", "", "Profession")) && ok; // ?browse=spells finder
