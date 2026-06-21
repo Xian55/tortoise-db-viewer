@@ -23,9 +23,7 @@ const NPC_CATS = [
   ["mob", "Enemy Mobs", "#e0524a"],
 ];
 const NPC_COLOR = Object.fromEntries(NPC_CATS.map(([k, , c]) => [k, c]));
-const NPC_DEFAULT_OFF = new Set(["mob"]);
 const OBJ_COLOR = "#a070d0";
-const OBJ_DEFAULT_ON = new Set(["Chest", "Fishing Node", "Fishing Hole", "Mailbox", "Herb", "Mining"]);
 const objTypeLabel = (t) => `Obj: ${GAMEOBJECT_TYPE[t] || "Other"}`;
 
 const FLAG = { vendor: 128, repair: 4096, trainer: 16, flight: 8192, inn: 131072, bank: 65536 };
@@ -190,11 +188,13 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     overlays[`${g.label} (${g.sprites.length})`] = layer;
     if (on) layer.addTo(map);
   };
+  // All category layers start OFF (a normal zone view is a clean map you opt into
+  // via the layer control); only the gather/focus layer is on by default.
   if (focusLayer) { overlays[FKEY] = focusLayer; focusLayer.addTo(map); }
-  for (const [key] of NPC_CATS) addCat(key, !focus && !NPC_DEFAULT_OFF.has(key));
+  for (const [key] of NPC_CATS) addCat(key, false);
   const objKeys = [...cats.keys()].filter((k) => k.startsWith("Obj: "))
     .sort((a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length);
-  for (const key of objKeys) addCat(key, !focus && OBJ_DEFAULT_ON.has(key.slice(5)));
+  for (const key of objKeys) addCat(key, false);
 
   L.control.layers(null, overlays, { collapsed: true }).addTo(map);
   if (focusBounds && focusBounds.isValid()) map.fitBounds(focusBounds.pad(0.3));
