@@ -607,6 +607,18 @@ async function testSearchFaction(term) {
   return hasFactionLink;
 }
 
+// A template-vendor NPC (creature_template.vendor_id -> npc_vendor_template) lists
+// its stock on the Sells tab. NPC 1249 (Quartermaster Hudson) sells via vendor_id.
+async function testNpcSells(id, minItems) {
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-page .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".npc-page .tab")].find((t) => t.textContent.includes("Sells")); if (b) b.click(); });
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  const rows = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr", (r) => r.length).catch(() => 0);
+  console.log(`npc-sells ${id}: rows=${rows}`);
+  return rows >= minItems;
+}
+
 // browse NPCs shows Faction + Location (not ID), searches title, and filters by faction.
 async function testBrowseNpcCols() {
   await page.goto(`${BASE}?browse=npcs&q=quartermaster`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -774,6 +786,7 @@ ok = (await testNpc(80402, "Aemara Sunsorrow", "Teaches")) && ok;  // trainer ->
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
 ok = (await testNpcMap(2376)) && ok;  // NPC page shows its zone map + spawn pins
+ok = (await testNpcSells(1249, 5)) && ok;  // template-vendor (vendor_id) stock on Sells tab
 ok = (await testNpcMapZone(596, 40)) && ok;    // exact ADT area: Deadmines-entrance spawn is Westfall terrain
 ok = (await testNpcMapZone(11501, 2557)) && ok;  // Dire Maul interior NPC (King Gordok)
 ok = (await testNpcMapZone(80208, 5225)) && ok;  // map = most-spawned interior zone

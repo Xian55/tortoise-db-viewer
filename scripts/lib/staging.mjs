@@ -44,6 +44,26 @@ export function buildStaging(db, SQL_DIR, UPD_DIR, specs) {
   const stats = { files: 0, applied: 0, skipped: 0, errors: 0 };
   if (UPD_DIR && existsSync(UPD_DIR)) {
     const files = readdirSync(UPD_DIR).filter((f) => f.endsWith(".sql")).sort();
+    // Migrations may target columns the base CREATE lacks (Turtle extends some
+    // tables, e.g. npc_vendor_template gains slot/condition_id). Pre-scan the
+    // INSERT/REPLACE column lists and ALTER-add any missing columns to the staged
+    // table, else those statements would error on "no such column" and be dropped.
+    const colRe = /(?:INSERT(?:\s+IGNORE)?|REPLACE)\s+INTO\s+`?(\w+)`?\s*\(([^)]+)\)/gi;
+    for (const f of files) {
+      const sql = readFileSync(join(UPD_DIR, f), "utf8");
+      let m;
+      while ((m = colRe.exec(sql))) {
+        const table = m[1];
+        if (!staged.has(table)) continue;
+        const cols = colsByTable[table];
+        for (const c of m[2].split(",").map((s) => s.replace(/[`\s]/g, ""))) {
+          if (c && !cols.includes(c)) {
+            db.exec(`ALTER TABLE \`${PFX}${table}\` ADD COLUMN \`${c}\` NUMERIC`);
+            cols.push(c);
+          }
+        }
+      }
+    }
     for (const f of files) {
       stats.files++;
       const sql = readFileSync(join(UPD_DIR, f), "utf8");

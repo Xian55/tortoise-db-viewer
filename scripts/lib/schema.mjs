@@ -27,7 +27,7 @@ export const IMPORTS = [
     target: "creatures",
     columns: ["entry", "name", "subname", "level_min", "level_max", "rank", "type", "faction",
       "health_min", "health_max", "npc_flags", "loot_id", "pickpocket_loot_id", "skinning_loot_id",
-      "display_id1"], // display_id1 -> renamed to display_id in build-db (Wowhead model thumb key)
+      "display_id1", "vendor_id"], // display_id1 -> renamed to display_id in build-db; vendor_id -> npc_vendor_template
     text: ["name", "subname"],
     pk: "entry",
     indexes: ["loot_id", "pickpocket_loot_id", "skinning_loot_id"],
@@ -63,6 +63,17 @@ export const IMPORTS = [
     file: "tw_world_npc_vendor.sql",
     table: "npc_vendor",
     target: "npc_vendor",
+    columns: ["entry", "item", "maxcount", "incrtime"],
+    text: [],
+    pk: null,
+    indexes: ["item", "entry"],
+  },
+  {
+    // Shared vendor lists referenced by creature_template.vendor_id (many Turtle
+    // vendors stock via a template instead of per-entry npc_vendor rows).
+    file: "tw_world_npc_vendor_template.sql",
+    table: "npc_vendor_template",
+    target: "npc_vendor_template",
     columns: ["entry", "item", "maxcount", "incrtime"],
     text: [],
     pk: null,

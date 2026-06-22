@@ -88,7 +88,16 @@ export const Q_OBJECT_SOURCE = `
   FROM drops d JOIN gameobjects g ON g.data1 = d.owner
   WHERE d.src='o' AND d.item = ?1 GROUP BY g.name ORDER BY chance DESC LIMIT 50`;
 
-export const Q_SOLD_BY = `SELECT c.entry, c.name, c.level_min, c.level_max, v.maxcount FROM npc_vendor v JOIN creatures c ON c.entry = v.entry WHERE v.item = ?1 ORDER BY c.name LIMIT 100`;
+// NPCs that sell an item: direct npc_vendor entries + creatures whose vendor_id
+// references a npc_vendor_template that stocks it.
+export const Q_SOLD_BY = `
+  SELECT DISTINCT c.entry, c.name, c.level_min, c.level_max,
+    COALESCE((SELECT maxcount FROM npc_vendor WHERE entry = c.entry AND item = ?1),
+             (SELECT maxcount FROM npc_vendor_template WHERE entry = c.vendor_id AND item = ?1)) AS maxcount
+  FROM creatures c
+  WHERE c.entry IN (SELECT entry FROM npc_vendor WHERE item = ?1)
+     OR c.vendor_id IN (SELECT entry FROM npc_vendor_template WHERE item = ?1)
+  ORDER BY c.name LIMIT 100`;
 
 export const Q_CONTAINED_IN = `
   SELECT i.entry, i.name, i.quality, di.icon, d.chance
@@ -267,11 +276,19 @@ export const Q_NPC_LOOT = npcLoot("c", "loot_id");
 export const Q_NPC_SKIN = npcLoot("s", "skinning_loot_id");
 export const Q_NPC_PICK = npcLoot("p", "pickpocket_loot_id");
 
+// Items an NPC sells: per-entry npc_vendor rows + the shared npc_vendor_template
+// referenced by creature_template.vendor_id (UNION dedups overlaps).
 export const Q_NPC_SELLS = `
   SELECT i.entry, i.name, i.quality, di.icon, v.maxcount
-  FROM npc_vendor v JOIN items i ON i.entry = v.item
+  FROM (
+    SELECT item, maxcount FROM npc_vendor WHERE entry = ?1
+    UNION
+    SELECT vt.item, vt.maxcount FROM npc_vendor_template vt
+      JOIN creatures c ON c.entry = ?1 AND c.vendor_id = vt.entry
+  ) v
+  JOIN items i ON i.entry = v.item
   LEFT JOIN item_display_info di ON di.ID = i.display_id
-  WHERE v.entry = ?1 ORDER BY i.quality DESC, i.name LIMIT 300`;
+  ORDER BY i.quality DESC, i.name LIMIT 300`;
 // Spells a trainer NPC teaches (reverse of the spell page's "Trained by").
 export const Q_NPC_TRAINS = `
   SELECT s.entry, s.name, s.icon, s.rank, s.skill, s.spell_level
