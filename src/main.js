@@ -801,6 +801,13 @@ async function showQuest(id) {
     }
   }
 
+  // ---- where the kill/use targets are (creatures + objects), batched ----
+  const [killNpcLoc, killObjLoc] = await Promise.all([
+    resolveNpcLocations(qcreatures.filter((o) => !o.is_go).map((o) => o.target), "c"),
+    resolveNpcLocations(qcreatures.filter((o) => o.is_go).map((o) => o.target), "o"),
+  ]);
+  const killLoc = (o) => (o.is_go ? killObjLoc : killNpcLoc).get(o.target) || {};
+
   // ---- reward summary ----
   const rewBits = [];
   if (q.money > 0) rewBits.push(moneyHtml(q.money));
@@ -828,6 +835,7 @@ async function showQuest(id) {
   ];
   const targetCols = [
     { label: "Target", cell: (o) => (o.is_go ? esc(o.name || `Object #${o.target}`) : npcLink(o.target, o.name || `NPC #${o.target}`)), value: (o) => o.name || "" },
+    { label: "Location", cls: "muted", cell: (o) => killLoc(o).html || "", value: (o) => killLoc(o).text || "" },
     { label: "Count", num: true, cls: "muted", cell: (o) => (o.count > 1 ? o.count : ""), value: (o) => o.count || 0 },
   ];
   // Quest chain: ordered first->last via a step "#" column (default no sort keeps

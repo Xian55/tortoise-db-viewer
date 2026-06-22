@@ -68,6 +68,20 @@ async function testQuestRequiredDrops(id) {
   return groups >= 1 && collapsedInit === groups && shown > 0 && headers.includes("Source") && headers.includes("Zone") && zones.length > 0;
 }
 
+// The Kill / Use tab shows where each target NPC/object is (e.g. quest 41189 ->
+// targets in Thalassian Highlands).
+async function testQuestKillLocation(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".quest-page .tab")].find((t) => t.textContent.includes("Kill / Use")); if (b) b.click(); });
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  const headers = await page.$$eval(".tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const li = headers.indexOf("Location");
+  const locs = await page.$$eval(".tabpane:not(.hidden) tbody tr", (rows, idx) => rows.map((r) => r.querySelectorAll("td")[idx]?.textContent.trim()).filter(Boolean), li);
+  console.log(`quest-kill-loc ${id}: headers=[${headers.join(",")}] locs=${JSON.stringify(locs.slice(0, 3))}`);
+  return li >= 0 && locs.length > 0;
+}
+
 // A required item whose ReqSourceId duplicates it must NOT appear as "Provided items".
 async function testQuestNoProvided(id) {
   await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -674,6 +688,7 @@ ok = (await testQuestZoneChain(783)) && ok;      // continent > zone > sub-zone
 ok = (await testBrowseQuestZoneLink()) && ok;    // browse quests links zones
 ok = (await testQuestNoProvided(179)) && ok;     // ReqSourceId==ReqItemId not shown as Provided
 ok = (await testQuestRequiredDrops(179)) && ok;  // objective item collapses to its drop sources + zones
+ok = (await testQuestKillLocation(41189)) && ok; // Kill / Use targets show their zone
 ok = (await testItemDropLocation(750)) && ok;    // dropped-by NPC locations resolved
 ok = (await testSearchTabs("defias")) && ok;
 ok = (await testSearchZone("Tanaris")) && ok;
