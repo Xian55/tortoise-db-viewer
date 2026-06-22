@@ -394,8 +394,9 @@ async function browseQuests(p) {
   else if (f.faction === "h") { where.push(factionCond); binds.push(RACE_HORDE, RACE_ALLIANCE); }
   const whereSql = "WHERE " + where.join(" AND ");
   const rows = await query(
-    `SELECT q.entry, q.title, q.level, q.zone, q.type, a.name AS zone_name
-     FROM quests q LEFT JOIN areas a ON a.entry = q.zone ${whereSql}
+    `SELECT q.entry, q.title, q.level, q.zone, q.type, a.name AS zone_name, z.areaid AS zone_page
+     FROM quests q LEFT JOIN areas a ON a.entry = q.zone
+     LEFT JOIN zones z ON z.areaid = q.zone ${whereSql}
      ORDER BY q.level, q.title`, binds);
 
   // Zone dropdown: only zones/categories that actually carry quests, labeled.
@@ -406,7 +407,9 @@ async function browseQuests(p) {
   const cols = [
     { key: "name", label: "Title", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
     { key: "level", label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
-    { key: "zone", label: "Zone", cls: "muted", cell: (r) => esc(questZoneLabel(r.zone, r.zone_name)), value: (r) => questZoneLabel(r.zone, r.zone_name) },
+    { key: "zone", label: "Zone", cls: "muted",
+      cell: (r) => (r.zone_page ? zoneLink(r.zone, questZoneLabel(r.zone, r.zone_name)) : esc(questZoneLabel(r.zone, r.zone_name))),
+      value: (r) => questZoneLabel(r.zone, r.zone_name) },
     { key: "type", label: "Type", cls: "muted", cell: (r) => QUEST_TYPE[r.type] || "", value: (r) => QUEST_TYPE[r.type] || "" },
   ];
   const filters = `<div class="filters">

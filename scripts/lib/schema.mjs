@@ -69,10 +69,12 @@ export const IMPORTS = [
   },
   {
     // Zone-name lookup for quests (positive ZoneOrSort -> area_template.entry).
+    // map_id (continent) + zone_id (parent zone, 0 if top-level) give the area
+    // hierarchy so a quest in a sub-zone resolves continent > zone > sub-zone.
     file: "tw_world_area_template.sql",
     table: "area_template",
     target: "areas",
-    columns: ["entry", "name"],
+    columns: ["entry", "name", "map_id", "zone_id"],
     text: ["name"],
     pk: "entry",
     indexes: [],

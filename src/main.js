@@ -697,8 +697,22 @@ async function showQuest(id) {
   const bits = [];
   if (q.level > 0) bits.push(`Level ${q.level}`);
   if (q.minlevel > 0) bits.push(`Requires level ${q.minlevel}`);
-  const zoneLabel = questZoneLabel(q.zone, q.zone_name);
-  if (zoneLabel) bits.push(q.zone_page ? zoneLink(q.zone, zoneLabel) : esc(zoneLabel));
+  // Zone: resolve the full hierarchy continent › zone › sub-zone, linking whichever
+  // levels have a map page. Categories (negative q.zone, e.g. "Class") fall back to
+  // the plain questZoneLabel.
+  if (q.zone > 0 && q.zone_name) {
+    const sep = ' <span class="dim">›</span> ';
+    const parts = [];
+    if (CONTINENT[q.zone_map]) parts.push(esc(CONTINENT[q.zone_map]));
+    if (q.zone_parent && q.zone_parent !== q.zone && q.parent_name) {
+      parts.push(q.parent_page ? zoneLink(q.zone_parent, q.parent_name) : esc(q.parent_name));
+    }
+    parts.push(q.zone_page ? zoneLink(q.zone, q.zone_name) : esc(q.zone_name));
+    bits.push(parts.join(sep));
+  } else {
+    const zoneLabel = questZoneLabel(q.zone, q.zone_name);
+    if (zoneLabel) bits.push(esc(zoneLabel));
+  }
   if (QUEST_TYPE[q.type]) bits.push(QUEST_TYPE[q.type]);
 
   const restr = [];

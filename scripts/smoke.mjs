@@ -428,6 +428,27 @@ async function testQuestChain(id, minLen) {
   return rows >= minLen && cur === 1 && hasBack && hasFwd && startLocs.length > 0 && headers.includes("#");
 }
 
+// A sub-zone quest resolves the full hierarchy continent > zone > sub-zone, with
+// the parent zone linked. Quest 783 -> Eastern Kingdoms > Elwynn Forest > Northshire Valley.
+async function testQuestZoneChain(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".quest-page .npc-head", { timeout: 40000 });
+  const meta = await page.$eval(".quest-page .npc-head", (e) => e.textContent.replace(/\s+/g, " ").trim());
+  const zoneHrefs = await page.$$eval(".quest-page .npc-head a.ilink.zone", (a) => a.map((x) => x.getAttribute("href")));
+  const ok = meta.includes("Eastern Kingdoms") && meta.includes("Elwynn Forest") && meta.includes("Northshire Valley") && zoneHrefs.some((h) => h.includes("zone=12"));
+  console.log(`quest-zone-chain ${id}: meta="${meta.slice(0, 90)}" zoneHrefs=${JSON.stringify(zoneHrefs)} ok=${ok}`);
+  return ok;
+}
+
+// Browse quests links zone names that have a map page (e.g. Stormwind/Elwynn).
+async function testBrowseQuestZoneLink() {
+  await page.goto(`${BASE}?browse=quests&minlvl=1&maxlvl=12`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const zlinks = await page.$$eval(".browse td a.ilink.zone", (a) => a.length);
+  console.log(`browse-quest-zonelink: zoneLinks=${zlinks}`);
+  return zlinks > 0;
+}
+
 // Starts/Ends (NPC) tabs carry a Location column with where the NPC is.
 async function testQuestNpcLocation(id) {
   await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -608,6 +629,8 @@ ok = (await testSearch("thunder")) && ok;
 ok = (await testQuest(14, "Militia")) && ok;
 ok = (await testQuestChain(55220, 11)) && ok;  // mid-chain quest: back + forward + start locations
 ok = (await testQuestNpcLocation(55220)) && ok;  // Starts/Ends (NPC) Location column
+ok = (await testQuestZoneChain(783)) && ok;      // continent > zone > sub-zone
+ok = (await testBrowseQuestZoneLink()) && ok;    // browse quests links zones
 ok = (await testSearchTabs("defias")) && ok;
 ok = (await testSearchZone("Tanaris")) && ok;
 ok = (await testSearchDropdown("defias")) && ok;

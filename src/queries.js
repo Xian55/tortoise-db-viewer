@@ -354,9 +354,16 @@ export const Q_DUNGEON_BOSS_LOOT = `
 
 // ---- quests ----
 // zone_page is non-null when q.zone is a zone that has a map page (-> link it).
-export const Q_QUEST = `SELECT q.*, a.name AS zone_name, z.areaid AS zone_page
-  FROM quests q LEFT JOIN areas a ON a.entry = q.zone
+// zone_page is non-null when q.zone has its own map page. The area hierarchy:
+// zone_map = continent, zone_parent = parent zone id (0 if top-level), with the
+// parent's name + whether IT has a map page -> continent > zone > sub-zone.
+export const Q_QUEST = `SELECT q.*, a.name AS zone_name, a.map_id AS zone_map, a.zone_id AS zone_parent,
+    z.areaid AS zone_page, pa.name AS parent_name, pz.areaid AS parent_page
+  FROM quests q
+  LEFT JOIN areas a ON a.entry = q.zone
   LEFT JOIN zones z ON z.areaid = q.zone
+  LEFT JOIN areas pa ON pa.entry = a.zone_id
+  LEFT JOIN zones pz ON pz.areaid = a.zone_id
   WHERE q.entry = ?1`;
 export const Q_QUEST_BRIEF = `SELECT entry, title, level FROM quests WHERE entry = ?1`;
 
