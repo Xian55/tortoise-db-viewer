@@ -668,10 +668,10 @@ console.log("Importing quests + quest links...");
   const sCO = db.prepare(`INSERT INTO quest_creature_objective VALUES (?,?,?,?)`);
   const sRep = db.prepare(`INSERT INTO quest_reward_rep VALUES (?,?,?)`);
   let nq = 0, nqi = 0, nco = 0, nrep = 0;
-  const addItems = (e, pairs, role, row) => {
+  const addItems = (e, pairs, role, row, skip) => {
     for (const [ii, ci] of pairs) {
       const item = clean(row[ii]);
-      if (item) { sQI.run(e, item, role, ci >= 0 ? clean(row[ci]) || 1 : 1); nqi++; }
+      if (item && !(skip && skip.has(item))) { sQI.run(e, item, role, ci >= 0 ? clean(row[ci]) || 1 : 1); nqi++; }
     }
   };
   db.transaction(() => {
@@ -689,7 +689,10 @@ console.log("Importing quests + quest links...");
       );
       nq++;
       addItems(e, reqItem, "req", row);
-      addItems(e, srcItem, "source", row);
+      // ReqSourceId often duplicates ReqItemId (a mangos quirk) -> a required item
+      // would wrongly show under "Provided items". Skip source rows already required.
+      const reqSet = new Set(reqItem.map(([ii]) => clean(row[ii])).filter(Boolean));
+      addItems(e, srcItem, "source", row, reqSet);
       addItems(e, rewItem, "reward", row);
       addItems(e, choiceItem, "choice", row);
       for (const [ii, ci] of reqCreature) {

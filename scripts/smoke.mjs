@@ -37,6 +37,30 @@ async function testItem(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
+// The "Dropped by" tab carries a Location column resolved for each NPC (open-world
+// zone or dungeon), e.g. wolves dropping Tough Wolf Meat (item 750).
+async function testItemDropLocation(id) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".item-rel .tab")].find((t) => t.textContent.includes("Dropped by")); if (b) b.click(); });
+  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  const headers = await page.$$eval(".item-rel .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const li = headers.indexOf("Location");
+  const locs = await page.$$eval(".item-rel .tabpane:not(.hidden) tbody tr", (rows, idx) => rows.map((r) => r.querySelectorAll("td")[idx]?.textContent.trim()).filter(Boolean), li);
+  console.log(`item-drop-loc ${id}: headers=[${headers.join(",")}] locs=${JSON.stringify(locs.slice(0, 3))}`);
+  return li >= 0 && locs.length > 0;
+}
+
+// A required item whose ReqSourceId duplicates it must NOT appear as "Provided items".
+async function testQuestNoProvided(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  const tabList = await page.$$eval(".quest-page .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const hasProvided = tabList.some((t) => t.includes("Provided items"));
+  console.log(`quest-no-provided ${id}: tabs=[${tabList.join(", ")}] hasProvided=${hasProvided}`);
+  return !hasProvided;
+}
+
 // recipe/pattern/plans item shows a "Teaches" tab with the craft it unlocks
 async function testTeaches(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 30000 });
@@ -631,6 +655,8 @@ ok = (await testQuestChain(55220, 11)) && ok;  // mid-chain quest: back + forwar
 ok = (await testQuestNpcLocation(55220)) && ok;  // Starts/Ends (NPC) Location column
 ok = (await testQuestZoneChain(783)) && ok;      // continent > zone > sub-zone
 ok = (await testBrowseQuestZoneLink()) && ok;    // browse quests links zones
+ok = (await testQuestNoProvided(179)) && ok;     // ReqSourceId==ReqItemId not shown as Provided
+ok = (await testItemDropLocation(750)) && ok;    // dropped-by NPC locations resolved
 ok = (await testSearchTabs("defias")) && ok;
 ok = (await testSearchZone("Tanaris")) && ok;
 ok = (await testSearchDropdown("defias")) && ok;

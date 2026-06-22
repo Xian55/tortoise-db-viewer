@@ -218,12 +218,14 @@ async function showItem(id) {
     gatherRows = [...agg.values()].sort((a, b) => b.count - a.count);
   }
 
+  // where each dropping NPC lives (zone or dungeon), batched
+  const dropLoc = await resolveNpcLocations(dropped.map((d) => d.entry));
   const dchance = (d) => d.drop_chance ?? d.skin_chance ?? d.pick_chance;
   const srcTag = (d) => (d.skin_chance != null ? ' <span class="muted">(skin)</span>' : d.pick_chance != null ? ' <span class="muted">(pickpocket)</span>' : "");
   const droppedCols = [
     { label: "NPC", cell: (d) => npcLink(d.entry, d.name) + srcTag(d), value: (d) => d.name },
     { label: "Level", num: true, cls: "muted", cell: (d) => lvlRange(d), value: (d) => d.level_max || d.level_min || 0 },
-    { label: "Location", cls: "muted", cell: (d) => (d.dungeon ? dungeonLink(d.dungeon_id, d.dungeon) : ""), value: (d) => d.dungeon || "" },
+    { label: "Location", cls: "muted", cell: (d) => (dropLoc.get(d.entry) || {}).html || "", value: (d) => (dropLoc.get(d.entry) || {}).text || "" },
     { label: "Chance", num: true, cell: (d) => pct(dchance(d)), value: (d) => dchance(d) || 0 },
   ];
   const objectCols = [
@@ -500,6 +502,22 @@ function npcLocationCell(zoneRows, mapRows) {
   return { html: "", text: "" };
 }
 
+// Batch-resolve a set of NPC entries to { html, text } location cells (zone or
+// dungeon). Used by the quest giver/ender tabs, the chain tab, and item drop tabs.
+async function resolveNpcLocations(entries) {
+  const out = new Map();
+  const uniq = [...new Set(entries)].filter(Boolean);
+  if (!uniq.length) return out;
+  const grp = (rows) => { const g = new Map(); for (const r of rows) (g.get(r.entry) || g.set(r.entry, []).get(r.entry)).push(r); return g; };
+  const [zc, mp] = await Promise.all([
+    query(Q.qNpcLocZones(uniq.length), uniq),
+    query(Q.qNpcLocMaps(uniq.length), uniq),
+  ]);
+  const zcBy = grp(zc), mpBy = grp(mp);
+  for (const e of uniq) out.set(e, npcLocationCell(zcBy.get(e) || [], mpBy.get(e) || []));
+  return out;
+}
+
 async function showNpc(id) {
   app.innerHTML = `<div class="loading">Loading NPC ${id}…</div>`;
   let npc;
@@ -729,7 +747,6 @@ async function showQuest(id) {
 
   // ---- NPC locations (batched): for the giver/ender tabs AND each chain step's
   // start NPC (so the chain tab shows where to pick up every quest) ----
-  const groupByEntry = (rows) => { const m = new Map(); for (const r of rows) (m.get(r.entry) || m.set(r.entry, []).get(r.entry)).push(r); return m; };
   const chainEntries = (chainOrdered || []).map((r) => r.entry);
   const startByQuest = new Map();
   if (chainEntries.length) {
@@ -738,16 +755,7 @@ async function showQuest(id) {
     }
   }
   const chainStartNpcs = [...startByQuest.values()].flat();
-  const locEntries = [...new Set([...giversN, ...endersN, ...chainStartNpcs].map((n) => n.entry))];
-  const locByNpc = new Map();
-  if (locEntries.length) {
-    const [zc, mp] = await Promise.all([
-      query(Q.qNpcLocZones(locEntries.length), locEntries),
-      query(Q.qNpcLocMaps(locEntries.length), locEntries),
-    ]);
-    const zcBy = groupByEntry(zc), mpBy = groupByEntry(mp);
-    for (const e of locEntries) locByNpc.set(e, npcLocationCell(zcBy.get(e) || [], mpBy.get(e) || []));
-  }
+  const locByNpc = await resolveNpcLocations([...giversN, ...endersN, ...chainStartNpcs].map((n) => n.entry));
   const locHtml = (e) => (locByNpc.get(e) || {}).html || "";
   const locText = (e) => (locByNpc.get(e) || {}).text || "";
   const locCol = { label: "Location", cls: "muted", cell: (c) => locHtml(c.entry), value: (c) => locText(c.entry) };
