@@ -171,6 +171,19 @@ async function testCrafting() {
   return rows > 0 && headers.includes("Skill") && headers.includes("Source") && !headers.includes("Profession") && profSel === "171" && brackets > 0 && groupHeads.length > 0 && typeGroups;
 }
 
+// enchanting crafts produce no item (they apply an enchant), so the Name column
+// links the craft spell itself; assert these item-less rows render and resolve a
+// recipe Source (regression: the whole profession was missing from Crafting).
+async function testCraftEnchanting() {
+  await page.goto(`${BASE}?browse=crafting&prof=333`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  // Name column links a craft spell (?spell=) for the item-less enchant rows
+  const spellLinks = await page.$$eval('.browse tbody td a.ilink.spell[href*="spell="]', (a) => a.length);
+  console.log(`crafting prof=333 (enchanting): rows=${rows} spellLinks=${spellLinks}`);
+  return rows > 30 && spellLinks > 0;
+}
+
 // "Obtainable only" checkbox (default on) hides crafts with no recipe/trainer/auto
 async function testCraftObtainable() {
   const count = async (qs) => {
@@ -540,6 +553,7 @@ ok = (await testFilter("prof", "197")) && ok;
 ok = (await testFilter("unique", "1")) && ok;
 ok = (await testCrafted(2575, "Tailoring")) && ok;
 ok = (await testCrafting()) && ok;
+ok = (await testCraftEnchanting()) && ok;
 ok = (await testCraftObtainable()) && ok;
 ok = (await testSelection()) && ok;
 ok = (await testGroupSelection()) && ok;

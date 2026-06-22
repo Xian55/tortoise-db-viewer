@@ -307,6 +307,7 @@ async function browseCrafting(p) {
     if (!g) {
       g = {
         spell: r.spell, item: r.item, item_name: r.item_name, quality: r.quality, item_icon: r.item_icon,
+        spell_name: r.spell_name, spell_icon: r.spell_icon,
         skill: r.skill, req: r.learn_req ?? r.skill_req, min: r.skill_min, max: r.skill_max,
         trainer: r.trainer, auto: r.auto, recipe_item: r.recipe_item, recipe_name: r.recipe_name, recipe_quality: r.recipe_quality, recipe_icon: r.recipe_icon,
         reagents: [],
@@ -317,12 +318,13 @@ async function browseCrafting(p) {
   }
   let crafts = [...bySpell.values()];
   if (f.prof) crafts = crafts.filter((c) => String(c.skill) === f.prof);
-  if (f.q) { const ql = f.q.toLowerCase(); crafts = crafts.filter((c) => (c.item_name || "").toLowerCase().includes(ql)); }
+  if (f.q) { const ql = f.q.toLowerCase(); crafts = crafts.filter((c) => (c.item_name || c.spell_name || "").toLowerCase().includes(ql)); }
   // hide crafts with no way to learn them (no recipe/trainer/auto) -- on by default
   if (f.obtainable) crafts = crafts.filter((c) => c.recipe_item || c.trainer || c.auto);
 
   const cols = [
-    { key: "name", label: "Name", cell: (c) => itemLink(c.item, c.item_name, c.quality, c.item_icon), value: (c) => c.item_name },
+    // enchant crafts produce no item -- link the craft spell itself as the product
+    { key: "name", label: "Name", cell: (c) => (c.item ? itemLink(c.item, c.item_name, c.quality, c.item_icon) : spellLink(c.spell, c.spell_name, c.spell_icon)), value: (c) => c.item_name || c.spell_name },
     { key: "prof", label: "Profession", cls: "muted", cell: (c) => esc(PROFESSION_LABEL[c.skill] || ""), value: (c) => PROFESSION_LABEL[c.skill] || "" },
     { key: "skill", label: "Skill", num: true, cell: (c) => craftSkillCell(c), value: (c) => craftSkill(c) },
     { key: "reagents", label: "Reagents", cls: "muted", cell: (c) => c.reagents.map((r) => `${itemLink(r.item, r.name, r.quality, r.icon)}${r.count > 1 ? ` ×${r.count}` : ""}`).join(", "), value: (c) => c.reagents.length },

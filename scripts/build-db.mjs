@@ -444,9 +444,18 @@ console.log("Importing spells + crafting graph...");
       const effects = effIdx.map((f) => ({ aura: clean(row[f.a]) || 0, misc: clean(row[f.m]) || 0, base: clean(row[f.b]) || 0 }));
       const st = statsFromAuras(effects);
       if (Object.keys(st).length) spellStats.set(e, st);
+      let madeItem = false;
       for (const ci of creates) {
         const item = clean(row[ci]);
-        if (item) { sCreate.run(e, item, sk ? sk.skill : null, sk ? sk.req : null, sk ? sk.min : null, sk ? sk.max : null); nc++; }
+        if (item) { sCreate.run(e, item, sk ? sk.skill : null, sk ? sk.req : null, sk ? sk.min : null, sk ? sk.max : null); madeItem = true; nc++; }
+      }
+      // Item-less crafts (enchanting): the recipe applies an enchant (effect 53
+      // ENCHANT_ITEM / 54 ENCHANT_ITEM_TEMPORARY) directly to gear rather than
+      // producing an item, so effectItemType is never set. Record an item=NULL row
+      // (skill thresholds from skill_line_ability) so the craft still lists in the
+      // Crafting view -- otherwise ~all enchanting formulas would be missing.
+      if (!madeItem && sk && effJson.some((x) => x.effect === 53 || x.effect === 54)) {
+        sCreate.run(e, null, sk.skill, sk.req, sk.min, sk.max); nc++;
       }
       for (const [ri, rc] of reagents) {
         const item = clean(row[ri]);
@@ -520,7 +529,8 @@ console.log("Deriving craft sources...");
   // required rank, then the trainer's required skill; fall back at query time.
   db.exec(`CREATE TABLE craft_source (spell INTEGER PRIMARY KEY, trainer INTEGER DEFAULT 0, recipe_item INTEGER, auto INTEGER DEFAULT 0, learn_req INTEGER)`);
   const insCs = db.prepare(`INSERT OR REPLACE INTO craft_source VALUES (?,?,?,?,?)`);
-  const craftSpells = db.prepare(`SELECT DISTINCT spell FROM spell_creates WHERE item IS NOT NULL`).all();
+  // includes item-less enchant crafts (item IS NULL) so they resolve a trainer/recipe source too.
+  const craftSpells = db.prepare(`SELECT DISTINCT spell FROM spell_creates`).all();
   let ncs = 0, nrec = 0, ntr = 0;
   db.transaction(() => {
     for (const { spell } of craftSpells) {

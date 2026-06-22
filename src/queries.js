@@ -175,13 +175,13 @@ export const Q_ZONE_FOCUS_SPAWNS = `
 // groups reagents per spell client-side. skill_min/skill_max give the yellow/grey
 // skill-up thresholds (green = midpoint). craft_source resolves trainer vs recipe.
 export const Q_CRAFTING = `
-  SELECT sc.spell, s.name AS spell_name, sc.skill, sc.skill_req, sc.skill_min, sc.skill_max,
+  SELECT sc.spell, s.name AS spell_name, s.icon AS spell_icon, sc.skill, sc.skill_req, sc.skill_min, sc.skill_max,
          ci.entry AS item, ci.name AS item_name, ci.quality, cdi.icon AS item_icon,
          sr.item AS reagent, ri.name AS reagent_name, ri.quality AS reagent_quality, rdi.icon AS reagent_icon, sr.count,
          cs.trainer, cs.auto, cs.learn_req, cs.recipe_item, rc.name AS recipe_name, rc.quality AS recipe_quality, rcdi.icon AS recipe_icon
   FROM spell_creates sc
   JOIN spells s ON s.entry = sc.spell
-  JOIN items ci ON ci.entry = sc.item
+  LEFT JOIN items ci ON ci.entry = sc.item
   LEFT JOIN item_display_info cdi ON cdi.ID = ci.display_id
   LEFT JOIN spell_reagent sr ON sr.spell = sc.spell
   LEFT JOIN items ri ON ri.entry = sr.item
@@ -190,7 +190,7 @@ export const Q_CRAFTING = `
   LEFT JOIN items rc ON rc.entry = cs.recipe_item
   LEFT JOIN item_display_info rcdi ON rcdi.ID = rc.display_id
   WHERE sc.skill IN (${CRAFT_SKILLS})
-  ORDER BY sc.skill, ci.name, sc.spell`;
+  ORDER BY sc.skill, COALESCE(ci.name, s.name), sc.spell`;
 
 // SELECT * so the detailed spell page gets every combat/effect column; the item
 // tooltip + quest callers just read the handful they need (name/desc/icon/teaches/sN).
