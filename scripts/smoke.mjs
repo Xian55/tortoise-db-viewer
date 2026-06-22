@@ -253,6 +253,18 @@ async function testUnobtainable() {
   return hiddenByDefault === 0 && shownWhenOptedIn > 0;
 }
 
+// A spawning NPC's page renders its zone map with the parchment image + its
+// own spawn pins (focus layer).
+async function testNpcMap(id) {
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
+  const hasMap = (await page.$("#zonemap .leaflet-image-layer")) !== null;
+  const pins = await page.$$eval("#zonemap .leaflet-marker-icon", (e) => e.length).catch(() => 0);
+  console.log(`npc ${id} map: hasMap=${hasMap} pins=${pins}`);
+  return hasMap && pins > 0;
+}
+
 async function testNpcTypeLink(id) {
   await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".npc-meta a.nav[href*='browse=npcs']", { timeout: 40000 });
@@ -530,6 +542,7 @@ ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(80402, "Aemara Sunsorrow", "Teaches")) && ok;  // trainer -> Teaches tab
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
+ok = (await testNpcMap(2376)) && ok;  // NPC page shows its zone map + spawn pins
 ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;
 ok = (await testBrowsePersist()) && ok;

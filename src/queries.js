@@ -288,11 +288,17 @@ export const Q_NPC_MAPS = `
 // idx_spawn_id, then test the ~129 zone boxes). Without the hint the planner
 // scans zones and reads every spawn per continent map -> ~700ms/page.
 export const Q_NPC_ZONES = `
-  SELECT DISTINCT z.areaid, z.name, z.mapid, z.locleft, z.locright, z.loctop, z.locbottom
+  SELECT DISTINCT z.areaid, z.name, z.mapid, z.locleft, z.locright, z.loctop, z.locbottom, z.img_w, z.img_h
   FROM spawn_points s INDEXED BY idx_spawn_id
   JOIN zones z ON z.mapid = s.map
     AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
   WHERE s.kind = 'c' AND s.id = ?1 AND z.name <> ''`;
+
+// This NPC's own spawn points (world coords + continent/instance map id), to plot
+// on its zone map. INDEXED BY forces the spawn-first plan (few rows via idx_spawn_id).
+export const Q_NPC_SPAWNS = `
+  SELECT x, y, map FROM spawn_points INDEXED BY idx_spawn_id
+  WHERE kind = 'c' AND id = ?1 LIMIT 2000`;
 
 // ---- dungeons / raids ----
 export const Q_DUNGEONS = `SELECT id, name, type FROM maps WHERE type IN (1,2) AND name <> '' ORDER BY type, name`;

@@ -478,11 +478,11 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, zoneCand, trains] = await Promise.all([
+  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, zoneCand, trains, npcSpawns] = await Promise.all([
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
     query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]), query(Q.Q_NPC_ZONES, [id]),
-    query(Q.Q_NPC_TRAINS, [id]),
+    query(Q.Q_NPC_TRAINS, [id]), query(Q.Q_NPC_SPAWNS, [id]),
   ]);
   // Resolve the open-world zone per continent. WMA boxes overlap at borders and
   // the dumps lack true coord->area, so among the boxes containing a spawn we take
@@ -492,6 +492,20 @@ async function showNpc(id) {
   for (const z of zoneCand) {
     const area = (z.loctop - z.locbottom) * (z.locleft - z.locright);
     if (!zoneByMap[z.mapid] || area > zoneByMap[z.mapid].area) zoneByMap[z.mapid] = { ...z, area };
+  }
+  // Map view: pick the (map, zone) holding the most of this NPC's spawns and plot
+  // them as focus pins. Spawns outside any resolved zone box (no parchment) drop.
+  let mapZone = null, mapPts = [];
+  const ptsByMap = new Map();
+  for (const s of npcSpawns) {
+    if (!ptsByMap.has(s.map)) ptsByMap.set(s.map, []);
+    ptsByMap.get(s.map).push(s);
+  }
+  for (const [mid, pts] of ptsByMap) {
+    const z = zoneByMap[mid];
+    if (!z) continue;
+    const inBox = pts.filter((p) => p.x >= z.locbottom && p.x <= z.loctop && p.y >= z.locright && p.y <= z.locleft);
+    if (inBox.length > mapPts.length) { mapPts = inBox; mapZone = z; }
   }
   const mapHtml = maps.map((m) => {
     const tag = m.type === 2 ? "Raid" : m.type === 1 ? "Dungeon" : null;
@@ -555,10 +569,20 @@ async function showNpc(id) {
           <span class="dim">· NPC #${npc.entry}</span></div>
         ${mapHtml ? `<div class="npc-meta muted">Location: ${mapHtml}</div>` : ""}
       </div>
+      ${mapZone ? `<div id="zonemap"></div>` : ""}
       ${tabs(tabDefs)}
     </div>`;
   mountTables();
   wireTabs();
+  if (mapZone) {
+    const el = document.getElementById("zonemap");
+    try {
+      const { initZoneMap } = await import("./zonemap.js");
+      const imgUrl = `${import.meta.env.BASE_URL}maps/${mapZone.areaid}.webp`;
+      const focus = { label: npc.name, npc: npc.entry, points: mapPts };
+      initZoneMap(el, { ...mapZone, imgUrl }, [], [], navigate, focus);
+    } catch (e) { el.innerHTML = errorBox(e); }
+  }
 }
 
 // Render mangos quest text: escape, then turn $B/$b into breaks and replace the

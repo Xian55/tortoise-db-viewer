@@ -61,8 +61,10 @@ function discTexture() {
 let currentMap = null, currentOverlay = null;
 
 // zone: row from Q_ZONE (+ imgUrl). spawns/objects: Q_ZONE_SPAWNS / Q_ZONE_OBJECTS
-// rows. focus (optional): { label, icon, points:[{x,y}] } -> a highlighted layer
-// with every other category off + the view zoomed to it (e.g. only herb nodes).
+// rows. focus (optional): { label, icon, points:[{x,y}], npc? } -> a highlighted
+// layer with every other category off + the view zoomed to it (e.g. only herb
+// nodes, or one NPC's spawns). With focus.npc set, points draw as creature pins
+// (no item icon) coloured by that entry; otherwise as the focus.icon marker.
 export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   // destroy the previous overlay first -> frees its WebGL context (browsers cap
   // these, so leaking one per zone navigation would eventually break the map).
@@ -189,7 +191,8 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     for (const p of focus.points) {
       const ll = toLatLng(p.x, p.y);
       lls.push(ll);
-      iconMark(ll, focus.icon, focus.label).addTo(focusLayer);
+      const mark = focus.npc ? npcMark(ll, focus.label, focus.npc) : iconMark(ll, focus.icon, focus.label);
+      mark.addTo(focusLayer);
     }
     focusBounds = L.latLngBounds(lls);
   }
