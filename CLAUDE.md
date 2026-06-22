@@ -90,6 +90,7 @@ python scripts/extract-icons.py       # LOCAL: client MPQ -> assets/icons/custom
 python scripts/extract-spell-icons.py # LOCAL: client SpellIcon.dbc -> scripts/data/spell-icon-map.json (+ custom spell icons)
 python scripts/build-atlas.py         # assets/icons/custom/*.webp -> public/icons/custom-atlas.{webp,json}
 python scripts/extract-maps.py        # LOCAL: client -> public/maps/*.webp + scripts/data/zones.json
+python scripts/extract-area-bounds.py # LOCAL: client ADTs -> scripts/data/subzone-bounds.json (exact coord->area)
 ```
 
 `SQL_DIR` defaults to `../tortoise-wow/sql/base`; `UPDATES_DIR` defaults to its
@@ -185,14 +186,19 @@ the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
   `public/maps/<areaId>.webp` + `scripts/data/zones.json` (zone bounds + dims; image
   dims MUST equal the world-bound rectangle or Leaflet markers misalign).
   `spawn_points`/`zones` tables are built in CI from these + the SQL dumps (which
-  carry spawn coords). NPC pages resolve their open-world zone from spawn coords by
-  the largest containing WMA box for the **Location label**, but the **map** plots on
-  the most *interior* containing box (so a Deadmines-entrance spawn picks the tiny
-  "The Deadmines" sub-zone, not Westfall). Several WMAs share one areaId — an
-  instance interior (mapId = the instance) plus a continent "entrance" mini-map; the
-  output is areaId-keyed, so extract-maps **prefers the instance interior** (e.g.
-  Dire Maul 2557 → the `DireMaul` interior on map 429, not `DireMaulEntrance`). The
-  7-or-so map-less instances (no WorldMap at all) fall back to a tab-only page.
+  carry spawn coords). Each spawn's zone is the ADT-exact `spawn_points.zone` (see
+  `extract-area-bounds.py` + the "Zone assignment" gotcha), not the loose WMA box.
+  Several WMAs share one areaId — an instance interior (mapId = the instance) plus a
+  continent "entrance" mini-map; the parchment output is areaId-keyed, so extract-maps
+  **prefers the instance interior** (e.g. Dire Maul 2557 → the `DireMaul` interior on
+  map 429, not `DireMaulEntrance`). The map-less instances (no WorldMap at all) fall
+  back to a tab-only page.
+- `scripts/extract-area-bounds.py` — LOCAL: reads the client ADTs (per `Map.dbc`
+  continent dir; MCNK terrain chunks carry the real AreaTable id) and accumulates the
+  world-coord bounding box per area → committed `scripts/data/subzone-bounds.json`
+  (`{mapId: [{i:areaId, x0,x1,y0,y1}]}`). build-db assigns each spawn the smallest
+  box containing it, walked up `area_template.zone_id` to the render zone — exact
+  coord→zone the SQL dumps lack. Re-run on client updates.
   Future seamless minimap: `X:\Programming\WoWTools.Minimaps` (.NET).
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
@@ -248,15 +254,21 @@ the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
   committed: custom icons (`assets/icons/custom/`, `public/icons/custom-atlas.*`,
   `scripts/data/item-display-supplement.json`, `scripts/data/spell-icon-map.json`,
   `scripts/data/spell-lookups.json`), zone maps (`public/maps/*.webp`,
-  `scripts/data/zones.json`), and the "minimap" POI sprite sheet
-  `public/icons/poi-atlas.webp` (16-col, 32px grid; `Elite` at [11,14] is the
+  `scripts/data/zones.json`), per-area ADT bounds (`scripts/data/subzone-bounds.json`
+  via `extract-area-bounds.py`, for exact coord→zone), and the "minimap" POI sprite
+  sheet `public/icons/poi-atlas.webp` (16-col, 32px grid; `Elite` at [11,14] is the
   skull used for boss markers; sourced from the WowClassicGrindBot atlas). See
   "Custom icons" / `scripts/extract-maps.py`.
-- **Zone assignment is by rectangle**, not exact boundaries — a spawn is "in" a
-  zone when its `position_x/y` fall inside that zone's WorldMapArea world-coord
-  box (from the client DBC, in `zones`). Overlapping/nested zones can both claim a
-  point — fine for the map. Continent (map id) is still the only exact open-world
-  locator for an NPC detail page.
+- **Zone assignment is ADT-exact.** Each spawn's `spawn_points.zone` is precomputed
+  in build-db from `scripts/data/subzone-bounds.json` (per-AreaTable bounding boxes
+  extracted from the client ADT terrain chunks by `extract-area-bounds.py`): the
+  smallest box containing the point is its real sub-area, walked up the
+  `area_template.zone_id` hierarchy to the render zone. This replaced the old loose
+  WorldMapArea-rectangle test, which overlapped badly (Jory Zaga → Moonglade instead
+  of Darkshore, Taerar → Azshara instead of Ashenvale, oversized custom-zone boxes
+  swallowing real zones). Zone pages, the NPC-page map/label, and all location
+  columns read this one field. Fallback to the smallest WMA box only where ADTs give
+  no area (~0.4% of spawns); `subzone-bounds.json` absent ⇒ WMA-box behaviour.
 - **World-drop reference pools are intentionally excluded** from `drops`
   (`REF_THRESHOLD` in build-db). Items reachable only via those won't list
   individual creatures — by design (they're world drops).

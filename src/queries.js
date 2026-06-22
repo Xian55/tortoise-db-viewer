@@ -147,14 +147,12 @@ export const Q_ITEM_SOURCES = `SELECT source FROM item_sources WHERE item = ?1`;
 // letting the planner scan every object spawn (kind='o'): ~272ms -> ~1ms for a
 // common ore. drops -> gameobjects(data1) -> spawn_points(kind,id), all indexed.
 export const Q_ITEM_OBJECT_SPAWNS = `
-  SELECT g.name, s.x, s.y, s.map
+  SELECT g.name, s.zone AS areaid, z.name AS zone
   FROM drops d
   CROSS JOIN gameobjects g ON g.data1 = d.owner
   CROSS JOIN spawn_points s ON s.kind = 'o' AND s.id = g.entry
+  LEFT JOIN zones z ON z.areaid = s.zone
   WHERE d.src = 'o' AND d.item = ?1 LIMIT 30000`;
-
-// All zone rectangles (for assigning a spawn point to its zone).
-export const Q_ZONE_BOXES = `SELECT areaid, name, mapid, locleft, locright, loctop, locbottom FROM zones`;
 
 export const Q_ITEM_ICON = `SELECT i.name, di.icon FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id WHERE i.entry = ?1`;
 
@@ -279,41 +277,26 @@ export const Q_NPC_MAPS = `
   SELECT DISTINCT m.id, m.name, m.type FROM spawns s JOIN maps m ON m.id = s.map
   WHERE s.id = ?1 AND m.name <> '' ORDER BY m.type DESC, m.name`;
 
-// Candidate zones whose rectangle contains a spawn of this NPC (with bounds, so
-// showNpc can pick the most-interior zone per spawn -- WMA boxes overlap at
-// borders, so plain containment is ambiguous).
-// INDEXED BY forces the spawn-first plan (find this NPC's few spawns via
-// idx_spawn_id, then test the ~129 zone boxes). Without the hint the planner
-// scans zones and reads every spawn per continent map -> ~700ms/page.
-export const Q_NPC_ZONES = `
-  SELECT DISTINCT z.areaid, z.name, z.mapid, z.locleft, z.locright, z.loctop, z.locbottom, z.img_w, z.img_h
-  FROM spawn_points s INDEXED BY idx_spawn_id
-  JOIN zones z ON z.mapid = s.map
-    AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
-  WHERE s.kind = 'c' AND s.id = ?1 AND z.name <> ''`;
-
-// This NPC's own spawn points (world coords + continent/instance map id), to plot
+// This NPC's own spawn points (world coords + map + precomputed home zone), to plot
 // on its zone map. INDEXED BY forces the spawn-first plan (few rows via idx_spawn_id).
 export const Q_NPC_SPAWNS = `
-  SELECT x, y, map FROM spawn_points INDEXED BY idx_spawn_id
+  SELECT x, y, map, zone FROM spawn_points INDEXED BY idx_spawn_id
   WHERE kind = 'c' AND id = ?1 LIMIT 2000`;
 
-// Batch location lookup for a set of NPC entries (e.g. a quest's givers/enders).
-// Zones: every containing WMA box per spawn (with coords + bounds, so the caller
-// can pick the most-interior). Maps: the distinct maps each NPC is on (+ type, to
-// tag Dungeon/Raid). `n` = number of `?` placeholders to emit.
 const inList = (n) => Array.from({ length: n }, () => "?").join(",");
-// kind = 'c' (creatures) or 'o' (game objects).
-export const qNpcLocZones = (n, kind = "c") => `
-  SELECT s.id AS entry, s.x, s.y, z.areaid, z.name, z.mapid, z.loctop, z.locbottom, z.locleft, z.locright
+// Batch location lookup for a set of creature ('c') / object ('o') entries: one row
+// per spawn with its precomputed home zone (+ zone name & map type to tag
+// Dungeon/Raid). The caller counts per zone and picks the most common.
+export const qNpcZoneSpawns = (n, kind = "c") => `
+  SELECT s.id AS entry, s.zone AS areaid, z.name, z.mapid, m.type
   FROM spawn_points s INDEXED BY idx_spawn_id
-  JOIN zones z ON z.mapid = s.map
-    AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
-  WHERE s.kind = '${kind === "o" ? "o" : "c"}' AND s.id IN (${inList(n)}) AND z.name <> ''`;
-export const qNpcLocMaps = (n, kind = "c") => `
-  SELECT DISTINCT s.id AS entry, m.id AS mapid, m.name, m.type
-  FROM spawn_points s JOIN maps m ON m.id = s.map
-  WHERE s.kind = '${kind === "o" ? "o" : "c"}' AND s.id IN (${inList(n)}) AND m.name <> ''`;
+  JOIN zones z ON z.areaid = s.zone
+  LEFT JOIN maps m ON m.id = z.mapid
+  WHERE s.kind = '${kind === "o" ? "o" : "c"}' AND s.id IN (${inList(n)}) AND s.zone IS NOT NULL`;
+// Zone rows (bounds + image dims) for a set of areaids -> render the NPC-page map.
+export const qZonesByIds = (n) => `
+  SELECT areaid, name, mapid, locleft, locright, loctop, locbottom, img_w, img_h
+  FROM zones WHERE areaid IN (${inList(n)})`;
 
 // Start (giver) NPCs for a set of quests (the quest chain), so the chain tab can
 // show where each step is picked up. `n` = number of `?` placeholders.

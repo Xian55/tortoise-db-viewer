@@ -849,23 +849,51 @@ console.log("Importing zones + spawn points...");
     console.log("  (no zones.json -- run scripts/extract-maps.py for the zone maps)");
   }
 
-  // Assign each spawn to ONE home zone: the SMALLEST WMA box (same map) that
-  // contains the point = the most-specific zone. WMA boxes overlap and are axis-
-  // aligned rectangles that don't match the real (irregular) zone shapes: a city
-  // box nests in its parent zone, and an oversized custom-zone box (e.g. Grim
-  // Reaches) blankets several real zones. Smallest-containing keeps a spawn in the
-  // tight real zone instead of letting a big box swallow it; the zone page then
-  // filters on this precomputed id. (Residual limit: a point dead on two zones'
-  // shared border can still pick the wrong one -- no exact coord->area in the dumps.)
+  // Assign each spawn to ONE home zone. Primary source: per-(sub)area bounding
+  // boxes extracted from the client ADT terrain chunks (scripts/extract-area-bounds
+  // .py -> subzone-bounds.json), which carry the REAL AreaTable id per chunk. The
+  // smallest such box containing the point is its true sub-area, walked up the
+  // area_template hierarchy to the render zone. This is exact -- it fixes the
+  // overlap mis-assignments the loose WorldMapArea rectangles cause (Jory Zaga ->
+  // Darkshore not Moonglade, Taerar -> Ashenvale not Azshara). Fallback (no ADT
+  // coverage): the smallest containing WMA box.
   const boxesByMap = new Map();
   for (const z of db.prepare(`SELECT areaid, mapid, locbottom, loctop, locright, locleft FROM zones`).all()) {
     z.area = (z.loctop - z.locbottom) * (z.locleft - z.locright);
     if (!boxesByMap.has(z.mapid)) boxesByMap.set(z.mapid, []);
     boxesByMap.get(z.mapid).push(z);
   }
+  const zoneSet = new Set(db.prepare(`SELECT areaid FROM zones`).all().map((r) => r.areaid));
+  const areaParent = new Map(db.prepare(`SELECT entry, zone_id FROM areas`).all().map((r) => [r.entry, r.zone_id]));
+  const renderZone = (aid) => {
+    let c = aid, g = 0;
+    while (c && g++ < 12) { if (zoneSet.has(c)) return c; const p = areaParent.get(c); if (!p || p === c) break; c = p; }
+    return zoneSet.has(aid) ? aid : null;
+  };
+  const subByMap = new Map();
+  {
+    const sf = join(ROOT, "scripts", "data", "subzone-bounds.json");
+    if (existsSync(sf)) {
+      const sb = JSON.parse(readFileSync(sf, "utf8"));
+      for (const [mid, arr] of Object.entries(sb)) {
+        for (const b of arr) b.area = (b.x1 - b.x0) * (b.y1 - b.y0);
+        subByMap.set(Number(mid), arr);
+      }
+      console.log(`  subzone-bounds: ${[...subByMap.values()].reduce((n, a) => n + a.length, 0)} area boxes / ${subByMap.size} maps`);
+    } else {
+      console.log("  (no subzone-bounds.json -- run scripts/extract-area-bounds.py; falling back to WMA boxes)");
+    }
+  }
   const homeZone = (map, x, y) => {
+    if (x == null || y == null) return null;
+    const subs = subByMap.get(map);
+    if (subs) {
+      let best = null, bestArea = Infinity;
+      for (const b of subs) { if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue; if (b.area < bestArea) { bestArea = b.area; best = b; } }
+      if (best) { const rz = renderZone(best.i); if (rz) return rz; }
+    }
     const boxes = boxesByMap.get(map);
-    if (!boxes || x == null || y == null) return null;
+    if (!boxes) return null;
     let best = null, bestArea = Infinity;
     for (const z of boxes) {
       if (x < z.locbottom || x > z.loctop || y < z.locright || y > z.locleft) continue;

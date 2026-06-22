@@ -322,10 +322,9 @@ async function testNpcMap(id) {
   return hasMap && pins > 0;
 }
 
-// A spawn that lands inside several overlapping WMA boxes must pick the most
-// *interior* zone (the small sub-zone the spawn sits centrally on), not the
-// largest. NPC 596 (Deadmines entrance) -> The Deadmines parchment (areaid 1581),
-// not Stranglethorn/Westfall.
+// The NPC-page map uses each spawn's exact precomputed home zone (ADT-derived),
+// so overlapping WMA boxes no longer mis-assign: NPC 596 (Deadmines-entrance spawn)
+// resolves to its real terrain zone Westfall (40), not Stranglethorn.
 async function testNpcMapZone(id, areaid) {
   await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
@@ -336,15 +335,14 @@ async function testNpcMapZone(id, areaid) {
   return match && pins > 0;
 }
 
-// The Location label must name the SAME zone the map shows (both use the most-
-// interior containing box). NPC 80208 -> Thalassian Highlands (5225), not the
-// larger Grim Reaches box it merely clips.
+// The Location label links the NPC's exact home zone(s). NPC 80208 -> Thalassian
+// Highlands (5225) among its per-continent zone links.
 async function testNpcLocationLabel(id, areaid) {
   await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".npc-head", { timeout: 40000 });
-  const href = await page.$eval(".npc-head .npc-meta a.ilink.zone", (e) => e.getAttribute("href")).catch(() => "");
-  const match = href.includes(`zone=${areaid}`);
-  console.log(`npc-loc-label ${id}: href="${href}" wantZone=${areaid} match=${match}`);
+  const hrefs = await page.$$eval(".npc-head .npc-meta a.ilink.zone", (e) => e.map((x) => x.getAttribute("href")));
+  const match = hrefs.some((h) => h.includes(`zone=${areaid}`));
+  console.log(`npc-loc-label ${id}: hrefs=${JSON.stringify(hrefs)} wantZone=${areaid} match=${match}`);
   return match;
 }
 
@@ -729,11 +727,12 @@ ok = (await testNpc(80402, "Aemara Sunsorrow", "Teaches")) && ok;  // trainer ->
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
 ok = (await testNpcMap(2376)) && ok;  // NPC page shows its zone map + spawn pins
-ok = (await testNpcMapZone(596, 1581)) && ok;  // overlapping boxes -> most-interior zone
+ok = (await testNpcMapZone(596, 40)) && ok;    // exact ADT area: Deadmines-entrance spawn is Westfall terrain
 ok = (await testNpcMapZone(11501, 2557)) && ok;  // Dire Maul interior NPC (King Gordok)
 ok = (await testNpcMapZone(80208, 5225)) && ok;  // map = most-spawned interior zone
 ok = (await testNpcLocationLabel(80208, 5225)) && ok;  // label agrees with the map
-ok = (await testNpcLocationLabel(596, 1581)) && ok;
+ok = (await testNpcMapZone(14890, 331)) && ok;        // Taerar -> Ashenvale (exact ADT area, was Azshara)
+ok = (await testNpcLocationLabel(596, 40)) && ok;
 ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;          // ?dungeon= redirects to the zone view
 ok = (await testInstanceZone(5138, "Deadmines")) && ok;  // ?zone= auto-detects the dungeon

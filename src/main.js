@@ -197,16 +197,13 @@ async function showItem(id) {
     ]);
   const srcCsv = srcRows.map((r) => r.source).join(",");
 
-  // Gathering breakdown: assign each node spawn to its zone (smallest containing
-  // WMA box, like the home-zone rule), count per (object, zone) -> best farm zones.
+  // Gathering breakdown: group node spawns by their precomputed home zone -> best
+  // farm zones (wowhead-style list).
   let gatherRows = [];
   if (gatherSpawns.length) {
-    const boxesByMap = new Map();
-    for (const z of await query(Q.Q_ZONE_BOXES)) (boxesByMap.get(z.mapid) || boxesByMap.set(z.mapid, []).get(z.mapid)).push(z);
     const agg = new Map();
     for (const p of gatherSpawns) {
-      const best = bestZone(boxesByMap.get(p.map) || [], p.x, p.y);
-      const areaid = best ? best.areaid : 0, zone = best ? best.name : (CONTINENT[p.map] || "Unknown");
+      const areaid = p.areaid || 0, zone = p.zone || "Unknown";
       const key = `${p.name}|${areaid}`;
       const g = agg.get(key) || { object: p.name, areaid, zone, count: 0 };
       g.count++; agg.set(key, g);
@@ -469,53 +466,30 @@ async function showSpell(id) {
   wireTabs();
 }
 
-// Does a zone's WMA box contain (x,y)? Boxes overlap, so among the containers the
-// SMALLEST-area one is the most-specific zone (matches build-db's home-zone rule;
-// keeps a spawn out of an oversized custom-zone box that blankets real zones).
-const zoneContains = (z, x, y) => x >= z.locbottom && x <= z.loctop && y >= z.locright && y <= z.locleft;
-const zoneArea = (z) => (z.loctop - z.locbottom) * (z.locleft - z.locright);
-// Smallest containing zone from a candidate list (each carries box bounds + x/y).
-function bestZone(rows, x, y) {
-  let best = null, bestArea = Infinity;
-  for (const z of rows) {
-    if (!zoneContains(z, x ?? z.x, y ?? z.y)) continue;
-    const a = zoneArea(z);
-    if (a > 0 && a < bestArea) { bestArea = a; best = z; }
-  }
-  return best;
+// Render a zone link with an optional Dungeon/Raid tag from its map type.
+function zoneCellHtml(areaid, name, mapType) {
+  const tag = mapType === 2 ? "Raid" : mapType === 1 ? "Dungeon" : null;
+  return zoneLink(areaid, name) + (tag ? ` <span class="dim">(${tag})</span>` : "");
 }
 
-// Build a Location cell for an NPC from its containing-zone rows (Q_NPC_LOC_ZONES,
-// carrying x/y + box bounds) + its map rows (Q_NPC_LOC_MAPS, with type). Picks the
-// most-interior containing zone; tags Dungeon/Raid; falls back to the instance name
-// for map-less instances. Returns { html, text } (text = sort key).
-function npcLocationCell(zoneRows, mapRows) {
-  const best = bestZone(zoneRows);
-  const tagOf = (t) => (t === 2 ? "Raid" : t === 1 ? "Dungeon" : null);
-  if (best) {
-    const m = mapRows.find((x) => x.mapid === best.mapid);
-    const tag = m && tagOf(m.type);
-    return { html: zoneLink(best.areaid, best.name) + (tag ? ` <span class="dim">(${tag})</span>` : ""), text: best.name };
-  }
-  const inst = mapRows.find((x) => x.type === 1 || x.type === 2);
-  if (inst) return { html: `${dungeonLink(inst.mapid, inst.name)} <span class="dim">(${tagOf(inst.type)})</span>`, text: inst.name };
-  return { html: "", text: "" };
-}
-
-// Batch-resolve a set of creature ('c') or object ('o') entries to { html, text }
-// location cells (zone or dungeon). Used by the quest giver/ender/chain tabs and
-// the item/required-item drop tabs.
+// Batch-resolve a set of creature ('c') / object ('o') entries to { html, text }
+// location cells using each spawn's precomputed home zone (exact, from build-db).
+// Picks the zone holding the most of the entry's spawns. Used by the quest
+// giver/ender/chain tabs and the item / required-item drop tabs.
 async function resolveNpcLocations(entries, kind = "c") {
   const out = new Map();
   const uniq = [...new Set(entries)].filter(Boolean);
   if (!uniq.length) return out;
-  const grp = (rows) => { const g = new Map(); for (const r of rows) (g.get(r.entry) || g.set(r.entry, []).get(r.entry)).push(r); return g; };
-  const [zc, mp] = await Promise.all([
-    query(Q.qNpcLocZones(uniq.length, kind), uniq),
-    query(Q.qNpcLocMaps(uniq.length, kind), uniq),
-  ]);
-  const zcBy = grp(zc), mpBy = grp(mp);
-  for (const e of uniq) out.set(e, npcLocationCell(zcBy.get(e) || [], mpBy.get(e) || []));
+  const rows = await query(Q.qNpcZoneSpawns(uniq.length, kind), uniq);
+  const byEntry = new Map();
+  for (const r of rows) {
+    let m = byEntry.get(r.entry); if (!m) { m = new Map(); byEntry.set(r.entry, m); }
+    const e = m.get(r.areaid) || { ...r, n: 0 }; e.n++; m.set(r.areaid, e);
+  }
+  for (const [entry, m] of byEntry) {
+    let best = null; for (const e of m.values()) if (!best || e.n > best.n) best = e;
+    out.set(entry, { html: zoneCellHtml(best.areaid, best.name, best.type), text: best.name });
+  }
   return out;
 }
 
@@ -526,44 +500,39 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, zoneCand, trains, npcSpawns] = await Promise.all([
+  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, trains, npcSpawns] = await Promise.all([
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
-    query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]), query(Q.Q_NPC_ZONES, [id]),
+    query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]),
     query(Q.Q_NPC_TRAINS, [id]), query(Q.Q_NPC_SPAWNS, [id]),
   ]);
-  // WMA boxes overlap (a spawn at the Deadmines entrance falls inside Westfall,
-  // Stranglethorn AND the tiny "The Deadmines" sub-zone). Among the boxes that
-  // contain a spawn, pick the one where it sits most *interior* (max min-distance to
-  // the box edges) -- the zone whose parchment frames it best. Both the map and the
-  // Location label use this same resolution so they always agree. Drops spawns with
-  // no zone (e.g. map-less instances like Dire Maul, which have no parchment).
-  const tally = new Map(); // areaid -> { zone, pts:[] }
+  // Each spawn carries its exact precomputed home zone (build-db, ADT-derived).
+  // Count per zone (and per map) -> the most-common zone is the one the map renders;
+  // the Location label names the top zone for each continent map.
+  const zoneCount = new Map();   // areaid -> count
+  const byMapZone = new Map();   // map -> Map(areaid -> count)
   for (const s of npcSpawns) {
-    let best = null, bestArea = Infinity;
-    for (const z of zoneCand) {
-      if (z.mapid !== s.map || !zoneContains(z, s.x, s.y)) continue;
-      const a = zoneArea(z);
-      if (a > 0 && a < bestArea) { bestArea = a; best = z; }
-    }
-    if (!best) continue;
-    const e = tally.get(best.areaid) || { zone: best, pts: [] };
-    e.pts.push(s); tally.set(best.areaid, e);
+    if (!s.zone) continue;
+    zoneCount.set(s.zone, (zoneCount.get(s.zone) || 0) + 1);
+    let mm = byMapZone.get(s.map); if (!mm) { mm = new Map(); byMapZone.set(s.map, mm); }
+    mm.set(s.zone, (mm.get(s.zone) || 0) + 1);
   }
-  let mapZone = null, mapPts = [];
-  for (const e of tally.values()) if (e.pts.length > mapPts.length) { mapPts = e.pts; mapZone = e.zone; }
-  // per continent map, the interior zone holding the most of this NPC's spawns ->
-  // the Location label (same zone the map shows).
-  const zoneByMap = {};
-  for (const e of tally.values()) {
-    const mid = e.zone.mapid;
-    if (!zoneByMap[mid] || e.pts.length > zoneByMap[mid].count) zoneByMap[mid] = { zone: e.zone, count: e.pts.length };
-  }
+  const zoneIds = [...zoneCount.keys()];
+  const zinfo = new Map();
+  if (zoneIds.length) for (const z of await query(Q.qZonesByIds(zoneIds.length), zoneIds)) zinfo.set(z.areaid, z);
+  let mapZone = null, top = -1;
+  for (const [aid, n] of zoneCount) if (n > top && zinfo.get(aid)) { top = n; mapZone = zinfo.get(aid); }
+  const mapPts = mapZone ? npcSpawns.filter((s) => s.zone === mapZone.areaid) : [];
+  const bestZoneForMap = (mid) => {
+    const mm = byMapZone.get(mid); if (!mm) return null;
+    let a = null, n = -1; for (const [aid, c] of mm) if (c > n && zinfo.get(aid)) { n = c; a = aid; }
+    return a ? zinfo.get(a) : null;
+  };
   const mapHtml = maps.map((m) => {
     const tag = m.type === 2 ? "Raid" : m.type === 1 ? "Dungeon" : null;
     if (tag) return `${dungeonLink(m.id, m.name)} <span class="dim">(${tag})</span>`;
     // continent: append the resolved zone link -> "Kalimdor › The Barrens"
-    const z = zoneByMap[m.id] && zoneByMap[m.id].zone;
+    const z = bestZoneForMap(m.id);
     return `${esc(m.name)}${z ? ` <span class="dim">›</span> ${zoneLink(z.areaid, z.name)}` : ""}`;
   }).join(", ");
 
