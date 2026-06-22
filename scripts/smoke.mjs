@@ -339,6 +339,8 @@ async function testDungeon(id, expectName) {
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
   const hasMap = (await page.$("#zonemap .leaflet-image-layer")) !== null;
+  await page.waitForSelector("#zonemap .map-boss", { timeout: 15000 }).catch(() => {});
+  const bossPins = await page.$$eval("#zonemap .map-boss", (e) => e.length).catch(() => 0);
   const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const groupRows = await page.$$eval(".tabpane:not(.hidden) .grouprow", (e) => e.length);
   const hasGroupCtl = (await page.$(".tabpane:not(.hidden) [data-groupby]")) !== null;
@@ -351,8 +353,34 @@ async function testDungeon(id, expectName) {
       .filter((t) => !t.classList.contains("grouprow") && t.getAttribute("data-group") === key);
     return rows.length > 0 && rows.every((t) => t.style.display === "none");
   });
-  console.log(`dungeon ${id}: name="${name}" tabs=[${tabList.join(", ")}] groupRows=${groupRows} groupCtl=${hasGroupCtl} collapse=${collapseOk} map=${hasMap}`);
-  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && groupRows > 0 && hasGroupCtl && collapseOk && hasMap;
+  console.log(`dungeon ${id}: name="${name}" tabs=[${tabList.join(", ")}] groupRows=${groupRows} groupCtl=${hasGroupCtl} collapse=${collapseOk} map=${hasMap} bossPins=${bossPins}`);
+  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && groupRows > 0 && hasGroupCtl && collapseOk && hasMap && bossPins > 0;
+}
+
+// The zone route auto-detects an instance map: ?zone=<areaid of a dungeon> shows
+// the Boss Loot tab, the parchment, and skull boss markers.
+async function testInstanceZone(areaid, expectName) {
+  await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  const name = await page.$eval(".npc-head h1", (e) => e.textContent);
+  await page.waitForSelector("#zonemap .map-boss", { timeout: 30000 }).catch(() => {});
+  const bossPins = await page.$$eval("#zonemap .map-boss", (e) => e.length).catch(() => 0);
+  const hasMap = (await page.$("#zonemap .leaflet-image-layer")) !== null;
+  const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  console.log(`zone-instance ${areaid}: name="${name}" tabs=[${tabList.join(", ")}] map=${hasMap} bossPins=${bossPins}`);
+  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && hasMap && bossPins > 0;
+}
+
+// A map-less instance (no WorldMap parchment, e.g. Dire Maul) still renders via
+// the ?dungeon= fallback: Boss Loot tab, no zone map.
+async function testDungeonNoMap(id, expectName) {
+  await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  const name = await page.$eval(".npc-head h1", (e) => e.textContent);
+  const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const mapDiv = (await page.$("#zonemap")) !== null;
+  console.log(`dungeon-nomap ${id}: name="${name}" tabs=[${tabList.join(", ")}] mapDiv=${mapDiv}`);
+  return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && !mapDiv;
 }
 
 async function testHover() {
@@ -544,7 +572,9 @@ ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
 ok = (await testNpcMap(2376)) && ok;  // NPC page shows its zone map + spawn pins
 ok = (await testDungeons()) && ok;
-ok = (await testDungeon(36, "Deadmines")) && ok;
+ok = (await testDungeon(36, "Deadmines")) && ok;          // ?dungeon= redirects to the zone view
+ok = (await testInstanceZone(5138, "Deadmines")) && ok;  // ?zone= auto-detects the dungeon
+ok = (await testDungeonNoMap(429, "Dire Maul")) && ok;   // map-less instance fallback
 ok = (await testBrowsePersist()) && ok;
 ok = (await testBrowseMulti()) && ok;
 ok = (await testBrowseCriteria()) && ok;

@@ -184,6 +184,9 @@ a.ilink.zone { color: #8fd18f; }
    tellable apart; white ring + dark outline so any hue stays visible. */
 .map-pin { display: block; box-sizing: border-box; width: 16px; height: 16px;
   border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #000, 0 0 5px rgba(0, 0, 0, .55); }
+/* boss marker: the skull POI sprite, drawn above the dots with a dark halo */
+.map-boss { display: block; background-repeat: no-repeat; cursor: pointer;
+  filter: drop-shadow(0 0 2px #000) drop-shadow(0 0 2px #000); }
 /* Objects-tab "add to map" toggle */
 .mapchk { display: inline-flex; align-items: center; cursor: pointer; }
 .quest-chain { margin-top: 6px; }

@@ -303,6 +303,12 @@ export const Q_NPC_SPAWNS = `
 // ---- dungeons / raids ----
 export const Q_DUNGEONS = `SELECT id, name, type FROM maps WHERE type IN (1,2) AND name <> '' ORDER BY type, name`;
 export const Q_DUNGEON = `SELECT id, name, type FROM maps WHERE id = ?1`;
+// A zone's map type (0 open-world, 1 dungeon, 2 raid) -> lets the zone page
+// auto-detect that it's actually an instance and render dungeon/raid content.
+export const Q_MAP_TYPE = `SELECT id, name, type FROM maps WHERE id = ?1`;
+// Boss creature entries in an instance map = unique spawns (cnt = 1), per the
+// repo's "boss = unique spawn" convention. Drives the skull markers on the map.
+export const Q_MAP_BOSSES = `SELECT DISTINCT id FROM spawns WHERE map = ?1 AND cnt = 1`;
 export const Q_DUNGEON_NPCS = `
   SELECT DISTINCT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank
   FROM spawns s JOIN creatures c ON c.entry = s.id

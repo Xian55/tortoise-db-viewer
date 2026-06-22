@@ -241,8 +241,11 @@ the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
   the exceptions are **client-derived** assets CI can't regenerate, so they're
   committed: custom icons (`assets/icons/custom/`, `public/icons/custom-atlas.*`,
   `scripts/data/item-display-supplement.json`, `scripts/data/spell-icon-map.json`,
-  `scripts/data/spell-lookups.json`) and zone maps (`public/maps/*.webp`,
-  `scripts/data/zones.json`). See "Custom icons" / `scripts/extract-maps.py`.
+  `scripts/data/spell-lookups.json`), zone maps (`public/maps/*.webp`,
+  `scripts/data/zones.json`), and the "minimap" POI sprite sheet
+  `public/icons/poi-atlas.webp` (16-col, 32px grid; `Elite` at [11,14] is the
+  skull used for boss markers; sourced from the WowClassicGrindBot atlas). See
+  "Custom icons" / `scripts/extract-maps.py`.
 - **Zone assignment is by rectangle**, not exact boundaries — a spawn is "in" a
   zone when its `position_x/y` fall inside that zone's WorldMapArea world-coord
   box (from the client DBC, in `zones`). Overlapping/nested zones can both claim a

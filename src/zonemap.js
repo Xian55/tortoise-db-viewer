@@ -60,12 +60,26 @@ function discTexture() {
 
 let currentMap = null, currentOverlay = null;
 
+// The "minimap" POI sprite sheet (16 cols, 32px cells; src: WowClassicGrindBot).
+// Elite (the skull) sits at grid [11,14] -> used for boss markers.
+const POI_URL = `${import.meta.env.BASE_URL}icons/poi-atlas.webp`;
+const POI_CELL = 32, POI_COLS = 16;
+const BOSS_GRID = [11, 14]; // "Elite" = skull
+// CSS background for a POI sprite scaled to `size` px.
+function poiSpriteStyle([col, row], size) {
+  const scale = size / POI_CELL;
+  return `background-image:url(${POI_URL});background-size:${POI_COLS * size}px auto;` +
+    `background-position:-${col * size}px -${row * size}px;width:${size}px;height:${size}px`;
+}
+
 // zone: row from Q_ZONE (+ imgUrl). spawns/objects: Q_ZONE_SPAWNS / Q_ZONE_OBJECTS
 // rows. focus (optional): { label, icon, points:[{x,y}], npc? } -> a highlighted
 // layer with every other category off + the view zoomed to it (e.g. only herb
 // nodes, or one NPC's spawns). With focus.npc set, points draw as creature pins
 // (no item icon) coloured by that entry; otherwise as the focus.icon marker.
-export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
+// bosses (optional): [{entry, name, x, y}] -> an always-on "Bosses" layer of skull
+// markers (instance unique-spawns), drawn above the dots.
+export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, bosses = []) {
   // destroy the previous overlay first -> frees its WebGL context (browsers cap
   // these, so leaking one per zone navigation would eventually break the map).
   if (currentOverlay) { try { currentOverlay.destroy(); } catch (_) { /* gone */ } currentOverlay = null; }
@@ -181,6 +195,22 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     if (entry) m.on("click", () => navigate(`?npc=${entry}`));
     return m;
   };
+  // boss marker: the skull POI sprite, drawn above everything, click -> NPC page.
+  const bossMark = (ll, name, entry) => {
+    const m = L.marker(ll, {
+      icon: L.divIcon({ html: `<span class="map-boss" style="${poiSpriteStyle(BOSS_GRID, 26)}"></span>`, className: "poi-div", iconSize: [26, 26], iconAnchor: [13, 13] }),
+      zIndexOffset: 1000,
+    }).bindTooltip(esc(name), { direction: "top" });
+    if (entry) m.on("click", () => navigate(`?npc=${entry}`));
+    return m;
+  };
+
+  // ---- boss layer (always on): skull markers for bosses / world bosses ----
+  let bossLayer = null;
+  if (bosses && bosses.length) {
+    bossLayer = L.layerGroup();
+    for (const b of bosses) bossMark(toLatLng(b.x, b.y), b.name, b.entry).addTo(bossLayer);
+  }
 
   // focus layer: the gathered node's own icon, bright, zoomed-to.
   let focusBounds = null, focusLayer = null;
@@ -207,7 +237,8 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
     if (on) layer.addTo(map);
   };
   // All category layers start OFF (a normal zone view is a clean map you opt into
-  // via the layer control); only the gather/focus layer is on by default.
+  // via the layer control); the boss + gather/focus layers are on by default.
+  if (bossLayer) { overlays[`Bosses (${bosses.length})`] = bossLayer; bossLayer.addTo(map); }
   if (focusLayer) { overlays[FKEY] = focusLayer; focusLayer.addTo(map); }
   for (const [key] of NPC_CATS) addCat(key, false);
   addCat("rare", false); // single toggle for all rare / rare-elite spawns

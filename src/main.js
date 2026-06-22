@@ -99,7 +99,7 @@ function showHome() {
        <a class="nav" href="?browse=factions">factions</a> /
        <a class="nav" href="?browse=zones">zones</a> /
        <a class="nav" href="?dungeons">dungeons &amp; raids</a>.
-       Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?dungeon=ID</code>.</p>
+       Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?zone=ID</code>.</p>
     <p class="muted">Examples:
       <a class="ilink" href="?item=2770">Copper Ore</a> ·
       <a class="ilink" href="?item=7909">Aquamarine</a> ·
@@ -745,17 +745,32 @@ async function showZone(id, gatherItem = null) {
   if (!z) { app.innerHTML = `<div class="home"><p>No zone with ID ${id}.</p></div>`; return; }
   document.title = `${z.name} - Tortoise-WoW DB`;
 
+  // A zone whose map is an instance (type 1 dungeon / 2 raid) is rendered as a
+  // dungeon: boss-loot tab, instance loot/creature queries, skull boss markers.
+  const mapInfo = await queryOne(Q.Q_MAP_TYPE, [z.mapid]);
+  const typeLabel = mapInfo && (mapInfo.type === 2 ? "Raid" : mapInfo.type === 1 ? "Dungeon" : null);
+  const isInstance = !!typeLabel;
+
   const rect = [z.mapid, z.locbottom, z.loctop, z.locright, z.locleft];
-  const [spawns, objects, loot, focusPts, focusItem] = await Promise.all([
-    query(Q.Q_ZONE_SPAWNS, rect), query(Q.Q_ZONE_OBJECTS, rect), query(Q.Q_ZONE_LOOT, rect),
+  const [spawns, objects, loot, focusPts, focusItem, bossLoot, bossEntries] = await Promise.all([
+    query(Q.Q_ZONE_SPAWNS, rect), query(Q.Q_ZONE_OBJECTS, rect),
+    isInstance ? query(Q.Q_DUNGEON_LOOT, [z.mapid]) : query(Q.Q_ZONE_LOOT, rect),
     gatherItem ? query(Q.Q_ZONE_FOCUS_SPAWNS, [...rect, gatherItem]) : [],
     gatherItem ? queryOne(Q.Q_ITEM_ICON, [gatherItem]) : null,
+    isInstance ? query(Q.Q_DUNGEON_BOSS_LOOT, [z.mapid]) : [],
+    isInstance ? query(Q.Q_MAP_BOSSES, [z.mapid]) : [],
   ]);
   // focus mode: only the gathered node's spawns, drawn with the item's icon
   const focus = focusPts.length
     ? { label: (focusItem && focusItem.name) || focusPts[0].name || "Node", icon: focusItem && focusItem.icon, points: focusPts }
     : null;
-  const meta = [CONTINENT[z.mapid], `${spawns.length + objects.length} spawns`].filter(Boolean);
+  // Boss skull markers: instance unique-spawns (cnt=1). Their spawn points come
+  // from the rect spawns already loaded. Open-world rank-3 "World Boss" creatures
+  // are intentionally excluded -- that rank also covers city/faction leaders, so
+  // it would scatter skulls across capital cities.
+  const bossSet = new Set(bossEntries.map((r) => r.id));
+  const bosses = isInstance ? spawns.filter((s) => bossSet.has(s.entry)) : [];
+  const meta = [typeLabel || CONTINENT[z.mapid], `${spawns.length + objects.length} spawns`].filter(Boolean);
 
   // dedupe spawn rows into distinct NPCs / objects (with a spawn-point count)
   const dedupe = (rows) => {
@@ -807,7 +822,13 @@ async function showZone(id, gatherItem = null) {
       cell: (o) => `<label class="mapchk"><input type="checkbox" data-mapobj="${o.entry}"${shownObjects.has(o.entry) ? " checked" : ""}></label>`,
       value: (o) => (shownObjects.has(o.entry) ? 1 : 0) },
   ];
+  const bossCols = [
+    { label: "Boss", cell: (r) => npcLink(r.boss, r.boss_name), value: (r) => r.boss_name },
+    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+    { label: "Chance", num: true, cell: (r) => pct(r.chance), value: (r) => r.chance || 0 },
+  ];
   const tabDefs = [
+    ...(isInstance ? [{ id: "bosses", label: "Boss Loot", ...regTable(bossCols, bossLoot, { pageSize: 500, groupable: true, group: 0 }) }] : []),
     { id: "npcs", label: "NPCs", ...regTable(npcCols, npcs, { pageSize: 100 }) },
     { id: "items", label: "Items", ...regTable(lootCols, loot, { pageSize: 100 }) },
     { id: "objects", label: "Objects", ...regTable(objCols, objs, { pageSize: 100 }) },
@@ -816,7 +837,7 @@ async function showZone(id, gatherItem = null) {
   // A few client-defined zones (e.g. not-yet-populated Turtle areas) have a map
   // texture but no spawns recorded within their bounds -> three blank tabs. Show
   // an explanatory note instead.
-  const hasData = npcs.length || objs.length || loot.length;
+  const hasData = npcs.length || objs.length || loot.length || bossLoot.length;
   const body = hasData
     ? tabs(tabDefs)
     : `<div class="zone-empty muted">No NPCs, items, or objects are recorded within this
@@ -839,7 +860,7 @@ async function showZone(id, gatherItem = null) {
   try {
     const { initZoneMap } = await import("./zonemap.js");
     const imgUrl = `${import.meta.env.BASE_URL}maps/${z.areaid}.webp`;
-    const zmap = initZoneMap(el, { ...z, imgUrl }, spawns, objects, navigate, focus);
+    const zmap = initZoneMap(el, { ...z, imgUrl }, spawns, objects, navigate, focus, bosses);
     // Objects tab checkboxes add/remove that object's spawns on the map.
     const objPane = app.querySelector('[data-pane="objects"]');
     if (objPane && zmap) objPane.addEventListener("change", (e) => {
@@ -875,19 +896,24 @@ async function showDungeons() {
   mountTables();
 }
 
+// Legacy ?dungeon=<mapid> route. Dungeons/raids are now rendered by the unified
+// zone view, so redirect to the instance's WorldMap zone (?zone=areaid). The few
+// instances with no WorldMap parchment (e.g. Dire Maul) have no zone -> render a
+// map-less instance page here as a fallback.
 async function showDungeon(id) {
   app.innerHTML = `<div class="loading">Loading…</div>`;
+  let zone;
+  try { zone = await queryOne(Q.Q_DUNGEON_ZONE, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (zone && zone.areaid) { navigate(`?zone=${zone.areaid}`, true); return; }
+
   let map;
   try { map = await queryOne(Q.Q_DUNGEON, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
-  if (!map) { app.innerHTML = `<div class="home"><p>No map with ID ${id}.</p></div>`; return; }
+  if (!map) { app.innerHTML = `<div class="home"><p>No dungeon with map ID ${id}.</p></div>`; return; }
   document.title = `${map.name} - Tortoise-WoW DB`;
-  const zone = await queryOne(Q.Q_DUNGEON_ZONE, [id]);
-  const rect = zone ? [zone.mapid, zone.locbottom, zone.loctop, zone.locright, zone.locleft] : null;
-  const [bossLoot, npcs, loot, spawns, objects] = await Promise.all([
-    query(Q.Q_DUNGEON_BOSS_LOOT, [id]), query(Q.Q_DUNGEON_NPCS, [id]), query(Q.Q_DUNGEON_LOOT, [id]),
-    rect ? query(Q.Q_ZONE_SPAWNS, rect) : [], rect ? query(Q.Q_ZONE_OBJECTS, rect) : [],
-  ]);
   const typeLabel = map.type === 2 ? "Raid" : "Dungeon";
+  const [bossLoot, npcs, loot] = await Promise.all([
+    query(Q.Q_DUNGEON_BOSS_LOOT, [id]), query(Q.Q_DUNGEON_NPCS, [id]), query(Q.Q_DUNGEON_LOOT, [id]),
+  ]);
 
   const bossCols = [
     { label: "Boss", cell: (r) => npcLink(r.boss, r.boss_name), value: (r) => r.boss_name },
@@ -916,19 +942,10 @@ async function showDungeon(id) {
         <h1>${esc(map.name)}</h1>
         <div class="npc-meta muted">${typeLabel} · Map #${map.id}</div>
       </div>
-      ${zone ? `<div id="zonemap"></div>` : ""}
       ${tabs(tabDefs)}
     </div>`;
   mountTables();
   wireTabs();
-  if (zone) {
-    const el = document.getElementById("zonemap");
-    try {
-      const { initZoneMap } = await import("./zonemap.js");
-      const imgUrl = `${import.meta.env.BASE_URL}maps/${zone.areaid}.webp`;
-      initZoneMap(el, { ...zone, imgUrl }, spawns, objects, navigate);
-    } catch (e) { el.innerHTML = errorBox(e); }
-  }
 }
 
 function errorBox(e) {
