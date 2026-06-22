@@ -849,28 +849,27 @@ console.log("Importing zones + spawn points...");
     console.log("  (no zones.json -- run scripts/extract-maps.py for the zone maps)");
   }
 
-  // Assign each spawn to ONE home zone: among the WMA boxes (same map) containing
-  // the point, the one where it sits most *interior* (max min-distance to the box
-  // edges). WMA boxes overlap -- a city box nests inside its parent zone -- so a
-  // plain point-in-rectangle test leaks e.g. Orgrimmar NPCs into Ashenvale. The
-  // interior pick gives the most-specific zone (the same logic the NPC page uses),
-  // and the zone page then filters on this precomputed zone id.
+  // Assign each spawn to ONE home zone: the SMALLEST WMA box (same map) that
+  // contains the point = the most-specific zone. WMA boxes overlap and are axis-
+  // aligned rectangles that don't match the real (irregular) zone shapes: a city
+  // box nests in its parent zone, and an oversized custom-zone box (e.g. Grim
+  // Reaches) blankets several real zones. Smallest-containing keeps a spawn in the
+  // tight real zone instead of letting a big box swallow it; the zone page then
+  // filters on this precomputed id. (Residual limit: a point dead on two zones'
+  // shared border can still pick the wrong one -- no exact coord->area in the dumps.)
   const boxesByMap = new Map();
   for (const z of db.prepare(`SELECT areaid, mapid, locbottom, loctop, locright, locleft FROM zones`).all()) {
+    z.area = (z.loctop - z.locbottom) * (z.locleft - z.locright);
     if (!boxesByMap.has(z.mapid)) boxesByMap.set(z.mapid, []);
     boxesByMap.get(z.mapid).push(z);
   }
   const homeZone = (map, x, y) => {
     const boxes = boxesByMap.get(map);
     if (!boxes || x == null || y == null) return null;
-    let best = null, bs = -1;
+    let best = null, bestArea = Infinity;
     for (const z of boxes) {
-      const dx = z.loctop - z.locbottom, dy = z.locleft - z.locright;
-      if (!dx || !dy) continue;
-      const fx = (x - z.locbottom) / dx, fy = (y - z.locright) / dy;
-      if (fx < 0 || fx > 1 || fy < 0 || fy > 1) continue;
-      const s = Math.min(fx, 1 - fx, fy, 1 - fy);
-      if (s > bs) { bs = s; best = z; }
+      if (x < z.locbottom || x > z.loctop || y < z.locright || y > z.locleft) continue;
+      if (z.area > 0 && z.area < bestArea) { bestArea = z.area; best = z; }
     }
     return best ? best.areaid : null;
   };

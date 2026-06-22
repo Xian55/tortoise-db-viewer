@@ -197,19 +197,15 @@ async function showItem(id) {
     ]);
   const srcCsv = srcRows.map((r) => r.source).join(",");
 
-  // Gathering breakdown: assign each node spawn to its zone (largest containing
-  // WMA box), count per (object, zone) -> best farm zones (wowhead-style list).
+  // Gathering breakdown: assign each node spawn to its zone (smallest containing
+  // WMA box, like the home-zone rule), count per (object, zone) -> best farm zones.
   let gatherRows = [];
   if (gatherSpawns.length) {
-    const boxes = await query(Q.Q_ZONE_BOXES);
+    const boxesByMap = new Map();
+    for (const z of await query(Q.Q_ZONE_BOXES)) (boxesByMap.get(z.mapid) || boxesByMap.set(z.mapid, []).get(z.mapid)).push(z);
     const agg = new Map();
     for (const p of gatherSpawns) {
-      let best = null, bestA = -1;
-      for (const z of boxes) {
-        if (z.mapid !== p.map || p.x < z.locbottom || p.x > z.loctop || p.y < z.locright || p.y > z.locleft) continue;
-        const a = (z.loctop - z.locbottom) * (z.locleft - z.locright);
-        if (a > bestA) { bestA = a; best = z; }
-      }
+      const best = bestZone(boxesByMap.get(p.map) || [], p.x, p.y);
       const areaid = best ? best.areaid : 0, zone = best ? best.name : (CONTINENT[p.map] || "Unknown");
       const key = `${p.name}|${areaid}`;
       const g = agg.get(key) || { object: p.name, areaid, zone, count: 0 };
@@ -473,15 +469,20 @@ async function showSpell(id) {
   wireTabs();
 }
 
-// How interior a point (x,y) sits in a zone's WMA box: min normalized distance to
-// the 4 edges, or -1 if the point is outside. Used to pick the most-specific zone
-// among overlapping boxes (see showNpc map view + npcLocationCell).
-function zoneInteriorness(z, x, y) {
-  const dx = z.loctop - z.locbottom, dy = z.locleft - z.locright;
-  if (!dx || !dy) return -1;
-  const fx = (x - z.locbottom) / dx, fy = (y - z.locright) / dy;
-  if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return -1;
-  return Math.min(fx, 1 - fx, fy, 1 - fy);
+// Does a zone's WMA box contain (x,y)? Boxes overlap, so among the containers the
+// SMALLEST-area one is the most-specific zone (matches build-db's home-zone rule;
+// keeps a spawn out of an oversized custom-zone box that blankets real zones).
+const zoneContains = (z, x, y) => x >= z.locbottom && x <= z.loctop && y >= z.locright && y <= z.locleft;
+const zoneArea = (z) => (z.loctop - z.locbottom) * (z.locleft - z.locright);
+// Smallest containing zone from a candidate list (each carries box bounds + x/y).
+function bestZone(rows, x, y) {
+  let best = null, bestArea = Infinity;
+  for (const z of rows) {
+    if (!zoneContains(z, x ?? z.x, y ?? z.y)) continue;
+    const a = zoneArea(z);
+    if (a > 0 && a < bestArea) { bestArea = a; best = z; }
+  }
+  return best;
 }
 
 // Build a Location cell for an NPC from its containing-zone rows (Q_NPC_LOC_ZONES,
@@ -489,8 +490,7 @@ function zoneInteriorness(z, x, y) {
 // most-interior containing zone; tags Dungeon/Raid; falls back to the instance name
 // for map-less instances. Returns { html, text } (text = sort key).
 function npcLocationCell(zoneRows, mapRows) {
-  let best = null, bs = -1;
-  for (const r of zoneRows) { const sc = zoneInteriorness(r, r.x, r.y); if (sc > bs) { bs = sc; best = r; } }
+  const best = bestZone(zoneRows);
   const tagOf = (t) => (t === 2 ? "Raid" : t === 1 ? "Dungeon" : null);
   if (best) {
     const m = mapRows.find((x) => x.mapid === best.mapid);
@@ -540,11 +540,11 @@ async function showNpc(id) {
   // no zone (e.g. map-less instances like Dire Maul, which have no parchment).
   const tally = new Map(); // areaid -> { zone, pts:[] }
   for (const s of npcSpawns) {
-    let best = null, bestScore = -1;
+    let best = null, bestArea = Infinity;
     for (const z of zoneCand) {
-      if (z.mapid !== s.map) continue;
-      const sc = zoneInteriorness(z, s.x, s.y);
-      if (sc > bestScore) { bestScore = sc; best = z; }
+      if (z.mapid !== s.map || !zoneContains(z, s.x, s.y)) continue;
+      const a = zoneArea(z);
+      if (a > 0 && a < bestArea) { bestArea = a; best = z; }
     }
     if (!best) continue;
     const e = tally.get(best.areaid) || { zone: best, pts: [] };
@@ -942,13 +942,14 @@ async function showZone(id, gatherItem = null) {
   const isInstance = !!typeLabel;
 
   const az = [z.areaid];
-  const [spawns, objects, loot, focusPts, focusItem, bossLoot, bossEntries] = await Promise.all([
+  const [spawns, objects, loot, focusPts, focusItem, bossLoot, bossEntries, zoneQuests] = await Promise.all([
     query(Q.Q_ZONE_SPAWNS, az), query(Q.Q_ZONE_OBJECTS, az),
     isInstance ? query(Q.Q_DUNGEON_LOOT, [z.mapid]) : query(Q.Q_ZONE_LOOT, az),
     gatherItem ? query(Q.Q_ZONE_FOCUS_SPAWNS, [z.areaid, gatherItem]) : [],
     gatherItem ? queryOne(Q.Q_ITEM_ICON, [gatherItem]) : null,
     isInstance ? query(Q.Q_DUNGEON_BOSS_LOOT, [z.mapid]) : [],
     isInstance ? query(Q.Q_MAP_BOSSES, [z.mapid]) : [],
+    query(Q.Q_ZONE_QUESTS, az),
   ]);
   // focus mode: only the gathered node's spawns, drawn with the item's icon
   const focus = focusPts.length
@@ -1017,17 +1018,22 @@ async function showZone(id, gatherItem = null) {
     { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
     { label: "Chance", num: true, cell: (r) => pct(r.chance), value: (r) => r.chance || 0 },
   ];
+  const questCols = [
+    { label: "Quest", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
+    { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
+  ];
   const tabDefs = [
     ...(isInstance ? [{ id: "bosses", label: "Boss Loot", ...regTable(bossCols, bossLoot, { pageSize: 500, groupable: true, group: 0 }) }] : []),
     { id: "npcs", label: "NPCs", ...regTable(npcCols, npcs, { pageSize: 100 }) },
+    { id: "quests", label: "Quests", ...regTable(questCols, zoneQuests, { pageSize: 100 }) },
     { id: "items", label: "Items", ...regTable(lootCols, loot, { pageSize: 100 }) },
     { id: "objects", label: "Objects", ...regTable(objCols, objs, { pageSize: 100 }) },
   ];
 
   // A few client-defined zones (e.g. not-yet-populated Turtle areas) have a map
-  // texture but no spawns recorded within their bounds -> three blank tabs. Show
+  // texture but no spawns recorded within their bounds -> blank tabs. Show
   // an explanatory note instead.
-  const hasData = npcs.length || objs.length || loot.length || bossLoot.length;
+  const hasData = npcs.length || objs.length || loot.length || bossLoot.length || zoneQuests.length;
   const body = hasData
     ? tabs(tabDefs)
     : `<div class="zone-empty muted">No NPCs, items, or objects are recorded within this

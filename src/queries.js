@@ -435,6 +435,14 @@ export const Q_FACTION_QUESTS = `
   FROM quest_reward_rep r JOIN quests q ON q.entry = r.quest
   WHERE r.faction = ?1 ORDER BY r.value DESC, q.level LIMIT 500`;
 
+// Quests bound to a zone: directly (q.zone = areaid) or in one of its sub-zones
+// (the sub-zone's area_template.zone_id points at this zone).
+export const Q_ZONE_QUESTS = `
+  SELECT q.entry, q.title, q.level FROM quests q
+  JOIN areas a ON a.entry = q.zone
+  WHERE (q.zone = ?1 OR a.zone_id = ?1) AND q.title <> ''
+  ORDER BY q.level, q.title LIMIT 1000`;
+
 // ---- zones (Leaflet maps) ----
 export const Q_ZONES = `SELECT areaid, name, mapid, spawns FROM zones WHERE name <> '' ORDER BY name`;
 export const Q_ZONE = `SELECT * FROM zones WHERE areaid = ?1`;

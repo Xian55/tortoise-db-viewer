@@ -657,7 +657,19 @@ async function testZone(id, expectName) {
   const tabList = await page.$$eval(".zone-page .tabbar .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) table tbody tr", (r) => r.length);
   console.log(`zone ${id}: name="${name}" mapImg=yes categories=${cats} tabs=[${tabList.join(", ")}] firstPaneRows=${rows}`);
-  return name.includes(expectName) && cats > 0 && tabList.length === 3 && rows > 0;
+  return name.includes(expectName) && cats > 0 && tabList.length >= 3 && rows > 0;
+}
+
+// A zone lists the quests bound to it (directly or in a sub-zone) as a tab.
+async function testZoneQuests(id, minQuests) {
+  await page.goto(`${BASE}?zone=${id}`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector(".zone-page .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".zone-page .tab")].find((t) => t.textContent.trim().startsWith("Quests")); if (b) b.click(); });
+  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) tbody tr", (r) => r.length);
+  const hasQuestLink = (await page.$(".zone-page .tabpane:not(.hidden) a.ilink[href*='quest=']")) !== null;
+  console.log(`zone-quests ${id}: rows=${rows} hasQuestLink=${hasQuestLink}`);
+  return rows >= minQuests && hasQuestLink;
 }
 
 // client-only zones (map texture, no spawns in the public SQL export) render the
@@ -706,6 +718,7 @@ ok = (await testQuestRepLink(14)) && ok;
 ok = (await testBrowse("factions", "", "Items")) && ok;
 ok = (await testZone(12, "Elwynn")) && ok;
 ok = (await testZone(5561, "Balor")) && ok;             // 1.18.1 zone, populated via migrations
+ok = (await testZoneQuests(331, 20)) && ok;             // Ashenvale quests tab (incl. sub-zones)
 ok = (await testEmptyZone(5722, "Thorn Gorge")) && ok; // 1.18.1 zone with no spawns upstream yet
 ok = (await testBrowse("zones", "", "Continent")) && ok;
 ok = (await testNpcLoad(15379, 400)) && ok;  // AQ NPC, many spawns; ~4ms healthy, 726ms if zone lookup unindexed
