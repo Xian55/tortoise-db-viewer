@@ -383,6 +383,19 @@ async function testDungeonNoMap(id, expectName) {
   return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && !mapDiv;
 }
 
+// Quest page shows the full chain (both directions) with the current quest marked.
+async function testQuestChain(id, minLen) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".quest-chain-list", { timeout: 40000 });
+  const items = await page.$$eval(".quest-chain-list li", (e) => e.length);
+  const cur = await page.$$eval(".quest-chain-list li.cur", (e) => e.length);
+  const nums = await page.$$eval(".quest-chain-list a.ilink", (a) =>
+    a.map((x) => Number(new URLSearchParams(x.getAttribute("href").split("?")[1]).get("quest"))));
+  const hasBack = nums.some((n) => n < id), hasFwd = nums.some((n) => n > id);
+  console.log(`quest-chain ${id}: items=${items} cur=${cur} back=${hasBack} fwd=${hasFwd}`);
+  return items >= minLen && cur === 1 && hasBack && hasFwd;
+}
+
 async function testHover() {
   await page.goto(`${BASE}?search=copper`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".results table tbody tr td a.ilink", { timeout: 40000 });
@@ -549,6 +562,7 @@ ok = (await testTeaches(70204, "Shadowforged")) && ok;  // recipe -> Teaches tab
 ok = (await testCustomIcon(9376, "Jang")) && ok;
 ok = (await testSearch("thunder")) && ok;
 ok = (await testQuest(14, "Militia")) && ok;
+ok = (await testQuestChain(55220, 11)) && ok;  // mid-chain quest: shows back + forward
 ok = (await testSearchTabs("defias")) && ok;
 ok = (await testSearchZone("Tanaris")) && ok;
 ok = (await testSearchDropdown("defias")) && ok;

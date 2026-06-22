@@ -337,6 +337,32 @@ export const Q_QUEST = `SELECT q.*, a.name AS zone_name, z.areaid AS zone_page
   WHERE q.entry = ?1`;
 export const Q_QUEST_BRIEF = `SELECT entry, title, level FROM quests WHERE entry = ?1`;
 
+// The whole quest chain connected to ?1, in BOTH directions. Quest links are
+// stored asymmetrically (prevquest is the common link; nextquest is rarer, and a
+// chain may use either), so we treat the prevquest/nextquest edges as undirected
+// and gather the full connected component: walk ancestors (up) and descendants
+// (down) of the quest, then return every quest in either set. abs(prevquest)
+// covers the negative "exclusive group" form. Ordered into a sequence client-side.
+export const Q_QUEST_CHAIN = `
+  WITH RECURSIVE
+  up(entry) AS (
+    SELECT ?1
+    UNION
+    SELECT abs(q.prevquest) FROM quests q JOIN up ON q.entry = up.entry WHERE q.prevquest <> 0
+    UNION
+    SELECT q.entry FROM quests q JOIN up ON q.nextquest = up.entry WHERE q.nextquest <> 0
+  ),
+  down(entry) AS (
+    SELECT ?1
+    UNION
+    SELECT q.entry FROM quests q JOIN down ON abs(q.prevquest) = down.entry WHERE q.prevquest <> 0
+    UNION
+    SELECT q.nextquest FROM quests q JOIN down ON q.entry = down.entry WHERE q.nextquest <> 0
+  )
+  SELECT q.entry, q.title, q.level, q.prevquest, q.nextquest FROM quests q
+  WHERE q.entry IN (SELECT entry FROM up UNION SELECT entry FROM down)
+  LIMIT 200`;
+
 export const Q_QUEST_GIVERS_NPC = `SELECT c.entry, c.name, c.level_min, c.level_max, c.rank FROM creature_quest_start r JOIN creatures c ON c.entry = r.id WHERE r.quest = ?1 ORDER BY c.level_max, c.name`;
 export const Q_QUEST_ENDERS_NPC = `SELECT c.entry, c.name, c.level_min, c.level_max, c.rank FROM creature_quest_end r JOIN creatures c ON c.entry = r.id WHERE r.quest = ?1 ORDER BY c.level_max, c.name`;
 export const Q_QUEST_GIVERS_GO = `SELECT g.entry, g.name FROM gameobject_quest_start r JOIN gameobjects g ON g.entry = r.id WHERE r.quest = ?1 ORDER BY g.name`;

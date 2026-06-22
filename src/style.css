@@ -190,6 +190,15 @@ a.ilink.zone { color: #8fd18f; }
 /* Objects-tab "add to map" toggle */
 .mapchk { display: inline-flex; align-items: center; cursor: pointer; }
 .quest-chain { margin-top: 6px; }
+/* Quest chain panel: ordered first->last, current quest highlighted */
+.quest-chain-box { padding: 10px 16px; margin-bottom: 16px; }
+.quest-chain-box h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); }
+.quest-chain-list { margin: 0; padding-left: 26px; max-height: 320px; overflow: auto; }
+.quest-chain-list li { padding: 2px 0; line-height: 1.4; }
+.quest-chain-list li.cur { list-style: none; margin-left: -26px; padding-left: 12px;
+  border-left: 3px solid var(--gold); }
+.quest-chain-list li.cur b { color: var(--gold); }
 .quest-desc { padding: 12px 16px; margin-bottom: 16px; line-height: 1.5; }
 .quest-desc h3 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase;
   letter-spacing: .03em; color: var(--muted); }

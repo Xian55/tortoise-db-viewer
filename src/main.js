@@ -598,6 +598,49 @@ function questText(t) {
     .replace(/\r?\n/g, "<br>");
 }
 
+// Render the full quest chain (Q_QUEST_CHAIN rows = the connected component) as an
+// ordered list with the current quest highlighted. Edges: a quest's prevquest
+// (abs covers the negative "exclusive group" form) and nextquest. Topologically
+// sorted so a linear chain reads first->last; ties break by level then entry.
+function renderQuestChain(rows, current) {
+  if (!rows || rows.length < 2) return "";
+  const byId = new Map(rows.map((r) => [r.entry, r]));
+  const cmp = (a, b) => (a.level || 0) - (b.level || 0) || a.entry - b.entry;
+  const adj = new Map(rows.map((r) => [r.entry, []]));
+  const indeg = new Map(rows.map((r) => [r.entry, 0]));
+  const edges = new Set();
+  const addEdge = (a, b) => {
+    if (a === b || !byId.has(a) || !byId.has(b) || edges.has(`${a}>${b}`)) return;
+    edges.add(`${a}>${b}`); adj.get(a).push(b); indeg.set(b, indeg.get(b) + 1);
+  };
+  for (const r of rows) {
+    const p = Math.abs(r.prevquest || 0);
+    if (p) addEdge(p, r.entry);
+    if (r.nextquest) addEdge(r.entry, r.nextquest);
+  }
+  // Kahn topological sort, picking the lowest-level node available at each step.
+  const ready = rows.filter((r) => indeg.get(r.entry) === 0);
+  const deg = new Map(indeg);
+  const order = [];
+  const placed = new Set();
+  while (ready.length) {
+    ready.sort(cmp);
+    const r = ready.shift();
+    if (placed.has(r.entry)) continue;
+    placed.add(r.entry); order.push(r);
+    for (const c of adj.get(r.entry)) { deg.set(c, deg.get(c) - 1); if (deg.get(c) === 0) ready.push(byId.get(c)); }
+  }
+  for (const r of rows) if (!placed.has(r.entry)) order.push(r); // cycle / leftover fallback
+
+  const items = order.map((r) => {
+    const lvl = r.level > 0 ? ` <span class="dim">(Lvl ${r.level})</span>` : "";
+    const body = r.entry === current ? `<b>${esc(r.title)}</b>` : questLink(r.entry, r.title);
+    return `<li${r.entry === current ? ' class="cur"' : ""}>${body}${lvl}</li>`;
+  }).join("");
+  const more = rows.length >= 200 ? `<div class="dim" style="margin-top:4px">(chain truncated)</div>` : "";
+  return `<div class="panel quest-chain-box"><h3>Quest Chain <span class="dim">(${order.length})</span></h3><ol class="quest-chain-list">${items}</ol>${more}</div>`;
+}
+
 async function showQuest(id) {
   app.innerHTML = `<div class="loading">Loading quest ${id}…</div>`;
   let q;
@@ -605,14 +648,13 @@ async function showQuest(id) {
   if (!q) { app.innerHTML = `<div class="home"><p>No quest with ID ${id}.</p></div>`; return; }
   document.title = `${q.title} - Tortoise-WoW DB`;
 
-  const [giversN, endersN, giversG, endersG, qitems, qcreatures, qrep, rewSpell, prev, next] =
+  const [giversN, endersN, giversG, endersG, qitems, qcreatures, qrep, rewSpell, chainRows] =
     await Promise.all([
       query(Q.Q_QUEST_GIVERS_NPC, [id]), query(Q.Q_QUEST_ENDERS_NPC, [id]),
       query(Q.Q_QUEST_GIVERS_GO, [id]), query(Q.Q_QUEST_ENDERS_GO, [id]),
       query(Q.Q_QUEST_ITEMS, [id]), query(Q.Q_QUEST_CREATURES, [id]), query(Q.Q_QUEST_REP, [id]),
       q.rewspell ? queryOne(Q.Q_SPELL, [q.rewspell]) : null,
-      q.prevquest > 0 ? queryOne(Q.Q_QUEST_BRIEF, [q.prevquest]) : null,
-      q.nextquest > 0 ? queryOne(Q.Q_QUEST_BRIEF, [q.nextquest]) : null,
+      query(Q.Q_QUEST_CHAIN, [id]),
     ]);
 
   const byRole = (role) => qitems.filter((r) => r.role === role);
@@ -635,9 +677,7 @@ async function showQuest(id) {
       (q.reqskillvalue > 0 ? ` (${q.reqskillvalue})` : ""));
   }
 
-  const chain = [];
-  if (prev) chain.push(`<span class="dim">← Previous:</span> ${questLink(prev.entry, prev.title)}`);
-  if (next) chain.push(`<span class="dim">Next →:</span> ${questLink(next.entry, next.title)}`);
+  const chainHtml = renderQuestChain(chainRows, q.entry);
 
   // ---- reward summary ----
   const rewBits = [];
@@ -686,8 +726,8 @@ async function showQuest(id) {
         <h1>${esc(q.title)}</h1>
         <div class="npc-meta muted">${bits.join(" · ")}<span class="dim"> · Quest #${q.entry}</span></div>
         ${restr.length ? `<div class="npc-meta muted">${restr.map(esc).join(" · ")}</div>` : ""}
-        ${chain.length ? `<div class="npc-meta quest-chain">${chain.join('<span class="dim"> · </span>')}</div>` : ""}
       </div>
+      ${chainHtml}
       ${desc.length ? `<div class="panel quest-desc">${desc.join("")}</div>` : ""}
       ${tabs(tabDefs)}
     </div>`;
