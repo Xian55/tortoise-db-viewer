@@ -385,8 +385,8 @@ async function testInstanceZone(areaid, expectName) {
   return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && hasMap && bossPins > 0;
 }
 
-// A map-less instance (no WorldMap parchment, e.g. Dire Maul) still renders via
-// the ?dungeon= fallback: Boss Loot tab, no zone map.
+// A map-less instance (no WorldMap parchment, e.g. Lower Karazhan Halls) still
+// renders via the ?dungeon= fallback: Boss Loot tab, no zone map.
 async function testDungeonNoMap(id, expectName) {
   await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".npc-head h1", { timeout: 40000 });
@@ -600,10 +600,12 @@ ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
 ok = (await testNpcMap(2376)) && ok;  // NPC page shows its zone map + spawn pins
 ok = (await testNpcMapZone(596, 1581)) && ok;  // overlapping boxes -> most-interior zone
+ok = (await testNpcMapZone(11501, 2557)) && ok;  // Dire Maul interior NPC (King Gordok)
 ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;          // ?dungeon= redirects to the zone view
 ok = (await testInstanceZone(5138, "Deadmines")) && ok;  // ?zone= auto-detects the dungeon
-ok = (await testDungeonNoMap(429, "Dire Maul")) && ok;   // map-less instance fallback
+ok = (await testInstanceZone(2557, "Dire Maul")) && ok;  // interior map (areaId collision fix)
+ok = (await testDungeonNoMap(532, "Lower Karazhan Halls")) && ok;  // map-less instance fallback
 ok = (await testBrowsePersist()) && ok;
 ok = (await testBrowseMulti()) && ok;
 ok = (await testBrowseCriteria()) && ok;

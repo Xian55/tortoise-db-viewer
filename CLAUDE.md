@@ -186,8 +186,14 @@ the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
   dims MUST equal the world-bound rectangle or Leaflet markers misalign).
   `spawn_points`/`zones` tables are built in CI from these + the SQL dumps (which
   carry spawn coords). NPC pages resolve their open-world zone from spawn coords by
-  the largest containing WMA box (boxes overlap at borders; no true coord→area in
-  the dumps). Future seamless minimap: `X:\Programming\WoWTools.Minimaps` (.NET).
+  the largest containing WMA box for the **Location label**, but the **map** plots on
+  the most *interior* containing box (so a Deadmines-entrance spawn picks the tiny
+  "The Deadmines" sub-zone, not Westfall). Several WMAs share one areaId — an
+  instance interior (mapId = the instance) plus a continent "entrance" mini-map; the
+  output is areaId-keyed, so extract-maps **prefers the instance interior** (e.g.
+  Dire Maul 2557 → the `DireMaul` interior on map 429, not `DireMaulEntrance`). The
+  7-or-so map-less instances (no WorldMap at all) fall back to a tab-only page.
+  Future seamless minimap: `X:\Programming\WoWTools.Minimaps` (.NET).
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
 - `scripts/lib/sqlite.mjs` — Bun/Node SQLite wrapper.

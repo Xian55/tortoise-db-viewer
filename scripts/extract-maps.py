@@ -202,15 +202,27 @@ def main():
             got += 1
         return sub.crop((0, 0, w, h)) if got else None
 
+    # Several WorldMapAreas share one areaId: an instance interior (mapId = the
+    # instance map) AND a continent "entrance" mini-map (mapId 0/1). The output is
+    # keyed by areaId (one image + one zones row), so we must pick one -- prefer the
+    # instance interior (the dungeon map players want; e.g. Dire Maul 2557 -> the
+    # 'DireMaul' interior on map 429, not 'DireMaulEntrance' on Kalimdor). For
+    # instance-vs-instance or entrance-vs-entrance ties, last-seen wins (unchanged).
+    CONTINENTS = {0, 1}
+    chosen = {}
+    for z in rows:
+        if not z["dir"] or z["areaId"] <= 0:
+            continue
+        cur = chosen.get(z["areaId"])
+        if cur is None or (z["mapId"] not in CONTINENTS) or (cur["mapId"] in CONTINENTS):
+            chosen[z["areaId"]] = z  # keep instance over continent; else last wins
+
     os.makedirs(OUT_MAPS, exist_ok=True)
     zones = []
     skipped = 0
     n_ovl = 0
-    for z in rows:
+    for z in chosen.values():
         d = z["dir"]
-        if not d or z["areaId"] <= 0:
-            skipped += 1
-            continue
         base = load_grid(d, d, W, H)   # unexplored parchment (full 1024x768)
         if base is None:
             skipped += 1

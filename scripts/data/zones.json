@@ -960,18 +960,6 @@
 "h": 668
 },
 {
-"wmaId": 621,
-"areaId": 2557,
-"mapId": 429,
-"dir": "DireMaul",
-"locleft": 1007.0,
-"locright": -912.0,
-"loctop": 955.0,
-"locbottom": -295.0,
-"w": 1002,
-"h": 668
-},
-{
 "wmaId": 623,
 "areaId": 1584,
 "mapId": 230,
@@ -1416,18 +1404,6 @@
 "h": 668
 },
 {
-"wmaId": 689,
-"areaId": 2557,
-"mapId": 1,
-"dir": "DireMaulEntrance",
-"locleft": 2014.0,
-"locright": 690.0,
-"loctop": -3401.0,
-"locbottom": -4270.0,
-"w": 1002,
-"h": 668
-},
-{
 "wmaId": 691,
 "areaId": 5601,
 "mapId": 816,
@@ -1448,18 +1424,6 @@
 "locright": -5345.0,
 "loctop": -5424.0,
 "locbottom": -6774.0,
-"w": 1002,
-"h": 668
-},
-{
-"wmaId": 696,
-"areaId": 5640,
-"mapId": 819,
-"dir": "Timbermaw",
-"locleft": -2991.0,
-"locright": -4416.0,
-"loctop": -7195.0,
-"locbottom": -8157.0,
 "w": 1002,
 "h": 668
 },
@@ -1500,18 +1464,6 @@
 "h": 668
 },
 {
-"wmaId": 701,
-"areaId": 5640,
-"mapId": 1,
-"dir": "TimbermawEntrance",
-"locleft": -4646.0,
-"locright": -5993.0,
-"loctop": 5175.0,
-"locbottom": 4204.0,
-"w": 1002,
-"h": 668
-},
-{
 "wmaId": 702,
 "areaId": 5722,
 "mapId": 821,
@@ -1544,6 +1496,30 @@
 "locright": -3671.0,
 "loctop": -5053.0,
 "locbottom": -5332.0,
+"w": 1002,
+"h": 668
+},
+{
+"wmaId": 621,
+"areaId": 2557,
+"mapId": 429,
+"dir": "DireMaul",
+"locleft": 1007.0,
+"locright": -912.0,
+"loctop": 955.0,
+"locbottom": -295.0,
+"w": 1002,
+"h": 668
+},
+{
+"wmaId": 696,
+"areaId": 5640,
+"mapId": 819,
+"dir": "Timbermaw",
+"locleft": -2991.0,
+"locright": -4416.0,
+"loctop": -7195.0,
+"locbottom": -8157.0,
 "w": 1002,
 "h": 668
 }
