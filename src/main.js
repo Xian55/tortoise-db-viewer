@@ -513,22 +513,12 @@ async function showNpc(id) {
     query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]), query(Q.Q_NPC_ZONES, [id]),
     query(Q.Q_NPC_TRAINS, [id]), query(Q.Q_NPC_SPAWNS, [id]),
   ]);
-  // Resolve the open-world zone per continent. WMA boxes overlap at borders and
-  // the dumps lack true coord->area, so among the boxes containing a spawn we take
-  // the largest = the encompassing zone (e.g. Camp Taurajo -> The Barrens, not the
-  // clipped Mulgore corner; cities resolve to their parent zone).
-  const zoneByMap = {};
-  for (const z of zoneCand) {
-    const area = (z.loctop - z.locbottom) * (z.locleft - z.locright);
-    if (!zoneByMap[z.mapid] || area > zoneByMap[z.mapid].area) zoneByMap[z.mapid] = { ...z, area };
-  }
-  // Map view: WMA boxes overlap (a spawn at the Deadmines entrance falls inside
-  // Westfall, Stranglethorn AND the tiny "The Deadmines" sub-zone). The largest box
-  // is right for the Location label (encompassing zone) but wrong for the map -- we
-  // want the parchment the spawn sits most comfortably on. So per spawn, pick the
-  // containing zone where it is most *interior* (max min-distance to the box edges),
-  // then render the zone that holds the most spawns. Drops spawns with no zone (e.g.
-  // map-less instances like Dire Maul, which have no parchment).
+  // WMA boxes overlap (a spawn at the Deadmines entrance falls inside Westfall,
+  // Stranglethorn AND the tiny "The Deadmines" sub-zone). Among the boxes that
+  // contain a spawn, pick the one where it sits most *interior* (max min-distance to
+  // the box edges) -- the zone whose parchment frames it best. Both the map and the
+  // Location label use this same resolution so they always agree. Drops spawns with
+  // no zone (e.g. map-less instances like Dire Maul, which have no parchment).
   const tally = new Map(); // areaid -> { zone, pts:[] }
   for (const s of npcSpawns) {
     let best = null, bestScore = -1;
@@ -543,11 +533,18 @@ async function showNpc(id) {
   }
   let mapZone = null, mapPts = [];
   for (const e of tally.values()) if (e.pts.length > mapPts.length) { mapPts = e.pts; mapZone = e.zone; }
+  // per continent map, the interior zone holding the most of this NPC's spawns ->
+  // the Location label (same zone the map shows).
+  const zoneByMap = {};
+  for (const e of tally.values()) {
+    const mid = e.zone.mapid;
+    if (!zoneByMap[mid] || e.pts.length > zoneByMap[mid].count) zoneByMap[mid] = { zone: e.zone, count: e.pts.length };
+  }
   const mapHtml = maps.map((m) => {
     const tag = m.type === 2 ? "Raid" : m.type === 1 ? "Dungeon" : null;
     if (tag) return `${dungeonLink(m.id, m.name)} <span class="dim">(${tag})</span>`;
     // continent: append the resolved zone link -> "Kalimdor › The Barrens"
-    const z = zoneByMap[m.id];
+    const z = zoneByMap[m.id] && zoneByMap[m.id].zone;
     return `${esc(m.name)}${z ? ` <span class="dim">›</span> ${zoneLink(z.areaid, z.name)}` : ""}`;
   }).join(", ");
 

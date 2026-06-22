@@ -279,6 +279,18 @@ async function testNpcMapZone(id, areaid) {
   return match && pins > 0;
 }
 
+// The Location label must name the SAME zone the map shows (both use the most-
+// interior containing box). NPC 80208 -> Thalassian Highlands (5225), not the
+// larger Grim Reaches box it merely clips.
+async function testNpcLocationLabel(id, areaid) {
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-head", { timeout: 40000 });
+  const href = await page.$eval(".npc-head .npc-meta a.ilink.zone", (e) => e.getAttribute("href")).catch(() => "");
+  const match = href.includes(`zone=${areaid}`);
+  console.log(`npc-loc-label ${id}: href="${href}" wantZone=${areaid} match=${match}`);
+  return match;
+}
+
 async function testNpcTypeLink(id) {
   await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".npc-meta a.nav[href*='browse=npcs']", { timeout: 40000 });
@@ -620,6 +632,9 @@ ok = (await testNpcTypeLink(2376)) && ok;
 ok = (await testNpcMap(2376)) && ok;  // NPC page shows its zone map + spawn pins
 ok = (await testNpcMapZone(596, 1581)) && ok;  // overlapping boxes -> most-interior zone
 ok = (await testNpcMapZone(11501, 2557)) && ok;  // Dire Maul interior NPC (King Gordok)
+ok = (await testNpcMapZone(80208, 5225)) && ok;  // map = most-spawned interior zone
+ok = (await testNpcLocationLabel(80208, 5225)) && ok;  // label agrees with the map
+ok = (await testNpcLocationLabel(596, 1581)) && ok;
 ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;          // ?dungeon= redirects to the zone view
 ok = (await testInstanceZone(5138, "Deadmines")) && ok;  // ?zone= auto-detects the dungeon
