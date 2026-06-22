@@ -216,7 +216,12 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null) {
   for (const key of objKeys) addCat(key, false);
 
   L.control.layers(null, overlays, { collapsed: true }).addTo(map);
-  if (focusBounds && focusBounds.isValid()) map.fitBounds(focusBounds.pad(0.3));
+  if (focusBounds && focusBounds.isValid()) {
+    // NPC view: a tight spawn cluster would otherwise slam to maxZoom. Keep zone
+    // context -- pad wide and cap the fit a couple levels above the whole-zone fit.
+    if (focus.npc) map.fitBounds(focusBounds.pad(0.6), { maxZoom: Math.min(map.getMaxZoom(), fitZoom + 2), padding: [30, 30] });
+    else map.fitBounds(focusBounds.pad(0.3));
+  }
   setTimeout(() => { map.invalidateSize(); redraw(); }, 0);
 
   // ---- hover tooltip + click for the Pixi dots (no per-marker DOM) ----
