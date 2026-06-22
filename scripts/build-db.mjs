@@ -849,15 +849,42 @@ console.log("Importing zones + spawn points...");
     console.log("  (no zones.json -- run scripts/extract-maps.py for the zone maps)");
   }
 
-  db.exec(`CREATE TABLE spawn_points (kind TEXT, id INTEGER, map INTEGER, x REAL, y REAL)`);
-  const sSp = db.prepare(`INSERT INTO spawn_points VALUES (?,?,?,?,?)`);
+  // Assign each spawn to ONE home zone: among the WMA boxes (same map) containing
+  // the point, the one where it sits most *interior* (max min-distance to the box
+  // edges). WMA boxes overlap -- a city box nests inside its parent zone -- so a
+  // plain point-in-rectangle test leaks e.g. Orgrimmar NPCs into Ashenvale. The
+  // interior pick gives the most-specific zone (the same logic the NPC page uses),
+  // and the zone page then filters on this precomputed zone id.
+  const boxesByMap = new Map();
+  for (const z of db.prepare(`SELECT areaid, mapid, locbottom, loctop, locright, locleft FROM zones`).all()) {
+    if (!boxesByMap.has(z.mapid)) boxesByMap.set(z.mapid, []);
+    boxesByMap.get(z.mapid).push(z);
+  }
+  const homeZone = (map, x, y) => {
+    const boxes = boxesByMap.get(map);
+    if (!boxes || x == null || y == null) return null;
+    let best = null, bs = -1;
+    for (const z of boxes) {
+      const dx = z.loctop - z.locbottom, dy = z.locleft - z.locright;
+      if (!dx || !dy) continue;
+      const fx = (x - z.locbottom) / dx, fy = (y - z.locright) / dy;
+      if (fx < 0 || fx > 1 || fy < 0 || fy > 1) continue;
+      const s = Math.min(fx, 1 - fx, fy, 1 - fy);
+      if (s > bs) { bs = s; best = z; }
+    }
+    return best ? best.areaid : null;
+  };
+
+  db.exec(`CREATE TABLE spawn_points (kind TEXT, id INTEGER, map INTEGER, x REAL, y REAL, zone INTEGER)`);
+  const sSp = db.prepare(`INSERT INTO spawn_points VALUES (?,?,?,?,?,?)`);
   const loadSpawns = (file, table, kind) => {
     const cols = srcColumns(table, file);
     const iId = cols.indexOf("id"), iMap = cols.indexOf("map"), iX = cols.indexOf("position_x"), iY = cols.indexOf("position_y");
     let n = 0;
     db.transaction(() => {
       for (const row of srcRows(table, file)) {
-        sSp.run(kind, clean(row[iId]), clean(row[iMap]), clean(row[iX]), clean(row[iY]));
+        const map = clean(row[iMap]), x = clean(row[iX]), y = clean(row[iY]);
+        sSp.run(kind, clean(row[iId]), map, x, y, homeZone(map, x, y));
         n++;
       }
     })();
@@ -867,12 +894,11 @@ console.log("Importing zones + spawn points...");
   const ngo = src.has("gameobject") ? loadSpawns("tw_world_gameobject.sql", "gameobject", "o") : 0;
   db.exec(`CREATE INDEX idx_spawn_map ON spawn_points(map)`);
   db.exec(`CREATE INDEX idx_spawn_id ON spawn_points(kind, id)`); // NPC-page zone lookup
+  db.exec(`CREATE INDEX idx_spawn_zone ON spawn_points(zone, kind)`); // zone-page spawns
   console.log(`  spawn_points: ${nc} creatures + ${ngo} objects`);
 
-  // precompute per-zone spawn count (point-in-rectangle) for the browse list
-  db.exec(`UPDATE zones SET spawns = (SELECT COUNT(*) FROM spawn_points s
-    WHERE s.map = zones.mapid AND s.x BETWEEN zones.locbottom AND zones.loctop
-      AND s.y BETWEEN zones.locright AND zones.locleft)`);
+  // precompute per-zone spawn count (home-zone membership) for the browse list
+  db.exec(`UPDATE zones SET spawns = (SELECT COUNT(*) FROM spawn_points s WHERE s.zone = zones.areaid)`);
 }
 
 // staging tables have served their purpose; drop them so VACUUM reclaims the

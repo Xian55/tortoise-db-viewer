@@ -941,11 +941,11 @@ async function showZone(id, gatherItem = null) {
   const typeLabel = mapInfo && (mapInfo.type === 2 ? "Raid" : mapInfo.type === 1 ? "Dungeon" : null);
   const isInstance = !!typeLabel;
 
-  const rect = [z.mapid, z.locbottom, z.loctop, z.locright, z.locleft];
+  const az = [z.areaid];
   const [spawns, objects, loot, focusPts, focusItem, bossLoot, bossEntries] = await Promise.all([
-    query(Q.Q_ZONE_SPAWNS, rect), query(Q.Q_ZONE_OBJECTS, rect),
-    isInstance ? query(Q.Q_DUNGEON_LOOT, [z.mapid]) : query(Q.Q_ZONE_LOOT, rect),
-    gatherItem ? query(Q.Q_ZONE_FOCUS_SPAWNS, [...rect, gatherItem]) : [],
+    query(Q.Q_ZONE_SPAWNS, az), query(Q.Q_ZONE_OBJECTS, az),
+    isInstance ? query(Q.Q_DUNGEON_LOOT, [z.mapid]) : query(Q.Q_ZONE_LOOT, az),
+    gatherItem ? query(Q.Q_ZONE_FOCUS_SPAWNS, [z.areaid, gatherItem]) : [],
     gatherItem ? queryOne(Q.Q_ITEM_ICON, [gatherItem]) : null,
     isInstance ? query(Q.Q_DUNGEON_BOSS_LOOT, [z.mapid]) : [],
     isInstance ? query(Q.Q_MAP_BOSSES, [z.mapid]) : [],

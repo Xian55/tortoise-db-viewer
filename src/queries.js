@@ -159,17 +159,15 @@ export const Q_ZONE_BOXES = `SELECT areaid, name, mapid, locleft, locright, loct
 export const Q_ITEM_ICON = `SELECT i.name, di.icon FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id WHERE i.entry = ?1`;
 
 // Spawn points within a zone of the object(s) that yield a given item -- powers
-// the focused "show only Earthroot nodes" view. ?1=map, ?2-5=rect, ?6=item.
+// the focused "show only Earthroot nodes" view. ?1=zone areaid, ?2=item.
 // CROSS JOIN pins the order (drops -> gameobjects -> spawn_points); INDEXED BY
-// keeps s on idx_spawn_id (kind,id) -- otherwise the s.map predicate lures the
-// planner onto idx_spawn_map (all of map 0) and it balloons to ~400ms.
+// keeps s on idx_spawn_id (kind,id).
 export const Q_ZONE_FOCUS_SPAWNS = `
   SELECT g.name, s.x, s.y
   FROM drops d
   CROSS JOIN gameobjects g ON g.data1 = d.owner
   CROSS JOIN spawn_points s INDEXED BY idx_spawn_id ON s.kind = 'o' AND s.id = g.entry
-  WHERE d.src = 'o' AND d.item = ?6 AND s.map = ?1
-    AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5 LIMIT 5000`;
+  WHERE d.src = 'o' AND d.item = ?2 AND s.zone = ?1 LIMIT 5000`;
 
 // All crafts (browse Crafting view). One row per (craft spell, reagent); the view
 // groups reagents per spell client-side. skill_min/skill_max give the yellow/grey
@@ -447,35 +445,33 @@ export const Q_DUNGEON_ZONE = `
   FROM zones WHERE mapid = ?1
   ORDER BY (loctop - locbottom) * (locleft - locright) DESC LIMIT 1`;
 
-// Spawns inside a zone's world rectangle (?1=mapid, ?2=locbottom, ?3=loctop,
-// ?4=locright, ?5=locleft). Creature markers carry the inputs the classifier
-// needs (npc_flags + whether the NPC starts/ends a quest).
+// Spawns assigned to a zone (?1 = areaid; see build-db home-zone assignment).
+// Creature markers carry the inputs the classifier needs (npc_flags + whether the
+// NPC starts/ends a quest).
 export const Q_ZONE_SPAWNS = `
   SELECT s.x, s.y, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags,
          (EXISTS(SELECT 1 FROM creature_quest_start q WHERE q.id = c.entry)
        OR EXISTS(SELECT 1 FROM creature_quest_end q WHERE q.id = c.entry)) AS questgiver
   FROM spawn_points s JOIN creatures c ON c.entry = s.id
-  WHERE s.kind = 'c' AND s.map = ?1 AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5
+  WHERE s.kind = 'c' AND s.zone = ?1
   LIMIT 8000`;
 
 export const Q_ZONE_OBJECTS = `
   SELECT s.x, s.y, g.entry, g.name, g.type
   FROM spawn_points s JOIN gameobjects g ON g.entry = s.id
-  WHERE s.kind = 'o' AND s.map = ?1 AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5
+  WHERE s.kind = 'o' AND s.zone = ?1
   LIMIT 4000`;
 
-// Items dropped by creatures that spawn in the zone (for the zone's Items tab).
-// Items dropped by creatures spawning in the zone. Collapse the ~8000 spawns to
-// their distinct loot tables FIRST (a few hundred), then join drops -> items;
-// otherwise the loot join runs per-spawn (12x redundant) and a huge zone like the
-// Barrens takes ~1.4s.
+// Items dropped by creatures assigned to the zone (for the zone's Items tab).
+// Collapse the spawns to their distinct loot tables FIRST (a few hundred), then
+// join drops -> items; otherwise the loot join runs per-spawn (12x redundant) and
+// a huge zone like the Barrens takes ~1.4s.
 export const Q_ZONE_LOOT = `
   WITH lids(lid) AS (
     SELECT DISTINCT c.loot_id
-    FROM spawn_points s INDEXED BY idx_spawn_map
+    FROM spawn_points s INDEXED BY idx_spawn_zone
     JOIN creatures c ON c.entry = s.id
-    WHERE s.kind = 'c' AND s.map = ?1 AND s.x BETWEEN ?2 AND ?3 AND s.y BETWEEN ?4 AND ?5
-      AND c.loot_id <> 0)
+    WHERE s.kind = 'c' AND s.zone = ?1 AND c.loot_id <> 0)
   SELECT i.entry, i.name, i.quality, i.item_level, i.required_level, di.icon
   FROM lids
   JOIN drops d ON d.src = 'c' AND d.owner = lids.lid
