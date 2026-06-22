@@ -116,6 +116,11 @@ function importSpec(spec) {
 console.log("Importing core tables...");
 for (const spec of IMPORTS) importSpec(spec);
 
+// creature_template.display_id1 is the creature's default model (always nonzero
+// in the dump). Expose it as `display_id` -- the key for Wowhead's pre-rendered
+// model thumbnail (render.js modelThumbUrl). display_id2..4 are unused here.
+db.exec("ALTER TABLE creatures RENAME COLUMN display_id1 TO display_id");
+
 // The server SQL item_display_info dump is missing or stale for Turtle's newer
 // items (both custom AND standard icons). The supplement -- extracted once from
 // the client ItemDisplayInfo.dbc (scripts/extract-icons.py) and committed --

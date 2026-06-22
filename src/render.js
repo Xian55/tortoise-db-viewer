@@ -247,6 +247,14 @@ export function npcLink(entry, name) {
   return `<a class="ilink npc" href="?npc=${entry}">${esc(name)}</a>`;
 }
 
+// Wowhead's pre-rendered creature thumbnail (Classic branch), keyed by the
+// creature's display_id (creature_template.display_id1). 404s for some creatures
+// -- incl. Turtle-custom ones Wowhead never saw -- so callers must hide on the
+// <img> error (see hovercard.js model card).
+export function modelThumbUrl(displayId) {
+  return `https://wow.zamimg.com/modelviewer/classic/webthumbs/npc/${displayId % 256}/${displayId}.webp`;
+}
+
 export function dungeonLink(id, name) {
   return `<a class="ilink" href="?dungeon=${id}">${esc(name)}</a>`;
 }

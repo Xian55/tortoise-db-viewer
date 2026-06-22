@@ -626,7 +626,7 @@ async function showNpc(id) {
         ${npc.subname ? `<span class="npc-sub muted">&lt;${esc(npc.subname)}&gt;</span>` : ""}
         <div class="npc-meta muted">${bits.join(" · ")}${hp ? " · " + hp : ""}
           ${roles.map((r) => `<span class="tagx">${esc(r)}</span>`).join("")}
-          <span class="dim">· NPC #${npc.entry}</span></div>
+          <span class="dim">· NPC #${npc.entry}</span>${npc.display_id ? `<span class="dim"> · </span><span class="model-link" data-display="${npc.display_id}" tabindex="0" title="Hover to preview the 3D model">Model #${npc.display_id}</span>` : ""}</div>
         ${mapHtml ? `<div class="npc-meta muted">Location: ${mapHtml}</div>` : ""}
       </div>
       ${mapZone ? `<div id="zonemap"></div>` : noMapNote}

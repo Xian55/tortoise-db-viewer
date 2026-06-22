@@ -127,6 +127,11 @@ h1 { font-size: 22px; }
 .npc-meta { margin-top: 8px; }
 .npc-boss { color: #ff8000; } .npc-rare { color: #a335ee; } .npc-elite { color: #ffd100; }
 .npc-meta .dim { opacity: .7; }
+.model-link { cursor: help; border-bottom: 1px dotted var(--muted); }
+.model-card { text-align: center; }
+.model-card .model-id { margin: 0 0 6px; }
+.model-card .model-thumb { display: block; max-width: 256px; min-width: 120px;
+  min-height: 80px; background: rgba(0, 0, 0, .25); border-radius: 6px; }
 .tagx { display: inline-block; padding: 1px 8px; margin-left: 4px; font-size: 12px;
   background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
 

@@ -26,7 +26,8 @@ export const IMPORTS = [
     table: "creature_template",
     target: "creatures",
     columns: ["entry", "name", "subname", "level_min", "level_max", "rank", "type", "faction",
-      "health_min", "health_max", "npc_flags", "loot_id", "pickpocket_loot_id", "skinning_loot_id"],
+      "health_min", "health_max", "npc_flags", "loot_id", "pickpocket_loot_id", "skinning_loot_id",
+      "display_id1"], // display_id1 -> renamed to display_id in build-db (Wowhead model thumb key)
     text: ["name", "subname"],
     pk: "entry",
     indexes: ["loot_id", "pickpocket_loot_id", "skinning_loot_id"],

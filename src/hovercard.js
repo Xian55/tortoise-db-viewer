@@ -1,7 +1,7 @@
 // Floating tooltip shown when hovering an item or quest link. Items reuse
 // renderTooltip; quests get a compact card. Queried lazily, cached per key.
 import { queryOne } from "./db.js";
-import { renderTooltip, spellTooltip, esc } from "./render.js";
+import { renderTooltip, spellTooltip, modelThumbUrl, esc } from "./render.js";
 import { Q_ITEM, Q_SPELL, Q_QUEST } from "./queries.js";
 import { QUEST_TYPE, questZoneLabel } from "./constants.js";
 
@@ -47,6 +47,13 @@ async function getHtml(kind, id) {
   } else if (kind === "spell") {
     const sp = await queryOne(Q_SPELL, [id]);
     if (sp) html = spellTooltip(sp);
+  } else if (kind === "model") {
+    // No DB round-trip: the display_id is already on the page. Render the
+    // Wowhead thumb; if it 404s (Turtle-custom / un-rendered), swap to a note.
+    html = `<div class="tooltip model-card"><div class="model-id muted">Display ID ${id}</div>` +
+      `<img class="model-thumb" src="${modelThumbUrl(id)}" alt="" ` +
+      `onerror="this.replaceWith(Object.assign(document.createElement('div'),` +
+      `{className:'model-id muted',textContent:'No 3D preview available'}))"></div>`;
   }
   cache.set(key, html);
   return html;
@@ -84,6 +91,8 @@ async function showFor(kind, id) {
 export function initHovercards() {
   document.addEventListener("mouseover", (e) => {
     mx = e.clientX; my = e.clientY;
+    const model = e.target.closest("[data-display]");
+    if (model) { showFor("model", Number(model.getAttribute("data-display"))); return; }
     const a = e.target.closest('a.ilink[href^="?item="], a.ilink[href^="?quest="], a.ilink[href^="?spell="]');
     if (a) {
       const p = new URLSearchParams(a.getAttribute("href").slice(1));

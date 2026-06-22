@@ -139,8 +139,10 @@ async function testNpc(id, expectName, expectTab) {
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   const tabsList = await page.$$eval(".tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
   const sortableH = await page.$$eval(".tabpane:not(.hidden) th.sortable", (e) => e.length);
-  console.log(`npc ${id}: name="${name}" tabs=[${tabsList.join(", ")}] sortableHdrs=${sortableH}`);
-  return name.includes(expectName) && tabsList.length > 0 && sortableH > 0 && (!expectTab || tabsList.some((t) => t.includes(expectTab)));
+  // Every creature has a display_id -> the meta line must carry the model thumb hook.
+  const display = await page.$eval(".npc-meta .model-link", (e) => e.getAttribute("data-display")).catch(() => null);
+  console.log(`npc ${id}: name="${name}" tabs=[${tabsList.join(", ")}] sortableHdrs=${sortableH} model=${display}`);
+  return name.includes(expectName) && tabsList.length > 0 && sortableH > 0 && !!display && (!expectTab || tabsList.some((t) => t.includes(expectTab)));
 }
 
 // Measure the in-app (SPA) navigation render time — the actual "click an NPC"

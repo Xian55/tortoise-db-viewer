@@ -253,7 +253,7 @@ export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, rank, school, m
   FROM spells WHERE name <> '' AND teaches IS NULL ORDER BY name`;
 
 // ---- NPC (creature) pages ----
-export const Q_NPC = `SELECT entry, name, subname, level_min, level_max, rank, type, faction, health_min, health_max, npc_flags FROM creatures WHERE entry = ?1`;
+export const Q_NPC = `SELECT entry, name, subname, level_min, level_max, rank, type, faction, health_min, health_max, npc_flags, display_id FROM creatures WHERE entry = ?1`;
 
 const npcLoot = (src, ownerCol) => `
   SELECT i.entry, i.name, i.quality, di.icon, d.chance
