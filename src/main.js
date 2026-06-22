@@ -471,6 +471,35 @@ async function showSpell(id) {
   wireTabs();
 }
 
+// How interior a point (x,y) sits in a zone's WMA box: min normalized distance to
+// the 4 edges, or -1 if the point is outside. Used to pick the most-specific zone
+// among overlapping boxes (see showNpc map view + npcLocationCell).
+function zoneInteriorness(z, x, y) {
+  const dx = z.loctop - z.locbottom, dy = z.locleft - z.locright;
+  if (!dx || !dy) return -1;
+  const fx = (x - z.locbottom) / dx, fy = (y - z.locright) / dy;
+  if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return -1;
+  return Math.min(fx, 1 - fx, fy, 1 - fy);
+}
+
+// Build a Location cell for an NPC from its containing-zone rows (Q_NPC_LOC_ZONES,
+// carrying x/y + box bounds) + its map rows (Q_NPC_LOC_MAPS, with type). Picks the
+// most-interior containing zone; tags Dungeon/Raid; falls back to the instance name
+// for map-less instances. Returns { html, text } (text = sort key).
+function npcLocationCell(zoneRows, mapRows) {
+  let best = null, bs = -1;
+  for (const r of zoneRows) { const sc = zoneInteriorness(r, r.x, r.y); if (sc > bs) { bs = sc; best = r; } }
+  const tagOf = (t) => (t === 2 ? "Raid" : t === 1 ? "Dungeon" : null);
+  if (best) {
+    const m = mapRows.find((x) => x.mapid === best.mapid);
+    const tag = m && tagOf(m.type);
+    return { html: zoneLink(best.areaid, best.name) + (tag ? ` <span class="dim">(${tag})</span>` : ""), text: best.name };
+  }
+  const inst = mapRows.find((x) => x.type === 1 || x.type === 2);
+  if (inst) return { html: `${dungeonLink(inst.mapid, inst.name)} <span class="dim">(${tagOf(inst.type)})</span>`, text: inst.name };
+  return { html: "", text: "" };
+}
+
 async function showNpc(id) {
   app.innerHTML = `<div class="loading">Loading NPC ${id}…</div>`;
   let npc;
@@ -500,19 +529,12 @@ async function showNpc(id) {
   // containing zone where it is most *interior* (max min-distance to the box edges),
   // then render the zone that holds the most spawns. Drops spawns with no zone (e.g.
   // map-less instances like Dire Maul, which have no parchment).
-  const interiorness = (z, x, y) => {
-    const dx = z.loctop - z.locbottom, dy = z.locleft - z.locright;
-    if (!dx || !dy) return -1;
-    const fx = (x - z.locbottom) / dx, fy = (y - z.locright) / dy;
-    if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return -1; // not inside this box
-    return Math.min(fx, 1 - fx, fy, 1 - fy);
-  };
   const tally = new Map(); // areaid -> { zone, pts:[] }
   for (const s of npcSpawns) {
     let best = null, bestScore = -1;
     for (const z of zoneCand) {
       if (z.mapid !== s.map) continue;
-      const sc = interiorness(z, s.x, s.y);
+      const sc = zoneInteriorness(z, s.x, s.y);
       if (sc > bestScore) { bestScore = sc; best = z; }
     }
     if (!best) continue;
@@ -620,12 +642,12 @@ function questText(t) {
     .replace(/\r?\n/g, "<br>");
 }
 
-// Render the full quest chain (Q_QUEST_CHAIN rows = the connected component) as an
-// ordered list with the current quest highlighted. Edges: a quest's prevquest
-// (abs covers the negative "exclusive group" form) and nextquest. Topologically
-// sorted so a linear chain reads first->last; ties break by level then entry.
-function renderQuestChain(rows, current) {
-  if (!rows || rows.length < 2) return "";
+// Order the quest chain (Q_QUEST_CHAIN rows = the connected component) into a
+// first->last sequence. Edges: a quest's prevquest (abs covers the negative
+// "exclusive group" form) and nextquest. Topological sort; ties break by level
+// then entry. Returns the ordered rows, or null when there's no chain (<2 quests).
+function orderQuestChain(rows) {
+  if (!rows || rows.length < 2) return null;
   const byId = new Map(rows.map((r) => [r.entry, r]));
   const cmp = (a, b) => (a.level || 0) - (b.level || 0) || a.entry - b.entry;
   const adj = new Map(rows.map((r) => [r.entry, []]));
@@ -653,14 +675,7 @@ function renderQuestChain(rows, current) {
     for (const c of adj.get(r.entry)) { deg.set(c, deg.get(c) - 1); if (deg.get(c) === 0) ready.push(byId.get(c)); }
   }
   for (const r of rows) if (!placed.has(r.entry)) order.push(r); // cycle / leftover fallback
-
-  const items = order.map((r) => {
-    const lvl = r.level > 0 ? ` <span class="dim">(Lvl ${r.level})</span>` : "";
-    const body = r.entry === current ? `<b>${esc(r.title)}</b>` : questLink(r.entry, r.title);
-    return `<li${r.entry === current ? ' class="cur"' : ""}>${body}${lvl}</li>`;
-  }).join("");
-  const more = rows.length >= 200 ? `<div class="dim" style="margin-top:4px">(chain truncated)</div>` : "";
-  return `<div class="panel quest-chain-box"><h3>Quest Chain <span class="dim">(${order.length})</span></h3><ol class="quest-chain-list">${items}</ol>${more}</div>`;
+  return order;
 }
 
 async function showQuest(id) {
@@ -699,7 +714,40 @@ async function showQuest(id) {
       (q.reqskillvalue > 0 ? ` (${q.reqskillvalue})` : ""));
   }
 
-  const chainHtml = renderQuestChain(chainRows, q.entry);
+  const chainOrdered = orderQuestChain(chainRows);
+
+  // ---- NPC locations (batched): for the giver/ender tabs AND each chain step's
+  // start NPC (so the chain tab shows where to pick up every quest) ----
+  const groupByEntry = (rows) => { const m = new Map(); for (const r of rows) (m.get(r.entry) || m.set(r.entry, []).get(r.entry)).push(r); return m; };
+  const chainEntries = (chainOrdered || []).map((r) => r.entry);
+  const startByQuest = new Map();
+  if (chainEntries.length) {
+    for (const r of await query(Q.qQuestStartNpcs(chainEntries.length), chainEntries)) {
+      (startByQuest.get(r.quest) || startByQuest.set(r.quest, []).get(r.quest)).push(r);
+    }
+  }
+  const chainStartNpcs = [...startByQuest.values()].flat();
+  const locEntries = [...new Set([...giversN, ...endersN, ...chainStartNpcs].map((n) => n.entry))];
+  const locByNpc = new Map();
+  if (locEntries.length) {
+    const [zc, mp] = await Promise.all([
+      query(Q.qNpcLocZones(locEntries.length), locEntries),
+      query(Q.qNpcLocMaps(locEntries.length), locEntries),
+    ]);
+    const zcBy = groupByEntry(zc), mpBy = groupByEntry(mp);
+    for (const e of locEntries) locByNpc.set(e, npcLocationCell(zcBy.get(e) || [], mpBy.get(e) || []));
+  }
+  const locHtml = (e) => (locByNpc.get(e) || {}).html || "";
+  const locText = (e) => (locByNpc.get(e) || {}).text || "";
+  const locCol = { label: "Location", cls: "muted", cell: (c) => locHtml(c.entry), value: (c) => locText(c.entry) };
+
+  // attach the step number + start NPC/location to each chain row for the chain tab
+  (chainOrdered || []).forEach((r, i) => {
+    r.step = i + 1;
+    const npc = (startByQuest.get(r.entry) || [])[0];
+    r.startHtml = npc ? npcLink(npc.entry, npc.name) + (locHtml(npc.entry) ? ` <span class="dim">·</span> ${locHtml(npc.entry)}` : "") : "";
+    r.startText = npc ? (locText(npc.entry) || npc.name) : "";
+  });
 
   // ---- reward summary ----
   const rewBits = [];
@@ -719,6 +767,7 @@ async function showQuest(id) {
   const npcCols = [
     { label: "NPC", cell: (c) => npcLink(c.entry, c.name), value: (c) => c.name },
     { label: "Level", num: true, cls: "muted", cell: (c) => lvlRange(c), value: (c) => c.level_max || c.level_min || 0 },
+    locCol,
   ];
   const goCols = [{ label: "Object", cell: (g) => esc(g.name), value: (g) => g.name }];
   const itemCols = [
@@ -729,8 +778,18 @@ async function showQuest(id) {
     { label: "Target", cell: (o) => (o.is_go ? esc(o.name || `Object #${o.target}`) : npcLink(o.target, o.name || `NPC #${o.target}`)), value: (o) => o.name || "" },
     { label: "Count", num: true, cls: "muted", cell: (o) => (o.count > 1 ? o.count : ""), value: (o) => o.count || 0 },
   ];
+  // Quest chain: ordered first->last via a step "#" column (default no sort keeps
+  // that order; click # to restore it). Current quest bolded; "Starts at" = the
+  // step's giver NPC + its location.
+  const chainCols = [
+    { label: "#", num: true, cls: "muted", cell: (r) => r.step, value: (r) => r.step },
+    { label: "Quest", cell: (r) => (r.entry === q.entry ? `<b class="qc-cur">${esc(r.title)}</b>` : questLink(r.entry, r.title)), value: (r) => r.title },
+    { label: "Level", num: true, cls: "muted", cell: (r) => (r.level > 0 ? r.level : ""), value: (r) => r.level || 0 },
+    { label: "Starts at", cls: "muted", cell: (r) => r.startHtml, value: (r) => r.startText },
+  ];
 
   const tabDefs = [
+    ...(chainOrdered ? [{ id: "chain", label: "Quest Chain", ...regTable(chainCols, chainOrdered, { pageSize: 200 }) }] : []),
     { id: "giverN", label: "Starts (NPC)", ...regTable(npcCols, giversN) },
     { id: "enderN", label: "Ends (NPC)", ...regTable(npcCols, endersN) },
     { id: "giverG", label: "Starts (Object)", ...regTable(goCols, giversG) },
@@ -749,7 +808,6 @@ async function showQuest(id) {
         <div class="npc-meta muted">${bits.join(" · ")}<span class="dim"> · Quest #${q.entry}</span></div>
         ${restr.length ? `<div class="npc-meta muted">${restr.map(esc).join(" · ")}</div>` : ""}
       </div>
-      ${chainHtml}
       ${desc.length ? `<div class="panel quest-desc">${desc.join("")}</div>` : ""}
       ${tabs(tabDefs)}
     </div>`;

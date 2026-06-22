@@ -397,17 +397,35 @@ async function testDungeonNoMap(id, expectName) {
   return name.includes(expectName) && tabList.some((t) => t.includes("Boss Loot")) && !mapDiv;
 }
 
-// Quest page shows the full chain (both directions) with the current quest marked.
+// Quest page shows the full chain (both directions, as a table) with the current
+// quest marked, plus each step's start NPC + location.
 async function testQuestChain(id, minLen) {
   await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
-  await page.waitForSelector(".quest-chain-list", { timeout: 40000 });
-  const items = await page.$$eval(".quest-chain-list li", (e) => e.length);
-  const cur = await page.$$eval(".quest-chain-list li.cur", (e) => e.length);
-  const nums = await page.$$eval(".quest-chain-list a.ilink", (a) =>
-    a.map((x) => Number(new URLSearchParams(x.getAttribute("href").split("?")[1]).get("quest"))));
+  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".tab")].find((t) => t.textContent.includes("Quest Chain")); if (b) b.click(); });
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".tabpane:not(.hidden) tbody tr", (r) => r.length);
+  const cur = await page.$$eval(".tabpane:not(.hidden) .qc-cur", (e) => e.length);
+  const nums = await page.$$eval(".tabpane:not(.hidden) a.ilink", (a) =>
+    a.map((x) => x.getAttribute("href")).filter((h) => h && h.includes("quest="))
+      .map((h) => Number(new URLSearchParams(h.split("?")[1]).get("quest"))));
   const hasBack = nums.some((n) => n < id), hasFwd = nums.some((n) => n > id);
-  console.log(`quest-chain ${id}: items=${items} cur=${cur} back=${hasBack} fwd=${hasFwd}`);
-  return items >= minLen && cur === 1 && hasBack && hasFwd;
+  const startLocs = await page.$$eval(".tabpane:not(.hidden) tbody tr td:last-child", (t) => t.map((x) => x.textContent.trim()).filter(Boolean));
+  const headers = await page.$$eval(".tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  console.log(`quest-chain ${id}: rows=${rows} cur=${cur} back=${hasBack} fwd=${hasFwd} startLocs=${startLocs.length} headers=[${headers.join(",")}]`);
+  return rows >= minLen && cur === 1 && hasBack && hasFwd && startLocs.length > 0 && headers.includes("#");
+}
+
+// Starts/Ends (NPC) tabs carry a Location column with where the NPC is.
+async function testQuestNpcLocation(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".tab")].find((t) => t.textContent.includes("Starts (NPC)")); if (b) b.click(); });
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  const headers = await page.$$eval(".tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const locs = await page.$$eval(".tabpane:not(.hidden) tbody tr td:last-child", (t) => t.map((x) => x.textContent.trim()).filter(Boolean));
+  console.log(`quest-npc-loc ${id}: headers=[${headers.join(",")}] locs=${JSON.stringify(locs.slice(0, 3))}`);
+  return headers.includes("Location") && locs.length > 0;
 }
 
 async function testHover() {
@@ -576,7 +594,8 @@ ok = (await testTeaches(70204, "Shadowforged")) && ok;  // recipe -> Teaches tab
 ok = (await testCustomIcon(9376, "Jang")) && ok;
 ok = (await testSearch("thunder")) && ok;
 ok = (await testQuest(14, "Militia")) && ok;
-ok = (await testQuestChain(55220, 11)) && ok;  // mid-chain quest: shows back + forward
+ok = (await testQuestChain(55220, 11)) && ok;  // mid-chain quest: back + forward + start locations
+ok = (await testQuestNpcLocation(55220)) && ok;  // Starts/Ends (NPC) Location column
 ok = (await testSearchTabs("defias")) && ok;
 ok = (await testSearchZone("Tanaris")) && ok;
 ok = (await testSearchDropdown("defias")) && ok;

@@ -300,6 +300,29 @@ export const Q_NPC_SPAWNS = `
   SELECT x, y, map FROM spawn_points INDEXED BY idx_spawn_id
   WHERE kind = 'c' AND id = ?1 LIMIT 2000`;
 
+// Batch location lookup for a set of NPC entries (e.g. a quest's givers/enders).
+// Zones: every containing WMA box per spawn (with coords + bounds, so the caller
+// can pick the most-interior). Maps: the distinct maps each NPC is on (+ type, to
+// tag Dungeon/Raid). `n` = number of `?` placeholders to emit.
+const inList = (n) => Array.from({ length: n }, () => "?").join(",");
+export const qNpcLocZones = (n) => `
+  SELECT s.id AS entry, s.x, s.y, z.areaid, z.name, z.mapid, z.loctop, z.locbottom, z.locleft, z.locright
+  FROM spawn_points s INDEXED BY idx_spawn_id
+  JOIN zones z ON z.mapid = s.map
+    AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
+  WHERE s.kind = 'c' AND s.id IN (${inList(n)}) AND z.name <> ''`;
+export const qNpcLocMaps = (n) => `
+  SELECT DISTINCT s.id AS entry, m.id AS mapid, m.name, m.type
+  FROM spawn_points s JOIN maps m ON m.id = s.map
+  WHERE s.kind = 'c' AND s.id IN (${inList(n)}) AND m.name <> ''`;
+
+// Start (giver) NPCs for a set of quests (the quest chain), so the chain tab can
+// show where each step is picked up. `n` = number of `?` placeholders.
+export const qQuestStartNpcs = (n) => `
+  SELECT r.quest, c.entry, c.name FROM creature_quest_start r
+  JOIN creatures c ON c.entry = r.id
+  WHERE r.quest IN (${inList(n)})`;
+
 // ---- dungeons / raids ----
 export const Q_DUNGEONS = `SELECT id, name, type FROM maps WHERE type IN (1,2) AND name <> '' ORDER BY type, name`;
 export const Q_DUNGEON = `SELECT id, name, type FROM maps WHERE id = ?1`;
