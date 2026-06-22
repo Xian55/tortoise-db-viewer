@@ -196,6 +196,12 @@ a.ilink.zone { color: #8fd18f; }
 .mapchk { display: inline-flex; align-items: center; cursor: pointer; }
 /* Quest chain tab: the current quest is bolded gold in the table */
 .qc-cur { color: var(--gold); }
+/* multi-floor instance map: floor switcher buttons above the map */
+.floor-switch { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.floor-switch button { background: var(--panel2); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+.floor-switch button:hover { color: var(--text); }
+.floor-switch button.active { color: var(--text); border-color: var(--gold); }
 .quest-desc { padding: 12px 16px; margin-bottom: 16px; line-height: 1.5; }
 .quest-desc h3 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase;
   letter-spacing: .03em; color: var(--muted); }

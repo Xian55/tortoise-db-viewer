@@ -475,6 +475,11 @@ export const Q_ZONE_QUESTS = `
 // ---- zones (Leaflet maps) ----
 export const Q_ZONES = `SELECT areaid, name, mapid, spawns FROM zones WHERE name <> '' ORDER BY name`;
 export const Q_ZONE = `SELECT * FROM zones WHERE areaid = ?1`;
+// All WorldMap floors of an instance map (a multi-floor dungeon/raid has several),
+// ordered by how many spawns each holds -> the zone page's floor switcher.
+export const Q_MAP_FLOORS = `
+  SELECT areaid, name, mapid, locleft, locright, loctop, locbottom, img_w, img_h, spawns
+  FROM zones WHERE mapid = ?1 AND img_w > 0 ORDER BY spawns DESC, areaid`;
 // The primary (largest) WorldMap zone for an instance map id -> lets a dungeon/raid
 // page render the same Leaflet map + spawn markers as an open-world zone.
 export const Q_DUNGEON_ZONE = `
@@ -486,7 +491,7 @@ export const Q_DUNGEON_ZONE = `
 // Creature markers carry the inputs the classifier needs (npc_flags + whether the
 // NPC starts/ends a quest).
 export const Q_ZONE_SPAWNS = `
-  SELECT s.x, s.y, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags,
+  SELECT s.x, s.y, s.zone, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags,
          (EXISTS(SELECT 1 FROM creature_quest_start q WHERE q.id = c.entry)
        OR EXISTS(SELECT 1 FROM creature_quest_end q WHERE q.id = c.entry)) AS questgiver
   FROM spawn_points s JOIN creatures c ON c.entry = s.id
@@ -494,9 +499,24 @@ export const Q_ZONE_SPAWNS = `
   LIMIT 8000`;
 
 export const Q_ZONE_OBJECTS = `
-  SELECT s.x, s.y, g.entry, g.name, g.type
+  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type
   FROM spawn_points s JOIN gameobjects g ON g.entry = s.id
   WHERE s.kind = 'o' AND s.zone = ?1
+  LIMIT 4000`;
+
+// Same as above but across a whole INSTANCE map (all floors) -> ?1 = mapid. Each
+// row keeps s.zone so the floor switcher can split markers per floor.
+export const Q_MAP_SPAWNS = `
+  SELECT s.x, s.y, s.zone, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags,
+         (EXISTS(SELECT 1 FROM creature_quest_start q WHERE q.id = c.entry)
+       OR EXISTS(SELECT 1 FROM creature_quest_end q WHERE q.id = c.entry)) AS questgiver
+  FROM spawn_points s INDEXED BY idx_spawn_map JOIN creatures c ON c.entry = s.id
+  WHERE s.kind = 'c' AND s.map = ?1
+  LIMIT 8000`;
+export const Q_MAP_OBJECTS = `
+  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type
+  FROM spawn_points s INDEXED BY idx_spawn_map JOIN gameobjects g ON g.entry = s.id
+  WHERE s.kind = 'o' AND s.map = ?1
   LIMIT 4000`;
 
 // Items dropped by creatures assigned to the zone (for the zone's Items tab).

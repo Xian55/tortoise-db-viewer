@@ -910,26 +910,40 @@ async function showZone(id, gatherItem = null) {
   const typeLabel = mapInfo && (mapInfo.type === 2 ? "Raid" : mapInfo.type === 1 ? "Dungeon" : null);
   const isInstance = !!typeLabel;
 
-  const az = [z.areaid];
-  const [spawns, objects, loot, focusPts, focusItem, bossLoot, bossEntries, zoneQuests] = await Promise.all([
-    query(Q.Q_ZONE_SPAWNS, az), query(Q.Q_ZONE_OBJECTS, az),
-    isInstance ? query(Q.Q_DUNGEON_LOOT, [z.mapid]) : query(Q.Q_ZONE_LOOT, az),
+  // Instances are loaded whole-map (all floors): tabs cover the entire instance,
+  // and a multi-floor dungeon/raid (e.g. Black Morass, Karazhan) gets a floor
+  // switcher over the map. Open-world zones load by their single home zone.
+  const az = [z.areaid], mz = [z.mapid];
+  const [spawns, objects, loot, focusPts, focusItem, bossLoot, bossEntries, zoneQuests, floors] = await Promise.all([
+    isInstance ? query(Q.Q_MAP_SPAWNS, mz) : query(Q.Q_ZONE_SPAWNS, az),
+    isInstance ? query(Q.Q_MAP_OBJECTS, mz) : query(Q.Q_ZONE_OBJECTS, az),
+    isInstance ? query(Q.Q_DUNGEON_LOOT, mz) : query(Q.Q_ZONE_LOOT, az),
     gatherItem ? query(Q.Q_ZONE_FOCUS_SPAWNS, [z.areaid, gatherItem]) : [],
     gatherItem ? queryOne(Q.Q_ITEM_ICON, [gatherItem]) : null,
-    isInstance ? query(Q.Q_DUNGEON_BOSS_LOOT, [z.mapid]) : [],
-    isInstance ? query(Q.Q_MAP_BOSSES, [z.mapid]) : [],
+    isInstance ? query(Q.Q_DUNGEON_BOSS_LOOT, mz) : [],
+    isInstance ? query(Q.Q_MAP_BOSSES, mz) : [],
     query(Q.Q_ZONE_QUESTS, az),
+    isInstance ? query(Q.Q_MAP_FLOORS, mz) : [],
   ]);
   // focus mode: only the gathered node's spawns, drawn with the item's icon
   const focus = focusPts.length
     ? { label: (focusItem && focusItem.name) || focusPts[0].name || "Node", icon: focusItem && focusItem.icon, points: focusPts }
     : null;
-  // Boss skull markers: instance unique-spawns (cnt=1). Their spawn points come
-  // from the rect spawns already loaded. Open-world rank-3 "World Boss" creatures
-  // are intentionally excluded -- that rank also covers city/faction leaders, so
-  // it would scatter skulls across capital cities.
+  // Boss skull markers: instance unique-spawns (cnt=1). Open-world rank-3 "World
+  // Boss" creatures are intentionally excluded (that rank also covers city leaders).
   const bossSet = new Set(bossEntries.map((r) => r.id));
   const bosses = isInstance ? spawns.filter((s) => bossSet.has(s.entry)) : [];
+
+  // Map floors: the instance's WorldMap areas (>1 = multi-floor). Spawns split
+  // across them by home zone; default to the floor holding most (preferring the
+  // opened areaid). Open-world zones are a single "floor" (the zone itself).
+  const allFloors = (isInstance && floors.length) ? floors : [z];
+  const spawnsByFloor = new Map();
+  for (const s of spawns) spawnsByFloor.set(s.zone, (spawnsByFloor.get(s.zone) || 0) + 1);
+  const floorCount = (fl) => spawnsByFloor.get(fl.areaid) || 0;
+  const activeFloor = allFloors.find((fl) => fl.areaid === z.areaid && floorCount(fl) > 0)
+    || [...allFloors].sort((a, b) => floorCount(b) - floorCount(a))[0] || z;
+
   const meta = [typeLabel || CONTINENT[z.mapid], `${spawns.length + objects.length} spawns`].filter(Boolean);
 
   // dedupe spawn rows into distinct NPCs / objects (with a spawn-point count)
@@ -1011,12 +1025,19 @@ async function showZone(id, gatherItem = null) {
         the server data has no spawns here yet — this is usually a newly added zone that hasn't
         been populated upstream.</div>`;
 
+  // Floor switcher for multi-floor instances (one button per WorldMap floor).
+  const floorSwitch = allFloors.length > 1
+    ? `<div id="floorswitch" class="floor-switch">${allFloors.map((fl) =>
+        `<button data-floor="${fl.areaid}">${esc(fl.name)} <span class="dim">(${floorCount(fl)})</span></button>`).join("")}</div>`
+    : "";
+
   app.innerHTML =
     `<div class="zone-page">
       <div class="npc-head">
         <h1>${esc(z.name)}</h1>
         <div class="npc-meta muted">${meta.join(" · ")}<span class="dim"> · Zone #${z.areaid}</span></div>
       </div>
+      ${floorSwitch}
       <div id="zonemap"></div>
       ${body}
     </div>`;
@@ -1025,22 +1046,37 @@ async function showZone(id, gatherItem = null) {
   const el = document.getElementById("zonemap");
   try {
     const { initZoneMap } = await import("./zonemap.js");
-    const imgUrl = `${import.meta.env.BASE_URL}maps/${z.areaid}.webp`;
-    const zmap = initZoneMap(el, { ...z, imgUrl }, spawns, objects, navigate, focus, bosses);
-    // Objects tab checkboxes add/remove that object's spawns on the map.
+    const base = import.meta.env.BASE_URL;
+    let zmap = null;
+    // (re)draw the map for a floor: its parchment + the spawns/bosses on it.
+    const renderFloor = (fl) => {
+      const fs = isInstance ? spawns.filter((s) => s.zone === fl.areaid) : spawns;
+      const fo = isInstance ? objects.filter((o) => o.zone === fl.areaid) : objects;
+      const fb = isInstance ? bosses.filter((b) => b.zone === fl.areaid) : bosses;
+      zmap = initZoneMap(el, { ...fl, imgUrl: `${base}maps/${fl.areaid}.webp` }, fs, fo, navigate, fl.areaid === z.areaid ? focus : null, fb);
+      app.querySelectorAll("#floorswitch button").forEach((b) => b.classList.toggle("active", Number(b.dataset.floor) === fl.areaid));
+    };
+    renderFloor(activeFloor);
+    const fsw = document.getElementById("floorswitch");
+    if (fsw) fsw.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-floor]"); if (!b) return;
+      const fl = allFloors.find((f) => f.areaid === Number(b.dataset.floor));
+      if (fl) { shownNpcs.clear(); shownObjects.clear(); renderFloor(fl); }
+    });
+    // Objects tab checkboxes add/remove that object's spawns on the (current) map.
     const objPane = app.querySelector('[data-pane="objects"]');
-    if (objPane && zmap) objPane.addEventListener("change", (e) => {
+    if (objPane) objPane.addEventListener("change", (e) => {
       const cb = e.target.closest("[data-mapobj]");
-      if (!cb) return;
+      if (!cb || !zmap) return;
       const entry = Number(cb.dataset.mapobj);
       zmap.toggleObject(entry, cb.checked, iconByEntry.get(entry));
       if (cb.checked) shownObjects.add(entry); else shownObjects.delete(entry);
     });
     // NPCs tab checkboxes do the same for a creature's spawns.
     const npcPane = app.querySelector('[data-pane="npcs"]');
-    if (npcPane && zmap) npcPane.addEventListener("change", (e) => {
+    if (npcPane) npcPane.addEventListener("change", (e) => {
       const cb = e.target.closest("[data-mapnpc]");
-      if (!cb) return;
+      if (!cb || !zmap) return;
       const entry = Number(cb.dataset.mapnpc);
       zmap.toggleNpc(entry, cb.checked);
       if (cb.checked) shownNpcs.add(entry); else shownNpcs.delete(entry);

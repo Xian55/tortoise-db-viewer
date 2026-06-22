@@ -715,6 +715,22 @@ async function testZone(id, expectName) {
   return name.includes(expectName) && cats > 0 && tabList.length >= 3 && rows > 0;
 }
 
+// A multi-floor instance shows a floor switcher; the active floor renders a map,
+// and switching floors re-renders. Black Morass (?zone=5204) has 2 floors.
+async function testZoneFloors(areaid, minFloors) {
+  await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  const floors = await page.$$eval("#floorswitch button", (b) => b.length).catch(() => 0);
+  const active = await page.$$eval("#floorswitch button.active", (b) => b.length).catch(() => 0);
+  const src1 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src")).catch(() => "");
+  // switch to a non-active floor; map image should change
+  await page.evaluate(() => { const b = [...document.querySelectorAll("#floorswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
+  await new Promise((r) => setTimeout(r, 400));
+  const src2 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src")).catch(() => "");
+  console.log(`zone-floors ${areaid}: floors=${floors} active=${active} src1=${src1} src2=${src2} switched=${src1 !== src2}`);
+  return floors >= minFloors && active === 1 && src1 !== src2;
+}
+
 // A zone lists the quests bound to it (directly or in a sub-zone) as a tab.
 async function testZoneQuests(id, minQuests) {
   await page.goto(`${BASE}?zone=${id}`, { waitUntil: "networkidle0", timeout: 60000 });
@@ -778,6 +794,7 @@ ok = (await testBrowse("factions", "", "Items")) && ok;
 ok = (await testZone(12, "Elwynn")) && ok;
 ok = (await testZone(5561, "Balor")) && ok;             // 1.18.1 zone, populated via migrations
 ok = (await testZoneQuests(331, 20)) && ok;             // Ashenvale quests tab (incl. sub-zones)
+ok = (await testZoneFloors(5204, 2)) && ok;             // Black Morass: multi-floor switcher
 ok = (await testEmptyZone(5722, "Thorn Gorge")) && ok; // 1.18.1 zone with no spawns upstream yet
 ok = (await testBrowse("zones", "", "Continent")) && ok;
 ok = (await testNpcLoad(15379, 400)) && ok;  // AQ NPC, many spawns; ~4ms healthy, 726ms if zone lookup unindexed
