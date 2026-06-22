@@ -502,16 +502,17 @@ function npcLocationCell(zoneRows, mapRows) {
   return { html: "", text: "" };
 }
 
-// Batch-resolve a set of NPC entries to { html, text } location cells (zone or
-// dungeon). Used by the quest giver/ender tabs, the chain tab, and item drop tabs.
-async function resolveNpcLocations(entries) {
+// Batch-resolve a set of creature ('c') or object ('o') entries to { html, text }
+// location cells (zone or dungeon). Used by the quest giver/ender/chain tabs and
+// the item/required-item drop tabs.
+async function resolveNpcLocations(entries, kind = "c") {
   const out = new Map();
   const uniq = [...new Set(entries)].filter(Boolean);
   if (!uniq.length) return out;
   const grp = (rows) => { const g = new Map(); for (const r of rows) (g.get(r.entry) || g.set(r.entry, []).get(r.entry)).push(r); return g; };
   const [zc, mp] = await Promise.all([
-    query(Q.qNpcLocZones(uniq.length), uniq),
-    query(Q.qNpcLocMaps(uniq.length), uniq),
+    query(Q.qNpcLocZones(uniq.length, kind), uniq),
+    query(Q.qNpcLocMaps(uniq.length, kind), uniq),
   ]);
   const zcBy = grp(zc), mpBy = grp(mp);
   for (const e of uniq) out.set(e, npcLocationCell(zcBy.get(e) || [], mpBy.get(e) || []));
@@ -768,6 +769,38 @@ async function showQuest(id) {
     r.startText = npc ? (locText(npc.entry) || npc.name) : "";
   });
 
+  // ---- required (objective) items: per item, where it drops + the zone ----
+  // Each objective item becomes a collapsible group; its rows list the NPCs/objects
+  // that drop it and where. So a "collect 8 Tough Wolf Meat" objective expands to
+  // the wolves (and their zones) you can farm.
+  const reqItems = byRole("req");
+  const reqDropRows = [];
+  if (reqItems.length) {
+    const per = await Promise.all(reqItems.map(async (ri) => {
+      const [npcs, objs] = await Promise.all([query(Q.Q_DROPPED_BY, [ri.entry]), query(Q.Q_OBJECT_SOURCE, [ri.entry])]);
+      return { ri, npcs, objs };
+    }));
+    const [npcLoc, objLoc] = await Promise.all([
+      resolveNpcLocations(per.flatMap((p) => p.npcs.map((n) => n.entry)), "c"),
+      resolveNpcLocations(per.flatMap((p) => p.objs.map((o) => o.entry)), "o"),
+    ]);
+    for (const { ri, npcs, objs } of per) {
+      const base = { item: ri.entry, itemName: ri.name, quality: ri.quality, icon: ri.icon, qty: ri.count };
+      for (const n of npcs) {
+        const loc = npcLoc.get(n.entry) || {};
+        const tag = n.skin_chance != null ? ' <span class="muted">(skin)</span>' : n.pick_chance != null ? ' <span class="muted">(pickpocket)</span>' : "";
+        reqDropRows.push({ ...base, srcHtml: npcLink(n.entry, n.name) + tag, srcName: n.name, zoneHtml: loc.html || "", zoneText: loc.text || "", chance: n.drop_chance ?? n.skin_chance ?? n.pick_chance });
+      }
+      for (const o of objs) {
+        const loc = objLoc.get(o.entry) || {};
+        reqDropRows.push({ ...base, srcHtml: `${esc(o.name)} <span class="muted">(object)</span>`, srcName: o.name, zoneHtml: loc.html || "", zoneText: loc.text || "", chance: o.chance });
+      }
+      if (!npcs.length && !objs.length) {
+        reqDropRows.push({ ...base, srcHtml: '<span class="muted">No recorded drop source</span>', srcName: "", zoneHtml: "", zoneText: "", chance: null });
+      }
+    }
+  }
+
   // ---- reward summary ----
   const rewBits = [];
   if (q.money > 0) rewBits.push(moneyHtml(q.money));
@@ -806,6 +839,16 @@ async function showQuest(id) {
     { label: "Level", num: true, cls: "muted", cell: (r) => (r.level > 0 ? r.level : ""), value: (r) => r.level || 0 },
     { label: "Starts at", cls: "muted", cell: (r) => r.startHtml, value: (r) => r.startText },
   ];
+  // Required items grouped by item (one collapsible row per objective); each row =
+  // a drop source + its zone. group() renders the item link + qty in the header.
+  const reqCols = [
+    { key: "item", label: "Item", value: (r) => r.itemName,
+      group: (r) => itemLink(r.item, r.itemName, r.quality, r.icon) + (r.qty > 1 ? ` <span class="dim">×${r.qty}</span>` : ""),
+      cell: () => "" },
+    { label: "Source", cell: (r) => r.srcHtml, value: (r) => r.srcName },
+    { label: "Zone", cls: "muted", cell: (r) => r.zoneHtml, value: (r) => r.zoneText },
+    { label: "Chance", num: true, cls: "muted", cell: (r) => (r.chance != null ? pct(r.chance) : ""), value: (r) => r.chance || 0 },
+  ];
 
   const tabDefs = [
     ...(chainOrdered ? [{ id: "chain", label: "Quest Chain", ...regTable(chainCols, chainOrdered, { pageSize: 200 }) }] : []),
@@ -814,7 +857,7 @@ async function showQuest(id) {
     { id: "giverG", label: "Starts (Object)", ...regTable(goCols, giversG) },
     { id: "enderG", label: "Ends (Object)", ...regTable(goCols, endersG) },
     { id: "objcre", label: "Kill / Use", ...regTable(targetCols, qcreatures) },
-    { id: "reqitem", label: "Required items", ...regTable(itemCols, byRole("req")) },
+    { id: "reqitem", label: "Required items", ...regTable(reqCols, reqDropRows, { group: 0, startCollapsed: true, pageSize: 1000 }), count: reqItems.length },
     { id: "srcitem", label: "Provided items", ...regTable(itemCols, byRole("source")) },
     { id: "reward", label: "Rewards", ...regTable(itemCols, byRole("reward")) },
     { id: "choice", label: "Choice of", ...regTable(itemCols, byRole("choice")) },

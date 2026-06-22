@@ -51,6 +51,23 @@ async function testItemDropLocation(id) {
   return li >= 0 && locs.length > 0;
 }
 
+// Required (objective) items are collapsible groups; expanding one reveals the
+// NPCs/objects that drop it + the zone. Quest 179 -> Tough Wolf Meat -> wolves.
+async function testQuestRequiredDrops(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".quest-page .tab")].find((t) => t.textContent.includes("Required items")); if (b) b.click(); });
+  await page.waitForSelector(".tabpane:not(.hidden) .grouprow", { timeout: 40000 });
+  const groups = await page.$$eval(".tabpane:not(.hidden) .grouprow", (e) => e.length);
+  const collapsedInit = await page.$$eval(".tabpane:not(.hidden) .grouprow.collapsed", (e) => e.length);
+  await page.click(".tabpane:not(.hidden) .grouprow");
+  const shown = await page.$$eval(".tabpane:not(.hidden) tbody tr:not(.grouprow)", (trs) => trs.filter((t) => t.style.display !== "none").length);
+  const headers = await page.$$eval(".tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const zones = await page.$$eval(".tabpane:not(.hidden) tbody tr:not(.grouprow)", (trs) => trs.filter((t) => t.style.display !== "none").map((t) => t.querySelectorAll("td")[1]?.textContent.trim()).filter(Boolean));
+  console.log(`quest-req-drops ${id}: groups=${groups} collapsedInit=${collapsedInit} shownAfterExpand=${shown} headers=[${headers.join(",")}] zones=${JSON.stringify(zones.slice(0, 2))}`);
+  return groups >= 1 && collapsedInit === groups && shown > 0 && headers.includes("Source") && headers.includes("Zone") && zones.length > 0;
+}
+
 // A required item whose ReqSourceId duplicates it must NOT appear as "Provided items".
 async function testQuestNoProvided(id) {
   await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -656,6 +673,7 @@ ok = (await testQuestNpcLocation(55220)) && ok;  // Starts/Ends (NPC) Location c
 ok = (await testQuestZoneChain(783)) && ok;      // continent > zone > sub-zone
 ok = (await testBrowseQuestZoneLink()) && ok;    // browse quests links zones
 ok = (await testQuestNoProvided(179)) && ok;     // ReqSourceId==ReqItemId not shown as Provided
+ok = (await testQuestRequiredDrops(179)) && ok;  // objective item collapses to its drop sources + zones
 ok = (await testItemDropLocation(750)) && ok;    // dropped-by NPC locations resolved
 ok = (await testSearchTabs("defias")) && ok;
 ok = (await testSearchZone("Tanaris")) && ok;

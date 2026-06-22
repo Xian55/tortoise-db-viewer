@@ -17,7 +17,7 @@ import { esc } from "./render.js";
 
 const stripTags = (h) => String(h).replace(/<[^>]*>/g, "").trim();
 
-export function createTable(container, { columns, rows, pageSize = Infinity, groupable = false, group = null, sort = null, dir = "a", onState, selectable = false, rowKey = null, onSelectionChange }) {
+export function createTable(container, { columns, rows, pageSize = Infinity, groupable = false, group = null, startCollapsed = false, sort = null, dir = "a", onState, selectable = false, rowKey = null, onSelectionChange }) {
   const colKey = (i) => (i == null ? "" : (columns[i].key || columns[i].label));
   const findCol = (key) => {
     if (key == null || key === "") return null;
@@ -174,6 +174,13 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
       render(); emitSel(); return;
     }
   });
+
+  // optionally start with every group collapsed (e.g. quest objective items ->
+  // expand to reveal each item's drop sources).
+  if (startCollapsed && state.group != null) {
+    const gcol = columns[state.group];
+    for (const r of state.rows) state.collapsed.add(String(keyOf(gcol, r)));
+  }
 
   render();
   return {

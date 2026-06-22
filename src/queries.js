@@ -305,16 +305,17 @@ export const Q_NPC_SPAWNS = `
 // can pick the most-interior). Maps: the distinct maps each NPC is on (+ type, to
 // tag Dungeon/Raid). `n` = number of `?` placeholders to emit.
 const inList = (n) => Array.from({ length: n }, () => "?").join(",");
-export const qNpcLocZones = (n) => `
+// kind = 'c' (creatures) or 'o' (game objects).
+export const qNpcLocZones = (n, kind = "c") => `
   SELECT s.id AS entry, s.x, s.y, z.areaid, z.name, z.mapid, z.loctop, z.locbottom, z.locleft, z.locright
   FROM spawn_points s INDEXED BY idx_spawn_id
   JOIN zones z ON z.mapid = s.map
     AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
-  WHERE s.kind = 'c' AND s.id IN (${inList(n)}) AND z.name <> ''`;
-export const qNpcLocMaps = (n) => `
+  WHERE s.kind = '${kind === "o" ? "o" : "c"}' AND s.id IN (${inList(n)}) AND z.name <> ''`;
+export const qNpcLocMaps = (n, kind = "c") => `
   SELECT DISTINCT s.id AS entry, m.id AS mapid, m.name, m.type
   FROM spawn_points s JOIN maps m ON m.id = s.map
-  WHERE s.kind = 'c' AND s.id IN (${inList(n)}) AND m.name <> ''`;
+  WHERE s.kind = '${kind === "o" ? "o" : "c"}' AND s.id IN (${inList(n)}) AND m.name <> ''`;
 
 // Start (giver) NPCs for a set of quests (the quest chain), so the chain tab can
 // show where each step is picked up. `n` = number of `?` placeholders.
