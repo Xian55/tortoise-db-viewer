@@ -415,10 +415,19 @@ export const Q_FACTION_ITEMS = `
 // Member NPCs of a faction: creatures whose FactionTemplate maps to this rep
 // Faction (creature_template.faction -> faction_template.id -> faction_id).
 export const Q_FACTION_NPCS = `
-  SELECT c.entry, c.name, c.level_min, c.level_max, c.rank
+  SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank
   FROM creatures c
   WHERE c.name <> '' AND c.faction IN (SELECT id FROM faction_template WHERE faction_id = ?1)
   ORDER BY c.level_max, c.name LIMIT 1000`;
+
+// The rep Faction an NPC belongs to (via its FactionTemplate). has_page is set
+// when that faction has a faction page (is in the derived `factions` summary).
+export const Q_NPC_FACTION = `
+  SELECT fn.id, fn.name1 AS name, (SELECT 1 FROM factions f WHERE f.id = fn.id) AS has_page
+  FROM creatures c
+  JOIN faction_template ft ON ft.id = c.faction
+  JOIN faction_names fn ON fn.id = ft.faction_id
+  WHERE c.entry = ?1 AND fn.name1 <> ''`;
 
 // Quests that grant reputation with this faction.
 export const Q_FACTION_QUESTS = `

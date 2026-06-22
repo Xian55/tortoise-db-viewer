@@ -646,7 +646,16 @@ async function testFactionMembers(id, minMembers) {
   const locs = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr td:last-child", (t) => t.map((x) => x.textContent.trim()).filter(Boolean));
   const npcLink = (await page.$(".npc-page .tabpane:not(.hidden) a.ilink[href*='npc=']")) !== null;
   console.log(`faction-members ${id}: rows=${rows} headers=[${headers.join(",")}] locs=${locs.length} npcLink=${npcLink}`);
-  return rows >= minMembers && headers.includes("Location") && npcLink && locs.length > 0;
+  return rows >= minMembers && headers.includes("Location") && headers.includes("Title") && npcLink && locs.length > 0;
+}
+
+// An NPC that belongs to a faction shows it (linked when the faction has a page).
+async function testNpcFaction(id, factionId) {
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-head", { timeout: 40000 });
+  const has = (await page.$(`.npc-head .npc-meta a.ilink[href*='faction=${factionId}']`)) !== null;
+  console.log(`npc-faction ${id}: factionLink(${factionId})=${has}`);
+  return has;
 }
 
 // a quest that grants reputation renders its faction as a link.
@@ -728,7 +737,8 @@ ok = (await testSearchSpells("Shadowforged")) && ok;       // search yields a Sp
 ok = (await testBrowse("spells", "", "Profession")) && ok; // ?browse=spells finder
 ok = (await testBrowse("quests", "&minlvl=1&maxlvl=12", "Zone")) && ok;
 ok = (await testFaction(509, "League of Arathor")) && ok;
-ok = (await testFactionMembers(69, 20)) && ok;  // Darnassus member NPCs + location
+ok = (await testFactionMembers(69, 20)) && ok;  // Darnassus member NPCs + title + location
+ok = (await testNpcFaction(80959, 69)) && ok;   // NPC shows its faction (Darnassus Quartermaster)
 ok = (await testQuestRepLink(14)) && ok;
 ok = (await testBrowse("factions", "", "Items")) && ok;
 ok = (await testZone(12, "Elwynn")) && ok;

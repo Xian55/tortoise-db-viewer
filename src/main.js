@@ -500,11 +500,11 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, trains, npcSpawns] = await Promise.all([
+  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, trains, npcSpawns, npcFaction] = await Promise.all([
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
     query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]),
-    query(Q.Q_NPC_TRAINS, [id]), query(Q.Q_NPC_SPAWNS, [id]),
+    query(Q.Q_NPC_TRAINS, [id]), query(Q.Q_NPC_SPAWNS, [id]), queryOne(Q.Q_NPC_FACTION, [id]),
   ]);
   // Each spawn carries its exact precomputed home zone (build-db, ADT-derived).
   // Count per zone (and per map) -> the most-common zone is the one the map renders;
@@ -540,6 +540,7 @@ async function showNpc(id) {
   const bits = [`Level ${lvl}`];
   if (CREATURE_RANK[npc.rank]) bits.push(CREATURE_RANK[npc.rank]);
   if (CREATURE_TYPE[npc.type]) bits.push(`<a class="nav" href="?browse=npcs&type=${npc.type}">${CREATURE_TYPE[npc.type]}</a>`);
+  if (npcFaction) bits.push(npcFaction.has_page ? factionLink(npcFaction.id, npcFaction.name) : esc(npcFaction.name));
   const hp = npc.health_max ? `${npc.health_min}–${npc.health_max} HP` : "";
   const roles = npcRoles(npc.npc_flags);
   const rankClass = npc.rank === 3 ? "npc-boss" : (npc.rank === 2 || npc.rank === 4) ? "npc-rare" : npc.rank === 1 ? "npc-elite" : "";
@@ -881,6 +882,7 @@ async function showFaction(id) {
   ];
   const memberCols = [
     { label: "NPC", cell: (r) => npcLink(r.entry, r.name), value: (r) => r.name },
+    { label: "Title", cls: "muted", cell: (r) => esc(r.subname || ""), value: (r) => r.subname || "" },
     { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
     { label: "Location", cls: "muted", cell: (r) => (memberLoc.get(r.entry) || {}).html || "", value: (r) => (memberLoc.get(r.entry) || {}).text || "" },
   ];
