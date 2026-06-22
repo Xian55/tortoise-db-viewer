@@ -862,9 +862,10 @@ async function showFaction(id) {
   const name = fac.name || `Faction #${fac.id}`;
   document.title = `${name} - Tortoise-WoW DB`;
 
-  const [items, quests] = await Promise.all([
-    query(Q.Q_FACTION_ITEMS, [id]), query(Q.Q_FACTION_QUESTS, [id]),
+  const [items, quests, members] = await Promise.all([
+    query(Q.Q_FACTION_ITEMS, [id]), query(Q.Q_FACTION_QUESTS, [id]), query(Q.Q_FACTION_NPCS, [id]),
   ]);
+  const memberLoc = await resolveNpcLocations(members.map((m) => m.entry));
 
   // Standing column: value=rank (orders Friendly→Exalted), cell=label (group header).
   const itemCols = [
@@ -878,11 +879,17 @@ async function showFaction(id) {
     { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
     { label: "Rep", num: true, cls: "muted", cell: (r) => `+${r.value}`, value: (r) => r.value || 0 },
   ];
+  const memberCols = [
+    { label: "NPC", cell: (r) => npcLink(r.entry, r.name), value: (r) => r.name },
+    { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
+    { label: "Location", cls: "muted", cell: (r) => (memberLoc.get(r.entry) || {}).html || "", value: (r) => (memberLoc.get(r.entry) || {}).text || "" },
+  ];
 
   const meta = [`${fac.items} item${fac.items === 1 ? "" : "s"}`, `${fac.repquests} rep quest${fac.repquests === 1 ? "" : "s"}`];
   const tabDefs = [
     { id: "items", label: "Items", ...regTable(itemCols, items, { pageSize: 200, groupable: true, group: 1 }) },
     { id: "quests", label: "Rep from quests", ...regTable(questColsF, quests, { pageSize: 100 }) },
+    { id: "members", label: "Members", ...regTable(memberCols, members, { pageSize: 100 }) },
   ];
 
   app.innerHTML =

@@ -635,6 +635,20 @@ async function testFaction(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && groupRows > 0 && sortableH > 0;
 }
 
+// A faction page lists its member NPCs (name / level / location).
+async function testFactionMembers(id, minMembers) {
+  await page.goto(`${BASE}?faction=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-page .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".npc-page .tab")].find((t) => t.textContent.trim().startsWith("Members")); if (b) b.click(); });
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr", (r) => r.length);
+  const headers = await page.$$eval(".npc-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const locs = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr td:last-child", (t) => t.map((x) => x.textContent.trim()).filter(Boolean));
+  const npcLink = (await page.$(".npc-page .tabpane:not(.hidden) a.ilink[href*='npc=']")) !== null;
+  console.log(`faction-members ${id}: rows=${rows} headers=[${headers.join(",")}] locs=${locs.length} npcLink=${npcLink}`);
+  return rows >= minMembers && headers.includes("Location") && npcLink && locs.length > 0;
+}
+
 // a quest that grants reputation renders its faction as a link.
 async function testQuestRepLink(id) {
   await page.goto(`${BASE}?quest=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -714,6 +728,7 @@ ok = (await testSearchSpells("Shadowforged")) && ok;       // search yields a Sp
 ok = (await testBrowse("spells", "", "Profession")) && ok; // ?browse=spells finder
 ok = (await testBrowse("quests", "&minlvl=1&maxlvl=12", "Zone")) && ok;
 ok = (await testFaction(509, "League of Arathor")) && ok;
+ok = (await testFactionMembers(69, 20)) && ok;  // Darnassus member NPCs + location
 ok = (await testQuestRepLink(14)) && ok;
 ok = (await testBrowse("factions", "", "Items")) && ok;
 ok = (await testZone(12, "Elwynn")) && ok;

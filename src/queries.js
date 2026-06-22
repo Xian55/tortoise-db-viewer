@@ -412,6 +412,14 @@ export const Q_FACTION_ITEMS = `
   WHERE i.required_reputation_faction = ?1
   ORDER BY i.required_reputation_rank, i.quality DESC, i.item_level DESC LIMIT 1000`;
 
+// Member NPCs of a faction: creatures whose FactionTemplate maps to this rep
+// Faction (creature_template.faction -> faction_template.id -> faction_id).
+export const Q_FACTION_NPCS = `
+  SELECT c.entry, c.name, c.level_min, c.level_max, c.rank
+  FROM creatures c
+  WHERE c.name <> '' AND c.faction IN (SELECT id FROM faction_template WHERE faction_id = ?1)
+  ORDER BY c.level_max, c.name LIMIT 1000`;
+
 // Quests that grant reputation with this faction.
 export const Q_FACTION_QUESTS = `
   SELECT q.entry, q.title, q.level, r.value

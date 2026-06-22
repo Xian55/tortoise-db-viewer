@@ -92,6 +92,18 @@ export const IMPORTS = [
     indexes: [],
   },
   {
+    // FactionTemplate -> Faction (reputation) id. creature_template.faction is a
+    // FactionTemplate id; this maps it to the rep Faction so a faction page can
+    // list its member NPCs (faction_id = the rep Faction).
+    file: "tw_world_faction_template.sql",
+    table: "faction_template",
+    target: "faction_template",
+    columns: ["id", "faction_id"],
+    text: [],
+    pk: "id",
+    indexes: ["faction_id"],
+  },
+  {
     // GameObjects that start a quest (e.g. a book/altar).
     file: "tw_world_gameobject_questrelation.sql",
     table: "gameobject_questrelation",
