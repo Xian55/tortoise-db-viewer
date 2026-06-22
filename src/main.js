@@ -493,20 +493,34 @@ async function showNpc(id) {
     const area = (z.loctop - z.locbottom) * (z.locleft - z.locright);
     if (!zoneByMap[z.mapid] || area > zoneByMap[z.mapid].area) zoneByMap[z.mapid] = { ...z, area };
   }
-  // Map view: pick the (map, zone) holding the most of this NPC's spawns and plot
-  // them as focus pins. Spawns outside any resolved zone box (no parchment) drop.
-  let mapZone = null, mapPts = [];
-  const ptsByMap = new Map();
+  // Map view: WMA boxes overlap (a spawn at the Deadmines entrance falls inside
+  // Westfall, Stranglethorn AND the tiny "The Deadmines" sub-zone). The largest box
+  // is right for the Location label (encompassing zone) but wrong for the map -- we
+  // want the parchment the spawn sits most comfortably on. So per spawn, pick the
+  // containing zone where it is most *interior* (max min-distance to the box edges),
+  // then render the zone that holds the most spawns. Drops spawns with no zone (e.g.
+  // map-less instances like Dire Maul, which have no parchment).
+  const interiorness = (z, x, y) => {
+    const dx = z.loctop - z.locbottom, dy = z.locleft - z.locright;
+    if (!dx || !dy) return -1;
+    const fx = (x - z.locbottom) / dx, fy = (y - z.locright) / dy;
+    if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return -1; // not inside this box
+    return Math.min(fx, 1 - fx, fy, 1 - fy);
+  };
+  const tally = new Map(); // areaid -> { zone, pts:[] }
   for (const s of npcSpawns) {
-    if (!ptsByMap.has(s.map)) ptsByMap.set(s.map, []);
-    ptsByMap.get(s.map).push(s);
+    let best = null, bestScore = -1;
+    for (const z of zoneCand) {
+      if (z.mapid !== s.map) continue;
+      const sc = interiorness(z, s.x, s.y);
+      if (sc > bestScore) { bestScore = sc; best = z; }
+    }
+    if (!best) continue;
+    const e = tally.get(best.areaid) || { zone: best, pts: [] };
+    e.pts.push(s); tally.set(best.areaid, e);
   }
-  for (const [mid, pts] of ptsByMap) {
-    const z = zoneByMap[mid];
-    if (!z) continue;
-    const inBox = pts.filter((p) => p.x >= z.locbottom && p.x <= z.loctop && p.y >= z.locright && p.y <= z.locleft);
-    if (inBox.length > mapPts.length) { mapPts = inBox; mapZone = z; }
-  }
+  let mapZone = null, mapPts = [];
+  for (const e of tally.values()) if (e.pts.length > mapPts.length) { mapPts = e.pts; mapZone = e.zone; }
   const mapHtml = maps.map((m) => {
     const tag = m.type === 2 ? "Raid" : m.type === 1 ? "Dungeon" : null;
     if (tag) return `${dungeonLink(m.id, m.name)} <span class="dim">(${tag})</span>`;
@@ -559,6 +573,14 @@ async function showNpc(id) {
     { id: "objective", label: "Objective of", ...regTable(objectiveCols, objectiveOf) },
   ];
 
+  // The NPC has spawns but none resolve to a zone with a parchment (e.g. the few
+  // map-less instances like Dire Maul, which never shipped an interior map) -> say
+  // so instead of leaving a confusing blank where the map would be.
+  const instMap = maps.find((m) => m.type === 1 || m.type === 2);
+  const noMapNote = !mapZone && npcSpawns.length
+    ? `<div class="zone-empty muted">No spawn-location map is available${instMap ? ` — <b>${esc(instMap.name)}</b> has no interior map in the client data` : ""}.</div>`
+    : "";
+
   app.innerHTML =
     `<div class="npc-page">
       <div class="npc-head">
@@ -569,7 +591,7 @@ async function showNpc(id) {
           <span class="dim">· NPC #${npc.entry}</span></div>
         ${mapHtml ? `<div class="npc-meta muted">Location: ${mapHtml}</div>` : ""}
       </div>
-      ${mapZone ? `<div id="zonemap"></div>` : ""}
+      ${mapZone ? `<div id="zonemap"></div>` : noMapNote}
       ${tabs(tabDefs)}
     </div>`;
   mountTables();

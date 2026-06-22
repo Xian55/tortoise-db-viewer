@@ -265,6 +265,20 @@ async function testNpcMap(id) {
   return hasMap && pins > 0;
 }
 
+// A spawn that lands inside several overlapping WMA boxes must pick the most
+// *interior* zone (the small sub-zone the spawn sits centrally on), not the
+// largest. NPC 596 (Deadmines entrance) -> The Deadmines parchment (areaid 1581),
+// not Stranglethorn/Westfall.
+async function testNpcMapZone(id, areaid) {
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
+  const src = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src")).catch(() => "");
+  const pins = await page.$$eval("#zonemap .leaflet-marker-icon", (e) => e.length).catch(() => 0);
+  const match = src.includes(`/${areaid}.webp`);
+  console.log(`npc-map-zone ${id}: src="${src}" wantArea=${areaid} match=${match} pins=${pins}`);
+  return match && pins > 0;
+}
+
 async function testNpcTypeLink(id) {
   await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".npc-meta a.nav[href*='browse=npcs']", { timeout: 40000 });
@@ -585,6 +599,7 @@ ok = (await testNpc(80402, "Aemara Sunsorrow", "Teaches")) && ok;  // trainer ->
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
 ok = (await testNpcMap(2376)) && ok;  // NPC page shows its zone map + spawn pins
+ok = (await testNpcMapZone(596, 1581)) && ok;  // overlapping boxes -> most-interior zone
 ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;          // ?dungeon= redirects to the zone view
 ok = (await testInstanceZone(5138, "Deadmines")) && ok;  // ?zone= auto-detects the dungeon
