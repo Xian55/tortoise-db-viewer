@@ -1021,6 +1021,7 @@ async function showZone(id, gatherItem = null) {
   const questCols = [
     { label: "Quest", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
     { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
+    { label: "Quest Giver", cls: "muted", cell: (r) => (r.giver_id ? npcLink(r.giver_id, r.giver) : ""), value: (r) => r.giver || "" },
   ];
   const tabDefs = [
     ...(isInstance ? [{ id: "bosses", label: "Boss Loot", ...regTable(bossCols, bossLoot, { pageSize: 500, groupable: true, group: 0 }) }] : []),

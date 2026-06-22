@@ -667,9 +667,11 @@ async function testZoneQuests(id, minQuests) {
   await page.evaluate(() => { const b = [...document.querySelectorAll(".zone-page .tab")].find((t) => t.textContent.trim().startsWith("Quests")); if (b) b.click(); });
   await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
   const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) tbody tr", (r) => r.length);
+  const headers = await page.$$eval(".zone-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const hasQuestLink = (await page.$(".zone-page .tabpane:not(.hidden) a.ilink[href*='quest=']")) !== null;
-  console.log(`zone-quests ${id}: rows=${rows} hasQuestLink=${hasQuestLink}`);
-  return rows >= minQuests && hasQuestLink;
+  const hasGiverLink = (await page.$(".zone-page .tabpane:not(.hidden) a.ilink[href*='npc=']")) !== null;
+  console.log(`zone-quests ${id}: rows=${rows} headers=[${headers.join(",")}] questLink=${hasQuestLink} giverLink=${hasGiverLink}`);
+  return rows >= minQuests && hasQuestLink && headers.includes("Quest Giver") && hasGiverLink;
 }
 
 // client-only zones (map texture, no spawns in the public SQL export) render the

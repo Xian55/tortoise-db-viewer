@@ -436,10 +436,15 @@ export const Q_FACTION_QUESTS = `
   WHERE r.faction = ?1 ORDER BY r.value DESC, q.level LIMIT 500`;
 
 // Quests bound to a zone: directly (q.zone = areaid) or in one of its sub-zones
-// (the sub-zone's area_template.zone_id points at this zone).
+// (the sub-zone's area_template.zone_id points at this zone). gc = the quest's
+// start NPC (alphabetically-first, for a stable pick) so the tab can show it.
 export const Q_ZONE_QUESTS = `
-  SELECT q.entry, q.title, q.level FROM quests q
+  SELECT q.entry, q.title, q.level, gc.entry AS giver_id, gc.name AS giver
+  FROM quests q
   JOIN areas a ON a.entry = q.zone
+  LEFT JOIN creatures gc ON gc.entry = (
+    SELECT r.id FROM creature_quest_start r JOIN creatures c2 ON c2.entry = r.id
+    WHERE r.quest = q.entry ORDER BY c2.name LIMIT 1)
   WHERE (q.zone = ?1 OR a.zone_id = ?1) AND q.title <> ''
   ORDER BY q.level, q.title LIMIT 1000`;
 
