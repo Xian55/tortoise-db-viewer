@@ -596,6 +596,28 @@ async function testSearchTabs(term) {
   return tabList.length > 1 && rows > 0;
 }
 
+// search includes factions: a faction name yields a Factions tab with a link.
+async function testSearchFaction(term) {
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".results .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".results .tab")].find((t) => t.textContent.includes("Factions")); if (b) b.click(); });
+  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  const hasFactionLink = (await page.$(".results .tabpane:not(.hidden) a.ilink[href*='faction=']")) !== null;
+  console.log(`search-faction "${term}": factionLink=${hasFactionLink}`);
+  return hasFactionLink;
+}
+
+// browse NPCs shows Faction + Location (not ID), searches title, and filters by faction.
+async function testBrowseNpcCols() {
+  await page.goto(`${BASE}?browse=npcs&q=quartermaster`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const factionFilter = (await page.$(".filters [data-f='faction']")) !== null;
+  console.log(`browse-npc-cols: rows=${rows} headers=[${headers.join(",")}] factionFilter=${factionFilter}`);
+  return rows > 0 && headers.includes("Faction") && headers.includes("Location") && !headers.includes("ID") && factionFilter;
+}
+
 // search includes zones: "Tanaris" yields a Zones tab with >=1 row
 async function testSearchZone(term) {
   await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -773,6 +795,8 @@ ok = (await testBrowse("items", `&class=4${sc("armor,>=,100")}`, "Armor")) && ok
 ok = (await testBrowse("items", sc("agi,>=,20"), "Agility")) && ok;
 ok = (await testBrowse("items", sc("sp,>=,20"), "Spell Power")) && ok;
 ok = (await testBrowse("npcs", "&rank=3")) && ok;
+ok = (await testBrowseNpcCols()) && ok;                  // browse NPCs: Faction + Location cols, title search, faction filter
+ok = (await testSearchFaction("Darnassus")) && ok;      // unified search includes factions
 ok = (await testBrowseSource("vendor")) && ok;
 ok = (await testItemSources(2770)) && ok;
 ok = (await testItemSources(5031, "Unobtainable")) && ok;

@@ -2,8 +2,8 @@
 // autocomplete dropdown wired onto the top-bar input. Items/NPCs/quests are
 // FTS5-backed; dungeons use LIKE over the ~39 maps. All in-memory (no network).
 import { query } from "./db.js";
-import { Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES } from "./queries.js";
-import { itemLink, npcLink, questLink, spellLink, dungeonLink, zoneLink, esc } from "./render.js";
+import { Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES, Q_SEARCH_FACTIONS } from "./queries.js";
+import { itemLink, npcLink, questLink, spellLink, dungeonLink, zoneLink, factionLink, esc } from "./render.js";
 
 // FTS5 MATCH string: prefix-match each alnum token ("fire bl" -> "fire* bl*").
 function ftsQuery(term) {
@@ -14,19 +14,20 @@ function ftsQuery(term) {
 // Run all entity searches in parallel; `limit` rows per entity.
 export async function runSearch(term, limit) {
   const t = (term || "").trim();
-  const empty = { items: [], npcs: [], quests: [], spells: [], dungeons: [], zones: [] };
+  const empty = { items: [], npcs: [], quests: [], spells: [], dungeons: [], zones: [], factions: [] };
   if (!t) return empty;
   const fts = ftsQuery(t);
   const like = `%${t}%`;
-  const [items, npcs, quests, spells, dungeons, zones] = await Promise.all([
+  const [items, npcs, quests, spells, dungeons, zones, factions] = await Promise.all([
     fts ? query(Q_SEARCH_ITEMS, [fts, t, limit]) : [],
     fts ? query(Q_SEARCH_NPCS, [fts, t, limit]) : [],
     fts ? query(Q_SEARCH_QUESTS, [fts, t, limit]) : [],
     fts ? query(Q_SEARCH_SPELLS, [fts, t, limit]) : [],
     query(Q_SEARCH_DUNGEONS, [like, t, limit]),
     query(Q_SEARCH_ZONES, [like, t, limit]),
+    query(Q_SEARCH_FACTIONS, [like, t, limit]),
   ]);
-  return { items, npcs, quests, spells, dungeons, zones };
+  return { items, npcs, quests, spells, dungeons, zones, factions };
 }
 
 // Flatten the per-type results into one ranked list (exact > prefix > other,
@@ -36,11 +37,12 @@ function rankFlat(res, term, n) {
   const tier = (name) => { const s = (name || "").toLowerCase(); return s === tl ? 0 : s.startsWith(tl) ? 1 : 2; };
   const all = [];
   for (const it of res.items) all.push({ type: "item", w: 0, name: it.name, tier: tier(it.name), html: itemLink(it.entry, it.name, it.quality, it.icon), href: `?item=${it.entry}` });
-  for (const c of res.npcs) all.push({ type: "npc", w: 1, name: c.name, tier: tier(c.name), html: npcLink(c.entry, c.name), href: `?npc=${c.entry}` });
+  for (const c of res.npcs) all.push({ type: "npc", w: 1, name: c.name, tier: tier(c.name), html: npcLink(c.entry, c.name) + (c.subname ? ` <span class="muted">&lt;${esc(c.subname)}&gt;</span>` : ""), href: `?npc=${c.entry}` });
   for (const q of res.quests) all.push({ type: "quest", w: 2, name: q.title, tier: tier(q.title), html: questLink(q.entry, q.title), href: `?quest=${q.entry}` });
   for (const s of res.spells) all.push({ type: "spell", w: 3, name: s.name, tier: tier(s.name), html: spellLink(s.entry, s.name, s.icon), href: `?spell=${s.entry}` });
-  for (const d of res.dungeons) all.push({ type: "dungeon", w: 4, name: d.name, tier: tier(d.name), html: dungeonLink(d.id, d.name), href: `?dungeon=${d.id}` });
-  for (const z of res.zones) all.push({ type: "zone", w: 5, name: z.name, tier: tier(z.name), html: zoneLink(z.areaid, z.name), href: `?zone=${z.areaid}` });
+  for (const f of res.factions) all.push({ type: "faction", w: 4, name: f.name, tier: tier(f.name), html: factionLink(f.id, f.name), href: `?faction=${f.id}` });
+  for (const d of res.dungeons) all.push({ type: "dungeon", w: 5, name: d.name, tier: tier(d.name), html: dungeonLink(d.id, d.name), href: `?dungeon=${d.id}` });
+  for (const z of res.zones) all.push({ type: "zone", w: 6, name: z.name, tier: tier(z.name), html: zoneLink(z.areaid, z.name), href: `?zone=${z.areaid}` });
   all.sort((a, b) => a.tier - b.tier || a.w - b.w || (a.name || "").localeCompare(b.name || ""));
   return all.slice(0, n);
 }

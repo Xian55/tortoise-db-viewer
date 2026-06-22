@@ -926,6 +926,14 @@ console.log("Importing zones + spawn points...");
 
   // precompute per-zone spawn count (home-zone membership) for the browse list
   db.exec(`UPDATE zones SET spawns = (SELECT COUNT(*) FROM spawn_points s WHERE s.zone = zones.areaid)`);
+
+  // primary home zone per creature (the zone holding most of its spawns) -> the
+  // browse-NPC Location column reads this directly (no per-row subquery at query time).
+  db.exec(`ALTER TABLE creatures ADD COLUMN zone INTEGER`);
+  db.exec(`UPDATE creatures SET zone = (
+    SELECT s.zone FROM spawn_points s INDEXED BY idx_spawn_id
+    WHERE s.kind = 'c' AND s.id = creatures.entry AND s.zone IS NOT NULL
+    GROUP BY s.zone ORDER BY COUNT(*) DESC LIMIT 1)`);
 }
 
 // staging tables have served their purpose; drop them so VACUUM reclaims the
@@ -936,8 +944,8 @@ src.drop();
 console.log("Building FTS indexes...");
 db.exec(`CREATE VIRTUAL TABLE items_fts USING fts5(name, content='items', content_rowid='entry', tokenize='unicode61')`);
 db.exec(`INSERT INTO items_fts(rowid, name) SELECT entry, name FROM items`);
-db.exec(`CREATE VIRTUAL TABLE creatures_fts USING fts5(name, content='creatures', content_rowid='entry', tokenize='unicode61')`);
-db.exec(`INSERT INTO creatures_fts(rowid, name) SELECT entry, name FROM creatures WHERE name IS NOT NULL AND name <> ''`);
+db.exec(`CREATE VIRTUAL TABLE creatures_fts USING fts5(name, subname, content='creatures', content_rowid='entry', tokenize='unicode61')`);
+db.exec(`INSERT INTO creatures_fts(rowid, name, subname) SELECT entry, name, subname FROM creatures WHERE name IS NOT NULL AND name <> ''`);
 db.exec(`CREATE VIRTUAL TABLE quests_fts USING fts5(title, content='quests', content_rowid='entry', tokenize='unicode61')`);
 db.exec(`INSERT INTO quests_fts(rowid, title) SELECT entry, title FROM quests WHERE title IS NOT NULL AND title <> ''`);
 db.exec(`CREATE VIRTUAL TABLE spells_fts USING fts5(name, description, content='spells', content_rowid='entry', tokenize='unicode61')`);

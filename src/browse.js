@@ -73,7 +73,8 @@ const NPC_COLS = [
   { key: "level", label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
   { key: "rank", label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
   { key: "type", label: "Type", cls: "muted", cell: (r) => CREATURE_TYPE[r.type] || "", value: (r) => CREATURE_TYPE[r.type] || "" },
-  { key: "id", label: "ID", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
+  { key: "faction", label: "Faction", cls: "muted", cell: (r) => (r.faction ? (r.faction_page ? factionLink(r.faction_id, r.faction) : esc(r.faction)) : ""), value: (r) => r.faction || "" },
+  { key: "location", label: "Location", cls: "muted", cell: (r) => (r.zone_id ? zoneLink(r.zone_id, r.zone) : ""), value: (r) => r.zone || "" },
 ];
 
 // Drop columns made redundant by an active single-value filter: once one
@@ -246,28 +247,43 @@ async function browseItems(p) {
 async function browseNpcs(p) {
   const f = {
     q: p.get("q") || "", type: p.get("type") || "", rank: p.get("rank") || "",
-    minlvl: p.get("minlvl") || "", maxlvl: p.get("maxlvl") || "",
+    faction: p.get("faction") || "", minlvl: p.get("minlvl") || "", maxlvl: p.get("maxlvl") || "",
   };
   const where = ["c.name <> ''"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
-  if (f.q) add("c.name LIKE ?", `%${f.q}%`);
+  if (f.q) { where.push("(c.name LIKE ? OR c.subname LIKE ?)"); binds.push(`%${f.q}%`, `%${f.q}%`); } // name OR title
   if (f.type !== "") add("c.type = ?", +f.type);
   if (f.rank !== "") add("c.rank = ?", +f.rank);
+  if (f.faction !== "") add("ft.faction_id = ?", +f.faction);
   if (f.minlvl !== "") add("c.level_min >= ?", +f.minlvl);
   if (f.maxlvl !== "") add("c.level_max <= ?", +f.maxlvl);
   const whereSql = "WHERE " + where.join(" AND ");
   const rows = await query(
-    `SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.type
-     FROM creatures c ${whereSql} ORDER BY c.level_max DESC, c.name`, binds);
+    `SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.type,
+            ft.faction_id, fn.name1 AS faction,
+            (SELECT 1 FROM factions ff WHERE ff.id = ft.faction_id) AS faction_page,
+            c.zone AS zone_id, z.name AS zone
+     FROM creatures c
+     LEFT JOIN faction_template ft ON ft.id = c.faction
+     LEFT JOIN faction_names fn ON fn.id = ft.faction_id
+     LEFT JOIN zones z ON z.areaid = c.zone
+     ${whereSql} ORDER BY c.level_max DESC, c.name`, binds);
+
+  // Faction dropdown: only factions that actually have member NPCs, by name.
+  const frows = await query(`SELECT DISTINCT ft.faction_id AS id, fn.name1 AS name
+    FROM creatures c JOIN faction_template ft ON ft.id = c.faction
+    JOIN faction_names fn ON fn.id = ft.faction_id WHERE c.name <> '' AND fn.name1 <> ''`);
+  const fopts = frows.map((r) => [String(r.id), r.name]).sort((a, b) => a[1].localeCompare(b[1]));
 
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
     ${selectField("type", "Type", options(Object.entries(CREATURE_TYPE), f.type, "Any type"))}
     ${selectField("rank", "Rank", options([[0, "Normal"], ...Object.entries(CREATURE_RANK)], f.rank, "Any rank"))}
+    ${selectField("faction", "Faction", options(fopts, f.faction, "Any faction"))}
     ${numField("minlvl", "Level ≥", f.minlvl)} ${numField("maxlvl", "Level ≤", f.maxlvl)}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  const hide = [f.type !== "" && "type", f.rank !== "" && "rank"].filter(Boolean);
+  const hide = [f.type !== "" && "type", f.rank !== "" && "rank", f.faction !== "" && "faction"].filter(Boolean);
   return { rows, cols: hideCols(NPC_COLS, hide), filters, noun: "NPCs" };
 }
 

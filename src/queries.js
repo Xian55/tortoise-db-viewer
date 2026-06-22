@@ -28,10 +28,17 @@ export const Q_SEARCH_ITEMS = `
   LIMIT ?3`;
 
 export const Q_SEARCH_NPCS = `
-  SELECT c.entry, c.name, c.level_min, c.level_max, c.rank, c.type
+  SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.type
   FROM creatures_fts f JOIN creatures c ON c.entry = f.rowid
   WHERE creatures_fts MATCH ?1
   ORDER BY (c.name = ?2) DESC, (c.name LIKE ?2 || '%') DESC, c.level_max DESC
+  LIMIT ?3`;
+
+// Factions by name (LIKE over the small derived `factions` summary).
+export const Q_SEARCH_FACTIONS = `
+  SELECT id, name FROM factions
+  WHERE name LIKE ?1
+  ORDER BY (name = ?2) DESC, name
   LIMIT ?3`;
 
 export const Q_SEARCH_QUESTS = `

@@ -119,26 +119,13 @@ async function showSearch(term) {
     { label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
     { label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
   ];
-  // Resolve a representative zone per NPC result (the largest WMA box that
-  // contains one of its spawns -- same heuristic as the NPC detail page).
-  const npcZone = new Map();
-  if (res.npcs.length) {
-    const ids = res.npcs.map((n) => n.entry);
-    const ph = ids.map(() => "?").join(",");
-    const rows = await query(`SELECT entry, areaid, name FROM (
-        SELECT s.id AS entry, z.areaid, z.name,
-          ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY (z.loctop - z.locbottom) * (z.locleft - z.locright) DESC) AS rn
-        FROM spawn_points s INDEXED BY idx_spawn_id
-        JOIN zones z ON z.mapid = s.map AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
-        WHERE s.kind = 'c' AND s.id IN (${ph}) AND z.name <> ''
-      ) WHERE rn = 1`, ids);
-    for (const r of rows) npcZone.set(r.entry, r);
-  }
+  // exact home zone per NPC result (precomputed; same as everywhere else)
+  const npcLoc = await resolveNpcLocations(res.npcs.map((n) => n.entry));
   const npcCols = [
-    { label: "Name", cell: (r) => npcLink(r.entry, r.name), value: (r) => r.name },
+    { label: "Name", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
     { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
     { label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
-    { label: "Location", cls: "muted", cell: (r) => { const z = npcZone.get(r.entry); return z ? zoneLink(z.areaid, z.name) : ""; }, value: (r) => npcZone.get(r.entry)?.name || "" },
+    { label: "Location", cls: "muted", cell: (r) => (npcLoc.get(r.entry) || {}).html || "", value: (r) => (npcLoc.get(r.entry) || {}).text || "" },
   ];
   const questCols = [
     { label: "Title", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
@@ -157,16 +144,20 @@ async function showSearch(term) {
     { label: "Name", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
     { label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
   ];
+  const factionCols = [
+    { label: "Name", cell: (r) => factionLink(r.id, r.name), value: (r) => r.name },
+  ];
 
   const tabDefs = [
     { id: "items", label: "Items", ...regTable(itemCols, res.items, { pageSize: 100 }) },
     { id: "npcs", label: "NPCs", ...regTable(npcCols, res.npcs, { pageSize: 100 }) },
     { id: "quests", label: "Quests", ...regTable(questCols, res.quests, { pageSize: 100 }) },
     { id: "spells", label: "Spells", ...regTable(spellCols, res.spells, { pageSize: 100 }) },
+    { id: "factions", label: "Factions", ...regTable(factionCols, res.factions) },
     { id: "dungeons", label: "Dungeons", ...regTable(dungeonCols, res.dungeons) },
     { id: "zones", label: "Zones", ...regTable(zoneCols, res.zones) },
   ];
-  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.dungeons.length + res.zones.length;
+  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + res.dungeons.length + res.zones.length;
   if (!total) { app.innerHTML = `<div class="home"><p>No results for “${esc(term)}”.</p></div>`; return; }
 
   app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${tabs(tabDefs)}</div>`;
