@@ -940,16 +940,36 @@ console.log("Importing zones + spawn points...");
 // space (they hold the full raw mangos rows, much larger than the viewer tables).
 src.drop();
 
+// ---- Flag dev/junk rows so they're hidden from browse + search (kept in the DB
+// so direct links still resolve). Matches unambiguous markers only -- NOT a bare
+// "test" (that hits legit "Test of Faith", "Testament of Rexxar", ...). ----
+console.log("Flagging dev/junk rows...");
+const JUNK = /placeholder|deprecated|\bunused\b|cashtest|qaspell|\[test\]|monster\s*-\s|\s-\s*qa\b|\(old\)/i;
+const flagJunk = (table, ...cols) => {
+  db.exec(`ALTER TABLE ${table} ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`);
+  const sel = `rowid AS rid, ${cols.join(", ")}`;
+  const ids = db.prepare(`SELECT ${sel} FROM ${table}`).all()
+    .filter((r) => cols.some((c) => r[c] && JUNK.test(r[c]))).map((r) => r.rid);
+  const upd = db.prepare(`UPDATE ${table} SET hidden = 1 WHERE rowid = ?`);
+  db.transaction(() => { for (const id of ids) upd.run(id); })();
+  console.log(`  ${table}: ${ids.length} hidden`);
+};
+flagJunk("items", "name");
+flagJunk("creatures", "name");
+flagJunk("quests", "title");
+flagJunk("spells", "name", "rank");
+flagJunk("maps", "name");
+
 // ---- Full-text search over item / creature / quest names (unified search) ----
 console.log("Building FTS indexes...");
 db.exec(`CREATE VIRTUAL TABLE items_fts USING fts5(name, content='items', content_rowid='entry', tokenize='unicode61')`);
-db.exec(`INSERT INTO items_fts(rowid, name) SELECT entry, name FROM items`);
+db.exec(`INSERT INTO items_fts(rowid, name) SELECT entry, name FROM items WHERE hidden = 0`);
 db.exec(`CREATE VIRTUAL TABLE creatures_fts USING fts5(name, subname, content='creatures', content_rowid='entry', tokenize='unicode61')`);
-db.exec(`INSERT INTO creatures_fts(rowid, name, subname) SELECT entry, name, subname FROM creatures WHERE name IS NOT NULL AND name <> ''`);
+db.exec(`INSERT INTO creatures_fts(rowid, name, subname) SELECT entry, name, subname FROM creatures WHERE name IS NOT NULL AND name <> '' AND hidden = 0`);
 db.exec(`CREATE VIRTUAL TABLE quests_fts USING fts5(title, content='quests', content_rowid='entry', tokenize='unicode61')`);
-db.exec(`INSERT INTO quests_fts(rowid, title) SELECT entry, title FROM quests WHERE title IS NOT NULL AND title <> ''`);
+db.exec(`INSERT INTO quests_fts(rowid, title) SELECT entry, title FROM quests WHERE title IS NOT NULL AND title <> '' AND hidden = 0`);
 db.exec(`CREATE VIRTUAL TABLE spells_fts USING fts5(name, description, content='spells', content_rowid='entry', tokenize='unicode61')`);
-db.exec(`INSERT INTO spells_fts(rowid, name, description) SELECT entry, name, description FROM spells WHERE name IS NOT NULL AND name <> '' AND teaches IS NULL`);
+db.exec(`INSERT INTO spells_fts(rowid, name, description) SELECT entry, name, description FROM spells WHERE name IS NOT NULL AND name <> '' AND teaches IS NULL AND hidden = 0`);
 
 console.log("Optimizing...");
 db.pragma("journal_mode = DELETE");

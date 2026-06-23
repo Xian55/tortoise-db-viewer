@@ -57,7 +57,7 @@ export const Q_SEARCH_SPELLS = `
 
 export const Q_SEARCH_DUNGEONS = `
   SELECT id, name, type FROM maps
-  WHERE type IN (1,2) AND name LIKE ?1
+  WHERE type IN (1,2) AND name LIKE ?1 AND hidden = 0
   ORDER BY (name = ?2) DESC, name
   LIMIT ?3`;
 
@@ -262,7 +262,7 @@ export const Q_SPELL_SOURCE = `
 // Browse Spells finder: all named spells (profession label resolved client-side).
 // teaches IS NULL drops "learn" stub spells (a recipe's twin of the real craft).
 export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, rank, school, mana_cost, cast_ms, channeled, range_max
-  FROM spells WHERE name <> '' AND teaches IS NULL ORDER BY name`;
+  FROM spells WHERE name <> '' AND teaches IS NULL AND hidden = 0 ORDER BY name`;
 
 // ---- NPC (creature) pages ----
 export const Q_NPC = `SELECT entry, name, subname, level_min, level_max, rank, type, faction, health_min, health_max, npc_flags, display_id FROM creatures WHERE entry = ?1`;
@@ -330,7 +330,7 @@ export const qQuestStartNpcs = (n) => `
   WHERE r.quest IN (${inList(n)})`;
 
 // ---- dungeons / raids ----
-export const Q_DUNGEONS = `SELECT id, name, type FROM maps WHERE type IN (1,2) AND name <> '' ORDER BY type, name`;
+export const Q_DUNGEONS = `SELECT id, name, type FROM maps WHERE type IN (1,2) AND name <> '' AND hidden = 0 ORDER BY type, name`;
 export const Q_DUNGEON = `SELECT id, name, type FROM maps WHERE id = ?1`;
 // A zone's map type (0 open-world, 1 dungeon, 2 raid) -> lets the zone page
 // auto-detect that it's actually an instance and render dungeon/raid content.

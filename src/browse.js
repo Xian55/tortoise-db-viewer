@@ -158,7 +158,7 @@ async function browseItems(p) {
     unique: p.get("unique") || "", prof: p.get("prof") || "",
   };
   const criteria = parseCriteria(p.get("stats"));
-  const where = [], binds = [];
+  const where = ["i.hidden = 0"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
   const addIn = (col, csv) => {
     const vals = (csv || "").split(",").filter(Boolean);
@@ -249,7 +249,7 @@ async function browseNpcs(p) {
     q: p.get("q") || "", type: p.get("type") || "", rank: p.get("rank") || "",
     faction: p.get("faction") || "", minlvl: p.get("minlvl") || "", maxlvl: p.get("maxlvl") || "",
   };
-  const where = ["c.name <> ''"], binds = [];
+  const where = ["c.name <> ''", "c.hidden = 0"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
   if (f.q) { where.push("(c.name LIKE ? OR c.subname LIKE ?)"); binds.push(`%${f.q}%`, `%${f.q}%`); } // name OR title
   if (f.type !== "") add("c.type = ?", +f.type);
@@ -395,7 +395,7 @@ async function browseQuests(p) {
     minlvl: p.get("minlvl") || "", maxlvl: p.get("maxlvl") || "",
     class: p.get("class") || "", faction: p.get("faction") || "",
   };
-  const where = ["q.title <> ''"], binds = [];
+  const where = ["q.title <> ''", "q.hidden = 0"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
   if (f.q) add("q.title LIKE ?", `%${f.q}%`);
   if (f.zone !== "") add("q.zone = ?", +f.zone);
