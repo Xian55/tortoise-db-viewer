@@ -113,13 +113,14 @@ async function testItemSet(itemId, setId) {
   const bonuses = await page.$$eval(".tt-set .tt-set-bonus", (e) => e.length).catch(() => 0);
   const bonusLink = (await page.$(".tt-set a.set-bonus-link[href*='spell=']")) !== null;
   const nameLink = (await page.$(`.tt-set .tt-set-name a[href*='itemset=${setId}']`)) !== null;
+  const noRawToken = await page.$eval(".tt-set", (e) => !/\$\d/.test(e.textContent)).catch(() => true); // cross-spell vars resolved
   // ?itemset page: panel + stat summary table
   await page.goto(`${BASE}?itemset=${setId}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".item-set-page .item-set", { timeout: 40000 });
   const pageMembers = await page.$$eval(".item-set-page .set-member", (e) => e.length).catch(() => 0);
   const summary = (await page.$(".item-set-page .set-summary")) !== null;
-  console.log(`item-set ${itemId}/${setId}: members=${members} bonuses=${bonuses} bonusLink=${bonusLink} pageMembers=${pageMembers} summary=${summary}`);
-  return members >= 5 && bonuses >= 2 && bonusLink && pageMembers >= 5 && summary;
+  console.log(`item-set ${itemId}/${setId}: members=${members} bonuses=${bonuses} bonusLink=${bonusLink} nameLink=${nameLink} noRawToken=${noRawToken} pageMembers=${pageMembers} summary=${summary}`);
+  return members >= 5 && bonuses >= 2 && bonusLink && nameLink && noRawToken && pageMembers >= 5 && summary;
 }
 
 // recipe/pattern/plans item shows a "Teaches" tab with the craft it unlocks

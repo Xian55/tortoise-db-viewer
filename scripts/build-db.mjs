@@ -485,6 +485,37 @@ console.log("Importing spells + crafting graph...");
   db.exec(`CREATE INDEX idx_spell_reagent_item ON spell_reagent(item)`);
   db.exec(`CREATE INDEX idx_spell_reagent_spell ON spell_reagent(spell)`);
   console.log(`  spells: ${ns} | creates: ${nc} | reagents: ${nr}`);
+
+  // Resolve CROSS-spell description tokens ($<id>s<n> / $<id>d<n>) -- a spell's
+  // text can reference another spell's value (e.g. Cheat Death's "$28846s1" = 160).
+  // The viewer's resolveSpellText only knows the spell's own $s1 tokens, so bake
+  // the cross-refs here using every spell's s/d values. Own-spell $s1 stays for render.
+  {
+    const vals = new Map();
+    for (const r of db.prepare(`SELECT entry, s1, s2, s3, d1, d2, d3, duration_ms FROM spells`).all()) vals.set(r.entry, r);
+    const valStr = (s, d) => (d > 1 ? `${s} to ${s + d - 1}` : String(s ?? 0));
+    const durStr = (ms) => (ms ? `${Number.isInteger(ms / 1000) ? ms / 1000 : (ms / 1000).toFixed(1)} sec` : "");
+    const fix = (t) => {
+      if (!t) return t;
+      return t
+        // $<id>s<n> (or bare $<id>s = effect 1): referenced spell's effect base value
+        .replace(/\$(\d+)s([123]?)/gi, (m, id, n) => { const r = vals.get(+id); if (!r) return m; const k = n || 1; return valStr(r[`s${k}`] || 0, r[`d${k}`] || 0); })
+        // $<id>d : referenced spell's duration (no index)
+        .replace(/\$(\d+)d(?![0-9])/gi, (m, id) => { const r = vals.get(+id); return r ? durStr(r.duration_ms || 0) : m; })
+        // drop any remaining unresolvable cross-spell tokens ($<id>a1, $<id>o1, ...)
+        // so they don't render as literal garbage (render strips $<letter> but not $<digit>)
+        .replace(/\$\d+[a-zA-Z]\d*%?/g, "");
+    };
+    const upd = db.prepare(`UPDATE spells SET description = ?, auraDescription = ? WHERE entry = ?`);
+    let nfix = 0;
+    db.transaction(() => {
+      for (const r of db.prepare(`SELECT entry, description, auraDescription FROM spells WHERE description LIKE '%$%' OR auraDescription LIKE '%$%'`).all()) {
+        const d = fix(r.description), a = fix(r.auraDescription);
+        if (d !== r.description || a !== r.auraDescription) { upd.run(d, a, r.entry); nfix++; }
+      }
+    })();
+    console.log(`  resolved cross-spell desc tokens in ${nfix} spells`);
+  }
 }
 
 // ---- Crafting source: trainer-taught vs recipe-item-taught ----
