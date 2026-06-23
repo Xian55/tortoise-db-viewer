@@ -361,7 +361,8 @@ async function showSpell(id) {
   const secs = (ms) => { const v = ms / 1000; return `${Number.isInteger(v) ? v : v.toFixed(v < 1 ? 2 : 1)} ${v === 1 ? "second" : "seconds"}`; };
   const castStr = sp.channeled ? "Channeled" : (sp.cast_ms ? secs(sp.cast_ms) : "Instant");
   const costStr = sp.mana_cost ? `${sp.mana_cost} ${POWER_TYPE[sp.power_type] || "Mana"}` : (sp.mana_cost_pct ? `${sp.mana_cost_pct}% of base mana` : "");
-  const rangeStr = sp.range_max != null ? `${sp.range_min ? `${sp.range_min}-` : ""}${sp.range_max} yards${sp.range_name ? ` (${sp.range_name})` : ""}` : "n/a";
+  // range_max 0 = self-cast; show "Self" rather than a pointless "0 yards"
+  const rangeStr = sp.range_max ? `${sp.range_min ? `${sp.range_min}-` : ""}${sp.range_max} yards${sp.range_name ? ` (${sp.range_name})` : ""}` : (sp.range_max === 0 ? "Self" : "n/a");
 
   // ---- "Details on spell" key/value grid ----
   const grid = [
@@ -382,14 +383,25 @@ async function showSpell(id) {
   // ---- per-effect breakdown ----
   let effList = [];
   try { effList = sp.effects ? JSON.parse(sp.effects) : []; } catch { /* ignore */ }
+  // effectMiscValue references a creature for these types (Summon / Summon Pet /
+  // Mounted / Transform) -> render it as an NPC link (e.g. Mounted -> the mount).
+  const CREATURE_EFFECT = new Set([28, 56]);   // SUMMON, SUMMON_PET
+  const CREATURE_AURA = new Set([78, 56]);     // MOUNTED, TRANSFORM
+  const miscIsCreature = (ef) => ef.misc > 0 && (CREATURE_EFFECT.has(ef.effect) || (ef.effect === 6 && CREATURE_AURA.has(ef.aura)));
+  const miscIds = [...new Set(effList.filter(miscIsCreature).map((ef) => ef.misc))];
+  const miscName = new Map();
+  if (miscIds.length) {
+    for (const r of await query(`SELECT entry, name FROM creatures WHERE entry IN (${miscIds.map(() => "?").join(",")})`, miscIds)) miscName.set(r.entry, r.name);
+  }
   const effHtml = effList.map((ef) => {
     const head = `(${ef.effect}) ${SPELL_EFFECT[ef.effect] || `Effect #${ef.effect}`}` +
       (ef.aura ? `: ${SPELL_AURA[ef.aura] || `Aura #${ef.aura}`}` : "");
+    const miscLink = miscIsCreature(ef) ? ` ${npcLink(ef.misc, miscName.get(ef.misc) || `NPC #${ef.misc}`)}` : "";
     const lines = [];
     if (ef.value) lines.push(`Value: ${ef.value}${ef.die > 1 ? ` to ${ef.value + ef.die - 1}` : ""}`);
     if (ef.radius) lines.push(`Radius: ${ef.radius} yards`);
     if (ef.period) lines.push(`Interval: ${secs(ef.period)}`);
-    return `<div class="spell-effect"><div class="eff-head">Effect #${ef.i}: ${esc(head)}</div>` +
+    return `<div class="spell-effect"><div class="eff-head">Effect #${ef.i}: ${esc(head)}${miscLink}</div>` +
       `${lines.length ? `<div class="eff-body muted">${lines.map(esc).join("<br>")}</div>` : ""}</div>`;
   }).join("");
 

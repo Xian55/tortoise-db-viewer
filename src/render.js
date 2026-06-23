@@ -288,9 +288,9 @@ export function spellTooltip(sp) {
   const cast = sp.channeled ? "Channeled" : (sp.cast_ms ? spellSecs(sp.cast_ms) : "Instant");
   const desc = resolveSpellText(sp.description || sp.auraDescription, sp);
   const lines = [];
-  if (cost || sp.range_max != null) {
+  if (cost || sp.range_max) {
     lines.push(`<div class="tt-split"><span class="tt-l">${esc(cost)}</span>` +
-      `<span class="tt-r">${sp.range_max != null ? `${sp.range_max} yd range` : ""}</span></div>`);
+      `<span class="tt-r">${sp.range_max ? `${sp.range_max} yd range` : ""}</span></div>`);
   }
   lines.push(`<div>${esc(cast)}</div>`);
   if (desc) lines.push(`<div class="tt-spell">${esc(desc)}</div>`);

@@ -573,8 +573,10 @@ async function testSpellQuestReward(id) {
   const names = await page.$$eval(".spell-page .tt-name", (e) => e.length).catch(() => 0); // exactly 1 -> no dup
   const noData = await page.$eval(".spell-page", (el) => el.textContent.includes("No data.")).catch(() => true);
   const sub = await page.$eval(".spell-page .spell-sub", (e) => e.textContent).catch(() => "");
-  console.log(`spell-reward ${id}: tabs=[${tabList.join(", ")}] names=${names} noData=${noData} subHasId=${sub.includes("Spell #" + id)}`);
-  return tabList.some((t) => t.includes("Reward from quest")) && names === 1 && !noData && sub.includes("Spell #" + id);
+  const effNpcLink = (await page.$(".spell-page .spell-details a.ilink[href*='npc=']")) !== null; // Mounted -> creature link
+  const noZeroRange = await page.$eval(".spell-page .spell-details", (e) => !/\b0 yards\b/.test(e.textContent)).catch(() => true);
+  console.log(`spell-reward ${id}: tabs=[${tabList.join(", ")}] names=${names} noData=${noData} subHasId=${sub.includes("Spell #" + id)} effNpc=${effNpcLink} noZeroRange=${noZeroRange}`);
+  return tabList.some((t) => t.includes("Reward from quest")) && names === 1 && !noData && sub.includes("Spell #" + id) && effNpcLink && noZeroRange;
 }
 
 // detailed spell page: "Details on spell" grid + per-effect breakdown resolved
