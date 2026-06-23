@@ -214,9 +214,11 @@ async function testBrowseSpellCat() {
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const cat = await page.$eval('select[data-f="cat"]', (el) => el.value);
   const cls = await page.$eval('select[data-f="cls"]', (el) => el.value);
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const spellLink = (await page.$(".browse a.ilink[href*='spell=']")) !== null;
-  console.log(`browse-spellcat: rows=${rows} cat="${cat}" cls=${cls} spellLink=${spellLink}`);
-  return rows > 0 && cat === "Class Skills" && cls === "64" && spellLink;
+  console.log(`browse-spellcat: rows=${rows} cat="${cat}" cls=${cls} headers=[${headers.join(",")}] spellLink=${spellLink}`);
+  return rows > 0 && cat === "Class Skills" && cls === "64" && spellLink
+    && headers.includes("Level") && !headers.includes("Profession");  // class view swaps Profession -> Level
 }
 
 async function testItemSources(id, expectTag) {

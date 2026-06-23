@@ -289,7 +289,7 @@ export const Q_SPELL_SOURCE = `
 
 // Browse Spells finder: all named spells (profession label resolved client-side).
 // teaches IS NULL drops "learn" stub spells (a recipe's twin of the real craft).
-export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, rank, school, mana_cost, cast_ms, channeled, range_max, category, class_mask
+export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, rank, school, mana_cost, cast_ms, channeled, range_max, spell_level, category, class_mask
   FROM spells WHERE name <> '' AND teaches IS NULL AND hidden = 0 ORDER BY name`;
 
 // ---- NPC (creature) pages ----

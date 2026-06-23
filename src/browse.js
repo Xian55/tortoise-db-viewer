@@ -383,6 +383,7 @@ async function browseSpells(p) {
     { key: "school", label: "School", cls: "muted", cell: (r) => esc(SPELL_SCHOOL[r.school] || ""), value: (r) => SPELL_SCHOOL[r.school] || "" },
     { key: "cost", label: "Cost", num: true, cls: "muted", cell: (r) => (r.mana_cost ? `${r.mana_cost}` : ""), value: (r) => r.mana_cost || 0 },
     { key: "cast", label: "Cast", num: true, cls: "muted", cell: (r) => (r.channeled ? "Channeled" : r.cast_ms ? secs(r.cast_ms) : ""), value: (r) => r.cast_ms || 0 },
+    { key: "level", label: "Level", num: true, cls: "muted", cell: (r) => (r.spell_level || ""), value: (r) => r.spell_level || 0 },
     { key: "prof", label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
   ];
   const filters = `<div class="filters">
@@ -393,10 +394,12 @@ async function browseSpells(p) {
     ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any profession"))}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  // hide redundant columns when the matching filter pins the value
-  const hide = [];
+  // Class-oriented view (class filter, or browsing class skills) -> show spell Level
+  // instead of the irrelevant Profession column; profession view does the reverse.
+  const classView = !!f.cls || f.cat === "Class Skills";
+  const hide = [classView ? "prof" : "level"];
   if (f.cat) hide.push("category");
-  if (f.prof) hide.push("prof");
+  if (f.prof) { hide.push("prof"); if (!hide.includes("level")) hide.push("level"); }
   return { rows, cols: hideCols(cols, hide), filters, noun: "spells" };
 }
 
