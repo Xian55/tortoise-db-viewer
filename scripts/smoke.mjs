@@ -92,6 +92,17 @@ async function testQuestNoProvided(id) {
   return !hasProvided;
 }
 
+// A world-drop item is labelled and its low-chance droppers split into a separate
+// "World drop from" tab. Item 14555 (Alcor's Sunrazor) is a world drop.
+async function testItemWorldDrop(id) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  const tabs = await page.$$eval(".item-rel .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const label = await page.$$eval(".item-meta .tagx", (e) => e.some((x) => x.textContent.includes("World Drop"))).catch(() => false);
+  console.log(`item-wd ${id}: tabs=[${tabs.join(", ")}] label=${label}`);
+  return tabs.some((t) => t.startsWith("World drop from")) && label;
+}
+
 // recipe/pattern/plans item shows a "Teaches" tab with the craft it unlocks
 async function testTeaches(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 30000 });
@@ -761,6 +772,7 @@ async function testEmptyZone(id, expectName) {
 let ok = true;
 const t = Date.now();
 ok = (await testItem(7909, "Aquamarine")) && ok;
+ok = (await testItemWorldDrop(14555)) && ok;  // world-drop item: label + "World drop from" tab
 ok = (await testItem(2770, "Copper Ore")) && ok;
 ok = (await testItem(55356, "Netherwrought")) && ok;
 ok = (await testItem(647, "Destiny")) && ok;

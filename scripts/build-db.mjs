@@ -238,14 +238,18 @@ console.log("Resolving loot chances...");
     const res = resolveRows(REF.get(refId) || []);
     refResCache.set(refId, res); return res;
   }
+  // Combine an item's chance from independent sources as a probabilistic OR
+  // (1-∏(1-p)), never a sum -- a creature drawing the same item from several
+  // reference pools must not exceed 100% (e.g. Colossus of Zora was 166%).
+  const orProb = (a, b) => 1 - (1 - a) * (1 - b);
   function addRow(result, row, prob) {
     if (prob <= 0) return;
     if (row.mincountOrRef < 0) {
       const refId = -row.mincountOrRef;
       if (refSize(refId) > REF_THRESHOLD) return; // skip world-drop pools
-      for (const [item, p] of resolveRef(refId)) result.set(item, (result.get(item) || 0) + p * prob);
+      for (const [item, p] of resolveRef(refId)) result.set(item, orProb(result.get(item) || 0, p * prob));
     } else if (row.item > 0) {
-      result.set(row.item, (result.get(row.item) || 0) + prob);
+      result.set(row.item, orProb(result.get(row.item) || 0, prob));
     }
   }
   function resolveRows(rows) {

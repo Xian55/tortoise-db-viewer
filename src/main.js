@@ -282,8 +282,14 @@ async function showItem(id) {
   const reqQuests = quests.filter((q) => q.role === "req");
   const rewQuests = quests.filter((q) => q.role !== "req");
 
+  // For a world-drop item, split its droppers: the meaningful drops (>=1%) stay
+  // under "Dropped by"; the long world-drop-tier tail (<1%) moves to "World drop from".
+  const droppedMain = it.world_drop ? dropped.filter((d) => (dchance(d) || 0) >= 1) : dropped;
+  const droppedWorld = it.world_drop ? dropped.filter((d) => (dchance(d) || 0) < 1) : [];
+
   const tabDefs = [
-    { id: "dropped", label: "Dropped by", ...regTable(droppedCols, dropped, { groupable: true }) },
+    { id: "dropped", label: "Dropped by", ...regTable(droppedCols, droppedMain, { groupable: true }) },
+    { id: "worlddrop", label: "World drop from", ...regTable(droppedCols, droppedWorld, { groupable: true }) },
     { id: "object", label: "Found in object", ...regTable(objectCols, objects) },
     { id: "gather", label: "Gathered in", ...regTable(gatherCols, gatherRows, { pageSize: 200, groupable: true, group: 0, sort: "Spawns", dir: "d" }) },
     { id: "sold", label: "Sold by", ...regTable(soldCols, sold) },
@@ -301,7 +307,7 @@ async function showItem(id) {
   app.innerHTML =
     `<div class="item-view">
       <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true })}
-        <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}</div>
+        <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}${it.world_drop ? ' · <span class="tagx">World Drop</span>' : ""}</div>
         ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}
       </div>
       <div class="item-rel">${tabs(tabDefs)}</div>
@@ -561,9 +567,16 @@ async function showNpc(id) {
     { label: "Level", num: true, cls: "muted", cell: (r) => r.spell_level || "", value: (r) => r.spell_level || 0 },
   ];
 
+  // World drops (ubiquitous greens/gems/cloth dropped at world-drop-tier low rates)
+  // go to their own tab so they don't bury the creature's characteristic loot. A
+  // world-drop item dropped at a notable rate (a real drop) stays under "Drops".
+  const isWorldDrop = (d) => d.world_drop && d.chance < 1;
+  const drops = loot.filter((d) => !isWorldDrop(d));
+  const worldDrops = loot.filter(isWorldDrop);
   const tabDefs = [
     { id: "teaches", label: "Teaches", ...regTable(teachesCols, trains) },
-    { id: "drops", label: "Drops", ...regTable(lootCols, loot) },
+    { id: "drops", label: "Drops", ...regTable(lootCols, drops) },
+    { id: "worlddrops", label: "World Drops", ...regTable(lootCols, worldDrops) },
     { id: "skinning", label: "Skinning", ...regTable(lootCols, skin) },
     { id: "pickpocketing", label: "Pickpocketing", ...regTable(lootCols, pick) },
     { id: "sells", label: "Sells", ...regTable(sellCols, sells) },

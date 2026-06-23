@@ -312,5 +312,8 @@ export function moneyHtml(copper) {
 
 export function pct(v) {
   if (v == null) return "";
-  return v >= 100 ? "100%" : v >= 1 ? `${v.toFixed(1)}%` : `${v.toFixed(2)}%`;
+  if (v >= 100) return "100%";
+  if (v >= 1) return `${v.toFixed(1)}%`;
+  if (v >= 0.01) return `${v.toFixed(2)}%`;
+  return v > 0 ? "<0.01%" : "0%"; // tiny world-drop chances: avoid a misleading "0.00%"
 }

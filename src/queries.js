@@ -268,7 +268,7 @@ export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, rank, school, m
 export const Q_NPC = `SELECT entry, name, subname, level_min, level_max, rank, type, faction, health_min, health_max, npc_flags, display_id FROM creatures WHERE entry = ?1`;
 
 const npcLoot = (src, ownerCol) => `
-  SELECT i.entry, i.name, i.quality, di.icon, d.chance
+  SELECT i.entry, i.name, i.quality, di.icon, d.chance, i.world_drop
   FROM creatures c JOIN drops d ON d.src='${src}' AND d.owner = c.${ownerCol}
   JOIN items i ON i.entry = d.item LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE c.entry = ?1 ORDER BY d.chance DESC LIMIT 500`;
