@@ -498,6 +498,9 @@ console.log("Importing spells + crafting graph...");
     const fix = (t) => {
       if (!t) return t;
       return t
+        // scaled cross-spell refs: $/10;27418s2 = spell 27418's s2 / 10, $*N;<id>sM likewise
+        .replace(/\$\/(\d+);(\d+)s([123])/gi, (m, div, id, n) => { const r = vals.get(+id); return r ? valStr(Math.round((r[`s${n}`] || 0) / (+div)), 0) : m; })
+        .replace(/\$\*(\d+);(\d+)s([123])/gi, (m, mul, id, n) => { const r = vals.get(+id); return r ? valStr(Math.round((r[`s${n}`] || 0) * (+mul)), 0) : m; })
         // $<id>s<n> (or bare $<id>s = effect 1): referenced spell's effect base value
         .replace(/\$(\d+)s([123]?)/gi, (m, id, n) => { const r = vals.get(+id); if (!r) return m; const k = n || 1; return valStr(r[`s${k}`] || 0, r[`d${k}`] || 0); })
         // $<id>d : referenced spell's duration (no index)
