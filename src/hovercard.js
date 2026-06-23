@@ -1,8 +1,8 @@
 // Floating tooltip shown when hovering an item or quest link. Items reuse
 // renderTooltip; quests get a compact card. Queried lazily, cached per key.
-import { queryOne } from "./db.js";
+import { query, queryOne } from "./db.js";
 import { renderTooltip, spellTooltip, modelThumbUrl, esc } from "./render.js";
-import { Q_ITEM, Q_SPELL, Q_QUEST } from "./queries.js";
+import { Q_ITEM, Q_SPELL, Q_QUEST, Q_ITEM_SET, Q_ITEMSET_MEMBERS, Q_ITEMSET_BONUSES } from "./queries.js";
 import { QUEST_TYPE, questZoneLabel } from "./constants.js";
 
 const cache = new Map();              // `${kind}:${id}` -> rendered HTML (or null)
@@ -39,7 +39,12 @@ async function getHtml(kind, id) {
       const spellMap = new Map();
       const sids = [1, 2, 3, 4, 5].map((i) => it[`spellid_${i}`]).filter(Boolean);
       await Promise.all(sids.map(async (sid) => { const sp = await queryOne(Q_SPELL, [sid]); if (sp) spellMap.set(sid, sp); }));
-      html = renderTooltip(it, { spellMap });
+      let set = null;
+      if (it.set_id) {
+        const [s, members, bonuses] = await Promise.all([queryOne(Q_ITEM_SET, [it.set_id]), query(Q_ITEMSET_MEMBERS, [it.set_id]), query(Q_ITEMSET_BONUSES, [it.set_id])]);
+        if (s) set = { id: s.id, name: s.name, members, bonuses, currentEntry: it.entry };
+      }
+      html = renderTooltip(it, { spellMap, set });
     }
   } else if (kind === "quest") {
     const q = await queryOne(Q_QUEST, [id]);

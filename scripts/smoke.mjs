@@ -103,6 +103,25 @@ async function testItemWorldDrop(id) {
   return tabs.some((t) => t.startsWith("World drop from")) && label;
 }
 
+// A set item shows the set panel (members + bonuses, set name links the set page);
+// the ?itemset= page lists the same. Item 22416 -> set 523 (Dreadnaught's Battlegear).
+async function testItemSet(itemId, setId) {
+  // item page: set block inside the tooltip (members + bonus spell links)
+  await page.goto(`${BASE}?item=${itemId}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".tt-set", { timeout: 40000 });
+  const members = await page.$$eval(".tt-set .tt-set-member", (e) => e.length).catch(() => 0);
+  const bonuses = await page.$$eval(".tt-set .tt-set-bonus", (e) => e.length).catch(() => 0);
+  const bonusLink = (await page.$(".tt-set a.set-bonus-link[href*='spell=']")) !== null;
+  const nameLink = (await page.$(`.tt-set .tt-set-name a[href*='itemset=${setId}']`)) !== null;
+  // ?itemset page: panel + stat summary table
+  await page.goto(`${BASE}?itemset=${setId}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".item-set-page .item-set", { timeout: 40000 });
+  const pageMembers = await page.$$eval(".item-set-page .set-member", (e) => e.length).catch(() => 0);
+  const summary = (await page.$(".item-set-page .set-summary")) !== null;
+  console.log(`item-set ${itemId}/${setId}: members=${members} bonuses=${bonuses} bonusLink=${bonusLink} pageMembers=${pageMembers} summary=${summary}`);
+  return members >= 5 && bonuses >= 2 && bonusLink && pageMembers >= 5 && summary;
+}
+
 // recipe/pattern/plans item shows a "Teaches" tab with the craft it unlocks
 async function testTeaches(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 30000 });
@@ -635,6 +654,17 @@ async function testSearchFaction(term) {
   return hasFactionLink;
 }
 
+// Item sets are searchable: the results page has an "Item Sets" tab with links.
+async function testSearchItemSet(term) {
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".results .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".results .tab")].find((t) => t.textContent.includes("Item Sets")); if (b) b.click(); });
+  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  const hasSetLink = (await page.$(".results .tabpane:not(.hidden) a.ilink[href*='itemset=']")) !== null;
+  console.log(`search-itemset "${term}": setLink=${hasSetLink}`);
+  return hasSetLink;
+}
+
 // A template-vendor NPC (creature_template.vendor_id -> npc_vendor_template) lists
 // its stock on the Sells tab. NPC 1249 (Quartermaster Hudson) sells via vendor_id.
 async function testNpcSells(id, minItems) {
@@ -790,6 +820,7 @@ let ok = true;
 const t = Date.now();
 ok = (await testItem(7909, "Aquamarine")) && ok;
 ok = (await testItemWorldDrop(14555)) && ok;  // world-drop item: label + "World drop from" tab
+ok = (await testItemSet(22416, 523)) && ok;   // item set panel + ?itemset page
 ok = (await testItem(2770, "Copper Ore")) && ok;
 ok = (await testItem(55356, "Netherwrought")) && ok;
 ok = (await testItem(647, "Destiny")) && ok;
@@ -857,6 +888,7 @@ ok = (await testBrowse("items", sc("sp,>=,20"), "Spell Power")) && ok;
 ok = (await testBrowse("npcs", "&rank=3")) && ok;
 ok = (await testBrowseNpcCols()) && ok;                  // browse NPCs: Faction + Location cols, title search, faction filter
 ok = (await testSearchFaction("Darnassus")) && ok;      // unified search includes factions
+ok = (await testSearchItemSet("Dreadnaught")) && ok;    // unified search includes item sets
 ok = (await testBrowseSource("vendor")) && ok;
 ok = (await testBrowseSource("worlddrop")) && ok;  // new World Drop source filter
 ok = (await testItemSources(2770)) && ok;

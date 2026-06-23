@@ -1,9 +1,9 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, spellTooltip, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, spellTooltip, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
@@ -67,6 +67,7 @@ function route() {
   const npc = params.get("npc");
   const quest = params.get("quest");
   const spell = params.get("spell");
+  const itemset = params.get("itemset");
   const faction = params.get("faction");
   const zone = params.get("zone");
   const dungeon = params.get("dungeon");
@@ -79,6 +80,7 @@ function route() {
   else if (npc) showNpc(Number(npc));
   else if (quest) showQuest(Number(quest));
   else if (spell) showSpell(Number(spell));
+  else if (itemset) showItemSet(Number(itemset));
   else if (faction) showFaction(Number(faction));
   else if (zone) showZone(Number(zone), params.get("gather") ? Number(params.get("gather")) : null);
   else if (dungeon) showDungeon(Number(dungeon));
@@ -147,22 +149,45 @@ async function showSearch(term) {
   const factionCols = [
     { label: "Name", cell: (r) => factionLink(r.id, r.name), value: (r) => r.name },
   ];
+  const itemsetCols = [
+    { label: "Name", cell: (r) => `<a class="ilink" href="?itemset=${r.id}">${esc(r.name)}</a>`, value: (r) => r.name },
+  ];
 
+  const itemsets = res.itemsets || [];
   const tabDefs = [
     { id: "items", label: "Items", ...regTable(itemCols, res.items, { pageSize: 100 }) },
     { id: "npcs", label: "NPCs", ...regTable(npcCols, res.npcs, { pageSize: 100 }) },
     { id: "quests", label: "Quests", ...regTable(questCols, res.quests, { pageSize: 100 }) },
     { id: "spells", label: "Spells", ...regTable(spellCols, res.spells, { pageSize: 100 }) },
     { id: "factions", label: "Factions", ...regTable(factionCols, res.factions) },
+    { id: "itemsets", label: "Item Sets", ...regTable(itemsetCols, itemsets) },
     { id: "dungeons", label: "Dungeons", ...regTable(dungeonCols, res.dungeons) },
     { id: "zones", label: "Zones", ...regTable(zoneCols, res.zones) },
   ];
-  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + res.dungeons.length + res.zones.length;
+  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + itemsets.length + res.dungeons.length + res.zones.length;
   if (!total) { app.innerHTML = `<div class="home"><p>No results for “${esc(term)}”.</p></div>`; return; }
 
   app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${tabs(tabDefs)}</div>`;
   mountTables();
   wireTabs();
+}
+
+// Item-set panel: name (links the set page), members (current item bolded), and
+// the set-bonus lines (threshold + the bonus spell's resolved description).
+function renderItemSet(set, members, bonuses, currentEntry, linkName = true) {
+  if (!set || !members.length) return "";
+  const head = linkName ? `<a class="ilink" href="?itemset=${set.id}">${esc(set.name)}</a>` : esc(set.name);
+  const mem = members.map((m) => `<div class="set-member">${m.entry === currentEntry ? `<b>${esc(m.name)}</b>` : itemLink(m.entry, m.name, m.quality, m.icon)}</div>`).join("");
+  const bon = bonuses.map((b) => {
+    const txt = b.description ? resolveSpellText(b.description, b) : (b.spell_name || "");
+    const body = b.spell ? `<a class="ilink set-bonus-link" href="?spell=${b.spell}">${esc(txt)}</a>` : `<span class="set-bonus-link">${esc(txt)}</span>`;
+    return `<div class="set-bonus"><span class="set-thr">${b.threshold} pieces:</span> ${body}</div>`;
+  }).join("");
+  return `<div class="panel item-set">
+    <div class="set-name">${head} <span class="dim">(${members.length} pieces)</span></div>
+    <div class="set-members">${mem}</div>
+    ${bon}
+  </div>`;
 }
 
 async function showItem(id) {
@@ -187,6 +212,12 @@ async function showItem(id) {
       query(Q.Q_TEACHES, [id]), query(Q.Q_ITEM_SOURCES, [id]), query(Q.Q_ITEM_OBJECT_SPAWNS, [id]),
     ]);
   const srcCsv = srcRows.map((r) => r.source).join(",");
+
+  // item set (if this item belongs to one): shown inside the tooltip (in-game style)
+  const [itemSet, setMembers, setBonuses] = it.set_id
+    ? await Promise.all([queryOne(Q.Q_ITEM_SET, [it.set_id]), query(Q.Q_ITEMSET_MEMBERS, [it.set_id]), query(Q.Q_ITEMSET_BONUSES, [it.set_id])])
+    : [null, [], []];
+  const setOpt = itemSet ? { id: itemSet.id, name: itemSet.name, members: setMembers, bonuses: setBonuses, currentEntry: it.entry } : null;
 
   // Gathering breakdown: group node spawns by their precomputed home zone -> best
   // farm zones (wowhead-style list).
@@ -306,7 +337,7 @@ async function showItem(id) {
 
   app.innerHTML =
     `<div class="item-view">
-      <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true })}
+      <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true, set: setOpt })}
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}${it.world_drop ? ' · <span class="tagx">World Drop</span>' : ""}</div>
         ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}
       </div>
@@ -314,6 +345,36 @@ async function showItem(id) {
     </div>`;
   mountTables();
   wireTabs();
+}
+
+// Stat-summary table for a set: rows = stats, columns = Total + each member; the
+// highest contributor per stat is highlighted (wowhead-style).
+function setSummary(members, statRows) {
+  if (!members.length || !statRows.length) return "";
+  const byItem = new Map();
+  for (const r of statRows) { let m = byItem.get(r.item); if (!m) { m = new Map(); byItem.set(r.item, m); } m.set(r.stat, (m.get(r.stat) || 0) + r.value); }
+  const present = Object.keys(GEAR_STAT_LABEL).filter((k) => members.some((m) => (byItem.get(m.entry) || new Map()).get(k)));
+  if (!present.length) return "";
+  const head = `<tr><th>Stat</th><th>Total</th>${members.map((m) => `<th title="${esc(m.name)}">${iconImg(m.icon)}</th>`).join("")}</tr>`;
+  const rows = present.map((k) => {
+    const vals = members.map((m) => (byItem.get(m.entry) || new Map()).get(k) || 0);
+    const total = vals.reduce((a, b) => a + b, 0), max = Math.max(...vals);
+    const cells = vals.map((v) => `<td class="${v && v === max ? "best" : ""}">${v ? v.toLocaleString() : ""}</td>`).join("");
+    return `<tr><td>${esc(GEAR_STAT_LABEL[k])}</td><td class="total">${total.toLocaleString()}</td>${cells}</tr>`;
+  }).join("");
+  return `<h2>Summary</h2><div class="set-summary-wrap"><table class="set-summary"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+}
+
+async function showItemSet(id) {
+  app.innerHTML = `<div class="loading">Loading set ${id}…</div>`;
+  let set;
+  try { set = await queryOne(Q.Q_ITEM_SET, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (!set) { app.innerHTML = `<div class="home"><p>No item set with ID ${id}.</p></div>`; return; }
+  document.title = `${set.name} - Tortoise-WoW DB`;
+  const [members, bonuses, statRows] = await Promise.all([
+    query(Q.Q_ITEMSET_MEMBERS, [id]), query(Q.Q_ITEMSET_BONUSES, [id]), query(Q.Q_ITEMSET_STATS, [id]),
+  ]);
+  app.innerHTML = `<div class="results item-set-page"><h1>${esc(set.name)}</h1>${renderItemSet(set, members, bonuses, null, false)}${setSummary(members, statRows)}</div>`;
 }
 
 async function showSpell(id) {

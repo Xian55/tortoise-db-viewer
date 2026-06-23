@@ -91,6 +91,7 @@ python scripts/extract-spell-icons.py # LOCAL: client SpellIcon.dbc -> scripts/d
 python scripts/build-atlas.py         # assets/icons/custom/*.webp -> public/icons/custom-atlas.{webp,json}
 python scripts/extract-maps.py        # LOCAL: client -> public/maps/*.webp + scripts/data/zones.json
 python scripts/extract-area-bounds.py # LOCAL: client ADTs -> scripts/data/subzone-bounds.json (exact coord->area)
+python scripts/extract-item-sets.py   # LOCAL: client ItemSet.dbc -> scripts/data/item-sets.json (set names + bonuses)
 ```
 
 `SQL_DIR` defaults to `../tortoise-wow/sql/base`; `UPDATES_DIR` defaults to its
@@ -257,8 +258,10 @@ the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
   `scripts/data/zones.json`), per-area ADT bounds (`scripts/data/subzone-bounds.json`
   via `extract-area-bounds.py`, for exact coord→zone), and the "minimap" POI sprite
   sheet `public/icons/poi-atlas.webp` (16-col, 32px grid; `Elite` at [11,14] is the
-  skull used for boss markers; sourced from the WowClassicGrindBot atlas). See
-  "Custom icons" / `scripts/extract-maps.py`.
+  skull used for boss markers; sourced from the WowClassicGrindBot atlas), and
+  item-set names + bonus spells (`scripts/data/item-sets.json` via
+  `extract-item-sets.py`, from the client `ItemSet.dbc`; set members derive from
+  `items.set_id` in the SQL dump). See "Custom icons" / `scripts/extract-maps.py`.
 - **Zone assignment is ADT-exact.** Each spawn's `spawn_points.zone` is precomputed
   in build-db from `scripts/data/subzone-bounds.json` (per-AreaTable bounding boxes
   extracted from the client ADT terrain chunks by `extract-area-bounds.py`): the

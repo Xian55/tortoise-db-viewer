@@ -807,6 +807,32 @@ console.log("Deriving item_sources...");
   console.log(`  spell_taught_item: ${after} obtainable (dropped ${before - after} unobtainable)`);
 }
 
+// ---- Item sets (name + set-bonus spells from the client ItemSet.dbc; members
+// derive from items.set_id). ----
+console.log("Importing item sets...");
+{
+  db.exec(`CREATE TABLE item_sets (id INTEGER PRIMARY KEY, name TEXT)`);
+  db.exec(`CREATE TABLE item_set_bonus (setid INTEGER, threshold INTEGER, spell INTEGER)`);
+  db.exec(`CREATE INDEX idx_items_set ON items(set_id)`);
+  const f = join(ROOT, "scripts", "data", "item-sets.json");
+  if (existsSync(f)) {
+    const sets = JSON.parse(readFileSync(f, "utf8"));
+    const sS = db.prepare(`INSERT INTO item_sets VALUES (?,?)`);
+    const sB = db.prepare(`INSERT INTO item_set_bonus VALUES (?,?,?)`);
+    let nset = 0, nb = 0;
+    db.transaction(() => {
+      for (const [id, v] of Object.entries(sets)) {
+        sS.run(Number(id), v.name); nset++;
+        for (const [thr, spell] of v.bonuses) { sB.run(Number(id), thr, spell); nb++; }
+      }
+    })();
+    db.exec(`CREATE INDEX idx_item_set_bonus ON item_set_bonus(setid)`);
+    console.log(`  item_sets: ${nset} sets, ${nb} bonuses`);
+  } else {
+    console.log("  (no item-sets.json -- run scripts/extract-item-sets.py)");
+  }
+}
+
 // ---- Factions summary (reputation feature) ----
 // One row per faction that gates >=1 item (items.required_reputation_faction) OR
 // grants reputation via a quest (quest_reward_rep). Counts power the browse list

@@ -16,6 +16,23 @@ export const Q_ITEM = `
   LEFT JOIN faction_names rf ON rf.id = i.required_reputation_faction
   WHERE i.entry = ?1`;
 
+// ---- item sets (name + members + set-bonus spells) ----
+export const Q_ITEM_SET = `SELECT id, name FROM item_sets WHERE id = ?1`;
+export const Q_ITEMSET_MEMBERS = `
+  SELECT i.entry, i.name, i.quality, di.icon
+  FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE i.set_id = ?1 AND i.hidden = 0 ORDER BY i.required_level, i.name`;
+// bonuses with the bonus spell's text (s1..d3 let the viewer resolve $s tokens).
+export const Q_ITEMSET_BONUSES = `
+  SELECT b.threshold, s.entry AS spell, s.name AS spell_name, s.description,
+         s.s1, s.s2, s.s3, s.d1, s.d2, s.d3
+  FROM item_set_bonus b LEFT JOIN spells s ON s.entry = b.spell
+  WHERE b.setid = ?1 ORDER BY b.threshold`;
+// per-member stat rows for the set summary (item, stat, value).
+export const Q_ITEMSET_STATS = `
+  SELECT st.item, st.stat, st.value FROM item_stats st
+  WHERE st.item IN (SELECT entry FROM items WHERE set_id = ?1 AND hidden = 0)`;
+
 // ---- Unified search (items/NPCs/quests via FTS5; dungeons via LIKE) ----
 // FTS queries: ?1 = FTS MATCH string (prefix tokens), ?2 = raw term (exact/prefix
 // tiebreak), ?3 = LIMIT. Dungeons: ?1 = LIKE pattern, ?2 = raw term, ?3 = LIMIT.
@@ -64,6 +81,12 @@ export const Q_SEARCH_DUNGEONS = `
 // Zones use LIKE over the ~120 named WorldMap areas (no FTS table needed).
 export const Q_SEARCH_ZONES = `
   SELECT areaid, name, mapid FROM zones
+  WHERE name <> '' AND name LIKE ?1
+  ORDER BY (name = ?2) DESC, name
+  LIMIT ?3`;
+
+export const Q_SEARCH_ITEMSETS = `
+  SELECT id, name FROM item_sets
   WHERE name <> '' AND name LIKE ?1
   ORDER BY (name = ?2) DESC, name
   LIMIT ?3`;

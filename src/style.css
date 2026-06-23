@@ -65,6 +65,21 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .zone-empty { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); max-width: 60ch; line-height: 1.5; }
 
 /* item view layout */
+/* item set panel (set bonuses) */
+.item-set { margin-bottom: 16px; padding: 12px 16px; }
+.item-set .set-name { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+.set-members { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-bottom: 8px; }
+.set-member { white-space: nowrap; }
+.set-bonus { line-height: 1.55; }
+.set-thr { color: var(--muted); }
+.set-bonus-link, a.set-bonus-link { color: #1eff00; }   /* set bonuses are green in-game */
+a.set-bonus-link:hover { text-decoration: underline; }
+/* item-set summary: stat totals per member; highest per row highlighted */
+.set-summary { border-collapse: collapse; margin-top: 6px; }
+.set-summary th, .set-summary td { padding: 4px 10px; text-align: center; border-bottom: 1px solid var(--border); }
+.set-summary th:first-child, .set-summary td:first-child { text-align: left; color: var(--muted); }
+.set-summary td.total { font-weight: 600; }
+.set-summary td.best { color: #1eff00; }
 .item-view { display: grid; grid-template-columns: 340px 1fr; gap: 26px; align-items: start; }
 @media (max-width: 760px) { .item-view { grid-template-columns: 1fr; } }
 .item-meta { margin-top: 10px; font-size: 12px; }
@@ -83,6 +98,13 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .tt-l { text-align: left; } .tt-r { color: var(--muted); }
 .tt-stat { color: #ffffff; }
 .tt-req { color: #ffffff; }
+.tt-set { margin-top: 8px; border-top: 1px solid var(--tooltip-border); padding-top: 6px; }
+.tt-set-name, .tt-set-name a.ilink { color: var(--gold); font-weight: 600; }
+.tt-set-name { margin-bottom: 2px; }
+.tt-set-member { padding-left: 8px; line-height: 1.45; color: var(--muted); }
+.tt-set-member a.ilink { color: var(--muted); }   /* set members are grey in-game */
+.tt-set-member b { color: var(--text); font-weight: 600; }
+.tt-set-bonus { padding-top: 2px; }
 .tt-spell { color: #1eff00; }
 /* spell links in the tooltip keep the green effect color (not the .ilink blue) */
 .tt-spell a.ilink { color: inherit; }

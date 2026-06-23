@@ -110,7 +110,7 @@ export function resolveSpellText(text, sp) {
 // Build the item tooltip card. spellMap: Map<spellId, spellRow>. linkSpells wraps
 // the green effect lines in spell links (on for the item page, off for transient
 // hovercards so a popover never holds a nested link).
-export function renderTooltip(it, { spellMap = new Map(), linkSpells = false } = {}) {
+export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, set = null } = {}) {
   const L = [];
   const line = (html, cls = "") => L.push(`<div class="tt-line ${cls}">${html}</div>`);
 
@@ -195,6 +195,23 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false } =
     // a recipe's "learn" spell (sp.teaches) is a stub -> link to the real craft.
     const inner = linkSpells && sp ? spellLink(sp.teaches || sid, body, sp.icon) : esc(body);
     line(`${label} ${inner}`, "tt-spell");
+  }
+
+  // item set (in-game style: gold set name + member list + bonus lines)
+  if (set && set.members && set.members.length) {
+    const setName = set.id ? `<a class="ilink" href="?itemset=${set.id}">${esc(set.name)}</a>` : esc(set.name);
+    let s = `<div class="tt-set"><div class="tt-set-name">${setName} <span class="dim">(${set.members.length})</span></div>`;
+    for (const m of set.members) {
+      s += `<div class="tt-set-member">${m.entry === set.currentEntry
+        ? `<b>${esc(m.name)}</b>`
+        : `<a class="ilink" href="?item=${m.entry}">${esc(m.name)}</a>`}</div>`;
+    }
+    for (const b of set.bonuses) {
+      const txt = b.description ? resolveSpellText(b.description, b) : (b.spell_name || "");
+      const body = b.spell ? `<a class="ilink set-bonus-link" href="?spell=${b.spell}">${esc(txt)}</a>` : `<span class="set-bonus-link">${esc(txt)}</span>`;
+      s += `<div class="tt-set-bonus"><span class="dim">(${b.threshold}) Set:</span> ${body}</div>`;
+    }
+    L.push(s + "</div>");
   }
 
   // flavor
