@@ -246,7 +246,7 @@ export const SPELL_AURA = {
   55: "Mod Spell Hit Chance", 56: "Transform", 57: "Mod Spell Crit Chance",
   58: "Mod Swim Speed", 60: "Mod Pacify Silence", 61: "Mod Scale", 64: "Periodic Mana Leech",
   65: "Mod Casting Speed", 69: "School Absorb", 77: "Mechanic Immunity",
-  79: "Mod Damage % Done", 85: "Mod Power Regen", 99: "Mod Attack Power",
+  78: "Mounted", 79: "Mod Damage % Done", 85: "Mod Power Regen", 99: "Mod Attack Power",
   123: "Mod Target Resistance", 124: "Mod Ranged Attack Power", 135: "Mod Healing Done",
   138: "Mod Melee Haste",
 };

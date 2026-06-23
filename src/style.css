@@ -77,6 +77,7 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .tt-head { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
 .tt-icon { width: 48px; height: 48px; border-radius: 6px; border: 1px solid #000; background: #000; }
 .tt-name { font-size: 17px; font-weight: 600; line-height: 1.2; }
+.tt-rank { margin-left: auto; align-self: center; font-size: 13px; }
 .tt-line { color: #ffffff; }
 .tt-split { display: flex; justify-content: space-between; }
 .tt-l { text-align: left; } .tt-r { color: var(--muted); }
@@ -293,10 +294,11 @@ td.src-col .tagx { margin: 1px 4px 1px 0; }
 .pager button:disabled { opacity: .4; cursor: default; }
 
 /* ---- spell detail page ---- */
-.spell-cols { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin: 12px 0; }
-.spell-card { max-width: 360px; flex: 0 1 360px; }
-.spell-facts { flex: 0 0 auto; min-width: 150px; }
-.spell-facts h3, .spell-details h3 { margin: 0 0 8px; }
+.spell-card { max-width: 360px; }
+.spell-page > .spell-card { margin: 12px 0 0; }      /* card is the page header */
+.spell-sub { margin: 6px 0 16px; }                    /* meta line under the card */
+.spell-card .tt-spell { color: var(--gold); }         /* spell descriptions are gold in-game (not item-green) */
+.spell-details h3 { margin: 0 0 8px; }
 .spell-details { margin-top: 4px; }
 .kv-grid { display: grid; grid-template-columns: max-content 1fr max-content 1fr; gap: 3px 14px; align-items: baseline; }
 .kv-k { color: var(--muted); white-space: nowrap; }

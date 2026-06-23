@@ -296,7 +296,7 @@ export function spellTooltip(sp) {
   if (desc) lines.push(`<div class="tt-spell">${esc(desc)}</div>`);
   return `<div class="tooltip spell-card">
     <div class="tt-head">${sp.icon ? iconImg(sp.icon, "tt-icon") : ""}` +
-    `<div class="tt-name">${esc(sp.name)}${sp.rank ? `<span class="dim"> · ${esc(sp.rank)}</span>` : ""}</div></div>` +
+    `<div class="tt-name">${esc(sp.name)}</div>${sp.rank ? `<div class="tt-rank muted">${esc(sp.rank)}</div>` : ""}</div>` +
     `${lines.map((l) => `<div class="tt-line">${l}</div>`).join("")}</div>`;
 }
 

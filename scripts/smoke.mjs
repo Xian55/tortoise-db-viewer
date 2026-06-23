@@ -553,13 +553,14 @@ async function testQuest(id, expectName) {
 // when craft-taught -- the recipe item links back from the spell page).
 async function testSpell(id, expectName) {
   await page.goto(`${BASE}?spell=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
-  await page.waitForSelector(".spell-page .npc-head h1", { timeout: 40000 });
-  const name = await page.$eval(".spell-page .npc-head h1", (e) => e.textContent);
+  await page.waitForSelector(".spell-page .spell-card", { timeout: 40000 });
+  const name = await page.$eval(".spell-page .spell-card .tt-name", (e) => e.textContent);
+  const cards = await page.$$eval(".spell-page .spell-card", (e) => e.length);
   const tabList = await page.$$eval(".spell-page .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
   const sortableH = await page.$$eval(".spell-page .tabpane:not(.hidden) th.sortable", (e) => e.length);
-  const learned = await page.$$eval(".spell-page .npc-head a.ilink", (e) => e.length);
-  console.log(`spell ${id}: name="${name}" tabs=[${tabList.join(", ")}] sortableHdrs=${sortableH} learnedLinks=${learned}`);
-  return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
+  const learned = await page.$$eval(".spell-page .spell-sub a.ilink", (e) => e.length).catch(() => 0);
+  console.log(`spell ${id}: name="${name}" card=${cards} tabs=[${tabList.join(", ")}] sortableHdrs=${sortableH} learnedLinks=${learned}`);
+  return name.includes(expectName) && cards === 1 && tabList.length > 0 && sortableH > 0;
 }
 
 // A spell taught by a quest reward shows a "Reward from quest" tab; the page has
@@ -567,13 +568,13 @@ async function testSpell(id, expectName) {
 // (Summon Dreadsteed) <- quest 7631.
 async function testSpellQuestReward(id) {
   await page.goto(`${BASE}?spell=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
-  await page.waitForSelector(".spell-page .npc-head h1", { timeout: 40000 });
+  await page.waitForSelector(".spell-page .spell-card", { timeout: 40000 });
   const tabList = await page.$$eval(".spell-page .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
-  const cards = await page.$$eval(".spell-page .spell-card", (e) => e.length).catch(() => 0);
+  const names = await page.$$eval(".spell-page .tt-name", (e) => e.length).catch(() => 0); // exactly 1 -> no dup
   const noData = await page.$eval(".spell-page", (el) => el.textContent.includes("No data.")).catch(() => true);
-  const facts = await page.$eval(".spell-page .spell-facts", (e) => e.textContent).catch(() => "");
-  console.log(`spell-reward ${id}: tabs=[${tabList.join(", ")}] cards=${cards} noData=${noData} factsHasId=${facts.includes("Spell #" + id)}`);
-  return tabList.some((t) => t.includes("Reward from quest")) && cards === 0 && !noData && facts.includes("Spell #" + id);
+  const sub = await page.$eval(".spell-page .spell-sub", (e) => e.textContent).catch(() => "");
+  console.log(`spell-reward ${id}: tabs=[${tabList.join(", ")}] names=${names} noData=${noData} subHasId=${sub.includes("Spell #" + id)}`);
+  return tabList.some((t) => t.includes("Reward from quest")) && names === 1 && !noData && sub.includes("Spell #" + id);
 }
 
 // detailed spell page: "Details on spell" grid + per-effect breakdown resolved
@@ -585,7 +586,7 @@ async function testSpellDetail(id, expectText) {
   const effects = await page.$$eval(".spell-page .spell-effect", (e) => e.length);
   const text = await page.$eval(".spell-page .spell-details", (e) => e.textContent.replace(/\s+/g, " "));
   const tabList = await page.$$eval(".spell-page .tab", (e) => e.map((x) => x.textContent.replace(/\s+/g, " ").trim()));
-  const learnable = await page.$$eval(".spell-page .npc-head .tagx", (e) => e.length);
+  const learnable = await page.$$eval(".spell-page .spell-sub .tagx", (e) => e.length);
   const trained = tabList.some((t) => /^Trained by\b/.test(t));
   console.log(`spell detail ${id}: kvKeys=${keys} effects=${effects} learnable=${learnable} trainedTab=${trained} hasText(${expectText})=${text.includes(expectText)}`);
   return keys >= 6 && effects > 0 && text.includes(expectText) && learnable > 0 && trained;

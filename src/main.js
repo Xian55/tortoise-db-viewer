@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, spellTooltip, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -434,8 +434,11 @@ async function showSpell(id) {
   ];
   const hasTabs = tabDefs.some((t) => t.count > 0);
 
-  // header meta (no Spell # -- that moves to Quick Facts)
-  const meta = [];
+  // The spell tooltip card IS the header (in-game look, like the item page) -- no
+  // separate h1, so the icon+name aren't drawn twice. A small meta line sits below.
+  const card = spellTooltip(sp);
+  const meta = [`Spell #${sp.entry}`];
+  if (sp.spell_level) meta.push(`Level ${sp.spell_level}`);
   if (prof) meta.push(`<a class="nav" href="?browse=crafting&prof=${sp.skill}">${esc(prof)}</a>`);
   if (sp.learnable) {
     const srcs = [];
@@ -446,21 +449,10 @@ async function showSpell(id) {
   }
   if (learned) meta.push(`Learned from: ${learned}`);
 
-  const desc = resolveSpellText(sp.description || sp.auraDescription, sp);
-  const facts = [`Level: ${sp.spell_level || "—"}`, `Spell #${sp.entry}`];
-  if (SPELL_SCHOOL[sp.school]) facts.push(SPELL_SCHOOL[sp.school]);
-
   app.innerHTML =
     `<div class="npc-page spell-page">
-      <div class="npc-head">
-        <h1>${sp.icon ? iconImg(sp.icon, "tt-icon") : ""}${esc(sp.name)}${sp.rank ? ` <span class="dim">· ${esc(sp.rank)}</span>` : ""}</h1>
-        ${meta.length ? `<div class="npc-meta muted">${meta.join('<span class="dim"> · </span>')}</div>` : ""}
-      </div>
-      <div class="panel spell-facts">
-        <h3>Quick Facts</h3>
-        <div class="muted">${facts.join('<span class="dim"> · </span>')}</div>
-        ${desc ? `<div class="tt-spell">${esc(desc)}</div>` : ""}
-      </div>
+      ${card}
+      <div class="npc-meta muted spell-sub">${meta.join('<span class="dim"> · </span>')}</div>
       <div class="panel spell-details">
         <h3>Details on spell</h3>
         <div class="kv-grid">${gridHtml}</div>
