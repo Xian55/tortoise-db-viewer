@@ -92,6 +92,7 @@ python scripts/build-atlas.py         # assets/icons/custom/*.webp -> public/ico
 python scripts/extract-maps.py        # LOCAL: client -> public/maps/*.webp + scripts/data/zones.json
 python scripts/extract-area-bounds.py # LOCAL: client ADTs -> scripts/data/subzone-bounds.json (exact coord->area)
 python scripts/extract-item-sets.py   # LOCAL: client ItemSet.dbc -> scripts/data/item-sets.json (set names + bonuses)
+python scripts/extract-skill-lines.py # LOCAL: client SkillLine.dbc -> scripts/data/skill-lines.json (skill categories)
 ```
 
 `SQL_DIR` defaults to `../tortoise-wow/sql/base`; `UPDATES_DIR` defaults to its
@@ -261,7 +262,10 @@ the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
   skull used for boss markers; sourced from the WowClassicGrindBot atlas), and
   item-set names + bonus spells (`scripts/data/item-sets.json` via
   `extract-item-sets.py`, from the client `ItemSet.dbc`; set members derive from
-  `items.set_id` in the SQL dump). See "Custom icons" / `scripts/extract-maps.py`.
+  `items.set_id` in the SQL dump), and skill-line categories
+  (`scripts/data/skill-lines.json` via `extract-skill-lines.py`, from the client
+  `SkillLine.dbc`; build-db joins these onto `skill_line_ability` to set
+  `spells.category` for the browse filter). See "Custom icons" / `scripts/extract-maps.py`.
 - **Zone assignment is ADT-exact.** Each spawn's `spawn_points.zone` is precomputed
   in build-db from `scripts/data/subzone-bounds.json` (per-AreaTable bounding boxes
   extracted from the client ADT terrain chunks by `extract-area-bounds.py`): the

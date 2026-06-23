@@ -326,16 +326,39 @@ console.log("Importing spells + crafting graph...");
 {
   // spell_id -> { skill, req } from skill_line_ability: lets us label a crafting
   // spell with its profession (+ required skill) on the item page. First row wins.
+  // skill_id -> { cat, name } from the client SkillLine.dbc (committed JSON), used to
+  // categorize spells for the browse filter (class skill / profession / weapon / ...).
+  const skillLines = (() => {
+    const f = join(ROOT, "scripts", "data", "skill-lines.json");
+    return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : {};
+  })();
+  // Map a skill's category id (+ name) to a viewer filter bucket. Cat 9 mixes
+  // secondary professions (First Aid/Fishing/Cooking) with the "X Racial" lines.
+  const catLabel = (skillId) => {
+    const sl = skillLines[skillId];
+    if (!sl) return null;
+    switch (sl.cat) {
+      case 6: return "Weapon Skills";
+      case 7: return "Class Skills";
+      case 8: return "Armor Proficiencies";
+      case 9: return /racial/i.test(sl.name) ? "Racial Traits" : "Secondary Skills";
+      case 10: return "Languages";
+      case 11: return "Professions";
+      default: return null; // generic/unknown -> uncategorized
+    }
+  };
+
   const spellSkill = new Map();
   {
     const sc = srcColumns("skill_line_ability", "tw_world_skill_line_ability.sql");
     const iSp = sc.indexOf("spell_id"), iSk = sc.indexOf("skill_id"), iRq = sc.indexOf("req_skill_value");
     const iMin = sc.indexOf("min_value"), iMax = sc.indexOf("max_value"), iLearn = sc.indexOf("learn_on_get_skill");
+    const iCls = sc.indexOf("class_mask");
     for (const r of srcRows("skill_line_ability", "tw_world_skill_line_ability.sql")) {
       const sp = clean(r[iSp]);
       // min_value/max_value are the yellow/grey skill-up thresholds (green is their
       // midpoint); kept so the crafting view can color recipe difficulty.
-      if (!spellSkill.has(sp)) spellSkill.set(sp, { skill: clean(r[iSk]), req: clean(r[iRq]), min: clean(r[iMin]), max: clean(r[iMax]) });
+      if (!spellSkill.has(sp)) spellSkill.set(sp, { skill: clean(r[iSk]), req: clean(r[iRq]), min: clean(r[iMin]), max: clean(r[iMax]), classMask: clean(r[iCls]) || 0 });
       if (clean(r[iLearn])) craftAuto.set(sp, 1);
     }
     console.log(`  skill_line_ability: ${spellSkill.size} spells`);
@@ -394,15 +417,17 @@ console.log("Importing spells + crafting graph...");
     cooldown_ms INTEGER, cat_cooldown_ms INTEGER, gcd_ms INTEGER, proc_chance INTEGER,
     dispel INTEGER, mechanic INTEGER, spell_level INTEGER,
     attr INTEGER, attr_ex INTEGER, attr_ex2 INTEGER, attr_ex3 INTEGER, attr_ex4 INTEGER,
-    effects TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER, d1 INTEGER, d2 INTEGER, d3 INTEGER)`);
+    effects TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER, d1 INTEGER, d2 INTEGER, d3 INTEGER,
+    category TEXT, class_mask INTEGER)`);
   db.exec(`CREATE TABLE spell_creates (spell INTEGER, item INTEGER, skill INTEGER, skill_req INTEGER, skill_min INTEGER, skill_max INTEGER)`);
   db.exec(`CREATE TABLE spell_reagent (spell INTEGER, item INTEGER, count INTEGER)`);
   const sSpell = db.prepare(`INSERT OR REPLACE INTO spells (
     entry, name, description, auraDescription, spellIconId, icon, skill, rank, school, power_type,
     mana_cost, mana_cost_pct, cast_ms, channeled, range_min, range_max, range_name, duration_ms,
     cooldown_ms, cat_cooldown_ms, gcd_ms, proc_chance, dispel, mechanic, spell_level,
-    attr, attr_ex, attr_ex2, attr_ex3, attr_ex4, effects, s1, s2, s3, d1, d2, d3
-  ) VALUES (${Array(37).fill("?").join(",")})`);
+    attr, attr_ex, attr_ex2, attr_ex3, attr_ex4, effects, s1, s2, s3, d1, d2, d3,
+    category, class_mask
+  ) VALUES (${Array(39).fill("?").join(",")})`);
   const sCreate = db.prepare(`INSERT INTO spell_creates VALUES (?,?,?,?,?,?)`);
   const sReag = db.prepare(`INSERT INTO spell_reagent VALUES (?,?,?)`);
   let ns = 0, nc = 0, nr = 0;
@@ -447,7 +472,8 @@ console.log("Importing spells + crafting graph...");
         clean(row[iDispel]), clean(row[iMech]), clean(row[iLvl]),
         clean(row[iAttr]), attrEx, clean(row[iEx2]), clean(row[iEx3]), clean(row[iEx4]),
         effJson.length ? JSON.stringify(effJson) : null,
-        s[0], s[1], s[2], d[0], d[1], d[2]);
+        s[0], s[1], s[2], d[0], d[1], d[2],
+        sk ? catLabel(sk.skill) : null, sk ? sk.classMask : 0);
       ns++;
       // derive gear stats from this spell's effect auras (for item_stats)
       const effects = effIdx.map((f) => ({ aura: clean(row[f.a]) || 0, misc: clean(row[f.m]) || 0, base: clean(row[f.b]) || 0 }));

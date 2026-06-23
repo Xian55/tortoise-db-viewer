@@ -206,6 +206,19 @@ async function testBrowseSource(src) {
   return rows > 0 && headers.includes("Source") && tags > 0 && checked.includes(src);
 }
 
+// Spell browse: category + class filters (Class Skills / Mage). The Category
+// column + the two selects reflect the URL filter.
+async function testBrowseSpellCat() {
+  await page.goto(`${BASE}?browse=spells&cat=${encodeURIComponent("Class Skills")}&cls=64`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const cat = await page.$eval('select[data-f="cat"]', (el) => el.value);
+  const cls = await page.$eval('select[data-f="cls"]', (el) => el.value);
+  const spellLink = (await page.$(".browse a.ilink[href*='spell=']")) !== null;
+  console.log(`browse-spellcat: rows=${rows} cat="${cat}" cls=${cls} spellLink=${spellLink}`);
+  return rows > 0 && cat === "Class Skills" && cls === "64" && spellLink;
+}
+
 async function testItemSources(id, expectTag) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
   await page.waitForSelector(".item-sources .tagx", { timeout: 40000 });
@@ -906,6 +919,7 @@ ok = (await testSearchFaction("Darnassus")) && ok;      // unified search includ
 ok = (await testSearchItemSet("Dreadnaught")) && ok;    // unified search includes item sets
 ok = (await testBrowseSource("vendor")) && ok;
 ok = (await testBrowseSource("worlddrop")) && ok;  // new World Drop source filter
+ok = (await testBrowseSpellCat()) && ok;           // spell category + class filters
 ok = (await testItemSources(2770)) && ok;
 ok = (await testItemSources(5031, "Unobtainable")) && ok;
 ok = (await testUnobtainable()) && ok;

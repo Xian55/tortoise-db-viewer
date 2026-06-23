@@ -361,32 +361,43 @@ async function browseCrafting(p) {
   return { rows: crafts, cols: hideCols(cols, f.prof ? ["prof"] : []), filters, noun: "crafts" };
 }
 
+// spell categories (filter buckets), in the order build-db assigns them
+const SPELL_CATEGORIES = ["Class Skills", "Professions", "Secondary Skills", "Weapon Skills", "Armor Proficiencies", "Languages", "Racial Traits"];
+
 async function browseSpells(p) {
-  const f = { q: p.get("q") || "", prof: p.get("prof") || "", school: p.get("school") || "" };
+  const f = { q: p.get("q") || "", cat: p.get("cat") || "", cls: p.get("cls") || "", prof: p.get("prof") || "", school: p.get("school") || "" };
   // The spells table is large but each row is tiny; load all and filter/sort/
   // paginate client-side via createTable (consistent with crafting).
   let rows = await query(Q_BROWSE_SPELLS, []);
   if (f.q) { const ql = f.q.toLowerCase(); rows = rows.filter((r) => (r.name || "").toLowerCase().includes(ql)); }
+  if (f.cat) rows = rows.filter((r) => r.category === f.cat);
+  if (f.cls) rows = rows.filter((r) => (r.class_mask & +f.cls) !== 0);
   if (f.prof) rows = rows.filter((r) => String(r.skill) === f.prof);
   if (f.school !== "") rows = rows.filter((r) => String(r.school) === f.school);
   const secs = (ms) => (ms ? `${+(ms / 1000).toFixed(ms % 1000 ? 1 : 0)}s` : "");
   const rankNum = (r) => { const m = (r.rank || "").match(/\d+/); return m ? +m[0] : 0; };
   const cols = [
     { key: "name", label: "Name", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
+    { key: "category", label: "Category", cls: "muted", cell: (r) => esc(r.category || ""), value: (r) => r.category || "" },
     { key: "rank", label: "Rank", num: true, cls: "muted", cell: (r) => esc(r.rank || ""), value: rankNum },
     { key: "school", label: "School", cls: "muted", cell: (r) => esc(SPELL_SCHOOL[r.school] || ""), value: (r) => SPELL_SCHOOL[r.school] || "" },
     { key: "cost", label: "Cost", num: true, cls: "muted", cell: (r) => (r.mana_cost ? `${r.mana_cost}` : ""), value: (r) => r.mana_cost || 0 },
     { key: "cast", label: "Cast", num: true, cls: "muted", cell: (r) => (r.channeled ? "Channeled" : r.cast_ms ? secs(r.cast_ms) : ""), value: (r) => r.cast_ms || 0 },
-    { key: "range", label: "Range", num: true, cls: "muted", cell: (r) => (r.range_max != null ? `${r.range_max} yd` : ""), value: (r) => r.range_max || 0 },
     { key: "prof", label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
   ];
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
+    ${selectField("cat", "Category", options(SPELL_CATEGORIES.map((c) => [c, c]), f.cat, "Any category"))}
+    ${selectField("cls", "Class", options(CLASS_MASK, f.cls, "Any class"))}
     ${selectField("school", "School", options(Object.entries(SPELL_SCHOOL), f.school, "Any school"))}
     ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any profession"))}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  return { rows, cols: hideCols(cols, f.prof ? ["prof"] : []), filters, noun: "spells" };
+  // hide redundant columns when the matching filter pins the value
+  const hide = [];
+  if (f.cat) hide.push("category");
+  if (f.prof) hide.push("prof");
+  return { rows, cols: hideCols(cols, hide), filters, noun: "spells" };
 }
 
 async function browseQuests(p) {
