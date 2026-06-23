@@ -96,13 +96,17 @@ export function resolveSpellText(text, sp) {
   };
   const durStr = dur ? `${Number.isInteger(dur / 1000) ? dur / 1000 : (dur / 1000).toFixed(1)} sec` : "";
   return text
+    // scaled own-effect tokens: "$/10;s1" = s1 / 10, "$*2;s1" = s1 * 2
+    .replace(/\$\/(\d+);s([123])/gi, (_, div, n) => valStr(Math.round((sp[`s${n}`] || 0) / (+div)), 0))
+    .replace(/\$\*(\d+);s([123])/gi, (_, mul, n) => valStr(Math.round((sp[`s${n}`] || 0) * (+mul)), 0))
     .replace(/\$o([123])/gi, (_, n) => over(+n))
     .replace(/\$s([123])/gi, (_, n) => valStr(sp[`s${n}`], sp[`d${n}`]))
     .replace(/\$t([123])/gi, (_, n) => { const e = eff(+n); return e && e.period ? String(e.period / 1000) : ""; })
     .replace(/\$a([123])/gi, (_, n) => { const e = eff(+n); return e && e.radius != null ? String(e.radius) : ""; })
     .replace(/\$d(?![a-zA-Z0-9])/gi, durStr)
-    .replace(/\$\{[^}]*\}/g, "")
-    .replace(/\$[a-zA-Z]\d*/g, "")
+    .replace(/\$\{[^}]*\}/g, "")                    // ${...} math expressions
+    .replace(/\$[gl][^;]*;/gi, "")                  // $g..:..; / $l..:..; gender/plural
+    .replace(/\$[*/]?\d*;?\d*[a-z]*\d*%?/gi, "")    // any remaining spell-variable token
     .replace(/\s{2,}/g, " ")
     .trim();
 }
