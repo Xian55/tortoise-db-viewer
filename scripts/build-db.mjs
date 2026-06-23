@@ -775,6 +775,7 @@ console.log("Deriving item_sources...");
   insSrc(`SELECT DISTINCT item, 'quest'      FROM quest_item WHERE role IN ('reward','choice')`);
   insSrc(`SELECT DISTINCT item, 'crafted'    FROM spell_creates`);
   insSrc(`SELECT entry, 'pvp'                FROM items WHERE required_honor_rank > 0`);
+  insSrc(`SELECT entry, 'worlddrop'          FROM items WHERE world_drop = 1`);
   // 'unobtainable' = dev artifacts (test/deprecated/placeholder items) detected by
   // name convention; hidden by default in the item browse. Name-pattern, NOT
   // "no known source" — many legit items simply lack loot data (e.g. world drops,

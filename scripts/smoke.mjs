@@ -840,6 +840,7 @@ ok = (await testBrowse("npcs", "&rank=3")) && ok;
 ok = (await testBrowseNpcCols()) && ok;                  // browse NPCs: Faction + Location cols, title search, faction filter
 ok = (await testSearchFaction("Darnassus")) && ok;      // unified search includes factions
 ok = (await testBrowseSource("vendor")) && ok;
+ok = (await testBrowseSource("worlddrop")) && ok;  // new World Drop source filter
 ok = (await testItemSources(2770)) && ok;
 ok = (await testItemSources(5031, "Unobtainable")) && ok;
 ok = (await testUnobtainable()) && ok;
