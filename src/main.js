@@ -3,7 +3,7 @@ import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
 import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, spellTooltip, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
@@ -1020,7 +1020,7 @@ async function showZone(id, gatherItem = null) {
     gatherItem ? queryOne(Q.Q_ITEM_ICON, [gatherItem]) : null,
     isInstance ? query(Q.Q_DUNGEON_BOSS_LOOT, mz) : [],
     isInstance ? query(Q.Q_MAP_BOSSES, mz) : [],
-    query(Q.Q_ZONE_QUESTS, az),
+    isInstance ? query(Q.Q_DUNGEON_QUESTS, [z.mapid, z.name]) : query(Q.Q_ZONE_QUESTS, az),
     isInstance ? query(Q.Q_MAP_FLOORS, mz) : [],
   ]);
   // focus mode: only the gathered node's spawns, drawn with the item's icon
@@ -1102,6 +1102,7 @@ async function showZone(id, gatherItem = null) {
   const questCols = [
     { label: "Quest", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
     { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
+    { label: "Faction", cell: (r) => { const f = questFaction(r.reqraces); return `<span class="tagx fac-${f.toLowerCase()}">${f}</span>`; }, value: (r) => questFaction(r.reqraces) },
     { label: "Quest Giver", cls: "muted", cell: (r) => (r.giver_id ? npcLink(r.giver_id, r.giver) : ""), value: (r) => r.giver || "" },
   ];
   const tabDefs = [
@@ -1211,8 +1212,9 @@ async function showDungeon(id) {
   if (!map) { app.innerHTML = `<div class="home"><p>No dungeon with map ID ${id}.</p></div>`; return; }
   document.title = `${map.name} - Tortoise-WoW DB`;
   const typeLabel = map.type === 2 ? "Raid" : "Dungeon";
-  const [bossLoot, npcs, loot] = await Promise.all([
+  const [bossLoot, npcs, loot, dquests] = await Promise.all([
     query(Q.Q_DUNGEON_BOSS_LOOT, [id]), query(Q.Q_DUNGEON_NPCS, [id]), query(Q.Q_DUNGEON_LOOT, [id]),
+    query(Q.Q_DUNGEON_QUESTS, [id, map.name]),
   ]);
 
   const bossCols = [
@@ -1230,9 +1232,16 @@ async function showDungeon(id) {
     { label: "iLvl", num: true, cls: "muted", cell: (i) => i.item_level || "", value: (i) => i.item_level || 0 },
     { label: "Req", num: true, cls: "muted", cell: (i) => i.required_level || "", value: (i) => i.required_level || 0 },
   ];
+  const questCols = [
+    { label: "Quest", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
+    { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
+    { label: "Faction", cell: (r) => { const f = questFaction(r.reqraces); return `<span class="tagx fac-${f.toLowerCase()}">${f}</span>`; }, value: (r) => questFaction(r.reqraces) },
+    { label: "Quest Giver", cls: "muted", cell: (r) => (r.giver_id ? npcLink(r.giver_id, r.giver) : ""), value: (r) => r.giver || "" },
+  ];
   const tabDefs = [
     { id: "bosses", label: "Boss Loot", ...regTable(bossCols, bossLoot, { pageSize: 500, groupable: true, group: 0 }) },
     { id: "npcs", label: "Creatures", ...regTable(npcCols, npcs) },
+    { id: "quests", label: "Quests", ...regTable(questCols, dquests, { pageSize: 100 }) },
     { id: "loot", label: "All Loot", ...regTable(lootCols, loot, { pageSize: 200 }) },
   ];
 

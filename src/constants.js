@@ -153,6 +153,19 @@ export function raceRestrictions(mask) {
   return out.length ? out : null;
 }
 
+// Faction a quest is offered to, from its allowable-race gate (quests.reqraces).
+// Turtle adds custom playable races on top of the 1.12 cores — High Elf (512,
+// Alliance) and Goblin (256, Horde) — so the common quest masks are 589 (Alliance)
+// and 434 (Horde). No gate (0), or both sides set, means anyone can pick it up.
+export const RACE_ALLIANCE_ALL = RACE_ALLIANCE | 512;  // + High Elf
+export const RACE_HORDE_ALL = RACE_HORDE | 256;        // + Goblin
+export function questFaction(reqraces) {
+  const a = reqraces & RACE_ALLIANCE_ALL, h = reqraces & RACE_HORDE_ALL;
+  if (a && !h) return "Alliance";
+  if (h && !a) return "Horde";
+  return "Neutral";
+}
+
 // quest_template.Type -> label (1.12 subset present in the data; unknown -> blank)
 export const QUEST_TYPE = { 1: "Group", 41: "PvP", 62: "Raid", 81: "Dungeon", 82: "World Event" };
 

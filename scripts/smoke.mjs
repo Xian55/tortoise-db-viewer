@@ -833,6 +833,25 @@ async function testZoneQuests(id, minQuests) {
   return rows >= minQuests && hasQuestLink && headers.includes("Quest Giver") && hasGiverLink;
 }
 
+// An instance lists the quests related to it (giver/turn-in inside, dungeon-
+// exclusive item drop, or same-named gameplay zone) on its Quests tab. Gilneas
+// City (?zone=5208) is a Turtle dungeon whose quests live on a separate AreaTable
+// zone, so this exercises the WorldMap-area <-> gameplay-zone bridge.
+async function testDungeonQuests(areaid, minQuests) {
+  await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: "networkidle0", timeout: 60000 });
+  await page.waitForSelector(".zone-page .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".zone-page .tab")].find((t) => t.textContent.trim().startsWith("Quests")); if (b) b.click(); });
+  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) tbody tr", (r) => r.length);
+  const hasQuestLink = (await page.$(".zone-page .tabpane:not(.hidden) a.ilink[href*='quest=']")) !== null;
+  const headers = await page.$$eval(".zone-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  // each quest carries a faction-eligibility badge (Alliance / Horde / Neutral)
+  const factions = await page.$$eval(".zone-page .tabpane:not(.hidden) tbody tr .tagx[class*='fac-']", (e) => [...new Set(e.map((x) => x.textContent.trim()))]);
+  console.log(`dungeon-quests ${areaid}: rows=${rows} questLink=${hasQuestLink} headers=[${headers.join(",")}] factions=${JSON.stringify(factions)}`);
+  return rows >= minQuests && hasQuestLink && headers.includes("Faction") && factions.length > 0
+    && factions.every((f) => ["Alliance", "Horde", "Neutral"].includes(f));
+}
+
 // client-only zones (map texture, no spawns in the public SQL export) render the
 // parchment map + an explanatory note instead of three blank tabs.
 async function testEmptyZone(id, expectName) {
@@ -905,6 +924,7 @@ ok = (await testDungeons()) && ok;
 ok = (await testDungeon(36, "Deadmines")) && ok;          // ?dungeon= redirects to the zone view
 ok = (await testInstanceZone(5138, "Deadmines")) && ok;  // ?zone= auto-detects the dungeon
 ok = (await testInstanceZone(2557, "Dire Maul")) && ok;  // interior map (areaId collision fix)
+ok = (await testDungeonQuests(5208, 8)) && ok;           // Gilneas City: related-quests tab (zone bridge)
 ok = (await testDungeonNoMap(532, "Lower Karazhan Halls")) && ok;  // map-less instance fallback
 ok = (await testBrowsePersist()) && ok;
 ok = (await testBrowseMulti()) && ok;

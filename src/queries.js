@@ -491,13 +491,50 @@ export const Q_FACTION_QUESTS = `
 // (the sub-zone's area_template.zone_id points at this zone). gc = the quest's
 // start NPC (alphabetically-first, for a stable pick) so the tab can show it.
 export const Q_ZONE_QUESTS = `
-  SELECT q.entry, q.title, q.level, gc.entry AS giver_id, gc.name AS giver
+  SELECT q.entry, q.title, q.level, q.reqraces, gc.entry AS giver_id, gc.name AS giver
   FROM quests q
   JOIN areas a ON a.entry = q.zone
   LEFT JOIN creatures gc ON gc.entry = (
     SELECT r.id FROM creature_quest_start r JOIN creatures c2 ON c2.entry = r.id
     WHERE r.quest = q.entry ORDER BY c2.name LIMIT 1)
   WHERE (q.zone = ?1 OR a.zone_id = ?1) AND q.title <> ''
+  ORDER BY q.level, q.title LIMIT 1000`;
+
+// Quests RELATED to an instance (?1 = mapId, ?2 = the dungeon's name). Instances
+// don't carry their quests on the WorldMap area the page is keyed by: the gameplay
+// zone the quests reference is a SEPARATE AreaTable row (same name, different id),
+// so q.zone never equals the WorldMap areaid -> Q_ZONE_QUESTS comes back empty.
+// Instead we union the relations that actually tie a quest to a dungeon, each one
+// high-precision so we don't drag in unrelated world quests:
+//   - its gameplay zone shares the dungeon's name (bridges WorldMap area <-> AreaTable zone);
+//   - a quest giver / turn-in (NPC or object) physically spawns inside the instance;
+//   - a required/source quest item that drops ONLY inside this instance (dungeon-
+//     exclusive drop -> the legendary/boss-item quests; world-/multi-dungeon drops
+//     like cloth or satyr horns are excluded by the NOT EXISTS off-map test). Map
+//     451 ("Development Land", a GM copy) is ignored so it can't break exclusivity.
+// gc = the alphabetically-first start NPC, for a stable Quest Giver cell.
+export const Q_DUNGEON_QUESTS = `
+  SELECT q.entry, q.title, q.level, q.reqraces, gc.entry AS giver_id, gc.name AS giver
+  FROM quests q
+  LEFT JOIN creatures gc ON gc.entry = (
+    SELECT r.id FROM creature_quest_start r JOIN creatures c2 ON c2.entry = r.id
+    WHERE r.quest = q.entry ORDER BY c2.name LIMIT 1)
+  WHERE q.title <> '' AND q.entry IN (
+    SELECT q2.entry FROM quests q2 JOIN areas a ON a.entry = q2.zone WHERE a.name = ?2
+    UNION SELECT r.quest FROM creature_quest_start r JOIN spawn_points s ON s.id = r.id AND s.kind = 'c' AND s.map = ?1
+    UNION SELECT r.quest FROM creature_quest_end   r JOIN spawn_points s ON s.id = r.id AND s.kind = 'c' AND s.map = ?1
+    UNION SELECT r.quest FROM gameobject_quest_start r JOIN spawn_points s ON s.id = r.id AND s.kind = 'o' AND s.map = ?1
+    UNION SELECT r.quest FROM gameobject_quest_end   r JOIN spawn_points s ON s.id = r.id AND s.kind = 'o' AND s.map = ?1
+    UNION SELECT qi.quest FROM quest_item qi
+      JOIN drops d ON d.item = qi.item AND d.src = 'c'
+      JOIN creatures c ON c.loot_id = d.owner
+      JOIN spawns sp ON sp.id = c.entry AND sp.map = ?1
+      WHERE qi.role IN ('req', 'source')
+        AND NOT EXISTS (
+          SELECT 1 FROM drops d2 JOIN creatures c2 ON c2.loot_id = d2.owner
+          JOIN spawns sp2 ON sp2.id = c2.entry
+          WHERE d2.item = qi.item AND d2.src = 'c' AND sp2.map <> ?1 AND sp2.map <> 451)
+  )
   ORDER BY q.level, q.title LIMIT 1000`;
 
 // ---- zones (Leaflet maps) ----
