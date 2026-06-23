@@ -562,6 +562,20 @@ async function testSpell(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
+// A spell taught by a quest reward shows a "Reward from quest" tab; the page has
+// no duplicate tooltip card and the Spell # sits in Quick Facts. Spell 23161
+// (Summon Dreadsteed) <- quest 7631.
+async function testSpellQuestReward(id) {
+  await page.goto(`${BASE}?spell=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".spell-page .npc-head h1", { timeout: 40000 });
+  const tabList = await page.$$eval(".spell-page .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const cards = await page.$$eval(".spell-page .spell-card", (e) => e.length).catch(() => 0);
+  const noData = await page.$eval(".spell-page", (el) => el.textContent.includes("No data.")).catch(() => true);
+  const facts = await page.$eval(".spell-page .spell-facts", (e) => e.textContent).catch(() => "");
+  console.log(`spell-reward ${id}: tabs=[${tabList.join(", ")}] cards=${cards} noData=${noData} factsHasId=${facts.includes("Spell #" + id)}`);
+  return tabList.some((t) => t.includes("Reward from quest")) && cards === 0 && !noData && facts.includes("Spell #" + id);
+}
+
 // detailed spell page: "Details on spell" grid + per-effect breakdown resolved
 // from the client DBC lookups (e.g. spell 10 Blizzard -> Frost, effect rows).
 async function testSpellDetail(id, expectText) {
@@ -794,6 +808,7 @@ ok = (await testSearchZone("Tanaris")) && ok;
 ok = (await testSearchDropdown("defias")) && ok;
 ok = (await testSpell(41746, "Shadowforged Eye")) && ok;   // craft spell: Creates/Reagents tabs + Learned-from link
 ok = (await testSpellDetail(10, "Frost")) && ok;           // Blizzard: details grid + effect breakdown (DBC-resolved)
+ok = (await testSpellQuestReward(23161)) && ok;            // spell taught by quest reward + no dup card / No data.
 ok = (await testItemSpellLink(70204)) && ok;               // recipe item: green "Teaches…" now links to ?spell=
 ok = (await testSearchSpells("Shadowforged")) && ok;       // search yields a Spells tab
 ok = (await testBrowse("spells", "", "Profession")) && ok; // ?browse=spells finder

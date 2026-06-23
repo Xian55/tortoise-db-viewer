@@ -250,6 +250,11 @@ export const Q_SPELL_BOOKS = `
   LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE sti.spell = ?1 ORDER BY i.quality DESC, i.name LIMIT 100`;
 
+// Quests that reward (teach) this spell (e.g. the Dreadsteed quest -> Summon Dreadsteed).
+export const Q_SPELL_REWARD_QUESTS = `
+  SELECT entry, title, level FROM quests
+  WHERE rewspell = ?1 AND title <> '' AND hidden = 0 ORDER BY level, title LIMIT 100`;
+
 // How the craft is learned: the recipe/pattern/plans item, or Trainer / Auto.
 export const Q_SPELL_SOURCE = `
   SELECT cs.recipe_item, cs.trainer, cs.auto, cs.learn_req,

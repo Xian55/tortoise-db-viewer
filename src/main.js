@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, spellTooltip, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -323,10 +323,11 @@ async function showSpell(id) {
   if (!sp) { app.innerHTML = `<div class="home"><p>No spell with ID ${id}.</p></div>`; return; }
   document.title = `${sp.name} - Tortoise-WoW DB`;
 
-  const [produces, reagents, usedBy, source, trainers, books] = await Promise.all([
+  const [produces, reagents, usedBy, source, trainers, books, rewardQuests] = await Promise.all([
     query(Q.Q_SPELL_PRODUCES, [id]), query(Q.Q_SPELL_REAGENTS, [id]),
     query(Q.Q_SPELL_USED_BY, [id]), queryOne(Q.Q_SPELL_SOURCE, [id]),
     query(Q.Q_SPELL_TRAINERS, [id]), query(Q.Q_SPELL_BOOKS, [id]),
+    query(Q.Q_SPELL_REWARD_QUESTS, [id]),
   ]);
 
   const prof = PROFESSION_LABEL[sp.skill] || "";
@@ -399,9 +400,6 @@ async function showSpell(id) {
   const flagsHtml = flags.length
     ? `<div class="spell-flags"><span class="kv-k">Flags</span> <span class="muted">${flags.map(esc).join(", ")}</span></div>` : "";
 
-  // summary card (parchment header) -- shared with the hover tooltip
-  const card = spellTooltip(sp);
-
   const producesCols = [
     { label: "Creates", cell: (r) => itemLink(r.item, r.item_name, r.quality, r.item_icon), value: (r) => r.item_name },
     { label: "Skill", num: true, cls: "muted", cell: (r) => r.skill_req || r.skill_min || "", value: (r) => r.skill_req || r.skill_min || 0 },
@@ -421,35 +419,47 @@ async function showSpell(id) {
   const bookCols = [
     { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
   ];
+  const rewQuestCols = [
+    { label: "Quest", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
+    { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
+  ];
 
   const tabDefs = [
     { id: "produces", label: "Creates", ...regTable(producesCols, produces) },
     { id: "reagents", label: "Reagents", ...regTable(reagentCols, reagents) },
     { id: "trained", label: "Trained by", ...regTable(trainerCols, trainers) },
     { id: "books", label: "Taught by item", ...regTable(bookCols, books) },
+    { id: "rewquest", label: "Reward from quest", ...regTable(rewQuestCols, rewardQuests) },
     { id: "usedby", label: "Used by items", ...regTable(usedByCols, usedBy) },
   ];
+  const hasTabs = tabDefs.some((t) => t.count > 0);
 
-  const meta = [`Spell #${sp.entry}`];
+  // header meta (no Spell # -- that moves to Quick Facts)
+  const meta = [];
   if (prof) meta.push(`<a class="nav" href="?browse=crafting&prof=${sp.skill}">${esc(prof)}</a>`);
-  // learnable annotation: which sources teach this spell to players
   if (sp.learnable) {
     const srcs = [];
     if (trainers.length) srcs.push("Trainer");
     if (books.length) srcs.push("Book");
+    if (rewardQuests.length) srcs.push("Quest");
     meta.push(`<span class="tagx" title="A player can learn this spell">Learnable${srcs.length ? ` · ${srcs.join(" / ")}` : ""}</span>`);
   }
   if (learned) meta.push(`Learned from: ${learned}`);
 
+  const desc = resolveSpellText(sp.description || sp.auraDescription, sp);
+  const facts = [`Level: ${sp.spell_level || "—"}`, `Spell #${sp.entry}`];
+  if (SPELL_SCHOOL[sp.school]) facts.push(SPELL_SCHOOL[sp.school]);
+
   app.innerHTML =
     `<div class="npc-page spell-page">
       <div class="npc-head">
-        <h1>${sp.icon ? iconImg(sp.icon, "tt-icon") : ""}${esc(sp.name)}</h1>
-        <div class="npc-meta muted">${meta.join('<span class="dim"> · </span>')}</div>
+        <h1>${sp.icon ? iconImg(sp.icon, "tt-icon") : ""}${esc(sp.name)}${sp.rank ? ` <span class="dim">· ${esc(sp.rank)}</span>` : ""}</h1>
+        ${meta.length ? `<div class="npc-meta muted">${meta.join('<span class="dim"> · </span>')}</div>` : ""}
       </div>
-      <div class="spell-cols">
-        ${card}
-        <div class="panel spell-facts"><h3>Quick Facts</h3><div class="muted">Level: ${sp.spell_level || "—"}</div></div>
+      <div class="panel spell-facts">
+        <h3>Quick Facts</h3>
+        <div class="muted">${facts.join('<span class="dim"> · </span>')}</div>
+        ${desc ? `<div class="tt-spell">${esc(desc)}</div>` : ""}
       </div>
       <div class="panel spell-details">
         <h3>Details on spell</h3>
@@ -457,7 +467,7 @@ async function showSpell(id) {
         ${effHtml}
         ${flagsHtml}
       </div>
-      ${tabs(tabDefs)}
+      ${hasTabs ? tabs(tabDefs) : ""}
     </div>`;
   mountTables();
   wireTabs();
