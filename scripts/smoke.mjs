@@ -655,6 +655,20 @@ async function testSearchFaction(term) {
   return hasFactionLink;
 }
 
+// Mobile: the top nav collapses behind a hamburger that toggles it open.
+async function testMobileNav() {
+  await page.setViewport({ width: 390, height: 800 });
+  await page.goto(`${BASE}?`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector("#navToggle", { timeout: 40000 });
+  const toggleVisible = await page.$eval("#navToggle", (el) => getComputedStyle(el).display !== "none");
+  const hiddenBefore = await page.$eval(".topnav", (el) => getComputedStyle(el).display === "none");
+  await page.click("#navToggle");
+  const shownAfter = await page.$eval(".topnav", (el) => getComputedStyle(el).display !== "none");
+  await page.setViewport({ width: 1280, height: 900 });   // restore for any later tests
+  console.log(`mobile-nav: toggleVisible=${toggleVisible} hiddenBefore=${hiddenBefore} shownAfter=${shownAfter}`);
+  return toggleVisible && hiddenBefore && shownAfter;
+}
+
 // Item sets are searchable: the results page has an "Item Sets" tab with links.
 async function testSearchItemSet(term) {
   await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: "networkidle0", timeout: 40000 });
@@ -906,6 +920,7 @@ ok = (await testCraftEnchanting()) && ok;
 ok = (await testCraftObtainable()) && ok;
 ok = (await testSelection()) && ok;
 ok = (await testGroupSelection()) && ok;
+ok = (await testMobileNav()) && ok;   // responsive top bar (run last; resets viewport)
 console.log(`\nelapsed ${Date.now() - t}ms`);
 if (errors.length) { console.log("\nERRORS:\n" + errors.slice(0, 20).join("\n")); }
 console.log(ok && !errors.length ? "\nSMOKE: PASS" : "\nSMOKE: FAIL");

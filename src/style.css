@@ -27,9 +27,21 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 }
 .brand { font-size: 18px; font-weight: 700; color: var(--gold); white-space: nowrap; }
 .brand:hover { text-decoration: none; }
-.topnav { display: flex; gap: 14px; }
+.topnav { display: flex; gap: 14px; flex-wrap: wrap; }
 .topnav .nav { color: var(--text); font-weight: 500; }
+.nav-toggle { display: none; background: none; border: 1px solid var(--border); color: var(--text);
+  font-size: 18px; line-height: 1; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
 #searchForm { display: flex; gap: 6px; flex: 1; max-width: 480px; }
+
+/* Mobile: collapse the nav behind a hamburger; search drops to its own row. */
+@media (max-width: 760px) {
+  .topbar { flex-wrap: wrap; gap: 10px 12px; }
+  .nav-toggle { display: block; margin-left: auto; }       /* push toggle to the right of the brand */
+  .topnav { display: none; flex-basis: 100%; flex-direction: column; gap: 2px; }
+  .topbar.nav-open .topnav { display: flex; }
+  .topnav .nav { padding: 8px 4px; border-bottom: 1px solid var(--border); }
+  #searchForm { flex-basis: 100%; max-width: none; order: 5; }
+}
 #search {
   flex: 1; padding: 7px 11px; border-radius: 6px;
   border: 1px solid var(--border); background: var(--panel2); color: var(--text);

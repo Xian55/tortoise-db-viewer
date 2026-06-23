@@ -51,8 +51,18 @@ document.addEventListener("click", (e) => {
   const a = e.target.closest("a.ilink, a.nav");
   if (a && a.origin === location.origin) {
     e.preventDefault();
+    topbar.classList.remove("nav-open");   // close the mobile menu after navigating
+    navToggle.setAttribute("aria-expanded", "false");
     navigate(a.getAttribute("href"));
   }
+});
+
+// Mobile nav: hamburger toggles the collapsed top-nav.
+const topbar = document.querySelector(".topbar");
+const navToggle = document.getElementById("navToggle");
+navToggle.addEventListener("click", () => {
+  const open = topbar.classList.toggle("nav-open");
+  navToggle.setAttribute("aria-expanded", open ? "true" : "false");
 });
 
 document.getElementById("searchForm").addEventListener("submit", (e) => {
