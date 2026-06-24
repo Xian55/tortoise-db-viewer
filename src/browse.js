@@ -29,6 +29,8 @@ const COL = {
   speed: { key: "speed", label: "Speed", num: true, cls: "muted", cell: (r) => (r.delay ? (r.delay / 1000).toFixed(2) : ""), value: (r) => r.delay / 1000 || 0 },
   armor: { key: "armor", label: "Armor", num: true, cls: "muted", cell: (r) => r.armor || "", value: (r) => r.armor || 0 },
   slots: { key: "slots", label: "Slots", num: true, cls: "muted", hideEmpty: true, cell: (r) => r.container_slots || "", value: (r) => r.container_slots || 0 },
+  // ammo (class 6) flat damage add, shown wowhead-style as avg "damage per second"
+  ammo: { key: "ammo", label: "Damage", num: true, cls: "muted", cell: (r) => { const a = ((r.dmg_min1 || 0) + (r.dmg_max1 || 0)) / 2; return a ? (a % 1 ? a.toFixed(1) : `${a}`) : ""; }, value: (r) => ((r.dmg_min1 || 0) + (r.dmg_max1 || 0)) / 2 },
 };
 
 // columns adapt to the class filter: weapons show DPS/Speed, armor shows Armor.
@@ -39,7 +41,8 @@ const COL = {
 function buildItemCols(cls, statCols) {
   const base = cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.source]
     : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.source]
-      : [COL.name, COL.slots, COL.ilvl, COL.req, COL.slot, COL.source];
+      : cls === "6" ? [COL.name, COL.ammo, COL.ilvl, COL.req, COL.source]
+        : [COL.name, COL.slots, COL.ilvl, COL.req, COL.slot, COL.source];
   return statCols.length ? [base[0], ...statCols, ...base.slice(1)] : base;
 }
 

@@ -144,6 +144,12 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, se
     line(`${it.container_slots} Slot ${kind}`);
   }
 
+  // ammo (arrows/bullets = class 6): flat damage add, shown wowhead-style.
+  if (it.class === 6 && (it.dmg_min1 || it.dmg_max1)) {
+    const a = ((it.dmg_min1 || 0) + (it.dmg_max1 || 0)) / 2;
+    line(`Adds ${a % 1 ? a.toFixed(1) : a} damage per second`);
+  }
+
   // weapon damage / speed
   if (it.class === 2 && (it.dmg_min1 || it.dmg_max1)) {
     const speed = (it.delay / 1000).toFixed(2);

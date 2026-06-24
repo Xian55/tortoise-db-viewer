@@ -944,6 +944,7 @@ ok = (await testItemSet(22416, 523)) && ok;   // item set panel + ?itemset page
 ok = (await testQuestRewardFaction(22113)) && ok;  // reward-from-quest Faction column
 ok = (await testItemSlots(42243, "22 Slot Bag")) && ok;     // bag capacity (class 1)
 ok = (await testItemSlots(18714, "18 Slot Quiver")) && ok;  // quiver capacity (class 11)
+ok = (await testItemSlots(18042, "Adds 17.5 damage per second")) && ok;  // ammo damage (class 6)
 ok = (await testItem(2770, "Copper Ore")) && ok;
 ok = (await testItem(55356, "Netherwrought")) && ok;
 ok = (await testItem(647, "Destiny")) && ok;
@@ -1018,6 +1019,7 @@ ok = (await testSearchItemSet("Dreadnaught")) && ok;    // unified search includ
 ok = (await testBrowse("itemsets", "", "Pieces")) && ok;      // item-sets browse category
 ok = (await testBrowse("items", "&class=1", "Slots")) && ok;  // container browse shows slot count
 ok = (await testBrowse("items", "&slot=18", "Slots")) && ok;  // Bag-slot filter (bags + quivers) shows slot count
+ok = (await testBrowse("items", "&class=6", "Damage")) && ok;  // projectiles show ammo damage
 ok = (await testBrowseSource("vendor")) && ok;
 ok = (await testBrowseSource("worlddrop")) && ok;  // new World Drop source filter
 ok = (await testBrowseSpellCat()) && ok;           // spell category + class filters
