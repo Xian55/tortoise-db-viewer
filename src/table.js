@@ -17,7 +17,22 @@ import { esc } from "./render.js";
 
 const stripTags = (h) => String(h).replace(/<[^>]*>/g, "").trim();
 
+// Drop columns flagged hideEmpty (no row renders a value) or hideUniform (every
+// row renders the same single value) -- e.g. a profession trainer's Profession
+// column (all rows the same), or a Level column that's empty for every row.
+// Detection uses the rendered cell text so "0"/"" both read as empty.
+function hideCols(columns, rows) {
+  if (!rows.length) return columns;
+  return columns.filter((c) => {
+    if (!c.hideEmpty && !c.hideUniform) return true;
+    const vals = rows.map((r) => stripTags(c.cell(r))).filter((v) => v !== "");
+    if (c.hideUniform) return new Set(vals).size > 1;
+    return vals.length > 0;
+  });
+}
+
 export function createTable(container, { columns, rows, pageSize = Infinity, groupable = false, group = null, startCollapsed = false, sort = null, dir = "a", onState, selectable = false, rowKey = null, onSelectionChange }) {
+  columns = hideCols(columns, rows);
   const colKey = (i) => (i == null ? "" : (columns[i].key || columns[i].label));
   const findCol = (key) => {
     if (key == null || key === "") return null;
@@ -74,7 +89,7 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
       const i = columns.indexOf(c);
       const active = state.sort === i;
       const arrow = active ? (state.dir === "a" ? " ▲" : " ▼") : "";
-      return `<th class="sortable${active ? " active" : ""}" data-i="${i}">${esc(c.label)}${arrow}</th>`;
+      return `<th class="sortable${active ? " active" : ""}" data-i="${i}">${c.labelHtml || esc(c.label)}${arrow}</th>`;
     }).join("");
 
     let body = "", prev = Symbol("none");
