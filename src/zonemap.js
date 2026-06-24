@@ -11,6 +11,7 @@ import * as PIXI from "pixi.js";
 import "leaflet-pixi-overlay";
 import { GAMEOBJECT_TYPE } from "./constants.js";
 import { iconMarker } from "./render.js";
+import { ASSETS_BASE } from "./config.js";
 
 const NPC_CATS = [
   ["quest", "Quest Givers", "#ffd100"],
@@ -62,7 +63,7 @@ let currentMap = null, currentOverlay = null;
 
 // The "minimap" POI sprite sheet (16 cols, 32px cells; src: WowClassicGrindBot).
 // Elite (the skull) sits at grid [11,14] -> used for boss markers.
-const POI_URL = `${import.meta.env.BASE_URL}icons/poi-atlas.webp`;
+const POI_URL = `${ASSETS_BASE}icons/poi-atlas.webp`;
 const POI_CELL = 32, POI_COLS = 16;
 const BOSS_GRID = [11, 14]; // "Elite" = skull
 // CSS background for a POI sprite scaled to `size` px.

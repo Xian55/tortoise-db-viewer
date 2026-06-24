@@ -6,3 +6,7 @@ public/data/*.sqlite-journal
 public/data/version.json
 *.log
 .DS_Store
+# Local env files (VITE_* vars etc.) — never commit; secrets live in CI secrets
+.env
+.env.*
+!.env.example

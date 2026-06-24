@@ -6,7 +6,7 @@
 // Cache invalidation: build-db.mjs writes data/version.json with a content hash;
 // the worker keys the OPFS filename by it and wipes stale copies.
 
-const BASE = import.meta.env.BASE_URL;
+import { DATA_BASE } from "./config.js";
 
 let worker = null;
 let readyPromise = null;
@@ -23,7 +23,7 @@ function send(msg) {
 
 async function getVersion() {
   try {
-    const res = await fetch(`${BASE}data/version.json`, { cache: "no-store" });
+    const res = await fetch(`${DATA_BASE}version.json`, { cache: "no-store" });
     if (res.ok) return (await res.json()).version || "0";
   } catch { /* fall through */ }
   return "0";
@@ -43,7 +43,7 @@ async function init() {
     pending.clear();
   };
   const version = await getVersion();
-  const url = `${BASE}data/tortoise.sqlite?v=${version}`;
+  const url = `${DATA_BASE}tortoise.sqlite?v=${version}`;
   const mode = await send({ type: "open", version, url });
   if (typeof mode === "string" && mode.startsWith("memory")) {
     console.warn("OPFS unavailable; loading DB in-memory.", mode.slice(7));

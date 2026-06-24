@@ -7,6 +7,7 @@ import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDIN
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
+import { ASSETS_BASE } from "./config.js";
 
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
@@ -697,7 +698,7 @@ async function showNpc(id) {
     const el = document.getElementById("zonemap");
     try {
       const { initZoneMap } = await import("./zonemap.js");
-      const imgUrl = `${import.meta.env.BASE_URL}maps/${mapZone.areaid}.webp`;
+      const imgUrl = `${ASSETS_BASE}maps/${mapZone.areaid}.webp`;
       const focus = { label: npc.name, npc: npc.entry, points: mapPts };
       initZoneMap(el, { ...mapZone, imgUrl }, [], [], navigate, focus);
     } catch (e) { el.innerHTML = errorBox(e); }
@@ -1145,7 +1146,7 @@ async function showZone(id, gatherItem = null) {
   const el = document.getElementById("zonemap");
   try {
     const { initZoneMap } = await import("./zonemap.js");
-    const base = import.meta.env.BASE_URL;
+    const base = ASSETS_BASE;
     let zmap = null;
     // (re)draw the map for a floor: its parchment + the spawns/bosses on it.
     const renderFloor = (fl) => {
@@ -1265,7 +1266,7 @@ function errorBox(e) {
 // the app base so render.js can draw custom icons (no-op if absent).
 async function loadIconAtlas() {
   try {
-    const base = import.meta.env.BASE_URL;
+    const base = ASSETS_BASE;
     const res = await fetch(`${base}icons/custom-atlas.json`);
     if (!res.ok) return;
     const m = await res.json();

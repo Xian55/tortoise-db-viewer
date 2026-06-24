@@ -45,8 +45,43 @@ jobs:
         env:
           SQL_DIR: ${{ github.workspace }}/server/sql/base
 
+      # Serve the heavy assets (DB, zone maps, icon atlas) from Cloudflare R2 so
+      # visitor downloads come off GitHub Pages bandwidth. AWS CLI is preinstalled
+      # on ubuntu-latest; R2 speaks the S3 API. Hash-based cache invalidation still
+      # works: version.json is no-store, the DB is cache-busted by ?v=.
+      - name: Upload assets to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          # DB: immutable (cache-busted by ?v=); served as octet-stream
+          aws s3 cp public/data/tortoise.sqlite s3://tortoise-db-viewer/data/tortoise.sqlite \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/octet-stream
+          # version pointer: must never cache (drives cache invalidation)
+          aws s3 cp public/data/version.json s3://tortoise-db-viewer/data/version.json \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json --cache-control "no-store"
+          # maps: all .webp
+          aws s3 sync public/maps s3://tortoise-db-viewer/maps \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type image/webp --delete
+          # icons: webp sprites first (exclude the manifest)...
+          aws s3 sync public/icons s3://tortoise-db-viewer/icons \
+            --endpoint-url "$R2_ENDPOINT" \
+            --exclude "*.json" --content-type image/webp --delete
+          # ...then the atlas manifest as JSON (NOT image/webp)
+          aws s3 sync public/icons s3://tortoise-db-viewer/icons \
+            --endpoint-url "$R2_ENDPOINT" \
+            --exclude "*" --include "*.json" --content-type application/json
+
       - name: Build site
         run: bunx --bun vite build
+        env:
+          VITE_DATA_BASE: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/data/
+          VITE_ASSETS_BASE: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/
 
       - uses: actions/upload-pages-artifact@v3
         with:
