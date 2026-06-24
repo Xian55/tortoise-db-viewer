@@ -719,6 +719,16 @@ async function testMegaMenu() {
   return subs > 5 && weaponLeaf && oneHanded;
 }
 
+// The Subtype filter is multi-select and reflects a multi-subclass URL, so the
+// nav "One-Handed" state (class=2&subclass=0,4,7,13,15) is reproducible.
+async function testSubclassMulti() {
+  await page.goto(`${BASE}?browse=items&class=2&subclass=0,4,7,13,15`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const checked = await page.$$eval('[data-multi="subclass"] [data-mv]:checked', (e) => e.map((c) => c.value).sort());
+  console.log(`subclass-multi: checked=[${checked.join(",")}]`);
+  return checked.length === 5 && ["0", "4", "7", "13", "15"].every((v) => checked.includes(v));
+}
+
 // Mobile: the top nav collapses behind a hamburger that toggles it open.
 async function testMobileNav() {
   await page.setViewport({ width: 390, height: 800 });
@@ -1014,6 +1024,7 @@ ok = (await testSelection()) && ok;
 ok = (await testGroupSelection()) && ok;
 ok = (await testMegaMenu()) && ok;                                  // top-bar flyout mega-menu
 ok = (await testBrowse("items", "&class=2&subclass=0,4,7,13,15", "DPS")) && ok;  // One-Handed multi-subclass filter
+ok = (await testSubclassMulti()) && ok;                             // Subtype multi-select reflects the URL
 ok = (await testBrowse("zones", "&cont=0", "Zone")) && ok;          // Zones continent filter
 ok = (await testMobileNav()) && ok;   // responsive top bar (run last; resets viewport)
 console.log(`\nelapsed ${Date.now() - t}ms`);

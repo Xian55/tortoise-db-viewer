@@ -228,7 +228,7 @@ async function browseItems(p) {
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
     ${selectField("class", "Class", options(Object.entries(ITEM_CLASS), f.class, "Any class"))}
-    ${subMap ? selectField("subclass", "Subtype", options(Object.entries(subMap), f.subclass, "Any")) : ""}
+    ${subMap ? multiField("subclass", "Subtype", Object.entries(subMap), f.subclass) : ""}
     ${multiField("quality", "Quality", QUALITY.map((q, i) => [i, q.name]), f.quality)}
     ${multiField("slot", "Slot", Object.entries(INV_TYPE), f.slot)}
     ${multiField("source", "Source", ITEM_SOURCE, f.source)}

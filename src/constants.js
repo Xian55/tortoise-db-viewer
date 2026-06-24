@@ -18,9 +18,11 @@ export const ITEM_CLASS = {
 };
 
 export const WEAPON_SUBCLASS = {
-  0: "Axe", 1: "Axe", 2: "Bow", 3: "Gun", 4: "Mace", 5: "Mace", 6: "Polearm",
-  7: "Sword", 8: "Sword", 10: "Staff", 13: "Fist Weapon", 14: "Miscellaneous",
-  15: "Dagger", 16: "Thrown", 17: "Spear", 18: "Crossbow", 19: "Wand", 20: "Fishing Pole",
+  0: "One-Handed Axe", 1: "Two-Handed Axe", 2: "Bow", 3: "Gun",
+  4: "One-Handed Mace", 5: "Two-Handed Mace", 6: "Polearm",
+  7: "One-Handed Sword", 8: "Two-Handed Sword", 10: "Staff",
+  13: "Fist Weapon", 14: "Miscellaneous", 15: "Dagger", 16: "Thrown",
+  17: "Spear", 18: "Crossbow", 19: "Wand", 20: "Fishing Pole",
 };
 
 export const ARMOR_SUBCLASS = {
