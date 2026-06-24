@@ -87,11 +87,12 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .set-bonus-link, a.set-bonus-link { color: #1eff00; }   /* set bonuses are green in-game */
 a.set-bonus-link:hover { text-decoration: underline; }
 /* item-set summary: stat totals per member; highest per row highlighted */
-.set-summary { border-collapse: collapse; margin-top: 6px; }
+.set-summary { margin-top: 6px; overflow-x: auto; }
+.set-summary table { border-collapse: collapse; }
 .set-summary th, .set-summary td { padding: 4px 10px; text-align: center; border-bottom: 1px solid var(--border); }
 .set-summary th:first-child, .set-summary td:first-child { text-align: left; color: var(--muted); }
 .set-summary td.total { font-weight: 600; }
-.set-summary td.best { color: #1eff00; }
+.set-summary .best { color: #1eff00; }   /* highest contributor per stat row */
 .item-view { display: grid; grid-template-columns: 340px 1fr; gap: 26px; align-items: start; }
 @media (max-width: 760px) { .item-view { grid-template-columns: 1fr; } }
 .item-meta { margin-top: 10px; font-size: 12px; }

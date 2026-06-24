@@ -106,6 +106,7 @@ function showHome() {
   app.innerHTML = `<div class="home">
     <h1>Tortoise-WoW Database</h1>
     <p>Search above, or browse <a class="nav" href="?browse=items">items</a> /
+       <a class="nav" href="?browse=itemsets">item sets</a> /
        <a class="nav" href="?browse=npcs">NPCs</a> /
        <a class="nav" href="?browse=quests">quests</a> /
        <a class="nav" href="?browse=spells">spells</a> /
@@ -359,21 +360,29 @@ async function showItem(id) {
 }
 
 // Stat-summary table for a set: rows = stats, columns = Total + each member; the
-// highest contributor per stat is highlighted (wowhead-style).
+// highest contributor per stat is highlighted (wowhead-style). Sortable by header
+// (member columns sort the stats by that member's contribution) via createTable.
 function setSummary(members, statRows) {
   if (!members.length || !statRows.length) return "";
   const byItem = new Map();
   for (const r of statRows) { let m = byItem.get(r.item); if (!m) { m = new Map(); byItem.set(r.item, m); } m.set(r.stat, (m.get(r.stat) || 0) + r.value); }
   const present = Object.keys(GEAR_STAT_LABEL).filter((k) => members.some((m) => (byItem.get(m.entry) || new Map()).get(k)));
   if (!present.length) return "";
-  const head = `<tr><th>Stat</th><th>Total</th>${members.map((m) => `<th title="${esc(m.name)}">${iconImg(m.icon)}</th>`).join("")}</tr>`;
   const rows = present.map((k) => {
-    const vals = members.map((m) => (byItem.get(m.entry) || new Map()).get(k) || 0);
-    const total = vals.reduce((a, b) => a + b, 0), max = Math.max(...vals);
-    const cells = vals.map((v) => `<td class="${v && v === max ? "best" : ""}">${v ? v.toLocaleString() : ""}</td>`).join("");
-    return `<tr><td>${esc(GEAR_STAT_LABEL[k])}</td><td class="total">${total.toLocaleString()}</td>${cells}</tr>`;
-  }).join("");
-  return `<h2>Summary</h2><div class="set-summary-wrap"><table class="set-summary"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+    const v = {}; let total = 0, max = 0;
+    for (const m of members) { const val = (byItem.get(m.entry) || new Map()).get(k) || 0; v[m.entry] = val; total += val; if (val > max) max = val; }
+    return { stat: GEAR_STAT_LABEL[k], total, max, v };
+  });
+  const cols = [
+    { key: "stat", label: "Stat", cell: (r) => esc(r.stat), value: (r) => r.stat },
+    { key: "total", label: "Total", num: true, cls: "total", cell: (r) => r.total.toLocaleString(), value: (r) => r.total },
+    ...members.map((m) => ({
+      key: `m${m.entry}`, label: m.name, labelHtml: `<span title="${esc(m.name)}">${iconImg(m.icon)}</span>`, num: true,
+      cell: (r) => { const val = r.v[m.entry]; return val ? (val === r.max ? `<span class="best">${val.toLocaleString()}</span>` : val.toLocaleString()) : ""; },
+      value: (r) => r.v[m.entry] || 0,
+    })),
+  ];
+  return `<h2>Summary</h2><div class="set-summary">${regTable(cols, rows).html}</div>`;
 }
 
 async function showItemSet(id) {
@@ -386,6 +395,7 @@ async function showItemSet(id) {
     query(Q.Q_ITEMSET_MEMBERS, [id]), query(Q.Q_ITEMSET_BONUSES, [id]), query(Q.Q_ITEMSET_STATS, [id]),
   ]);
   app.innerHTML = `<div class="results item-set-page"><h1>${esc(set.name)}</h1>${renderItemSet(set, members, bonuses, null, false)}${setSummary(members, statRows)}</div>`;
+  mountTables();
 }
 
 async function showSpell(id) {
@@ -649,8 +659,8 @@ async function showNpc(id) {
   const teachesCols = [
     { label: "Spell", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
     { label: "Rank", num: true, cls: "muted", cell: (r) => esc(r.rank || ""), value: rankNum },
-    { label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
-    { label: "Level", num: true, cls: "muted", cell: (r) => r.spell_level || "", value: (r) => r.spell_level || 0 },
+    { label: "Profession", cls: "muted", hideUniform: true, cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
+    { label: "Level", num: true, cls: "muted", hideEmpty: true, cell: (r) => r.spell_level || "", value: (r) => r.spell_level || 0 },
   ];
 
   // World drops (ubiquitous greens/gems/cloth dropped at world-drop-tier low rates)
