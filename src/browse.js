@@ -21,22 +21,23 @@ const COL = {
   name: { key: "name", label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
   ilvl: { key: "ilvl", label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
   req: { key: "req", label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
-  slot: { key: "slot", label: "Slot", cls: "muted", cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
+  slot: { key: "slot", label: "Slot", cls: "muted", hideUniform: true, cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
   source: { key: "source", label: "Source", cls: "src-col", cell: (r) => sourceTags(r.sources), value: (r) => r.sources || "" },
   dps: { key: "dps", label: "DPS", num: true, cell: (r) => (dpsVal(r) ? dpsVal(r).toFixed(1) : ""), value: (r) => dpsVal(r) },
   speed: { key: "speed", label: "Speed", num: true, cls: "muted", cell: (r) => (r.delay ? (r.delay / 1000).toFixed(2) : ""), value: (r) => r.delay / 1000 || 0 },
   armor: { key: "armor", label: "Armor", num: true, cls: "muted", cell: (r) => r.armor || "", value: (r) => r.armor || 0 },
-  slots: { key: "slots", label: "Slots", num: true, cls: "muted", cell: (r) => r.container_slots || "", value: (r) => r.container_slots || 0 },
+  slots: { key: "slots", label: "Slots", num: true, cls: "muted", hideEmpty: true, cell: (r) => r.container_slots || "", value: (r) => r.container_slots || 0 },
 };
 
 // columns adapt to the class filter: weapons show DPS/Speed, armor shows Armor.
-// when stat criteria are active, a sortable column per criterion stat is inserted
-// (right after Name).
+// the default set carries Slots (auto-hidden unless a row has container_slots --
+// bags/quivers) and Slot (auto-hidden when every row is the same slot, e.g. a
+// Bag-slot or container filter). when stat criteria are active, a sortable column
+// per criterion stat is inserted (right after Name).
 function buildItemCols(cls, statCols) {
   const base = cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.source]
     : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.source]
-      : cls === "1" ? [COL.name, COL.slots, COL.ilvl, COL.req, COL.source]
-        : [COL.name, COL.ilvl, COL.req, COL.slot, COL.source];
+      : [COL.name, COL.slots, COL.ilvl, COL.req, COL.slot, COL.source];
   return statCols.length ? [base[0], ...statCols, ...base.slice(1)] : base;
 }
 
