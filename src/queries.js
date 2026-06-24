@@ -18,6 +18,13 @@ export const Q_ITEM = `
 
 // ---- item sets (name + members + set-bonus spells) ----
 export const Q_ITEM_SET = `SELECT id, name FROM item_sets WHERE id = ?1`;
+// browse: every set with a current member, + piece count and required-level span.
+export const Q_BROWSE_ITEMSETS = `
+  SELECT s.id, s.name,
+    (SELECT COUNT(*) FROM items i WHERE i.set_id = s.id AND i.hidden = 0) AS pieces,
+    (SELECT MIN(i.required_level) FROM items i WHERE i.set_id = s.id AND i.hidden = 0) AS minlvl,
+    (SELECT MAX(i.required_level) FROM items i WHERE i.set_id = s.id AND i.hidden = 0) AS maxlvl
+  FROM item_sets s WHERE s.name <> '' ORDER BY s.name`;
 export const Q_ITEMSET_MEMBERS = `
   SELECT i.entry, i.name, i.quality, di.icon
   FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id

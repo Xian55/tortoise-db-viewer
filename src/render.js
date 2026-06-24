@@ -138,6 +138,9 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, se
     line(`<span class="tt-l">${esc(slot || "")}</span><span class="tt-r">${esc(subtype)}</span>`, "tt-split");
   }
 
+  // container capacity (bags, quivers, ammo pouches)
+  if (it.class === 1 && it.container_slots) line(`${it.container_slots} Slot Bag`);
+
   // weapon damage / speed
   if (it.class === 2 && (it.dmg_min1 || it.dmg_max1)) {
     const speed = (it.delay / 1000).toFixed(2);

@@ -2,7 +2,7 @@
 // against the in-memory DB; sorting + pagination are handled client-side by the
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
-import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SPELLS } from "./queries.js";
+import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SPELLS, Q_BROWSE_ITEMSETS } from "./queries.js";
 import { itemLink, npcLink, questLink, factionLink, zoneLink, spellLink, sourceTags, esc } from "./render.js";
 import { createTable } from "./table.js";
 import {
@@ -26,6 +26,7 @@ const COL = {
   dps: { key: "dps", label: "DPS", num: true, cell: (r) => (dpsVal(r) ? dpsVal(r).toFixed(1) : ""), value: (r) => dpsVal(r) },
   speed: { key: "speed", label: "Speed", num: true, cls: "muted", cell: (r) => (r.delay ? (r.delay / 1000).toFixed(2) : ""), value: (r) => r.delay / 1000 || 0 },
   armor: { key: "armor", label: "Armor", num: true, cls: "muted", cell: (r) => r.armor || "", value: (r) => r.armor || 0 },
+  slots: { key: "slots", label: "Slots", num: true, cls: "muted", cell: (r) => r.container_slots || "", value: (r) => r.container_slots || 0 },
 };
 
 // columns adapt to the class filter: weapons show DPS/Speed, armor shows Armor.
@@ -34,7 +35,8 @@ const COL = {
 function buildItemCols(cls, statCols) {
   const base = cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.source]
     : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.source]
-      : [COL.name, COL.ilvl, COL.req, COL.slot, COL.source];
+      : cls === "1" ? [COL.name, COL.slots, COL.ilvl, COL.req, COL.source]
+        : [COL.name, COL.ilvl, COL.req, COL.slot, COL.source];
   return statCols.length ? [base[0], ...statCols, ...base.slice(1)] : base;
 }
 
@@ -202,7 +204,7 @@ async function browseItems(p) {
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
   const rows = await query(
     `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, i.display_id,
-            i.dmg_min1, i.dmg_max1, i.delay, i.armor, di.icon${statSel2},
+            i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, di.icon${statSel2},
             (SELECT GROUP_CONCAT(source,',') FROM item_sources s WHERE s.item = i.entry) AS sources
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
@@ -481,6 +483,21 @@ async function browseZones(p) {
   return { rows, cols, filters, noun: "zones" };
 }
 
+async function browseItemsets(p) {
+  const f = { q: p.get("q") || "" };
+  let rows = await query(Q_BROWSE_ITEMSETS, []);
+  rows = rows.filter((r) => r.pieces > 0); // sets whose items aren't in this build
+  if (f.q) { const ql = f.q.toLowerCase(); rows = rows.filter((r) => (r.name || "").toLowerCase().includes(ql)); }
+  const lvl = (r) => (r.maxlvl ? (r.minlvl === r.maxlvl ? `${r.minlvl}` : `${r.minlvl}-${r.maxlvl}`) : "");
+  const cols = [
+    { key: "name", label: "Item Set", cell: (r) => `<a class="ilink" href="?itemset=${r.id}">${esc(r.name)}</a>`, value: (r) => r.name || "" },
+    { key: "pieces", label: "Pieces", num: true, cls: "muted", cell: (r) => r.pieces || "", value: (r) => r.pieces || 0 },
+    { key: "level", label: "Req Level", num: true, cls: "muted", cell: (r) => lvl(r), value: (r) => r.maxlvl || 0 },
+  ];
+  const filters = `<div class="filters">${textField("q", "Name", f.q)}<button class="reset" data-reset="1">Reset</button></div>`;
+  return { rows, cols, filters, noun: "item sets" };
+}
+
 export async function showBrowse(kind, navigate) {
   const app = document.getElementById("app");
   const isNpc = kind === "npcs";
@@ -489,12 +506,13 @@ export async function showBrowse(kind, navigate) {
   const isFactions = kind === "factions";
   const isZones = kind === "zones";
   const isSpells = kind === "spells";
-  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : isFactions ? "Factions" : isZones ? "Zones" : isSpells ? "Spells" : "Items";
+  const isItemsets = kind === "itemsets";
+  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : isFactions ? "Factions" : isZones ? "Zones" : isSpells ? "Spells" : isItemsets ? "Item Sets" : "Items";
   document.title = `Browse ${heading} - Tortoise-WoW DB`;
   app.innerHTML = `<div class="loading">Loading…</div>`;
   const p = new URLSearchParams(location.search);
   let view;
-  try { view = kind === "crafting" ? await browseCrafting(p) : isZones ? await browseZones(p) : isFactions ? await browseFactions(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : isSpells ? await browseSpells(p) : await browseItems(p); }
+  try { view = kind === "crafting" ? await browseCrafting(p) : isZones ? await browseZones(p) : isFactions ? await browseFactions(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : isSpells ? await browseSpells(p) : isItemsets ? await browseItemsets(p) : await browseItems(p); }
   catch (e) { app.innerHTML = `<div class="error">Failed: ${esc(e.message || e)}</div>`; return; }
 
   // items get row selection + clipboard/external operations on the selection.
