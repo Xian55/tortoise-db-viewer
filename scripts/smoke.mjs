@@ -730,6 +730,17 @@ async function testSubclassMulti() {
   return checked.length === 5 && ["0", "4", "7", "13", "15"].every((v) => checked.includes(v));
 }
 
+// Rage costs are stored x10 internally; Heroic Strike (284) is 15 rage, not 150.
+// Read the cost cell directly (.spell-card .tt-l) -- the page's full textContent
+// runs "Rank 2" into "15 Rage" with no separator.
+async function testRageCost(id) {
+  await page.goto(`${BASE}?spell=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".spell-page .spell-card", { timeout: 40000 });
+  const cost = await page.$eval(".spell-page .spell-card .tt-l", (e) => e.textContent.trim()).catch(() => "");
+  console.log(`rage-cost ${id}: cost="${cost}"`);
+  return cost === "15 Rage";
+}
+
 // Mobile: the top nav collapses behind a hamburger that toggles it open.
 async function testMobileNav() {
   await page.setViewport({ width: 390, height: 800 });
@@ -954,6 +965,7 @@ ok = (await testSearchZone("Tanaris")) && ok;
 ok = (await testSearchDropdown("defias")) && ok;
 ok = (await testSpell(41746, "Shadowforged Eye")) && ok;   // craft spell: Creates/Reagents tabs + Learned-from link
 ok = (await testSpellDetail(10, "Frost")) && ok;           // Blizzard: details grid + effect breakdown (DBC-resolved)
+ok = (await testRageCost(284)) && ok;                      // Heroic Strike: rage cost /10 (15, not 150)
 ok = (await testSpellQuestReward(23161)) && ok;            // spell taught by quest reward + no dup card / No data.
 ok = (await testItemSpellLink(70204)) && ok;               // recipe item: green "Teaches…" now links to ?spell=
 ok = (await testSearchSpells("Shadowforged")) && ok;       // search yields a Spells tab

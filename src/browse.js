@@ -16,6 +16,8 @@ const PAGE = 100;
 const lvlRange = (r) => (r.level_max && r.level_max !== r.level_min ? `${r.level_min}-${r.level_max}` : (r.level_min || ""));
 
 const dpsVal = (r) => (r.delay > 0 && (r.dmg_min1 || r.dmg_max1) ? ((r.dmg_min1 + r.dmg_max1) / 2) / (r.delay / 1000) : 0);
+// Rage is stored x10 (max rage 100 = 1000 units); divide it for display.
+const spellCostVal = (r) => (r.power_type === 1 ? (r.mana_cost || 0) / 10 : (r.mana_cost || 0));
 
 const COL = {
   name: { key: "name", label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
@@ -381,7 +383,8 @@ async function browseSpells(p) {
     { key: "category", label: "Category", cls: "muted", cell: (r) => esc(r.category || ""), value: (r) => r.category || "" },
     { key: "rank", label: "Rank", num: true, cls: "muted", cell: (r) => esc(r.rank || ""), value: rankNum },
     { key: "school", label: "School", cls: "muted", cell: (r) => esc(SPELL_SCHOOL[r.school] || ""), value: (r) => SPELL_SCHOOL[r.school] || "" },
-    { key: "cost", label: "Cost", num: true, cls: "muted", cell: (r) => (r.mana_cost ? `${r.mana_cost}` : ""), value: (r) => r.mana_cost || 0 },
+    // Rage is stored x10 (max rage 100 = 1000 units) -> divide for display.
+    { key: "cost", label: "Cost", num: true, cls: "muted", cell: (r) => (r.mana_cost ? `${spellCostVal(r)}` : ""), value: (r) => spellCostVal(r) },
     { key: "cast", label: "Cast", num: true, cls: "muted", cell: (r) => (r.channeled ? "Channeled" : r.cast_ms ? secs(r.cast_ms) : ""), value: (r) => r.cast_ms || 0 },
     { key: "level", label: "Level", num: true, cls: "muted", cell: (r) => (r.spell_level || ""), value: (r) => r.spell_level || 0 },
     { key: "prof", label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },

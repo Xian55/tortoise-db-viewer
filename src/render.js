@@ -307,11 +307,20 @@ export function spellLink(entry, name, icon) {
 
 const spellSecs = (ms) => { const v = ms / 1000; return `${Number.isInteger(v) ? v : v.toFixed(v < 1 ? 2 : 1)} ${v === 1 ? "second" : "seconds"}`; };
 
+// Power cost string. Rage is stored internally x10 (max rage 100 = 1000 units),
+// so divide it for display; mana/energy/focus are 1:1.
+export function spellCost(sp) {
+  if (sp.mana_cost) {
+    const n = sp.power_type === 1 ? sp.mana_cost / 10 : sp.mana_cost;
+    return `${n} ${POWER_TYPE[sp.power_type] || "Mana"}`;
+  }
+  return sp.mana_cost_pct ? `${sp.mana_cost_pct}% of base mana` : "";
+}
+
 // Parchment summary card for a spell (the page header + the hover tooltip share
 // this). sp is a full Q_SPELL row (icon/rank/cost/range/cast + description).
 export function spellTooltip(sp) {
-  const cost = sp.mana_cost ? `${sp.mana_cost} ${POWER_TYPE[sp.power_type] || "Mana"}`
-    : (sp.mana_cost_pct ? `${sp.mana_cost_pct}% of base mana` : "");
+  const cost = spellCost(sp);
   const cast = sp.channeled ? "Channeled" : (sp.cast_ms ? spellSecs(sp.cast_ms) : "Instant");
   const desc = resolveSpellText(sp.description || sp.auraDescription, sp);
   const lines = [];

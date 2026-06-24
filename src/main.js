@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, spellTooltip, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -449,7 +449,7 @@ async function showSpell(id) {
   // ---- formatters (wowhead-style values) ----
   const secs = (ms) => { const v = ms / 1000; return `${Number.isInteger(v) ? v : v.toFixed(v < 1 ? 2 : 1)} ${v === 1 ? "second" : "seconds"}`; };
   const castStr = sp.channeled ? "Channeled" : (sp.cast_ms ? secs(sp.cast_ms) : "Instant");
-  const costStr = sp.mana_cost ? `${sp.mana_cost} ${POWER_TYPE[sp.power_type] || "Mana"}` : (sp.mana_cost_pct ? `${sp.mana_cost_pct}% of base mana` : "");
+  const costStr = spellCost(sp);
   // range_max 0 = self-cast; show "Self" rather than a pointless "0 yards"
   const rangeStr = sp.range_max ? `${sp.range_min ? `${sp.range_min}-` : ""}${sp.range_max} yards${sp.range_name ? ` (${sp.range_name})` : ""}` : (sp.range_max === 0 ? "Self" : "n/a");
 
