@@ -119,8 +119,22 @@ async function testItemSet(itemId, setId) {
   await page.waitForSelector(".item-set-page .item-set", { timeout: 40000 });
   const pageMembers = await page.$$eval(".item-set-page .set-member", (e) => e.length).catch(() => 0);
   const summary = (await page.$(".item-set-page .set-summary")) !== null;
-  console.log(`item-set ${itemId}/${setId}: members=${members} bonuses=${bonuses} bonusLink=${bonusLink} nameLink=${nameLink} noRawToken=${noRawToken} pageMembers=${pageMembers} summary=${summary}`);
-  return members >= 5 && bonuses >= 2 && bonusLink && nameLink && noRawToken && pageMembers >= 5 && summary;
+  const summarySortable = await page.$$eval(".item-set-page .set-summary th.sortable", (e) => e.length).catch(() => 0);
+  console.log(`item-set ${itemId}/${setId}: members=${members} bonuses=${bonuses} bonusLink=${bonusLink} nameLink=${nameLink} noRawToken=${noRawToken} pageMembers=${pageMembers} summary=${summary} summarySortable=${summarySortable}`);
+  return members >= 5 && bonuses >= 2 && bonusLink && nameLink && noRawToken && pageMembers >= 5 && summary && summarySortable > 0;
+}
+
+// A single-profession trainer hides the redundant Profession column (every row
+// the same skill). NPC 5038 is an Enchanting trainer.
+async function testTrainerCols(id) {
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-page .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".npc-page .tab")].find((t) => t.textContent.includes("Teaches")); if (b) b.click(); });
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  const headers = await page.$$eval(".npc-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const rows = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr", (r) => r.length).catch(() => 0);
+  console.log(`trainer-cols ${id}: rows=${rows} headers=[${headers.join(",")}]`);
+  return rows > 0 && !headers.includes("Profession");
 }
 
 // recipe/pattern/plans item shows a "Teaches" tab with the craft it unlocks
@@ -910,6 +924,7 @@ ok = (await testBrowse("zones", "", "Continent")) && ok;
 ok = (await testNpcLoad(15379, 400)) && ok;  // AQ NPC, many spawns; ~4ms healthy, 726ms if zone lookup unindexed
 ok = (await testNpc(2376, "Torn Fin Oracle")) && ok;
 ok = (await testNpc(80402, "Aemara Sunsorrow", "Teaches")) && ok;  // trainer -> Teaches tab
+ok = (await testTrainerCols(5038)) && ok;  // single-profession trainer hides Profession col
 ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
 ok = (await testNpcMap(2376)) && ok;  // NPC page shows its zone map + spawn pins
@@ -939,6 +954,8 @@ ok = (await testBrowse("npcs", "&rank=3")) && ok;
 ok = (await testBrowseNpcCols()) && ok;                  // browse NPCs: Faction + Location cols, title search, faction filter
 ok = (await testSearchFaction("Darnassus")) && ok;      // unified search includes factions
 ok = (await testSearchItemSet("Dreadnaught")) && ok;    // unified search includes item sets
+ok = (await testBrowse("itemsets", "", "Pieces")) && ok;      // item-sets browse category
+ok = (await testBrowse("items", "&class=1", "Slots")) && ok;  // container browse shows slot count
 ok = (await testBrowseSource("vendor")) && ok;
 ok = (await testBrowseSource("worlddrop")) && ok;  // new World Drop source filter
 ok = (await testBrowseSpellCat()) && ok;           // spell category + class filters
