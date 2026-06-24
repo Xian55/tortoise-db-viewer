@@ -8,6 +8,7 @@ import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
 import { ASSETS_BASE } from "./config.js";
+import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
@@ -54,16 +55,21 @@ document.addEventListener("click", (e) => {
     e.preventDefault();
     topbar.classList.remove("nav-open");   // close the mobile menu after navigating
     navToggle.setAttribute("aria-expanded", "false");
+    closeNav(topnav);
     navigate(a.getAttribute("href"));
   }
 });
 
-// Mobile nav: hamburger toggles the collapsed top-nav.
+// Top-bar mega-menu (data-driven flyout) + mobile hamburger.
 const topbar = document.querySelector(".topbar");
 const navToggle = document.getElementById("navToggle");
+const topnav = document.getElementById("topnav");
+topnav.innerHTML = buildNavHtml();
+wireNav(topnav);
 navToggle.addEventListener("click", () => {
   const open = topbar.classList.toggle("nav-open");
   navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (!open) closeNav(topnav);
 });
 
 document.getElementById("searchForm").addEventListener("submit", (e) => {
