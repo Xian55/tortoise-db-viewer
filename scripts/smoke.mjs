@@ -715,8 +715,9 @@ async function testMegaMenu() {
   const subs = await page.$$eval(".menubar .submenu", (e) => e.length);
   const weaponLeaf = (await page.$('.menubar a.nav[href*="class=2&subclass=0"]')) !== null;
   const oneHanded = (await page.$('.menubar a.nav[href*="class=2&subclass=0,4,7,13,15"]')) !== null;
-  console.log(`mega-menu: submenus=${subs} weaponLeaf=${weaponLeaf} oneHandedGroup=${oneHanded}`);
-  return subs > 5 && weaponLeaf && oneHanded;
+  const spellPreset = (await page.$('.menubar a.nav[href*="browse=spells&cls="]')) !== null;
+  console.log(`mega-menu: submenus=${subs} weaponLeaf=${weaponLeaf} oneHandedGroup=${oneHanded} spellPreset=${spellPreset}`);
+  return subs > 5 && weaponLeaf && oneHanded && spellPreset;
 }
 
 // The Subtype filter is multi-select and reflects a multi-subclass URL, so the

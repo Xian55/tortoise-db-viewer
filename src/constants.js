@@ -220,6 +220,8 @@ export function money(copper) {
 // Maps are partial by design: the spell page falls back to "#N" for unmapped
 // values, so only high-confidence entries are listed (no fabricated labels).
 export const SPELL_SCHOOL = { 0: "Physical", 1: "Holy", 2: "Fire", 3: "Nature", 4: "Frost", 5: "Shadow", 6: "Arcane" };
+// spell-browse category buckets, in the order build-db assigns them (skill-line)
+export const SPELL_CATEGORIES = ["Class Skills", "Professions", "Secondary Skills", "Weapon Skills", "Armor Proficiencies", "Languages", "Racial Traits"];
 export const POWER_TYPE = { 0: "Mana", 1: "Rage", 2: "Focus", 3: "Energy", 4: "Happiness" };
 export const SPELL_DISPEL = { 1: "Magic", 2: "Curse", 3: "Disease", 4: "Poison", 5: "Stealth", 6: "Invisibility" };
 export const SPELL_MECHANIC = {

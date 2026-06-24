@@ -9,7 +9,7 @@ import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
   CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
   BONDING, CLASS_MASK, PROFESSION, PROFESSION_LABEL, RACE_ALLIANCE, RACE_HORDE,
-  QUEST_TYPE, CONTINENT, SPELL_SCHOOL, questZoneLabel,
+  QUEST_TYPE, CONTINENT, SPELL_SCHOOL, SPELL_CATEGORIES, questZoneLabel,
 } from "./constants.js";
 
 const PAGE = 100;
@@ -363,9 +363,6 @@ async function browseCrafting(p) {
   </div>`;
   return { rows: crafts, cols: hideCols(cols, f.prof ? ["prof"] : []), filters, noun: "crafts" };
 }
-
-// spell categories (filter buckets), in the order build-db assigns them
-const SPELL_CATEGORIES = ["Class Skills", "Professions", "Secondary Skills", "Weapon Skills", "Armor Proficiencies", "Languages", "Racial Traits"];
 
 async function browseSpells(p) {
   const f = { q: p.get("q") || "", cat: p.get("cat") || "", cls: p.get("cls") || "", prof: p.get("prof") || "", school: p.get("school") || "" };

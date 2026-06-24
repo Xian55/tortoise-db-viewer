@@ -3,7 +3,7 @@
 // buildNavHtml() renders nested <ul>s; CSS opens them on hover (desktop) and
 // wireNav() toggles them on tap (mobile). Leaf <a class="nav"> links ride the
 // global SPA-nav handler in main.js.
-import { CREATURE_TYPE, PROFESSION, CONTINENT } from "./constants.js";
+import { CREATURE_TYPE, PROFESSION, CONTINENT, CLASS_MASK, SPELL_SCHOOL, SPELL_CATEGORIES } from "./constants.js";
 import { esc } from "./render.js";
 
 const item = (qs) => `?browse=items&${qs}`;
@@ -89,6 +89,15 @@ const CRAFTING = {
   children: PROFESSION.map(([id, name]) => ({ label: name, href: `?browse=crafting&prof=${id}` })),
 };
 
+const SPELLS = {
+  label: "Spells", href: "?browse=spells",
+  children: [
+    { label: "By Class", children: CLASS_MASK.map(([bit, name]) => ({ label: name, href: `?browse=spells&cls=${bit}` })) },
+    { label: "By Category", children: SPELL_CATEGORIES.map((c) => ({ label: c, href: `?browse=spells&cat=${encodeURIComponent(c)}` })) },
+    { label: "By School", children: Object.entries(SPELL_SCHOOL).map(([id, name]) => ({ label: name, href: `?browse=spells&school=${id}` })) },
+  ],
+};
+
 const ZONES = {
   label: "Zones", href: "?browse=zones",
   children: Object.entries(CONTINENT).map(([id, name]) => ({ label: name, href: `?browse=zones&cont=${id}` })),
@@ -99,7 +108,7 @@ export const MENU = [
   { label: "Item Sets", href: "?browse=itemsets" },
   NPCS,
   { label: "Quests", href: "?browse=quests" },
-  { label: "Spells", href: "?browse=spells" },
+  SPELLS,
   CRAFTING,
   { label: "Factions", href: "?browse=factions" },
   ZONES,
