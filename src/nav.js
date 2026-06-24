@@ -66,7 +66,6 @@ const ITEMS = {
     WEAPONS, ARMOR,
     { label: "Containers", href: item("class=1") },
     { label: "Consumables", href: item("class=0") },
-    { label: "Gems", href: item("class=3") },
     { label: "Trade Goods", href: item("class=7") },
     { label: "Projectiles", href: item("class=6") },
     { label: "Quivers", href: item("class=11") },

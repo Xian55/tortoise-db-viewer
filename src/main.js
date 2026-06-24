@@ -688,13 +688,15 @@ async function showNpc(id) {
     { id: "objective", label: "Objective of", ...regTable(objectiveCols, objectiveOf) },
   ];
 
-  // The NPC has spawns but none resolve to a zone with a parchment (e.g. the few
-  // map-less instances like Dire Maul, which never shipped an interior map) -> say
-  // so instead of leaving a confusing blank where the map would be.
+  // No map -> explain why instead of leaving a confusing blank. Two cases: the NPC
+  // has spawns but none resolve to a zone with a parchment (e.g. map-less instances
+  // like Dire Maul), or the NPC has no recorded spawn at all (Turtle NPCs placed by
+  // a script/pool/event carry no static coordinates in the server data we ingest).
   const instMap = maps.find((m) => m.type === 1 || m.type === 2);
-  const noMapNote = !mapZone && npcSpawns.length
-    ? `<div class="zone-empty muted">No spawn-location map is available${instMap ? ` — <b>${esc(instMap.name)}</b> has no interior map in the client data` : ""}.</div>`
-    : "";
+  const noMapNote = mapZone ? ""
+    : npcSpawns.length
+      ? `<div class="zone-empty muted">No spawn-location map is available${instMap ? ` — <b>${esc(instMap.name)}</b> has no interior map in the client data` : ""}.</div>`
+      : `<div class="zone-empty muted">No spawn location is recorded for this NPC (it may be placed by a script or event).</div>`;
 
   app.innerHTML =
     `<div class="npc-page">

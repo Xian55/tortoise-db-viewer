@@ -741,6 +741,26 @@ async function testRageCost(id) {
   return cost === "15 Rage";
 }
 
+// Reagents all have required_level 0, so the Req column (hideEmpty) drops out.
+async function testReagentNoReq() {
+  await page.goto(`${BASE}?browse=items&class=5`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  console.log(`reagent-cols: headers=[${headers.join(",")}]`);
+  return headers.length > 0 && !headers.includes("Req");
+}
+
+// NPCs with no recorded spawn (script/pool/event-placed, e.g. 80101) show an
+// explanatory note instead of a blank where the map would be.
+async function testNpcNoSpawn(id) {
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".npc-page", { timeout: 40000 });
+  const note = (await page.$(".npc-page .zone-empty")) !== null;
+  const noMap = (await page.$("#zonemap")) === null;
+  console.log(`npc-nospawn ${id}: note=${note} noMap=${noMap}`);
+  return note && noMap;
+}
+
 // Mobile: the top nav collapses behind a hamburger that toggles it open.
 async function testMobileNav() {
   await page.setViewport({ width: 390, height: 800 });
@@ -991,6 +1011,7 @@ ok = (await testNpc(10981, "", "Skinning")) && ok;
 ok = (await testNpcTypeLink(2376)) && ok;
 ok = (await testNpcMap(2376)) && ok;  // NPC page shows its zone map + spawn pins
 ok = (await testNpcSells(1249, 5)) && ok;  // template-vendor (vendor_id) stock on Sells tab
+ok = (await testNpcNoSpawn(80101)) && ok;  // no-spawn NPC shows an explanatory note
 ok = (await testNpcMapZone(596, 40)) && ok;    // exact ADT area: Deadmines-entrance spawn is Westfall terrain
 ok = (await testNpcMapZone(11501, 2557)) && ok;  // Dire Maul interior NPC (King Gordok)
 ok = (await testNpcMapZone(80208, 5225)) && ok;  // map = most-spawned interior zone
@@ -1020,6 +1041,7 @@ ok = (await testBrowse("itemsets", "", "Pieces")) && ok;      // item-sets brows
 ok = (await testBrowse("items", "&class=1", "Slots")) && ok;  // container browse shows slot count
 ok = (await testBrowse("items", "&slot=18", "Slots")) && ok;  // Bag-slot filter (bags + quivers) shows slot count
 ok = (await testBrowse("items", "&class=6", "Damage")) && ok;  // projectiles show ammo damage
+ok = (await testReagentNoReq()) && ok;                         // reagents hide the empty Req column
 ok = (await testBrowseSource("vendor")) && ok;
 ok = (await testBrowseSource("worlddrop")) && ok;  // new World Drop source filter
 ok = (await testBrowseSpellCat()) && ok;           // spell category + class filters

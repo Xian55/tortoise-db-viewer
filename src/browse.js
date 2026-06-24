@@ -22,7 +22,7 @@ const spellCostVal = (r) => (r.power_type === 1 ? (r.mana_cost || 0) / 10 : (r.m
 const COL = {
   name: { key: "name", label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
   ilvl: { key: "ilvl", label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
-  req: { key: "req", label: "Req", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
+  req: { key: "req", label: "Req", num: true, cls: "muted", hideEmpty: true, cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
   slot: { key: "slot", label: "Slot", cls: "muted", hideUniform: true, cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
   source: { key: "source", label: "Source", cls: "src-col", cell: (r) => sourceTags(r.sources), value: (r) => r.sources || "" },
   dps: { key: "dps", label: "DPS", num: true, cell: (r) => (dpsVal(r) ? dpsVal(r).toFixed(1) : ""), value: (r) => dpsVal(r) },
