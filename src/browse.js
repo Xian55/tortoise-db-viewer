@@ -169,7 +169,7 @@ async function browseItems(p) {
   };
   if (f.q) add("i.name LIKE ?", `%${f.q}%`);
   if (f.class !== "") add("i.class = ?", +f.class);
-  if (f.subclass !== "") add("i.subclass = ?", +f.subclass);
+  addIn("i.subclass", f.subclass); // CSV: nav groups select several (e.g. One-Handed = 0,4,7,13,15)
   addIn("i.quality", f.quality);
   addIn("i.inventory_type", f.slot);
   if (f.minrl !== "") add("i.required_level >= ?", +f.minrl);
@@ -472,15 +472,16 @@ async function browseFactions(p) {
 }
 
 async function browseZones(p) {
-  const f = { q: p.get("q") || "" };
+  const f = { q: p.get("q") || "", cont: p.get("cont") || "" };
   let rows = await query(Q_ZONES, []);
+  if (f.cont !== "") rows = rows.filter((r) => String(r.mapid) === f.cont);
   if (f.q) { const ql = f.q.toLowerCase(); rows = rows.filter((r) => (r.name || "").toLowerCase().includes(ql)); }
   const cols = [
     { key: "name", label: "Zone", cell: (r) => zoneLink(r.areaid, r.name), value: (r) => r.name || "" },
-    { key: "continent", label: "Continent", cls: "muted", cell: (r) => CONTINENT[r.mapid] || "", value: (r) => CONTINENT[r.mapid] || "" },
+    { key: "continent", label: "Continent", cls: "muted", hideUniform: true, cell: (r) => CONTINENT[r.mapid] || "", value: (r) => CONTINENT[r.mapid] || "" },
     { key: "spawns", label: "Spawns", num: true, cls: "muted", cell: (r) => r.spawns || "", value: (r) => r.spawns || 0 },
   ];
-  const filters = `<div class="filters">${textField("q", "Name", f.q)}<button class="reset" data-reset="1">Reset</button></div>`;
+  const filters = `<div class="filters">${textField("q", "Name", f.q)}${selectField("cont", "Continent", options(Object.entries(CONTINENT), f.cont, "Any continent"))}<button class="reset" data-reset="1">Reset</button></div>`;
   return { rows, cols, filters, noun: "zones" };
 }
 
