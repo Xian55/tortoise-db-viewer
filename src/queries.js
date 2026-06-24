@@ -149,8 +149,8 @@ export const Q_DISENCHANTS_INTO = `
   WHERE d.src='e' AND d.owner = (SELECT disenchant_id FROM items WHERE entry = ?1)
   ORDER BY d.chance DESC`;
 
-export const Q_QUEST_ITEM = `SELECT q.entry, q.title, q.level, qi.role, qi.count FROM quest_item qi JOIN quests q ON q.entry = qi.quest WHERE qi.item = ?1 ORDER BY qi.role, q.level LIMIT 100`;
-export const Q_STARTS_QUEST = `SELECT q.entry, q.title, q.level FROM quests q WHERE q.entry = (SELECT start_quest FROM items WHERE entry = ?1) AND q.entry > 0`;
+export const Q_QUEST_ITEM = `SELECT q.entry, q.title, q.level, q.reqraces, qi.role, qi.count FROM quest_item qi JOIN quests q ON q.entry = qi.quest WHERE qi.item = ?1 ORDER BY qi.role, q.level LIMIT 100`;
+export const Q_STARTS_QUEST = `SELECT q.entry, q.title, q.level, q.reqraces FROM quests q WHERE q.entry = (SELECT start_quest FROM items WHERE entry = ?1) AND q.entry > 0`;
 
 export const Q_CREATED_BY = `
   SELECT s.entry, s.name, s.icon AS spell_icon, sc.skill, sc.skill_req, ci.entry AS reagent_item, ci.name AS reagent_name, ci.quality AS reagent_quality, di.icon AS reagent_icon, sr.count,
