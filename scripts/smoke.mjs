@@ -707,6 +707,18 @@ async function testSearchFaction(term) {
   return hasFactionLink;
 }
 
+// Top-bar mega-menu: nested flyouts render; a deep weapon leaf links to the
+// class+subclass browse, and the One-Handed group carries the multi-subclass link.
+async function testMegaMenu() {
+  await page.goto(`${BASE}?`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".menubar .submenu", { timeout: 40000 });
+  const subs = await page.$$eval(".menubar .submenu", (e) => e.length);
+  const weaponLeaf = (await page.$('.menubar a.nav[href*="class=2&subclass=0"]')) !== null;
+  const oneHanded = (await page.$('.menubar a.nav[href*="class=2&subclass=0,4,7,13,15"]')) !== null;
+  console.log(`mega-menu: submenus=${subs} weaponLeaf=${weaponLeaf} oneHandedGroup=${oneHanded}`);
+  return subs > 5 && weaponLeaf && oneHanded;
+}
+
 // Mobile: the top nav collapses behind a hamburger that toggles it open.
 async function testMobileNav() {
   await page.setViewport({ width: 390, height: 800 });
@@ -1000,6 +1012,9 @@ ok = (await testCraftEnchanting()) && ok;
 ok = (await testCraftObtainable()) && ok;
 ok = (await testSelection()) && ok;
 ok = (await testGroupSelection()) && ok;
+ok = (await testMegaMenu()) && ok;                                  // top-bar flyout mega-menu
+ok = (await testBrowse("items", "&class=2&subclass=0,4,7,13,15", "DPS")) && ok;  // One-Handed multi-subclass filter
+ok = (await testBrowse("zones", "&cont=0", "Zone")) && ok;          // Zones continent filter
 ok = (await testMobileNav()) && ok;   // responsive top bar (run last; resets viewport)
 console.log(`\nelapsed ${Date.now() - t}ms`);
 if (errors.length) { console.log("\nERRORS:\n" + errors.slice(0, 20).join("\n")); }
