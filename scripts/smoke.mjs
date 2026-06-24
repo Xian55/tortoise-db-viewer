@@ -137,6 +137,29 @@ async function testTrainerCols(id) {
   return rows > 0 && !headers.includes("Profession");
 }
 
+// a faction-specific quest reward shows a Faction column on "Reward from quest".
+// Item 22113 has mirrored Alliance + Horde reward quests.
+async function testQuestRewardFaction(id) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".item-rel .tab")].find((t) => /Reward from quest/.test(t.textContent)); if (b) b.click(); });
+  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  const facs = await page.$$eval(".item-rel .tabpane:not(.hidden) .tagx", (e) => e.map((x) => x.textContent.trim()));
+  console.log(`reward-faction ${id}: tags=[${facs.join(",")}]`);
+  return facs.includes("Alliance") && facs.includes("Horde");
+}
+
+// containers show their capacity on the item page: bags (class 1) and
+// quivers/ammo pouches (class 11). 42243 = 22 Slot Bag, 18714 = 18 Slot Quiver.
+async function testItemSlots(id, expect) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 40000 });
+  await page.waitForSelector(".item-main .tooltip", { timeout: 40000 });
+  const txt = await page.$eval(".item-main .tooltip", (e) => e.textContent);
+  const has = txt.includes(expect);
+  console.log(`item-slots ${id}: expect="${expect}" found=${has}`);
+  return has;
+}
+
 // recipe/pattern/plans item shows a "Teaches" tab with the craft it unlocks
 async function testTeaches(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: "networkidle0", timeout: 30000 });
@@ -884,6 +907,9 @@ const t = Date.now();
 ok = (await testItem(7909, "Aquamarine")) && ok;
 ok = (await testItemWorldDrop(14555)) && ok;  // world-drop item: label + "World drop from" tab
 ok = (await testItemSet(22416, 523)) && ok;   // item set panel + ?itemset page
+ok = (await testQuestRewardFaction(22113)) && ok;  // reward-from-quest Faction column
+ok = (await testItemSlots(42243, "22 Slot Bag")) && ok;     // bag capacity (class 1)
+ok = (await testItemSlots(18714, "18 Slot Quiver")) && ok;  // quiver capacity (class 11)
 ok = (await testItem(2770, "Copper Ore")) && ok;
 ok = (await testItem(55356, "Netherwrought")) && ok;
 ok = (await testItem(647, "Destiny")) && ok;
@@ -956,6 +982,7 @@ ok = (await testSearchFaction("Darnassus")) && ok;      // unified search includ
 ok = (await testSearchItemSet("Dreadnaught")) && ok;    // unified search includes item sets
 ok = (await testBrowse("itemsets", "", "Pieces")) && ok;      // item-sets browse category
 ok = (await testBrowse("items", "&class=1", "Slots")) && ok;  // container browse shows slot count
+ok = (await testBrowse("items", "&slot=18", "Slots")) && ok;  // Bag-slot filter (bags + quivers) shows slot count
 ok = (await testBrowseSource("vendor")) && ok;
 ok = (await testBrowseSource("worlddrop")) && ok;  // new World Drop source filter
 ok = (await testBrowseSpellCat()) && ok;           // spell category + class filters
