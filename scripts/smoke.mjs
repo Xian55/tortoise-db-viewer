@@ -505,8 +505,12 @@ async function testDungeons() {
   await page.goto(`${BASE}?dungeons`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
   const rows = await page.$$eval(".results table tbody tr", (r) => r.length);
-  console.log(`dungeons index: ${rows} rows`);
-  return rows > 0;
+  const headers = await page.$$eval(".results th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  // a derived Level column with at least one populated "lo–hi" range
+  const ranges = await page.$$eval(".results table tbody tr", (trs) =>
+    trs.map((tr) => tr.children[1]?.textContent.trim()).filter((t) => /^\d+–\d+$/.test(t)).length);
+  console.log(`dungeons index: ${rows} rows headers=[${headers.join(",")}] levelRanges=${ranges}`);
+  return rows > 0 && headers.includes("Level") && ranges > 10;
 }
 async function testDungeon(id, expectName) {
   await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: WAIT, timeout: 40000 });

@@ -365,7 +365,7 @@ export const qQuestStartNpcs = (n) => `
   WHERE r.quest IN (${inList(n)})`;
 
 // ---- dungeons / raids ----
-export const Q_DUNGEONS = `SELECT id, name, type FROM maps WHERE type IN (1,2) AND name <> '' AND hidden = 0 ORDER BY type, name`;
+export const Q_DUNGEONS = `SELECT id, name, type, min_level, max_level FROM maps WHERE type IN (1,2) AND name <> '' AND hidden = 0 ORDER BY type, name`;
 export const Q_DUNGEON = `SELECT id, name, type FROM maps WHERE id = ?1`;
 // A zone's map type (0 open-world, 1 dungeon, 2 raid) -> lets the zone page
 // auto-detect that it's actually an instance and render dungeon/raid content.

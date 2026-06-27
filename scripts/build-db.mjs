@@ -197,6 +197,39 @@ console.log("Importing maps + spawns...");
   console.log(`  maps: ${nm} | spawns (distinct id,map): ${counts.size}`);
 }
 
+// ---- Recommended level range per instance (dungeons/raids) ----
+// map_template carries no level field, so derive a band from each instance's elite
+// (rank>=1) creatures, weighted by spawn count: lo = 10th percentile of their min
+// levels, hi = 90th percentile of their max levels. The percentiles strip stray low
+// critters / over-level bosses, tracking the known classic ranges within a couple
+// levels, and it auto-covers Turtle-custom instances (no hardcoded table to maintain).
+console.log("Deriving instance level ranges...");
+{
+  db.exec(`ALTER TABLE maps ADD COLUMN min_level INTEGER`);
+  db.exec(`ALTER TABLE maps ADD COLUMN max_level INTEGER`);
+  const pct = (arr, p) => { if (!arr.length) return null; const s = arr.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))]; };
+  const rows = db.prepare(`
+    SELECT s.map AS map, c.level_min AS lo, c.level_max AS hi, s.cnt AS cnt
+    FROM spawns s JOIN creatures c ON c.entry = s.id JOIN maps m ON m.id = s.map
+    WHERE m.type IN (1, 2) AND c.level_min > 0 AND c.rank >= 1`).all();
+  const byMap = new Map();
+  for (const r of rows) {
+    let e = byMap.get(r.map);
+    if (!e) byMap.set(r.map, e = { los: [], his: [] });
+    const w = Math.min(r.cnt, 10); // cap weight so a single swarm can't dominate
+    for (let k = 0; k < w; k++) { e.los.push(r.lo); e.his.push(r.hi); }
+  }
+  const upd = db.prepare(`UPDATE maps SET min_level = ?, max_level = ? WHERE id = ?`);
+  let nlvl = 0;
+  db.transaction(() => {
+    for (const [map, e] of byMap) {
+      const lo = pct(e.los, 10), hi = pct(e.his, 90);
+      if (lo != null && hi != null) { upd.run(lo, Math.max(lo, hi), map); nlvl++; }
+    }
+  })();
+  console.log(`  instance level ranges: ${nlvl}`);
+}
+
 // ---- Resolve effective drop chances (mangos loot groups + references) ----
 // Equal-chance groups (chance=0) split the group remainder; references multiply
 // through. Large shared/world-drop pools are excluded (noise, not per-creature

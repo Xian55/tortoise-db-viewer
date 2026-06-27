@@ -1210,6 +1210,8 @@ async function showDungeons() {
   try { rows = await query(Q.Q_DUNGEONS); } catch (e) { app.innerHTML = errorBox(e); return; }
   const cols = [
     { label: "Name", cell: (m) => dungeonLink(m.id, m.name), value: (m) => m.name },
+    // recommended character level, derived from elite creature levels (build-db)
+    { label: "Level", cls: "muted", num: true, cell: (m) => (m.min_level ? `${m.min_level}–${m.max_level}` : ""), value: (m) => m.min_level || 0 },
     { label: "Type", cls: "muted", cell: (m) => (m.type === 2 ? "Raid" : "Dungeon"), value: (m) => m.type },
   ];
   const t = regTable(cols, rows);
