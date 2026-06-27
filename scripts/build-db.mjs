@@ -1087,6 +1087,21 @@ console.log("Importing zones + spawn points...");
   db.exec(`CREATE INDEX idx_object_browse_name ON object_browse(name)`);
   console.log(`  object_browse: ${db.prepare("SELECT COUNT(*) n FROM object_browse").get().n}`);
 
+  // Farm value: expected vendor value of a creature/object's drops per kill/gather
+  // (sum of sell_price * chance). Powers the zone "best gold route" -- which spots
+  // are worth farming. (Mob coin drops aren't in the server data, so this is the
+  // drop value only.) Precomputed so the zone farm view is a plain join.
+  console.log("Deriving farm values...");
+  db.exec(`ALTER TABLE creatures ADD COLUMN loot_value REAL NOT NULL DEFAULT 0`);
+  db.exec(`UPDATE creatures SET loot_value = COALESCE((
+    SELECT SUM(i.sell_price * d.chance / 100.0) FROM drops d JOIN items i ON i.entry = d.item
+    WHERE d.src = 'c' AND d.owner = creatures.loot_id), 0)`);
+  db.exec(`ALTER TABLE gameobjects ADD COLUMN loot_value REAL NOT NULL DEFAULT 0`);
+  db.exec(`UPDATE gameobjects SET loot_value = COALESCE((
+    SELECT SUM(i.sell_price * d.chance / 100.0) FROM drops d JOIN items i ON i.entry = d.item
+    WHERE d.src = 'o' AND d.owner = gameobjects.data1), 0)`);
+  console.log(`  farm values: ${db.prepare("SELECT COUNT(*) n FROM creatures WHERE loot_value>0").get().n} mobs, ${db.prepare("SELECT COUNT(*) n FROM gameobjects WHERE loot_value>0").get().n} objects`);
+
   // Validation: every instance boss (unique spawn, cnt=1) should plot inside its
   // dungeon parchment. A boss whose coords fall outside its zone's WorldMapArea
   // rectangle renders off-image. The cross-map cases are fixed by the homeZone

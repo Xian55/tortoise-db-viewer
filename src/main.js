@@ -1299,6 +1299,18 @@ async function showZone(id, gatherItem = null) {
   };
   const npcs = dedupe(spawns), objs = dedupe(objects);
 
+  // Best farms (open-world): mobs/objects ranked by total expected drop value in the
+  // zone (vendor value per kill/gather x spawn count) -- what's worth farming for
+  // gold. Plus value-weighted points for the map's "Gold route" overlay.
+  const farmRows = isInstance ? [] : [
+    ...npcs.filter((n) => n.loot_value > 0).map((n) => ({ kind: "c", entry: n.entry, name: n.name, level_min: n.level_min, level_max: n.level_max, value: n.loot_value, count: n.count, total: n.loot_value * n.count })),
+    ...objs.filter((o) => o.loot_value > 0).map((o) => ({ kind: "o", entry: o.entry, name: o.name, type: o.type, value: o.loot_value, count: o.count, total: o.loot_value * o.count })),
+  ].sort((a, b) => b.total - a.total).slice(0, 100);
+  const farmPoints = isInstance ? null : [
+    ...spawns.filter((s) => s.loot_value > 0).map((s) => ({ x: s.x, y: s.y, value: s.loot_value })),
+    ...objects.filter((o) => o.loot_value > 0).map((o) => ({ x: o.x, y: o.y, value: o.loot_value })),
+  ];
+
   // representative in-game icon per object = its highest-chance loot item's icon
   // (idx_drops_owner makes the per-object subquery cheap).
   const iconByEntry = new Map();
@@ -1349,9 +1361,20 @@ async function showZone(id, gatherItem = null) {
     { label: "Faction", cell: (r) => { const f = questFaction(r.reqraces); return `<span class="tagx fac-${f.toLowerCase()}">${f}</span>`; }, value: (r) => questFaction(r.reqraces) },
     { label: "Quest Giver", cls: "muted", cell: (r) => (r.giver_id ? npcLink(r.giver_id, r.giver) : ""), value: (r) => r.giver || "" },
   ];
+  // Farming: best gold targets, sorted by total expected drop value. Each links to
+  // its own page where the per-target farming route is shown.
+  const farmCols = [
+    { label: "Target", cell: (r) => (r.kind === "c" ? npcLink(r.entry, r.name) : objectLink(r.entry, r.name)), value: (r) => r.name },
+    { label: "Type", cls: "muted", cell: (r) => (r.kind === "c" ? "Mob" : (GAMEOBJECT_TYPE[r.type] || "Object")), value: (r) => (r.kind === "c" ? "Mob" : "Object") },
+    { label: "Level", num: true, cls: "muted", cell: (r) => (r.kind === "c" ? lvlRange(r) : ""), value: (r) => r.level_max || r.level_min || 0 },
+    { label: "Spawns", num: true, cls: "muted", cell: (r) => r.count, value: (r) => r.count },
+    { label: "Value/each", num: true, cls: "muted", cell: (r) => moneyHtml(Math.round(r.value)), value: (r) => r.value },
+    { label: "Total value", num: true, cell: (r) => moneyHtml(Math.round(r.total)), value: (r) => r.total },
+  ];
   const tabDefs = [
     ...(isInstance ? [{ id: "bosses", label: "Boss Loot", ...regTable(bossCols, bossLoot, { pageSize: 500, groupable: true, group: 0 }) }] : []),
     { id: "npcs", label: "NPCs", ...regTable(npcCols, npcs, { pageSize: 100 }) },
+    ...(farmRows.length ? [{ id: "farm", label: "Farming", ...regTable(farmCols, farmRows, { pageSize: 100, sort: "Total value", dir: "d" }) }] : []),
     { id: "quests", label: "Quests", ...regTable(questCols, zoneQuests, { pageSize: 100 }) },
     { id: "items", label: "Items", ...regTable(lootCols, loot, { pageSize: 100 }) },
     { id: "objects", label: "Objects", ...regTable(objCols, objs, { pageSize: 100 }) },
@@ -1396,7 +1419,7 @@ async function showZone(id, gatherItem = null) {
       const fs = isInstance ? spawns.filter((s) => s.zone === fl.areaid) : spawns;
       const fo = isInstance ? objects.filter((o) => o.zone === fl.areaid) : objects;
       const fb = isInstance ? bosses.filter((b) => b.zone === fl.areaid) : bosses;
-      zmap = initZoneMap(el, { ...fl, imgUrl: `${base}maps/${fl.areaid}.webp` }, fs, fo, navigate, fl.areaid === z.areaid ? focus : null, fb);
+      zmap = initZoneMap(el, { ...fl, imgUrl: `${base}maps/${fl.areaid}.webp` }, fs, fo, navigate, fl.areaid === z.areaid ? focus : null, fb, isInstance ? null : farmPoints);
       app.querySelectorAll("#floorswitch button").forEach((b) => b.classList.toggle("active", Number(b.dataset.floor) === fl.areaid));
     };
     renderFloor(activeFloor);

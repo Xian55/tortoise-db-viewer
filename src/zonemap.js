@@ -80,7 +80,7 @@ function poiSpriteStyle([col, row], size) {
 // (no item icon) coloured by that entry; otherwise as the focus.icon marker.
 // bosses (optional): [{entry, name, x, y}] -> an always-on "Bosses" layer of skull
 // markers (instance unique-spawns), drawn above the dots.
-export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, bosses = []) {
+export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, bosses = [], farm = null) {
   // destroy the previous overlay first -> frees its WebGL context (browsers cap
   // these, so leaking one per zone navigation would eventually break the map).
   if (currentOverlay) { try { currentOverlay.destroy(); } catch (_) { /* gone */ } currentOverlay = null; }
@@ -228,42 +228,47 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     focusBounds = L.latLngBounds(lls);
   }
 
-  // farming route: cluster the focus spawns into stops, order them nearest-neighbor
-  // into a circuit, and draw a numbered dashed loop -- the path to walk while
-  // farming this target (the gathering/grinding TSP, approximated greedily).
-  let routeLayer = null;
-  if (focus && focus.points.length >= 3) {
-    const R = Math.max(H, W) * 0.08; // merge spawns within ~8% of the map into one stop
+  // Farming route: cluster the points into stops, order them nearest-neighbor into a
+  // circuit, and draw a numbered dashed loop -- the path to walk while farming (the
+  // gathering/grinding TSP, approximated greedily). Used for a per-target focus
+  // (every cluster, equal weight) and the zone gold route (value-weighted, top stops).
+  const routeFrom = (pts, topK, color, tip) => {
+    if (!pts || pts.length < 3) return null;
+    const R = Math.max(H, W) * 0.08; // merge points within ~8% of the map into one stop
     const clusters = [];
-    for (const p of focus.points) {
-      const ll = toLatLng(p.x, p.y);
+    for (const p of pts) {
+      const ll = toLatLng(p.x, p.y), w = p.value || 1;
       let best = null, bd = R;
       for (const c of clusters) { const d = map.distance(c.center, ll); if (d < bd) { bd = d; best = c; } }
       if (best) {
-        best.n++;
+        best.n++; best.w += w;
         best.center = L.latLng(best.center.lat + (ll.lat - best.center.lat) / best.n, best.center.lng + (ll.lng - best.center.lng) / best.n);
-      } else clusters.push({ center: ll, n: 1 });
+      } else clusters.push({ center: ll, n: 1, w });
     }
-    if (clusters.length >= 2) {
-      const rest = clusters.slice().sort((a, b) => b.n - a.n); // start at the densest cluster
-      const ordered = [rest.shift()];
-      while (rest.length) {
-        const last = ordered[ordered.length - 1].center;
-        let bi = 0, bd = Infinity;
-        for (let i = 0; i < rest.length; i++) { const d = map.distance(last, rest[i].center); if (d < bd) { bd = d; bi = i; } }
-        ordered.push(rest.splice(bi, 1)[0]);
-      }
-      routeLayer = L.layerGroup();
-      const line = ordered.map((c) => c.center);
-      line.push(line[0]); // close the loop back to the first stop
-      L.polyline(line, { color: "#ffd100", weight: 3, opacity: 0.85, dashArray: "7 7" }).addTo(routeLayer);
-      ordered.forEach((c, i) => {
-        L.marker(c.center, { icon: L.divIcon({ html: `<span class="route-stop">${i + 1}</span>`, className: "route-div", iconSize: [22, 22], iconAnchor: [11, 11] }) })
-          .bindTooltip(`Stop ${i + 1} · ${c.n} spot${c.n === 1 ? "" : "s"}`, { direction: "top" })
-          .addTo(routeLayer);
-      });
+    let pick = clusters;
+    if (topK && clusters.length > topK) pick = clusters.slice().sort((a, b) => b.w - a.w).slice(0, topK);
+    if (pick.length < 2) return null;
+    const rest = pick.slice().sort((a, b) => b.w - a.w); // start at the richest/densest stop
+    const ordered = [rest.shift()];
+    while (rest.length) {
+      const last = ordered[ordered.length - 1].center;
+      let bi = 0, bd = Infinity;
+      for (let i = 0; i < rest.length; i++) { const d = map.distance(last, rest[i].center); if (d < bd) { bd = d; bi = i; } }
+      ordered.push(rest.splice(bi, 1)[0]);
     }
-  }
+    const layer = L.layerGroup();
+    const line = ordered.map((c) => c.center); line.push(line[0]); // close the loop
+    L.polyline(line, { color, weight: 3, opacity: 0.85, dashArray: "7 7" }).addTo(layer);
+    ordered.forEach((c, i) => {
+      L.marker(c.center, { icon: L.divIcon({ html: `<span class="route-stop">${i + 1}</span>`, className: "route-div", iconSize: [22, 22], iconAnchor: [11, 11] }) })
+        .bindTooltip(`Stop ${i + 1} · ${tip(c)}`, { direction: "top" }).addTo(layer);
+    });
+    return layer;
+  };
+  const routeLayer = focus ? routeFrom(focus.points, null, "#ffd100", (c) => `${c.n} spot${c.n === 1 ? "" : "s"}`) : null;
+  // zone gold route: value-weighted, keep the ~12 most valuable stops.
+  const goldG = (c) => (c.w >= 10000 ? `~${(c.w / 10000).toFixed(1)}g` : c.w >= 100 ? `~${Math.round(c.w / 100)}s` : `~${Math.round(c.w)}c`);
+  const goldLayer = routeFrom(farm, 12, "#39d353", goldG);
 
   // ---- layer control: dot categories + the focus layer ----
   const overlays = {};
@@ -283,6 +288,8 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   const routeDefault = routeLayer && !focus.npc;
   if (focusLayer) { overlays[FKEY] = focusLayer; if (!routeDefault) focusLayer.addTo(map); }
   if (routeLayer) { overlays["🧭 Farming route"] = routeLayer; if (routeDefault) routeLayer.addTo(map); }
+  // Zone gold route: opt-in overlay (toggle) of the most valuable farm spots.
+  if (goldLayer) overlays["💰 Gold route"] = goldLayer;
   for (const [key] of NPC_CATS) addCat(key, false);
   addCat("rare", false); // single toggle for all rare / rare-elite spawns
   const objKeys = [...cats.keys()].filter((k) => k.startsWith("Obj: "))

@@ -620,7 +620,7 @@ export const Q_DUNGEON_ZONE = `
 // Creature markers carry the inputs the classifier needs (npc_flags + whether the
 // NPC starts/ends a quest).
 export const Q_ZONE_SPAWNS = `
-  SELECT s.x, s.y, s.zone, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags,
+  SELECT s.x, s.y, s.zone, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags, c.loot_value,
          (EXISTS(SELECT 1 FROM creature_quest_start q WHERE q.id = c.entry)
        OR EXISTS(SELECT 1 FROM creature_quest_end q WHERE q.id = c.entry)) AS questgiver
   FROM spawn_points s JOIN creatures c ON c.entry = s.id
@@ -628,7 +628,7 @@ export const Q_ZONE_SPAWNS = `
   LIMIT 8000`;
 
 export const Q_ZONE_OBJECTS = `
-  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type
+  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type, g.loot_value
   FROM spawn_points s JOIN gameobjects g ON g.entry = s.id
   WHERE s.kind = 'o' AND s.zone = ?1
   LIMIT 4000`;
@@ -636,14 +636,14 @@ export const Q_ZONE_OBJECTS = `
 // Same as above but across a whole INSTANCE map (all floors) -> ?1 = mapid. Each
 // row keeps s.zone so the floor switcher can split markers per floor.
 export const Q_MAP_SPAWNS = `
-  SELECT s.x, s.y, s.zone, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags,
+  SELECT s.x, s.y, s.zone, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags, c.loot_value,
          (EXISTS(SELECT 1 FROM creature_quest_start q WHERE q.id = c.entry)
        OR EXISTS(SELECT 1 FROM creature_quest_end q WHERE q.id = c.entry)) AS questgiver
   FROM spawn_points s INDEXED BY idx_spawn_map JOIN creatures c ON c.entry = s.id
   WHERE s.kind = 'c' AND s.map = ?1
   LIMIT 8000`;
 export const Q_MAP_OBJECTS = `
-  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type
+  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type, g.loot_value
   FROM spawn_points s INDEXED BY idx_spawn_map JOIN gameobjects g ON g.entry = s.id
   WHERE s.kind = 'o' AND s.map = ?1
   LIMIT 4000`;

@@ -1058,6 +1058,19 @@ async function testFarmRoute(areaid, item) {
   console.log(`farm-route ${areaid}/${item}: overlays=[${overlays.join(", ")}] stops=${stops} route=${hasRoute}`);
   return hasRoute && stops >= 3;
 }
+// Zone Farming tab: best gold targets ranked by total drop value, + a "Gold route"
+// map overlay (value-weighted waypoint circuit).
+async function testZoneFarm(areaid) {
+  await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector(".zone-page .tabbar .tab", { timeout: 40000 });
+  await page.evaluate(() => { const t = [...document.querySelectorAll(".zone-page .tabbar .tab")].find((x) => /Farming/.test(x.textContent)); if (t) t.click(); });
+  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  const headers = await page.$$eval(".zone-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) table tbody tr", (r) => r.length);
+  const goldRoute = (await page.$$eval(".leaflet-control-layers-overlays label", (e) => e.map((x) => x.textContent))).some((o) => /Gold route/.test(o));
+  console.log(`zone-farm ${areaid}: rows=${rows} headers=[${headers.join(",")}] goldRoute=${goldRoute}`);
+  return rows > 5 && headers.includes("Total value") && goldRoute;
+}
 // A multi-floor instance shows a floor switcher; the active floor renders a map,
 // and switching floors re-renders. Black Morass (?zone=5204) has 2 floors.
 async function testZoneFloors(areaid, minFloors) {
@@ -1180,6 +1193,7 @@ run(() => testBrowse("factions", "", "Items"));
 run(() => testZone(12, "Elwynn"));
 run(() => testZoneObjectLink(400));              // zone Objects tab links to ?object=
 run(() => testFarmRoute(17, 2770));              // gather focus -> numbered farming-route circuit (Copper in Barrens)
+run(() => testZoneFarm(17));                     // zone Farming tab (best gold targets) + Gold route overlay
 run(() => testZone(5561, "Balor"));             // 1.18.1 zone, populated via migrations
 run(() => testZoneQuests(331, 20));             // Ashenvale quests tab (incl. sub-zones)
 run(() => testZoneFloors(5204, 2));             // Black Morass: multi-floor switcher
