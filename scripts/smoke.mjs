@@ -524,7 +524,8 @@ async function testObjectsBrowse() {
   return rows > 0 && headers.includes("Spawns") && objLink;
 }
 // Object detail: aggregates same-name entries -> Contains tab links the looted item
-// (Copper Vein -> Copper Ore) and a spawn map renders.
+// (Copper Vein -> Copper Ore); a multi-zone node gets a zone switcher that re-draws
+// the map (one button per zone), like the dungeon floor switcher.
 async function testObject(id, expectName, expectItem) {
   await page.goto(`${BASE}?object=${id}`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".npc-head h1", { timeout: 40000 });
@@ -533,8 +534,16 @@ async function testObject(id, expectName, expectItem) {
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
   const hasMap = (await page.$("#zonemap .leaflet-image-layer")) !== null;
   const items = await page.$$eval(".tabpane:not(.hidden) td a.ilink", (a) => a.map((x) => x.textContent.trim()));
-  console.log(`object ${id}: name="${name}" tabs=[${tabList.join(", ")}] map=${hasMap} items=${items.slice(0, 4).join(",")}`);
-  return name.includes(expectName) && tabList.some((t) => t.includes("Contains")) && hasMap && items.some((t) => t.includes(expectItem));
+  // multi-zone switcher: one active button, and clicking another zone swaps the parchment
+  const zones = await page.$$eval("#objzoneswitch button", (b) => b.length).catch(() => 0);
+  const active = await page.$$eval("#objzoneswitch button.active", (b) => b.length).catch(() => 0);
+  const src1 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src")).catch(() => "");
+  await page.evaluate(() => { const b = [...document.querySelectorAll("#objzoneswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
+  await new Promise((r) => setTimeout(r, 400));
+  const src2 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src")).catch(() => "");
+  console.log(`object ${id}: name="${name}" tabs=[${tabList.join(", ")}] map=${hasMap} zones=${zones} active=${active} switched=${src1 !== src2} items=${items.slice(0, 3).join(",")}`);
+  return name.includes(expectName) && tabList.some((t) => t.includes("Contains")) && hasMap
+    && items.some((t) => t.includes(expectItem)) && zones > 1 && active === 1 && src1 !== src2;
 }
 // Icons index: searchable grid of icon tiles; filtering narrows the visible set.
 async function testIcons() {

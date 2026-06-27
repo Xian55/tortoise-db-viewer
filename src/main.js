@@ -754,15 +754,19 @@ async function showObject(id) {
     query(Q.qObjectObjectiveOf(entryIds.length), entryIds),
   ]);
 
-  // parchment zone = the object's most-common spawn zone (same heuristic as NPCs)
+  // A node like Copper Vein spawns across many zones; list every zone it appears in
+  // (with parchment) by spawn count, and let a switcher re-draw the map per zone
+  // (same UX as the multi-floor dungeon switcher). Default = the busiest zone.
   const zoneCount = new Map();
   for (const s of spawns) if (s.zone) zoneCount.set(s.zone, (zoneCount.get(s.zone) || 0) + 1);
   const zoneIds = [...zoneCount.keys()];
   const zinfo = new Map();
   if (zoneIds.length) for (const z of await query(Q.qZonesByIds(zoneIds.length), zoneIds)) zinfo.set(z.areaid, z);
-  let mapZone = null, top = -1;
-  for (const [aid, n] of zoneCount) if (n > top && zinfo.get(aid)) { top = n; mapZone = zinfo.get(aid); }
-  const mapPts = mapZone ? spawns.filter((s) => s.zone === mapZone.areaid) : [];
+  const objZones = [...zoneCount.entries()]
+    .map(([aid, n]) => ({ zone: zinfo.get(aid), n }))
+    .filter((z) => z.zone)
+    .sort((a, b) => b.n - a.n);
+  const activeZone = objZones.length ? objZones[0].zone : null;
 
   const lootCols = [
     { label: "Item", cell: (d) => itemLink(d.entry, d.name, d.quality, d.icon), value: (d) => d.name },
@@ -780,6 +784,7 @@ async function showObject(id) {
   const typeLabel = GAMEOBJECT_TYPE[obj.type] || "Object";
   const meta = [`<a class="nav" href="?browse=objects&type=${obj.type}">${esc(typeLabel)}</a>`];
   if (spawns.length) meta.push(`${spawns.length} spawn${spawns.length === 1 ? "" : "s"}`);
+  if (objZones.length > 1) meta.push(`${objZones.length} zones`);
 
   const tabDefs = [];
   if (loot.length) tabDefs.push({ id: "contains", label: "Contains", ...regTable(lootCols, loot) });
@@ -787,7 +792,13 @@ async function showObject(id) {
   if (ends.length) tabDefs.push({ id: "ends", label: "Ends quests", ...regTable(questCols, ends) });
   if (objectiveOf.length) tabDefs.push({ id: "objective", label: "Objective of", ...regTable(objectiveCols, objectiveOf) });
 
-  const noMapNote = mapZone ? ""
+  // Zone switcher (one button per zone the object spawns in), like the floor switcher.
+  const zoneSwitch = objZones.length > 1
+    ? `<div id="objzoneswitch" class="floor-switch">${objZones.map(({ zone, n }) =>
+        `<button data-zone="${zone.areaid}">${esc(zone.name)} <span class="dim">(${n})</span></button>`).join("")}</div>`
+    : "";
+
+  const noMapNote = activeZone ? ""
     : spawns.length
       ? `<div class="zone-empty muted">No spawn-location map is available for this object.</div>`
       : `<div class="zone-empty muted">No spawn location is recorded for this object (it may be placed by a script or event).</div>`;
@@ -798,18 +809,30 @@ async function showObject(id) {
         <h1>${esc(obj.name)}</h1>
         <div class="npc-meta muted">${meta.join(" · ")} <span class="dim">· Object #${obj.entry}</span></div>
       </div>
-      ${mapZone ? `<div id="zonemap"></div>` : noMapNote}
+      ${activeZone ? zoneSwitch + `<div id="zonemap"></div>` : noMapNote}
       ${tabDefs.length ? tabs(tabDefs) : ""}
     </div>`;
   mountTables();
   wireTabs();
-  if (mapZone) {
+  if (activeZone) {
     const el = document.getElementById("zonemap");
     try {
       const { initZoneMap } = await import("./zonemap.js");
-      const imgUrl = `${ASSETS_BASE}maps/${mapZone.areaid}.webp`;
-      const focus = { label: obj.name, icon: loot[0] && loot[0].icon, points: mapPts };
-      initZoneMap(el, { ...mapZone, imgUrl }, [], [], navigate, focus);
+      const focusIcon = loot[0] && loot[0].icon;
+      // (re)draw the map for a zone: its parchment + this object's spawns there.
+      const renderZone = (zone) => {
+        const pts = spawns.filter((s) => s.zone === zone.areaid);
+        const imgUrl = `${ASSETS_BASE}maps/${zone.areaid}.webp`;
+        initZoneMap(el, { ...zone, imgUrl }, [], [], navigate, { label: obj.name, icon: focusIcon, points: pts });
+        app.querySelectorAll("#objzoneswitch button").forEach((b) => b.classList.toggle("active", Number(b.dataset.zone) === zone.areaid));
+      };
+      renderZone(activeZone);
+      const zsw = document.getElementById("objzoneswitch");
+      if (zsw) zsw.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-zone]"); if (!b) return;
+        const z = objZones.find((o) => o.zone.areaid === Number(b.dataset.zone));
+        if (z) renderZone(z.zone);
+      });
     } catch (e) { el.innerHTML = errorBox(e); }
   }
 }
