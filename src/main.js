@@ -89,6 +89,7 @@ function route() {
   const zone = params.get("zone");
   const dungeon = params.get("dungeon");
   const object = params.get("object");
+  const icon = params.get("icon");
   const browse = params.get("browse");
   const term = params.get("search");
   // Browse first: browse URLs carry filter params (e.g. faction=a|h) that would
@@ -103,6 +104,8 @@ function route() {
   else if (zone) showZone(Number(zone), params.get("gather") ? Number(params.get("gather")) : null);
   else if (dungeon) showDungeon(Number(dungeon));
   else if (object) showObject(Number(object));
+  else if (icon) showIcon(icon);
+  else if (params.get("icons") !== null) showIcons();
   else if (params.get("dungeons") !== null) showDungeons();
   else if (term) { searchInput.value = term; showSearch(term); }
   else showHome();
@@ -121,7 +124,8 @@ function showHome() {
        <a class="nav" href="?browse=factions">factions</a> /
        <a class="nav" href="?browse=zones">zones</a> /
        <a class="nav" href="?dungeons">dungeons &amp; raids</a> /
-       <a class="nav" href="?browse=objects">objects</a>.
+       <a class="nav" href="?browse=objects">objects</a> /
+       <a class="nav" href="?icons">icons</a>.
        Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?zone=ID</code>.</p>
     <p class="muted">Examples:
       <a class="ilink" href="?item=2770">Copper Ore</a> ·
@@ -808,6 +812,85 @@ async function showObject(id) {
       initZoneMap(el, { ...mapZone, imgUrl }, [], [], navigate, focus);
     } catch (e) { el.innerHTML = errorBox(e); }
   }
+}
+
+// Icons index: a searchable grid of every icon referenced by an item display or a
+// spell (the image is the hero element). Click a tile -> the icon detail page. The
+// ~5k tiles are paginated + substring-filtered client-side (the list loads once).
+async function showIcons() {
+  document.title = "Icons - Tortoise-WoW DB";
+  app.innerHTML = `<div class="loading">Loading icons…</div>`;
+  let rows;
+  try { rows = await query(Q.Q_ICON_LIST); } catch (e) { app.innerHTML = errorBox(e); return; }
+  const all = rows.map((r) => r.icon);
+  const PER = 300;
+  app.innerHTML = `<div class="icons-page">
+    <h1>Icons</h1>
+    <p class="muted">${all.length.toLocaleString()} icons — click one to see the items &amp; spells that use it.</p>
+    <input type="search" class="icon-search" placeholder="Filter icons… (e.g. copper, sword, herb)" aria-label="Filter icons">
+    <p class="muted icon-count" data-count></p>
+    <div class="icon-grid" data-grid></div>
+    <div class="icon-pager" data-pager></div>
+  </div>`;
+  const grid = app.querySelector("[data-grid]");
+  const countEl = app.querySelector("[data-count]");
+  const pager = app.querySelector("[data-pager]");
+  const search = app.querySelector(".icon-search");
+  let term = "", pageN = 0;
+  const render = () => {
+    const f = term ? all.filter((n) => n.toLowerCase().includes(term)) : all;
+    const pages = Math.max(1, Math.ceil(f.length / PER));
+    if (pageN >= pages) pageN = pages - 1;
+    const slice = f.slice(pageN * PER, pageN * PER + PER);
+    grid.innerHTML = slice.map((n) =>
+      `<button class="icon-tile" data-icon="${esc(n)}" title="${esc(n)}">${iconImg(n, "icon-grid-img")}</button>`).join("")
+      || `<p class="muted">No icon matches “${esc(term)}”.</p>`;
+    countEl.textContent = `${f.length.toLocaleString()} shown${pages > 1 ? ` · page ${pageN + 1} / ${pages}` : ""}`;
+    pager.innerHTML = pages > 1
+      ? `<button data-pg="prev"${pageN === 0 ? " disabled" : ""}>‹ Prev</button>
+         <button data-pg="next"${pageN === pages - 1 ? " disabled" : ""}>Next ›</button>` : "";
+  };
+  render();
+  search.addEventListener("input", () => { term = search.value.trim().toLowerCase(); pageN = 0; render(); });
+  pager.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-pg]"); if (!b) return;
+    pageN += b.dataset.pg === "next" ? 1 : -1; render();
+    window.scrollTo({ top: 0 });
+  });
+  grid.addEventListener("click", (e) => {
+    const tile = e.target.closest("[data-icon]"); if (!tile) return;
+    navigate(`?icon=${encodeURIComponent(tile.dataset.icon)}`);
+  });
+}
+
+// Icon detail: the items and spells that use a given icon basename.
+async function showIcon(name) {
+  document.title = `${name} - Icon - Tortoise-WoW DB`;
+  app.innerHTML = `<div class="loading">Loading icon…</div>`;
+  let items, spells;
+  try { [items, spells] = await Promise.all([query(Q.Q_ICON_ITEMS, [name]), query(Q.Q_ICON_SPELLS, [name])]); }
+  catch (e) { app.innerHTML = errorBox(e); return; }
+  const itemCols = [
+    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+    { label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
+  ];
+  const spellCols = [
+    { label: "Spell", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
+    { label: "Profession", cls: "muted", hideEmpty: true, cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
+  ];
+  const tabDefs = [];
+  if (items.length) tabDefs.push({ id: "items", label: "Items", ...regTable(itemCols, items, { pageSize: 100 }) });
+  if (spells.length) tabDefs.push({ id: "spells", label: "Spells", ...regTable(spellCols, spells, { pageSize: 100 }) });
+  app.innerHTML = `<div class="icon-page">
+    <div class="icon-head">
+      ${iconImg(name, "icon-hero")}
+      <div><h1>${esc(name)}</h1>
+        <div class="muted"><a class="nav" href="?icons">Icons</a> · ${items.length} item${items.length === 1 ? "" : "s"} · ${spells.length} spell${spells.length === 1 ? "" : "s"}</div></div>
+    </div>
+    ${tabDefs.length ? tabs(tabDefs) : `<p class="muted">Nothing in this build uses this icon.</p>`}
+  </div>`;
+  mountTables();
+  wireTabs();
 }
 
 // Render mangos quest text: escape, then turn $B/$b into breaks and replace the

@@ -176,6 +176,23 @@ tbody tr:hover { background: var(--panel2); }
 /* custom-icon sprite from the atlas (render.js); span needs inline-block to size like the img */
 .icon-sprite { display: inline-block; background-repeat: no-repeat; background-color: #000; }
 
+/* icons index: a searchable grid of icon tiles + the icon detail header. Both the
+   atlas sprite span and the CDN <img> take .icon-grid-img / .icon-hero sizing (the
+   sprite's % background-size scales to the element), so tiles are uniform. */
+.icon-search { width: 100%; max-width: 360px; padding: 7px 10px; margin: 8px 0; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; margin: 12px 0; }
+.icon-tile { padding: 3px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; line-height: 0; }
+.icon-tile:hover { border-color: var(--gold); background: var(--panel2); }
+.icon-grid-img { width: 40px; height: 40px; display: inline-block; border-radius: 4px; vertical-align: top; }
+img.icon-grid-img { object-fit: cover; background: #000; }
+.icon-pager { display: flex; gap: 8px; margin: 8px 0 20px; }
+.icon-pager button { padding: 6px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; color: var(--text); cursor: pointer; }
+.icon-pager button:disabled { opacity: .4; cursor: default; }
+.icon-head { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+.icon-head h1 { margin: 0; word-break: break-all; }
+.icon-hero { width: 56px; height: 56px; display: inline-block; border-radius: 8px; border: 1px solid #000; background: #000; flex: none; }
+img.icon-hero { object-fit: cover; }
+
 /* hover tooltip card */
 .hovercard { position: fixed; z-index: 1000; pointer-events: none; max-width: 340px; }
 .hovercard .tooltip { box-shadow: 0 8px 30px rgba(0, 0, 0, .65); }

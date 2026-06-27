@@ -395,6 +395,22 @@ export const qObjectObjectiveOf = (n) => `
   SELECT DISTINCT q.entry, q.title, q.level, o.count FROM quest_creature_objective o
   JOIN quests q ON q.entry = o.quest WHERE o.is_go=1 AND o.target IN (${inList(n)}) ORDER BY q.level LIMIT 100`;
 
+// ---- icons (visual index; click an icon -> the items/spells that use it) ----
+// Every distinct icon basename actually referenced by an item display or a spell
+// (incl. the Turtle-custom ones, which the build merges into these same columns).
+export const Q_ICON_LIST = `
+  SELECT DISTINCT icon FROM (
+    SELECT icon FROM item_display_info WHERE icon IS NOT NULL AND icon <> ''
+    UNION SELECT icon FROM spells WHERE icon IS NOT NULL AND icon <> ''
+  ) ORDER BY icon`;
+export const Q_ICON_ITEMS = `
+  SELECT i.entry, i.name, i.quality, di.icon, i.item_level
+  FROM items i JOIN item_display_info di ON di.ID = i.display_id
+  WHERE di.icon = ?1 AND i.hidden = 0 ORDER BY i.quality DESC, i.name LIMIT 1000`;
+export const Q_ICON_SPELLS = `
+  SELECT entry, name, icon, skill FROM spells
+  WHERE icon = ?1 AND hidden = 0 ORDER BY name LIMIT 1000`;
+
 // ---- dungeons / raids ----
 export const Q_DUNGEONS = `SELECT id, name, type, min_level, max_level FROM maps WHERE type IN (1,2) AND name <> '' AND hidden = 0 ORDER BY type, name`;
 export const Q_DUNGEON = `SELECT id, name, type FROM maps WHERE id = ?1`;

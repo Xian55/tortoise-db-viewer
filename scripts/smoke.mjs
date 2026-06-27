@@ -536,6 +536,31 @@ async function testObject(id, expectName, expectItem) {
   console.log(`object ${id}: name="${name}" tabs=[${tabList.join(", ")}] map=${hasMap} items=${items.slice(0, 4).join(",")}`);
   return name.includes(expectName) && tabList.some((t) => t.includes("Contains")) && hasMap && items.some((t) => t.includes(expectItem));
 }
+// Icons index: searchable grid of icon tiles; filtering narrows the visible set.
+async function testIcons() {
+  await page.goto(`${BASE}?icons`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".icon-grid .icon-tile", { timeout: 40000 });
+  const full = await page.$$eval(".icon-grid .icon-tile", (t) => t.length);
+  await page.type(".icon-search", "copper");
+  await page.waitForFunction(() => {
+    const n = document.querySelectorAll(".icon-grid .icon-tile").length;
+    return n > 0 && n < 300;
+  }, { timeout: 10000 }).catch(() => {});
+  const filtered = await page.$$eval(".icon-grid .icon-tile", (t) => t.length);
+  const linksToIcon = (await page.$('.icon-grid .icon-tile[data-icon]')) !== null;
+  console.log(`icons index: full=${full} filtered(copper)=${filtered} tile=${linksToIcon}`);
+  return full === 300 && filtered > 0 && filtered < full && linksToIcon;
+}
+// Icon detail: the items (and/or spells) that use a given icon basename.
+async function testIcon(name, expectItem) {
+  await page.goto(`${BASE}?icon=${encodeURIComponent(name)}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".icon-page .icon-head h1", { timeout: 40000 });
+  const title = await page.$eval(".icon-page .icon-head h1", (e) => e.textContent);
+  await page.waitForSelector(".icon-page .tabpane:not(.hidden) td a.ilink", { timeout: 20000 }).catch(() => {});
+  const items = await page.$$eval(".icon-page .tabpane:not(.hidden) td a.ilink", (a) => a.map((x) => x.textContent.trim()));
+  console.log(`icon ${name}: title="${title}" items=${items.slice(0, 3).join(",")}`);
+  return title === name && items.some((t) => t.includes(expectItem));
+}
 async function testDungeon(id, expectName) {
   await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".npc-head h1", { timeout: 40000 });
@@ -1091,6 +1116,8 @@ run(() => testNpcLocationLabel(596, 40));
 run(() => testDungeons());
 run(() => testObjectsBrowse());                       // objects finder (interactive gameobjects)
 run(() => testObject(1731, "Copper Vein", "Copper Ore"));  // object detail: contains item + map
+run(() => testIcons());                               // icons index: grid + filter
+run(() => testIcon("INV_Ore_Copper_01", "Copper Ore"));  // icon detail: items using it
 run(() => testDungeon(36, "Deadmines"));          // ?dungeon= redirects to the zone view
 run(() => testInstanceZone(5138, "Deadmines"));  // ?zone= auto-detects the dungeon
 run(() => testInstanceZone(2557, "Dire Maul"));  // interior map (areaId collision fix)
