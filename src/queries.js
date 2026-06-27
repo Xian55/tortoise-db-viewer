@@ -98,6 +98,13 @@ export const Q_SEARCH_ITEMSETS = `
   ORDER BY (name = ?2) DESC, name
   LIMIT ?3`;
 
+// Objects (interactive gameobjects) via LIKE over the small object_browse table.
+export const Q_SEARCH_OBJECTS = `
+  SELECT entry, name, type FROM object_browse
+  WHERE name LIKE ?1
+  ORDER BY (name = ?2) DESC, name
+  LIMIT ?3`;
+
 // Dropped by NPCs (creature loot / skinning / pickpocket).
 export const Q_DROPPED_BY = `
 SELECT c.entry, c.name, c.level_min, c.level_max, c.rank,
@@ -396,12 +403,15 @@ export const qObjectObjectiveOf = (n) => `
   JOIN quests q ON q.entry = o.quest WHERE o.is_go=1 AND o.target IN (${inList(n)}) ORDER BY q.level LIMIT 100`;
 
 // ---- icons (visual index; click an icon -> the items/spells that use it) ----
-// Every distinct icon basename actually referenced by an item display or a spell
-// (incl. the Turtle-custom ones, which the build merges into these same columns).
+// Every distinct icon basename actually used by a VISIBLE item or spell. Restricting
+// to in-use icons (not every row in item_display_info) drops ~1400 orphan display
+// rows whose icon no item references -- placeholders like INV_BlueGem / INV_LawBoots
+// that aren't real textures and would render as "?" in the grid.
 export const Q_ICON_LIST = `
   SELECT DISTINCT icon FROM (
-    SELECT icon FROM item_display_info WHERE icon IS NOT NULL AND icon <> ''
-    UNION SELECT icon FROM spells WHERE icon IS NOT NULL AND icon <> ''
+    SELECT di.icon AS icon FROM item_display_info di
+      WHERE di.icon <> '' AND EXISTS (SELECT 1 FROM items i WHERE i.display_id = di.ID AND i.hidden = 0)
+    UNION SELECT icon FROM spells WHERE icon IS NOT NULL AND icon <> '' AND hidden = 0
   ) ORDER BY icon`;
 export const Q_ICON_ITEMS = `
   SELECT i.entry, i.name, i.quality, di.icon, i.item_level

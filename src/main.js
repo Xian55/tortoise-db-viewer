@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas, getIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -163,6 +163,10 @@ async function showSearch(term) {
     { label: "Name", cell: (r) => dungeonLink(r.id, r.name), value: (r) => r.name },
     { label: "Type", cls: "muted", cell: (r) => (r.type === 2 ? "Raid" : "Dungeon"), value: (r) => r.type },
   ];
+  const objectCols = [
+    { label: "Name", cell: (r) => objectLink(r.entry, r.name), value: (r) => r.name },
+    { label: "Type", cls: "muted", cell: (r) => GAMEOBJECT_TYPE[r.type] || "Object", value: (r) => GAMEOBJECT_TYPE[r.type] || "Object" },
+  ];
   const zoneCols = [
     { label: "Name", cell: (r) => zoneLink(r.areaid, r.name), value: (r) => r.name },
     { label: "Continent", cls: "muted", cell: (r) => CONTINENT[r.mapid] || "", value: (r) => CONTINENT[r.mapid] || "" },
@@ -187,9 +191,10 @@ async function showSearch(term) {
     { id: "factions", label: "Factions", ...regTable(factionCols, res.factions) },
     { id: "itemsets", label: "Item Sets", ...regTable(itemsetCols, itemsets) },
     { id: "dungeons", label: "Dungeons", ...regTable(dungeonCols, res.dungeons) },
+    { id: "objects", label: "Objects", ...regTable(objectCols, res.objects || []) },
     { id: "zones", label: "Zones", ...regTable(zoneCols, res.zones) },
   ];
-  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + itemsets.length + res.dungeons.length + res.zones.length;
+  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + itemsets.length + res.dungeons.length + (res.objects || []).length + res.zones.length;
   if (!total) { app.innerHTML = `<div class="home"><p>No results for “${esc(term)}”.</p></div>`; return; }
 
   app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${tabs(tabDefs)}</div>`;
@@ -837,22 +842,20 @@ async function showObject(id) {
   }
 }
 
-// Icons index: a searchable grid of every renderable icon referenced by an item
-// display or a spell (the image is the hero element). Click a tile -> the icon
-// detail page. Filter term + page live in the URL (?icons=<term>&page=<n>), like
-// ?search=, so a filtered/paginated view is shareable. Paginated client-side.
-const ICON_STD = /^(inv|spell|ability|trade|achievement|item|race|racial|warrior|mage|priest|rogue|druid|hunter|shaman|paladin|warlock)/i;
+// Icons index: a searchable grid of every icon used by a visible item or spell
+// (the image is the hero element). Click a tile -> the icon detail page. Filter term
+// + page live in the URL (?icons=<term>&page=<n>), like ?search=, so a filtered/
+// paginated view is shareable. Paginated client-side. Q_ICON_LIST already drops
+// orphan display rows; a tile whose CDN icon 404s removes itself (iconGridImg), so
+// the remaining stale-but-in-use names (e.g. Warcraft-III "BTN*" art) don't show "?".
 async function showIcons() {
   document.title = "Icons - Tortoise-WoW DB";
   app.innerHTML = `<div class="loading">Loading icons…</div>`;
   let rows;
   try { rows = await query(Q.Q_ICON_LIST); } catch (e) { app.innerHTML = errorBox(e); return; }
-  // Drop icons that can't render: not in the custom atlas AND not a standard WoW
-  // icon name (so no CDN texture) -- e.g. Warcraft-III "BTN*" button art, weapon
-  // model names. These would otherwise fill the grid with "?" placeholders.
-  const atlas = getIconAtlas();
-  const inAtlas = (n) => { const i = atlas && atlas.icons[n.toLowerCase()]; return i !== undefined && i !== null && i !== false; };
-  const all = rows.map((r) => r.icon).filter((n) => inAtlas(n) || ICON_STD.test(n));
+  // BTN* are Warcraft-III button textures (never valid WoW icons) -- skip them up
+  // front so a "btn" search isn't a grid of tiles that all flash in then self-hide.
+  const all = rows.map((r) => r.icon).filter((n) => !/^btn/i.test(n));
   const PER = 300;
 
   // initial filter + page from the URL
@@ -884,7 +887,7 @@ async function showIcons() {
     if (pageN >= pages) pageN = pages - 1;
     const slice = f.slice(pageN * PER, pageN * PER + PER);
     grid.innerHTML = slice.map((n) =>
-      `<button class="icon-tile" data-icon="${esc(n)}" title="${esc(n)}">${iconImg(n, "icon-grid-img")}</button>`).join("")
+      `<button class="icon-tile" data-icon="${esc(n)}" title="${esc(n)}">${iconGridImg(n)}</button>`).join("")
       || `<p class="muted">No icon matches “${esc(term)}”.</p>`;
     countEl.textContent = `${f.length.toLocaleString()} shown${pages > 1 ? ` · page ${pageN + 1} / ${pages}` : ""}`;
     pager.innerHTML = pages > 1
@@ -1082,7 +1085,8 @@ async function showQuest(id) {
       }
       for (const o of objs) {
         const loc = objLoc.get(o.entry) || {};
-        reqDropRows.push({ ...base, srcHtml: `${esc(o.name)} <span class="muted">(object)</span>`, srcName: o.name, zoneHtml: loc.html || "", zoneText: loc.text || "", chance: o.chance });
+        const src = o.entry ? objectLink(o.entry, o.name) : esc(o.name);
+        reqDropRows.push({ ...base, srcHtml: `${src} <span class="muted">(object)</span>`, srcName: o.name, zoneHtml: loc.html || "", zoneText: loc.text || "", chance: o.chance });
       }
       if (!npcs.length && !objs.length) {
         reqDropRows.push({ ...base, srcHtml: '<span class="muted">No recorded drop source</span>', srcName: "", zoneHtml: "", zoneText: "", chance: null });
@@ -1117,7 +1121,7 @@ async function showQuest(id) {
     { label: "Level", num: true, cls: "muted", cell: (c) => lvlRange(c), value: (c) => c.level_max || c.level_min || 0 },
     locCol,
   ];
-  const goCols = [{ label: "Object", cell: (g) => esc(g.name), value: (g) => g.name }];
+  const goCols = [{ label: "Object", cell: (g) => objectLink(g.target, g.name), value: (g) => g.name }];
   const itemCols = [
     { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
     { label: "Qty", num: true, cls: "muted", cell: (r) => (r.count > 1 ? r.count : ""), value: (r) => r.count || 0 },

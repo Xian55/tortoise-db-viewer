@@ -879,6 +879,28 @@ async function testSearchItemSet(term) {
   console.log(`search-itemset "${term}": setLink=${hasSetLink}`);
   return hasSetLink;
 }
+// unified search includes interactive objects (gameobjects) on an Objects tab.
+async function testSearchObjects(term) {
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".results .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".results .tab")].find((t) => t.textContent.includes("Objects")); if (b) b.click(); });
+  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  const hasObjLink = (await page.$(".results .tabpane:not(.hidden) a.ilink.object[href*='object=']")) !== null;
+  console.log(`search-objects "${term}": objLink=${hasObjLink}`);
+  return hasObjLink;
+}
+// quest required-item object sources link to the object page (Relic of Elunaris).
+async function testQuestObjectLink(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".tab")].find((t) => /Required items/.test(t.textContent)); if (b) b.click(); });
+  await page.waitForSelector(".tabpane:not(.hidden) .grouprow", { timeout: 40000 }).catch(() => {});
+  await page.evaluate(() => { const g = document.querySelector(".tabpane:not(.hidden) .grouprow"); if (g) g.click(); }); // expand
+  await new Promise((r) => setTimeout(r, 200));
+  const objLink = (await page.$(".tabpane:not(.hidden) a.ilink.object[href*='object=']")) !== null;
+  console.log(`quest-object-link ${id}: objLink=${objLink}`);
+  return objLink;
+}
 
 // A template-vendor NPC (creature_template.vendor_id -> npc_vendor_template) lists
 // its stock on the Sells tab. NPC 1249 (Quartermaster Hudson) sells via vendor_id.
@@ -1152,6 +1174,8 @@ run(() => testBrowse("npcs", "&rank=3"));
 run(() => testBrowseNpcCols());                  // browse NPCs: Faction + Location cols, title search, faction filter
 run(() => testSearchFaction("Darnassus"));      // unified search includes factions
 run(() => testSearchItemSet("Dreadnaught"));    // unified search includes item sets
+run(() => testSearchObjects("Copper Vein"));    // unified search includes objects
+run(() => testQuestObjectLink(42087));          // quest req-item object source links to ?object=
 run(() => testBrowse("itemsets", "", "Pieces"));      // item-sets browse category
 run(() => testBrowse("items", "&class=1", "Slots"));  // container browse shows slot count
 run(() => testBrowse("items", "&slot=18", "Slots"));  // Bag-slot filter (bags + quivers) shows slot count

@@ -51,6 +51,20 @@ export function iconImg(name, cls = "il-icon") {
     `onerror="this.src='${iconUrl(PLACEHOLDER)}'">`;
 }
 
+// Icons-grid tile image: like iconImg, but a CDN icon that 404s HIDES its tile
+// instead of showing the "?" placeholder. Offline we can't know which icon names
+// have a real CDN texture (many in-use names are stale/invalid), so the grid lets
+// the browser decide -- atlas sprites always render; broken CDN icons drop out.
+export function iconGridImg(name) {
+  const key = (name || "").toLowerCase();
+  const i = ATLAS && ATLAS.icons[key];
+  if (i !== undefined && i !== null && i !== false) {
+    return `<span class="icon-grid-img icon-sprite" style="${spriteStyle(i)}" role="img" aria-label="${esc(name)}"></span>`;
+  }
+  return `<img class="icon-grid-img" loading="lazy" src="${iconUrl(name)}" alt="" ` +
+    `onerror="this.closest('.icon-tile').style.display='none'">`;
+}
+
 // Map-marker icon: a <span> with a CSS background (atlas sprite or CDN image),
 // not an <img>. Leaflet reparents the marker element when it builds the icon,
 // which aborts an in-flight <img> load and fires its onerror -> the question-mark
