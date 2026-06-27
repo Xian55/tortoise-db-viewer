@@ -545,15 +545,17 @@ async function testObject(id, expectName, expectItem) {
   return name.includes(expectName) && tabList.some((t) => t.includes("Contains")) && hasMap
     && items.some((t) => t.includes(expectItem)) && zones > 1 && active === 1 && src1 !== src2;
 }
-// Item "Gathered in" tab: the gathering object (herb/ore/egg node) links to ?object=.
+// Item "Found in object" tab (merged gather + object source): the node links to
+// ?object= and the row carries spawn count + drop chance.
 async function testItemGatherLink(id) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
-  await page.evaluate(() => { const t = [...document.querySelectorAll(".item-rel .tab")].find((x) => /Gathered in/.test(x.textContent)); if (t) t.click(); });
+  await page.evaluate(() => { const t = [...document.querySelectorAll(".item-rel .tab")].find((x) => /Found in object/.test(x.textContent)); if (t) t.click(); });
   await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
   const objLink = (await page.$(".item-rel .tabpane:not(.hidden) a.ilink.object[href*='object=']")) !== null;
-  console.log(`item-gather-link ${id}: objLink=${objLink}`);
-  return objLink;
+  const headers = await page.$$eval(".item-rel .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  console.log(`item-found-in-object ${id}: objLink=${objLink} headers=[${headers.join(",")}]`);
+  return objLink && headers.includes("Chance") && headers.includes("Spawns");
 }
 // Icons index: searchable grid; filter + page live in the URL (?icons=term&page=n),
 // non-renderable junk icons (BTN* etc.) are filtered out, and a deep-link pre-fills.

@@ -263,6 +263,17 @@ async function showItem(id) {
     }
     gatherRows = [...agg.values()].sort((a, b) => b.count - a.count);
   }
+  // Merge the object drop-chance (Q_OBJECT_SOURCE) onto each gather row, and fold in
+  // objects that yield the item but have no recorded spawn (one row, blank zone) ->
+  // a single "Found in object" tab covering both gathering nodes and chests.
+  {
+    const chanceByName = new Map(objects.map((o) => [o.name, o.chance]));
+    for (const g of gatherRows) g.chance = chanceByName.get(g.object) ?? null;
+    const gathered = new Set(gatherRows.map((g) => g.object));
+    for (const o of objects) {
+      if (!gathered.has(o.name)) gatherRows.push({ object: o.name, entry: o.entry, areaid: 0, zone: "", count: 0, chance: o.chance });
+    }
+  }
 
   // where each dropping NPC lives (zone or dungeon), batched
   const dropLoc = await resolveNpcLocations(dropped.map((d) => d.entry));
@@ -274,15 +285,14 @@ async function showItem(id) {
     { label: "Location", cls: "muted", cell: (d) => (dropLoc.get(d.entry) || {}).html || "", value: (d) => (dropLoc.get(d.entry) || {}).text || "" },
     { label: "Chance", num: true, cell: (d) => pct(dchance(d)), value: (d) => dchance(d) || 0 },
   ];
-  const objectCols = [
-    { label: "Object", cell: (o) => (o.entry ? objectLink(o.entry, o.name) : esc(o.name)), value: (o) => o.name },
-    { label: "Chance", num: true, cell: (o) => pct(o.chance), value: (o) => o.chance || 0 },
-  ];
+  // Found-in-object: one row per object × zone (grouped by object) with the spawn
+  // count + drop chance. Replaces the old separate "Found in object" + "Gathered in".
   const gatherCols = [
     { label: "Object", cell: (r) => (r.entry ? objectLink(r.entry, r.object) : esc(r.object)), value: (r) => r.object },
     // zone link carries &gather=<item> so the zone map opens focused on this node
     { label: "Zone", cell: (r) => (r.areaid ? `<a class="ilink zone" href="?zone=${r.areaid}&gather=${id}">${esc(r.zone)}</a>` : esc(r.zone)), value: (r) => r.zone },
-    { label: "Spawns", num: true, cell: (r) => r.count, value: (r) => r.count },
+    { label: "Spawns", num: true, cls: "muted", cell: (r) => r.count || "", value: (r) => r.count },
+    { label: "Chance", num: true, cell: (r) => (r.chance != null ? pct(r.chance) : ""), value: (r) => r.chance || 0 },
   ];
   const soldCols = [
     { label: "Vendor", cell: (s) => npcLink(s.entry, s.name), value: (s) => s.name },
@@ -353,8 +363,7 @@ async function showItem(id) {
   const tabDefs = [
     { id: "dropped", label: "Dropped by", ...regTable(droppedCols, droppedMain, { groupable: true }) },
     { id: "worlddrop", label: "World drop from", ...regTable(droppedCols, droppedWorld, { groupable: true }) },
-    { id: "object", label: "Found in object", ...regTable(objectCols, objects) },
-    { id: "gather", label: "Gathered in", ...regTable(gatherCols, gatherRows, { pageSize: 200, groupable: true, group: 0, sort: "Spawns", dir: "d" }) },
+    { id: "object", label: "Found in object", ...regTable(gatherCols, gatherRows, { pageSize: 200, groupable: true, group: 0, sort: "Spawns", dir: "d" }) },
     { id: "sold", label: "Sold by", ...regTable(soldCols, sold) },
     { id: "teaches", label: "Teaches", ...regTable(teachesCols, teaches) },
     { id: "contains", label: "Contains", ...regTable(itemChanceCols, contains) },
