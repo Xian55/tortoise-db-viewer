@@ -1046,6 +1046,18 @@ async function testZoneObjectLink(id) {
   console.log(`zone-object-link ${id}: objLink=${objLink}`);
   return objLink;
 }
+// Farming route: a gather focus (?zone&gather=item) with enough spawns draws a
+// numbered waypoint circuit (cluster -> nearest-neighbour), default-on + toggleable.
+async function testFarmRoute(areaid, item) {
+  await page.goto(`${BASE}?zone=${areaid}&gather=${item}`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await new Promise((r) => setTimeout(r, 700));
+  const overlays = await page.$$eval(".leaflet-control-layers-overlays label", (e) => e.map((x) => x.textContent.trim()));
+  const stops = await page.$$eval(".route-stop", (e) => e.length);
+  const hasRoute = overlays.some((o) => /route/i.test(o));
+  console.log(`farm-route ${areaid}/${item}: overlays=[${overlays.join(", ")}] stops=${stops} route=${hasRoute}`);
+  return hasRoute && stops >= 3;
+}
 // A multi-floor instance shows a floor switcher; the active floor renders a map,
 // and switching floors re-renders. Black Morass (?zone=5204) has 2 floors.
 async function testZoneFloors(areaid, minFloors) {
@@ -1167,6 +1179,7 @@ run(() => testQuestRepLink(14));
 run(() => testBrowse("factions", "", "Items"));
 run(() => testZone(12, "Elwynn"));
 run(() => testZoneObjectLink(400));              // zone Objects tab links to ?object=
+run(() => testFarmRoute(17, 2770));              // gather focus -> numbered farming-route circuit (Copper in Barrens)
 run(() => testZone(5561, "Balor"));             // 1.18.1 zone, populated via migrations
 run(() => testZoneQuests(331, 20));             // Ashenvale quests tab (incl. sub-zones)
 run(() => testZoneFloors(5204, 2));             // Black Morass: multi-floor switcher

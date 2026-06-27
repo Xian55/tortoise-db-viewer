@@ -228,6 +228,43 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     focusBounds = L.latLngBounds(lls);
   }
 
+  // farming route: cluster the focus spawns into stops, order them nearest-neighbor
+  // into a circuit, and draw a numbered dashed loop -- the path to walk while
+  // farming this target (the gathering/grinding TSP, approximated greedily).
+  let routeLayer = null;
+  if (focus && focus.points.length >= 3) {
+    const R = Math.max(H, W) * 0.08; // merge spawns within ~8% of the map into one stop
+    const clusters = [];
+    for (const p of focus.points) {
+      const ll = toLatLng(p.x, p.y);
+      let best = null, bd = R;
+      for (const c of clusters) { const d = map.distance(c.center, ll); if (d < bd) { bd = d; best = c; } }
+      if (best) {
+        best.n++;
+        best.center = L.latLng(best.center.lat + (ll.lat - best.center.lat) / best.n, best.center.lng + (ll.lng - best.center.lng) / best.n);
+      } else clusters.push({ center: ll, n: 1 });
+    }
+    if (clusters.length >= 2) {
+      const rest = clusters.slice().sort((a, b) => b.n - a.n); // start at the densest cluster
+      const ordered = [rest.shift()];
+      while (rest.length) {
+        const last = ordered[ordered.length - 1].center;
+        let bi = 0, bd = Infinity;
+        for (let i = 0; i < rest.length; i++) { const d = map.distance(last, rest[i].center); if (d < bd) { bd = d; bi = i; } }
+        ordered.push(rest.splice(bi, 1)[0]);
+      }
+      routeLayer = L.layerGroup();
+      const line = ordered.map((c) => c.center);
+      line.push(line[0]); // close the loop back to the first stop
+      L.polyline(line, { color: "#ffd100", weight: 3, opacity: 0.85, dashArray: "7 7" }).addTo(routeLayer);
+      ordered.forEach((c, i) => {
+        L.marker(c.center, { icon: L.divIcon({ html: `<span class="route-stop">${i + 1}</span>`, className: "route-div", iconSize: [22, 22], iconAnchor: [11, 11] }) })
+          .bindTooltip(`Stop ${i + 1} · ${c.n} spot${c.n === 1 ? "" : "s"}`, { direction: "top" })
+          .addTo(routeLayer);
+      });
+    }
+  }
+
   // ---- layer control: dot categories + the focus layer ----
   const overlays = {};
   const addCat = (key, on) => {
@@ -240,7 +277,12 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   // All category layers start OFF (a normal zone view is a clean map you opt into
   // via the layer control); the boss + gather/focus layers are on by default.
   if (bossLayer) { overlays[`Bosses (${bosses.length})`] = bossLayer; bossLayer.addTo(map); }
-  if (focusLayer) { overlays[FKEY] = focusLayer; focusLayer.addTo(map); }
+  // Farming route is the default "where to farm" view for a gathered target; the
+  // individual node icons then default off (toggleable) so the path reads cleanly.
+  // NPC focus keeps its pins on and offers the route as an opt-in toggle.
+  const routeDefault = routeLayer && !focus.npc;
+  if (focusLayer) { overlays[FKEY] = focusLayer; if (!routeDefault) focusLayer.addTo(map); }
+  if (routeLayer) { overlays["🧭 Farming route"] = routeLayer; if (routeDefault) routeLayer.addTo(map); }
   for (const [key] of NPC_CATS) addCat(key, false);
   addCat("rare", false); // single toggle for all rare / rare-elite spawns
   const objKeys = [...cats.keys()].filter((k) => k.startsWith("Obj: "))
