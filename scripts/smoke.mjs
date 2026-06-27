@@ -1121,6 +1121,7 @@ run(() => testNpcMapZone(11501, 2557));  // Dire Maul interior NPC (King Gordok)
 run(() => testNpcMapZone(80208, 5225));  // map = most-spawned interior zone
 run(() => testNpcLocationLabel(80208, 5225));  // label agrees with the map
 run(() => testNpcMapZone(14890, 331));        // Taerar -> Ashenvale (exact ADT area, was Azshara)
+run(() => testNpcMapZone(60735, 5103));       // Hateforge Quarry boss stays in the instance (was continent zone 46)
 run(() => testNpcLocationLabel(596, 40));
 run(() => testDungeons());
 run(() => testObjectsBrowse());                       // objects finder (interactive gameobjects)

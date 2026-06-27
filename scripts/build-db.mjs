@@ -988,6 +988,7 @@ console.log("Importing zones + spawn points...");
     boxesByMap.get(z.mapid).push(z);
   }
   const zoneSet = new Set(db.prepare(`SELECT areaid FROM zones`).all().map((r) => r.areaid));
+  const zoneMapid = new Map(db.prepare(`SELECT areaid, mapid FROM zones`).all().map((r) => [r.areaid, r.mapid]));
   const areaParent = new Map(db.prepare(`SELECT entry, zone_id FROM areas`).all().map((r) => [r.entry, r.zone_id]));
   const renderZone = (aid) => {
     let c = aid, g = 0;
@@ -1014,7 +1015,12 @@ console.log("Importing zones + spawn points...");
     if (subs) {
       let best = null, bestArea = Infinity;
       for (const b of subs) { if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue; if (b.area < bestArea) { bestArea = b.area; best = b; } }
-      if (best) { const rz = renderZone(best.i); if (rz) return rz; }
+      // The resolved zone must live on the spawn's own map. Some instance ADTs carry
+      // a continent AreaTable id (e.g. Hateforge Quarry, map 808, has chunks tagged
+      // area 46 = Redridge): without this guard those bosses get dragged onto the
+      // continent zone and vanish from the dungeon map. Reject the cross-map hit and
+      // fall through to the WMA box below (which only holds this map's zones).
+      if (best) { const rz = renderZone(best.i); if (rz && zoneMapid.get(rz) === map) return rz; }
     }
     const boxes = boxesByMap.get(map);
     if (!boxes) return null;
@@ -1080,6 +1086,34 @@ console.log("Importing zones + spawn points...");
     GROUP BY g.name`);
   db.exec(`CREATE INDEX idx_object_browse_name ON object_browse(name)`);
   console.log(`  object_browse: ${db.prepare("SELECT COUNT(*) n FROM object_browse").get().n}`);
+
+  // Validation: every instance boss (unique spawn, cnt=1) should plot inside its
+  // dungeon parchment. A boss whose coords fall outside its zone's WorldMapArea
+  // rectangle renders off-image. The cross-map cases are fixed by the homeZone
+  // guard above; the residue is client map limits (a WMA box that doesn't cover the
+  // whole interior -- Scholomance lower rooms, Naxx wings). Warn so it stays visible.
+  {
+    const zb = new Map();
+    for (const z of db.prepare(`SELECT areaid, locleft, locright, loctop, locbottom FROM zones`).all()) zb.set(z.areaid, z);
+    const rows = db.prepare(`
+      SELECT sp.id, sp.x, sp.y, sp.zone, c.name
+      FROM spawns s
+      JOIN spawn_points sp ON sp.kind='c' AND sp.id=s.id AND sp.map=s.map
+      JOIN creatures c ON c.entry=s.id
+      JOIN maps m ON m.id=s.map
+      WHERE m.type IN (1,2) AND s.cnt=1 AND c.name <> '' AND sp.zone IS NOT NULL`).all();
+    const byBoss = new Map(); // id -> rendered-in-bounds-anywhere?
+    for (const r of rows) {
+      const z = zb.get(r.zone);
+      const inB = z && r.x >= z.locbottom && r.x <= z.loctop && r.y >= z.locright && r.y <= z.locleft;
+      const e = byBoss.get(r.id) || { name: r.name, anyIn: false };
+      if (inB) e.anyIn = true;
+      byBoss.set(r.id, e);
+    }
+    const out = [...byBoss.values()].filter((b) => !b.anyIn);
+    if (out.length) console.log(`  WARN ${out.length}/${byBoss.size} instance bosses render outside their parchment bounds (client map limits): ${out.slice(0, 8).map((b) => b.name).join(", ")}${out.length > 8 ? ", …" : ""}`);
+    else console.log(`  boss-bounds: all ${byBoss.size} instance bosses render in bounds`);
+  }
 }
 
 // staging tables have served their purpose; drop them so VACUUM reclaims the
