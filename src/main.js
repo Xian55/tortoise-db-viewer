@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -88,6 +88,7 @@ function route() {
   const faction = params.get("faction");
   const zone = params.get("zone");
   const dungeon = params.get("dungeon");
+  const object = params.get("object");
   const browse = params.get("browse");
   const term = params.get("search");
   // Browse first: browse URLs carry filter params (e.g. faction=a|h) that would
@@ -101,6 +102,7 @@ function route() {
   else if (faction) showFaction(Number(faction));
   else if (zone) showZone(Number(zone), params.get("gather") ? Number(params.get("gather")) : null);
   else if (dungeon) showDungeon(Number(dungeon));
+  else if (object) showObject(Number(object));
   else if (params.get("dungeons") !== null) showDungeons();
   else if (term) { searchInput.value = term; showSearch(term); }
   else showHome();
@@ -118,7 +120,8 @@ function showHome() {
        <a class="nav" href="?browse=spells">spells</a> /
        <a class="nav" href="?browse=factions">factions</a> /
        <a class="nav" href="?browse=zones">zones</a> /
-       <a class="nav" href="?dungeons">dungeons &amp; raids</a>.
+       <a class="nav" href="?dungeons">dungeons &amp; raids</a> /
+       <a class="nav" href="?browse=objects">objects</a>.
        Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?zone=ID</code>.</p>
     <p class="muted">Examples:
       <a class="ilink" href="?item=2770">Copper Ore</a> ·
@@ -262,7 +265,7 @@ async function showItem(id) {
     { label: "Chance", num: true, cell: (d) => pct(dchance(d)), value: (d) => dchance(d) || 0 },
   ];
   const objectCols = [
-    { label: "Object", cell: (o) => esc(o.name), value: (o) => o.name },
+    { label: "Object", cell: (o) => (o.entry ? objectLink(o.entry, o.name) : esc(o.name)), value: (o) => o.name },
     { label: "Chance", num: true, cell: (o) => pct(o.chance), value: (o) => o.chance || 0 },
   ];
   const gatherCols = [
@@ -719,6 +722,89 @@ async function showNpc(id) {
       const { initZoneMap } = await import("./zonemap.js");
       const imgUrl = `${ASSETS_BASE}maps/${mapZone.areaid}.webp`;
       const focus = { label: npc.name, npc: npc.entry, points: mapPts };
+      initZoneMap(el, { ...mapZone, imgUrl }, [], [], navigate, focus);
+    } catch (e) { el.innerHTML = errorBox(e); }
+  }
+}
+
+// Object (gameobject) detail page: harvest nodes / chests / quest objects. Like the
+// NPC page but aggregated over every entry sharing the object's name (the per-zone
+// copies of e.g. "Copper Vein"): their loot + spawns + quest links combine, and the
+// most-common spawn zone renders the parchment with the looted item's icon as pins.
+async function showObject(id) {
+  app.innerHTML = `<div class="loading">Loading object ${id}…</div>`;
+  let obj;
+  try { obj = await queryOne(Q.Q_OBJECT, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (!obj) { app.innerHTML = `<div class="home"><p>No object with ID ${id}.</p></div>`; return; }
+  document.title = `${obj.name} - Tortoise-WoW DB`;
+
+  const siblings = await query(Q.Q_OBJECT_SIBLINGS, [obj.name]);
+  const entryIds = [...new Set(siblings.map((s) => s.entry))];
+  const lootIds = [...new Set(siblings.map((s) => s.data1).filter(Boolean))];
+
+  const [loot, spawns, starts, ends, objectiveOf] = await Promise.all([
+    lootIds.length ? query(Q.qObjectLoot(lootIds.length), lootIds) : [],
+    entryIds.length ? query(Q.qObjectSpawns(entryIds.length), entryIds) : [],
+    query(Q.qObjectQuestStart(entryIds.length), entryIds),
+    query(Q.qObjectQuestEnd(entryIds.length), entryIds),
+    query(Q.qObjectObjectiveOf(entryIds.length), entryIds),
+  ]);
+
+  // parchment zone = the object's most-common spawn zone (same heuristic as NPCs)
+  const zoneCount = new Map();
+  for (const s of spawns) if (s.zone) zoneCount.set(s.zone, (zoneCount.get(s.zone) || 0) + 1);
+  const zoneIds = [...zoneCount.keys()];
+  const zinfo = new Map();
+  if (zoneIds.length) for (const z of await query(Q.qZonesByIds(zoneIds.length), zoneIds)) zinfo.set(z.areaid, z);
+  let mapZone = null, top = -1;
+  for (const [aid, n] of zoneCount) if (n > top && zinfo.get(aid)) { top = n; mapZone = zinfo.get(aid); }
+  const mapPts = mapZone ? spawns.filter((s) => s.zone === mapZone.areaid) : [];
+
+  const lootCols = [
+    { label: "Item", cell: (d) => itemLink(d.entry, d.name, d.quality, d.icon), value: (d) => d.name },
+    { label: "Chance", num: true, cell: (d) => pct(d.chance), value: (d) => d.chance || 0 },
+  ];
+  const questCols = [
+    { label: "Quest", cell: (q) => questLink(q.entry, q.title), value: (q) => q.title },
+    { label: "Level", num: true, cls: "muted", cell: (q) => q.level || "", value: (q) => q.level || 0 },
+  ];
+  const objectiveCols = [
+    ...questCols,
+    { label: "Needed", num: true, cls: "muted", cell: (q) => (q.count > 1 ? q.count : ""), value: (q) => q.count || 0 },
+  ];
+
+  const typeLabel = GAMEOBJECT_TYPE[obj.type] || "Object";
+  const meta = [`<a class="nav" href="?browse=objects&type=${obj.type}">${esc(typeLabel)}</a>`];
+  if (spawns.length) meta.push(`${spawns.length} spawn${spawns.length === 1 ? "" : "s"}`);
+
+  const tabDefs = [];
+  if (loot.length) tabDefs.push({ id: "contains", label: "Contains", ...regTable(lootCols, loot) });
+  if (starts.length) tabDefs.push({ id: "starts", label: "Starts quests", ...regTable(questCols, starts) });
+  if (ends.length) tabDefs.push({ id: "ends", label: "Ends quests", ...regTable(questCols, ends) });
+  if (objectiveOf.length) tabDefs.push({ id: "objective", label: "Objective of", ...regTable(objectiveCols, objectiveOf) });
+
+  const noMapNote = mapZone ? ""
+    : spawns.length
+      ? `<div class="zone-empty muted">No spawn-location map is available for this object.</div>`
+      : `<div class="zone-empty muted">No spawn location is recorded for this object (it may be placed by a script or event).</div>`;
+
+  app.innerHTML =
+    `<div class="npc-page">
+      <div class="npc-head">
+        <h1>${esc(obj.name)}</h1>
+        <div class="npc-meta muted">${meta.join(" · ")} <span class="dim">· Object #${obj.entry}</span></div>
+      </div>
+      ${mapZone ? `<div id="zonemap"></div>` : noMapNote}
+      ${tabDefs.length ? tabs(tabDefs) : ""}
+    </div>`;
+  mountTables();
+  wireTabs();
+  if (mapZone) {
+    const el = document.getElementById("zonemap");
+    try {
+      const { initZoneMap } = await import("./zonemap.js");
+      const imgUrl = `${ASSETS_BASE}maps/${mapZone.areaid}.webp`;
+      const focus = { label: obj.name, icon: loot[0] && loot[0].icon, points: mapPts };
       initZoneMap(el, { ...mapZone, imgUrl }, [], [], navigate, focus);
     } catch (e) { el.innerHTML = errorBox(e); }
   }

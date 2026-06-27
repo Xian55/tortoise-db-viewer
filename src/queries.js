@@ -364,6 +364,37 @@ export const qQuestStartNpcs = (n) => `
   JOIN creatures c ON c.entry = r.id
   WHERE r.quest IN (${inList(n)})`;
 
+// ---- gameobjects (browsable "objects": harvest nodes, chests, quest objects) ----
+// "Interactive" = the object has loot (drops via data1), starts/ends a quest, or is
+// a quest objective. Precomputed into object_browse at build time (grouped by name so
+// the many per-zone copies of e.g. "Copper Vein" collapse to one row) -> instant read.
+export const Q_BROWSE_OBJECTS = `SELECT entry, name, type, has_loot, spawns FROM object_browse ORDER BY name`;
+// Single object header (by entry).
+export const Q_OBJECT = `SELECT entry, name, type, displayId, data1 FROM gameobjects WHERE entry = ?1`;
+// All entries sharing a name (the group the detail page aggregates over).
+export const Q_OBJECT_SIBLINGS = `SELECT entry, data1 FROM gameobjects WHERE name = ?1`;
+// Items looted from a set of object loot-ids (data1), highest chance kept per item.
+export const qObjectLoot = (n) => `
+  SELECT i.entry, i.name, i.quality, di.icon, MAX(d.chance) AS chance
+  FROM drops d JOIN items i ON i.entry = d.item
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE d.src='o' AND d.owner IN (${inList(n)})
+  GROUP BY i.entry ORDER BY chance DESC LIMIT 200`;
+// This object('s name-group)'s spawn points to plot on the zone map.
+export const qObjectSpawns = (n) => `
+  SELECT x, y, map, zone FROM spawn_points INDEXED BY idx_spawn_id
+  WHERE kind='o' AND id IN (${inList(n)}) AND zone IS NOT NULL LIMIT 5000`;
+// Quests this object('s group) starts / ends, and is a collection objective of.
+export const qObjectQuestStart = (n) => `
+  SELECT DISTINCT q.entry, q.title, q.level FROM gameobject_quest_start r
+  JOIN quests q ON q.entry = r.quest WHERE r.id IN (${inList(n)}) ORDER BY q.level LIMIT 100`;
+export const qObjectQuestEnd = (n) => `
+  SELECT DISTINCT q.entry, q.title, q.level FROM gameobject_quest_end r
+  JOIN quests q ON q.entry = r.quest WHERE r.id IN (${inList(n)}) ORDER BY q.level LIMIT 100`;
+export const qObjectObjectiveOf = (n) => `
+  SELECT DISTINCT q.entry, q.title, q.level, o.count FROM quest_creature_objective o
+  JOIN quests q ON q.entry = o.quest WHERE o.is_go=1 AND o.target IN (${inList(n)}) ORDER BY q.level LIMIT 100`;
+
 // ---- dungeons / raids ----
 export const Q_DUNGEONS = `SELECT id, name, type, min_level, max_level FROM maps WHERE type IN (1,2) AND name <> '' AND hidden = 0 ORDER BY type, name`;
 export const Q_DUNGEON = `SELECT id, name, type FROM maps WHERE id = ?1`;

@@ -112,6 +112,7 @@ export const MENU = [
   { label: "Factions", href: "?browse=factions" },
   ZONES,
   { label: "Dungeons", href: "?dungeons" },
+  { label: "Objects", href: "?browse=objects" },
 ];
 
 function renderLi(node) {

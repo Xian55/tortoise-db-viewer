@@ -2,14 +2,14 @@
 // against the in-memory DB; sorting + pagination are handled client-side by the
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
-import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SPELLS, Q_BROWSE_ITEMSETS } from "./queries.js";
-import { itemLink, npcLink, questLink, factionLink, zoneLink, spellLink, sourceTags, esc } from "./render.js";
+import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SPELLS, Q_BROWSE_ITEMSETS, Q_BROWSE_OBJECTS } from "./queries.js";
+import { itemLink, npcLink, questLink, factionLink, zoneLink, spellLink, objectLink, sourceTags, esc } from "./render.js";
 import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
   CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
   BONDING, CLASS_MASK, PROFESSION, PROFESSION_LABEL, RACE_ALLIANCE, RACE_HORDE,
-  QUEST_TYPE, CONTINENT, SPELL_SCHOOL, SPELL_CATEGORIES, questZoneLabel,
+  QUEST_TYPE, CONTINENT, SPELL_SCHOOL, SPELL_CATEGORIES, GAMEOBJECT_TYPE, questZoneLabel,
 } from "./constants.js";
 
 const PAGE = 100;
@@ -513,6 +513,30 @@ async function browseItemsets(p) {
   return { rows, cols, filters, noun: "item sets" };
 }
 
+// Objects finder: interactive gameobjects (harvest nodes / chests / quest objects),
+// grouped by name. Type + name filtered client-side over the small (~few k) set.
+async function browseObjects(p) {
+  const f = { q: p.get("q") || "", type: p.get("type") || "" };
+  let rows = await query(Q_BROWSE_OBJECTS, []);
+  if (f.q) { const ql = f.q.toLowerCase(); rows = rows.filter((r) => (r.name || "").toLowerCase().includes(ql)); }
+  if (f.type !== "") rows = rows.filter((r) => String(r.type) === f.type);
+  const cols = [
+    { key: "name", label: "Name", cell: (r) => objectLink(r.entry, r.name), value: (r) => r.name || "" },
+    { key: "type", label: "Type", cls: "muted", hideUniform: true, cell: (r) => GAMEOBJECT_TYPE[r.type] || "Object", value: (r) => GAMEOBJECT_TYPE[r.type] || "Object" },
+    { key: "loot", label: "Loot", cls: "muted", cell: (r) => (r.has_loot ? "✓" : ""), value: (r) => r.has_loot || 0 },
+    { key: "spawns", label: "Spawns", num: true, cls: "muted", cell: (r) => r.spawns || "", value: (r) => r.spawns || 0 },
+  ];
+  // only the object types actually present, so the dropdown isn't full of dead ends
+  const presentTypes = [...new Set(rows.map((r) => r.type))];
+  const typeOpts = Object.entries(GAMEOBJECT_TYPE).filter(([id]) => presentTypes.includes(+id));
+  const filters = `<div class="filters">
+    ${textField("q", "Name", f.q)}
+    ${selectField("type", "Type", options(typeOpts, f.type, "Any type"))}
+    <button class="reset" data-reset="1">Reset</button>
+  </div>`;
+  return { rows, cols, filters, noun: "objects" };
+}
+
 export async function showBrowse(kind, navigate) {
   const app = document.getElementById("app");
   const isNpc = kind === "npcs";
@@ -522,12 +546,13 @@ export async function showBrowse(kind, navigate) {
   const isZones = kind === "zones";
   const isSpells = kind === "spells";
   const isItemsets = kind === "itemsets";
-  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : isFactions ? "Factions" : isZones ? "Zones" : isSpells ? "Spells" : isItemsets ? "Item Sets" : "Items";
+  const isObjects = kind === "objects";
+  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : isFactions ? "Factions" : isZones ? "Zones" : isSpells ? "Spells" : isItemsets ? "Item Sets" : isObjects ? "Objects" : "Items";
   document.title = `Browse ${heading} - Tortoise-WoW DB`;
   app.innerHTML = `<div class="loading">Loading…</div>`;
   const p = new URLSearchParams(location.search);
   let view;
-  try { view = kind === "crafting" ? await browseCrafting(p) : isZones ? await browseZones(p) : isFactions ? await browseFactions(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : isSpells ? await browseSpells(p) : isItemsets ? await browseItemsets(p) : await browseItems(p); }
+  try { view = kind === "crafting" ? await browseCrafting(p) : isZones ? await browseZones(p) : isFactions ? await browseFactions(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : isSpells ? await browseSpells(p) : isItemsets ? await browseItemsets(p) : isObjects ? await browseObjects(p) : await browseItems(p); }
   catch (e) { app.innerHTML = `<div class="error">Failed: ${esc(e.message || e)}</div>`; return; }
 
   // items get row selection + clipboard/external operations on the selection.

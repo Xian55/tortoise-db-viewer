@@ -292,6 +292,10 @@ export function dungeonLink(id, name) {
   return `<a class="ilink" href="?dungeon=${id}">${esc(name)}</a>`;
 }
 
+export function objectLink(entry, name) {
+  return `<a class="ilink object" href="?object=${entry}">${esc(name)}</a>`;
+}
+
 export function questLink(entry, title) {
   return `<a class="ilink quest" href="?quest=${entry}">${esc(title)}</a>`;
 }

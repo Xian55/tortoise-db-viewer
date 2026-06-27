@@ -512,6 +512,30 @@ async function testDungeons() {
   console.log(`dungeons index: ${rows} rows headers=[${headers.join(",")}] levelRanges=${ranges}`);
   return rows > 0 && headers.includes("Level") && ranges > 10;
 }
+// Objects browse: interactive gameobjects (harvest nodes/chests/quest objects),
+// name-grouped, with a Spawns column and links to the object detail page.
+async function testObjectsBrowse() {
+  await page.goto(`${BASE}?browse=objects`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const objLink = (await page.$('.browse a.ilink.object[href*="object="]')) !== null;
+  console.log(`objects browse: ${rows} rows headers=[${headers.join(",")}] objLink=${objLink}`);
+  return rows > 0 && headers.includes("Spawns") && objLink;
+}
+// Object detail: aggregates same-name entries -> Contains tab links the looted item
+// (Copper Vein -> Copper Ore) and a spawn map renders.
+async function testObject(id, expectName, expectItem) {
+  await page.goto(`${BASE}?object=${id}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  const name = await page.$eval(".npc-head h1", (e) => e.textContent);
+  const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
+  const hasMap = (await page.$("#zonemap .leaflet-image-layer")) !== null;
+  const items = await page.$$eval(".tabpane:not(.hidden) td a.ilink", (a) => a.map((x) => x.textContent.trim()));
+  console.log(`object ${id}: name="${name}" tabs=[${tabList.join(", ")}] map=${hasMap} items=${items.slice(0, 4).join(",")}`);
+  return name.includes(expectName) && tabList.some((t) => t.includes("Contains")) && hasMap && items.some((t) => t.includes(expectItem));
+}
 async function testDungeon(id, expectName) {
   await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".npc-head h1", { timeout: 40000 });
@@ -1065,6 +1089,8 @@ run(() => testNpcLocationLabel(80208, 5225));  // label agrees with the map
 run(() => testNpcMapZone(14890, 331));        // Taerar -> Ashenvale (exact ADT area, was Azshara)
 run(() => testNpcLocationLabel(596, 40));
 run(() => testDungeons());
+run(() => testObjectsBrowse());                       // objects finder (interactive gameobjects)
+run(() => testObject(1731, "Copper Vein", "Copper Ore"));  // object detail: contains item + map
 run(() => testDungeon(36, "Deadmines"));          // ?dungeon= redirects to the zone view
 run(() => testInstanceZone(5138, "Deadmines"));  // ?zone= auto-detects the dungeon
 run(() => testInstanceZone(2557, "Dire Maul"));  // interior map (areaId collision fix)

@@ -1058,6 +1058,28 @@ console.log("Importing zones + spawn points...");
     SELECT s.zone FROM spawn_points s INDEXED BY idx_spawn_id
     WHERE s.kind = 'c' AND s.id = creatures.entry AND s.zone IS NOT NULL
     GROUP BY s.zone ORDER BY COUNT(*) DESC LIMIT 1)`);
+
+  // Browsable "objects": interactive gameobjects (have loot via data1, start/end a
+  // quest, or are a quest objective), grouped by name so the many per-zone copies of
+  // e.g. "Copper Vein" collapse to one row. Precomputed here (the per-name spawn
+  // count + EXISTS filters are ~2s over 21k objects) so ?browse=objects is instant.
+  console.log("Deriving object_browse...");
+  db.exec(`CREATE TABLE object_browse (entry INTEGER, name TEXT, type INTEGER, has_loot INTEGER, spawns INTEGER)`);
+  db.exec(`
+    INSERT INTO object_browse (entry, name, type, has_loot, spawns)
+    SELECT MIN(g.entry), g.name, g.type,
+      MAX(CASE WHEN EXISTS(SELECT 1 FROM drops d WHERE d.src='o' AND d.owner=g.data1) THEN 1 ELSE 0 END),
+      (SELECT COUNT(*) FROM spawn_points s WHERE s.kind='o' AND s.id IN
+         (SELECT g2.entry FROM gameobjects g2 WHERE g2.name = g.name))
+    FROM gameobjects g
+    WHERE g.name <> '' AND (
+        EXISTS(SELECT 1 FROM drops d WHERE d.src='o' AND d.owner=g.data1)
+     OR EXISTS(SELECT 1 FROM gameobject_quest_start q WHERE q.id=g.entry)
+     OR EXISTS(SELECT 1 FROM gameobject_quest_end q WHERE q.id=g.entry)
+     OR EXISTS(SELECT 1 FROM quest_creature_objective o WHERE o.is_go=1 AND o.target=g.entry))
+    GROUP BY g.name`);
+  db.exec(`CREATE INDEX idx_object_browse_name ON object_browse(name)`);
+  console.log(`  object_browse: ${db.prepare("SELECT COUNT(*) n FROM object_browse").get().n}`);
 }
 
 // staging tables have served their purpose; drop them so VACUUM reclaims the
