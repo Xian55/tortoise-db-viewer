@@ -545,20 +545,26 @@ async function testObject(id, expectName, expectItem) {
   return name.includes(expectName) && tabList.some((t) => t.includes("Contains")) && hasMap
     && items.some((t) => t.includes(expectItem)) && zones > 1 && active === 1 && src1 !== src2;
 }
-// Icons index: searchable grid of icon tiles; filtering narrows the visible set.
+// Icons index: searchable grid; filter + page live in the URL (?icons=term&page=n),
+// non-renderable junk icons (BTN* etc.) are filtered out, and a deep-link pre-fills.
 async function testIcons() {
   await page.goto(`${BASE}?icons`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".icon-grid .icon-tile", { timeout: 40000 });
   const full = await page.$$eval(".icon-grid .icon-tile", (t) => t.length);
-  await page.type(".icon-search", "copper");
-  await page.waitForFunction(() => {
-    const n = document.querySelectorAll(".icon-grid .icon-tile").length;
-    return n > 0 && n < 300;
-  }, { timeout: 10000 }).catch(() => {});
+  // no junk: searching the WC3 button prefix should yield zero tiles (filtered out)
+  await page.type(".icon-search", "btnbrown");
+  await new Promise((r) => setTimeout(r, 200));
+  const junk = await page.$$eval(".icon-grid .icon-tile", (t) => t.length);
+  const junkUrl = await page.evaluate(() => location.search); // URL reflects the filter
+  // deep-link: ?icons=copper pre-fills the box, filters, and a page param paginates
+  await page.goto(`${BASE}?icons=copper`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".icon-grid .icon-tile", { timeout: 40000 });
+  const prefilled = await page.$eval(".icon-search", (e) => e.value);
   const filtered = await page.$$eval(".icon-grid .icon-tile", (t) => t.length);
-  const linksToIcon = (await page.$('.icon-grid .icon-tile[data-icon]')) !== null;
-  console.log(`icons index: full=${full} filtered(copper)=${filtered} tile=${linksToIcon}`);
-  return full === 300 && filtered > 0 && filtered < full && linksToIcon;
+  const noText = (await page.$$eval(".icons-page p", (ps) => ps.map((p) => p.textContent).join(""))).includes("click one to see") === false;
+  console.log(`icons index: full=${full} junk(btnbrown)=${junk} url="${junkUrl}" prefill="${prefilled}" filtered(copper)=${filtered} noBlurb=${noText}`);
+  return full === 300 && junk === 0 && /icons=btnbrown/.test(junkUrl)
+    && prefilled === "copper" && filtered > 0 && filtered < 300 && noText;
 }
 // Icon detail: the items (and/or spells) that use a given icon basename.
 async function testIcon(name, expectItem) {

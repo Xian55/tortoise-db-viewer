@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, sourceTags, pct, esc, setIconAtlas, getIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -837,20 +837,32 @@ async function showObject(id) {
   }
 }
 
-// Icons index: a searchable grid of every icon referenced by an item display or a
-// spell (the image is the hero element). Click a tile -> the icon detail page. The
-// ~5k tiles are paginated + substring-filtered client-side (the list loads once).
+// Icons index: a searchable grid of every renderable icon referenced by an item
+// display or a spell (the image is the hero element). Click a tile -> the icon
+// detail page. Filter term + page live in the URL (?icons=<term>&page=<n>), like
+// ?search=, so a filtered/paginated view is shareable. Paginated client-side.
+const ICON_STD = /^(inv|spell|ability|trade|achievement|item|race|racial|warrior|mage|priest|rogue|druid|hunter|shaman|paladin|warlock)/i;
 async function showIcons() {
   document.title = "Icons - Tortoise-WoW DB";
   app.innerHTML = `<div class="loading">Loading icons…</div>`;
   let rows;
   try { rows = await query(Q.Q_ICON_LIST); } catch (e) { app.innerHTML = errorBox(e); return; }
-  const all = rows.map((r) => r.icon);
+  // Drop icons that can't render: not in the custom atlas AND not a standard WoW
+  // icon name (so no CDN texture) -- e.g. Warcraft-III "BTN*" button art, weapon
+  // model names. These would otherwise fill the grid with "?" placeholders.
+  const atlas = getIconAtlas();
+  const inAtlas = (n) => { const i = atlas && atlas.icons[n.toLowerCase()]; return i !== undefined && i !== null && i !== false; };
+  const all = rows.map((r) => r.icon).filter((n) => inAtlas(n) || ICON_STD.test(n));
   const PER = 300;
+
+  // initial filter + page from the URL
+  const p0 = new URLSearchParams(location.search);
+  let term = (p0.get("icons") || "").toLowerCase();
+  let pageN = Math.max(0, (parseInt(p0.get("page"), 10) || 1) - 1);
+
   app.innerHTML = `<div class="icons-page">
     <h1>Icons</h1>
-    <p class="muted">${all.length.toLocaleString()} icons — click one to see the items &amp; spells that use it.</p>
-    <input type="search" class="icon-search" placeholder="Filter icons… (e.g. copper, sword, herb)" aria-label="Filter icons">
+    <input type="search" class="icon-search" placeholder="Filter icons… (e.g. copper, sword, herb)" aria-label="Filter icons" value="${esc(term)}">
     <p class="muted icon-count" data-count></p>
     <div class="icon-grid" data-grid></div>
     <div class="icon-pager" data-pager></div>
@@ -859,7 +871,13 @@ async function showIcons() {
   const countEl = app.querySelector("[data-count]");
   const pager = app.querySelector("[data-pager]");
   const search = app.querySelector(".icon-search");
-  let term = "", pageN = 0;
+
+  // reflect the live filter + page into the URL (shareable, no history spam)
+  const syncUrl = () => {
+    let qs = "?icons" + (term ? "=" + encodeURIComponent(term) : "");
+    if (pageN > 0) qs += "&page=" + (pageN + 1);
+    history.replaceState({}, "", qs);
+  };
   const render = () => {
     const f = term ? all.filter((n) => n.toLowerCase().includes(term)) : all;
     const pages = Math.max(1, Math.ceil(f.length / PER));
@@ -874,10 +892,10 @@ async function showIcons() {
          <button data-pg="next"${pageN === pages - 1 ? " disabled" : ""}>Next ›</button>` : "";
   };
   render();
-  search.addEventListener("input", () => { term = search.value.trim().toLowerCase(); pageN = 0; render(); });
+  search.addEventListener("input", () => { term = search.value.trim().toLowerCase(); pageN = 0; render(); syncUrl(); });
   pager.addEventListener("click", (e) => {
     const b = e.target.closest("[data-pg]"); if (!b) return;
-    pageN += b.dataset.pg === "next" ? 1 : -1; render();
+    pageN += b.dataset.pg === "next" ? 1 : -1; render(); syncUrl();
     window.scrollTo({ top: 0 });
   });
   grid.addEventListener("click", (e) => {
