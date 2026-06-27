@@ -31,18 +31,24 @@ const COL = {
   slots: { key: "slots", label: "Slots", num: true, cls: "muted", hideEmpty: true, cell: (r) => r.container_slots || "", value: (r) => r.container_slots || 0 },
   // ammo (class 6) flat damage add, shown wowhead-style as avg "damage per second"
   ammo: { key: "ammo", label: "Damage", num: true, cls: "muted", cell: (r) => { const a = ((r.dmg_min1 || 0) + (r.dmg_max1 || 0)) / 2; return a ? (a % 1 ? a.toFixed(1) : `${a}`) : ""; }, value: (r) => ((r.dmg_min1 || 0) + (r.dmg_max1 || 0)) / 2 },
+  // fishing poles' "+N Fishing" equip bonus (item_stats stat='fishing'); replaces
+  // DPS/Speed when the Fishing Pole subtype is the only one filtered.
+  fishing: { key: "fishing", label: "Fishing", num: true, cls: "muted", cell: (r) => (r.fishing ? `+${r.fishing}` : ""), value: (r) => r.fishing || 0 },
 };
 
 // columns adapt to the class filter: weapons show DPS/Speed, armor shows Armor.
 // the default set carries Slots (auto-hidden unless a row has container_slots --
 // bags/quivers) and Slot (auto-hidden when every row is the same slot, e.g. a
 // Bag-slot or container filter). when stat criteria are active, a sortable column
-// per criterion stat is inserted (right after Name).
-function buildItemCols(cls, statCols) {
-  const base = cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.source]
-    : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.source]
-      : cls === "6" ? [COL.name, COL.ammo, COL.ilvl, COL.req, COL.source]
-        : [COL.name, COL.slots, COL.ilvl, COL.req, COL.slot, COL.source];
+// per criterion stat is inserted (right after Name). Fishing poles (the sole
+// weapon subtype filtered = 20) swap DPS/Speed for the "+N Fishing" column --
+// neither is meaningful on a pole.
+function buildItemCols(cls, statCols, subclass) {
+  const base = cls === "2" && subclass === "20" ? [COL.name, COL.fishing, COL.ilvl, COL.req, COL.source]
+    : cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.source]
+      : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.source]
+        : cls === "6" ? [COL.name, COL.ammo, COL.ilvl, COL.req, COL.source]
+          : [COL.name, COL.slots, COL.ilvl, COL.req, COL.slot, COL.source];
   return statCols.length ? [base[0], ...statCols, ...base.slice(1)] : base;
 }
 
@@ -207,10 +213,14 @@ async function browseItems(p) {
   const critKeys = [...new Set(criteria.map((c) => c.key))];
   const joins = critKeys.map((key, n) => `LEFT JOIN item_stats s${n} ON s${n}.item=i.entry AND s${n}.stat='${key}'`).join(" ");
   const statSel2 = critKeys.map((key, n) => `, s${n}.value AS stat_${key}`).join("");
+  // fishing-pole column: pull the +N Fishing equip bonus only when that subtype
+  // is the sole filter (a per-row correlated subquery, so skip it otherwise).
+  const fishingOnly = f.class === "2" && f.subclass === "20";
+  const fishingSel = fishingOnly ? ", (SELECT value FROM item_stats WHERE item = i.entry AND stat = 'fishing') AS fishing" : "";
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
   const rows = await query(
     `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, i.display_id,
-            i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, di.icon${statSel2},
+            i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, di.icon${statSel2}${fishingSel},
             (SELECT GROUP_CONCAT(source,',') FROM item_sources s WHERE s.item = i.entry) AS sources
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
@@ -249,7 +259,7 @@ async function browseItems(p) {
     ${critBlock}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  return { rows, cols: buildItemCols(f.class, statCols), filters, noun: "items" };
+  return { rows, cols: buildItemCols(f.class, statCols, f.subclass), filters, noun: "items" };
 }
 
 async function browseNpcs(p) {

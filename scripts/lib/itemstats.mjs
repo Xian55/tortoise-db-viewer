@@ -31,12 +31,15 @@ export const AURA_STAT = {
   138: "haste", // attack/casting speed %
 };
 
-// MOD_SKILL (aura 30) misc value = skill-line id -> stat key. Professions
-// (Fishing 356, Mining 186, …) and Fist Weapons (162, no reference option) are
-// intentionally excluded.
+// MOD_SKILL (aura 30) misc value = skill-line id -> stat key. Fishing (356) is
+// included so fishing poles can show their "+N Fishing" bonus (the Fishing-Pole
+// browse swaps DPS/Speed for this column); it is NOT a gear criterion (not in
+// GEAR_CRITERIA), so it never appears in the stat dropdown. The other professions
+// (Mining 186, …) and Fist Weapons (162, no reference option) stay excluded.
 export const MOD_SKILL_AURA = 30;
 export const SKILL_STAT = {
   95: "def",
+  356: "fishing",
   43: "wSwords", 44: "wAxes", 54: "wMaces", 173: "wDaggers", 229: "wPolearms",
   55: "w2hSwords", 172: "w2hAxes", 160: "w2hMaces", 45: "wBows", 46: "wGuns", 226: "wCrossbows",
 };
