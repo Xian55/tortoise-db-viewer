@@ -1131,13 +1131,13 @@ async function showQuest(id) {
     { label: "Level", num: true, cls: "muted", cell: (c) => lvlRange(c), value: (c) => c.level_max || c.level_min || 0 },
     locCol,
   ];
-  const goCols = [{ label: "Object", cell: (g) => objectLink(g.target, g.name), value: (g) => g.name }];
+  const goCols = [{ label: "Object", cell: (g) => objectLink(g.entry, g.name), value: (g) => g.name }];
   const itemCols = [
     { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
     { label: "Qty", num: true, cls: "muted", cell: (r) => (r.count > 1 ? r.count : ""), value: (r) => r.count || 0 },
   ];
   const targetCols = [
-    { label: "Target", cell: (o) => (o.is_go ? esc(o.name || `Object #${o.target}`) : npcLink(o.target, o.name || `NPC #${o.target}`)), value: (o) => o.name || "" },
+    { label: "Target", cell: (o) => (o.is_go ? objectLink(o.target, o.name || `Object #${o.target}`) : npcLink(o.target, o.name || `NPC #${o.target}`)), value: (o) => o.name || "" },
     { label: "Location", cls: "muted", cell: (o) => killLoc(o).html || "", value: (o) => killLoc(o).text || "" },
     { label: "Count", num: true, cls: "muted", cell: (o) => (o.count > 1 ? o.count : ""), value: (o) => o.count || 0 },
   ];
@@ -1331,7 +1331,7 @@ async function showZone(id, gatherItem = null) {
   // per-object map toggles: shownObjects survives table re-render (sort/page)
   const shownObjects = new Set();
   const objCols = [
-    { label: "Object", cell: (o) => (iconByEntry.get(o.entry) ? iconImg(iconByEntry.get(o.entry)) : "") + esc(o.name), value: (o) => o.name },
+    { label: "Object", cell: (o) => (iconByEntry.get(o.entry) ? iconImg(iconByEntry.get(o.entry)) : "") + objectLink(o.entry, o.name), value: (o) => o.name },
     { label: "Type", cls: "muted", cell: (o) => GAMEOBJECT_TYPE[o.type] || "", value: (o) => GAMEOBJECT_TYPE[o.type] || "" },
     { label: "Spawns", num: true, cls: "muted", cell: (o) => o.count, value: (o) => o.count },
     { label: "Map", cls: "mapcol",

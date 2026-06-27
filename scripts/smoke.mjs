@@ -1022,6 +1022,16 @@ async function testZone(id, expectName) {
   return name.includes(expectName) && cats > 0 && tabList.length >= 3 && rows > 0;
 }
 
+// Zone Objects tab: gameobject names link to ?object= (not plain text).
+async function testZoneObjectLink(id) {
+  await page.goto(`${BASE}?zone=${id}`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector(".zone-page .tabbar .tab", { timeout: 40000 });
+  await page.evaluate(() => { const t = [...document.querySelectorAll(".zone-page .tabbar .tab")].find((x) => /Objects/.test(x.textContent)); if (t) t.click(); });
+  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  const objLink = (await page.$(".zone-page .tabpane:not(.hidden) a.ilink.object[href*='object=']")) !== null;
+  console.log(`zone-object-link ${id}: objLink=${objLink}`);
+  return objLink;
+}
 // A multi-floor instance shows a floor switcher; the active floor renders a map,
 // and switching floors re-renders. Black Morass (?zone=5204) has 2 floors.
 async function testZoneFloors(areaid, minFloors) {
@@ -1142,6 +1152,7 @@ run(() => testNpcFaction(80959, 69));   // NPC shows its faction (Darnassus Quar
 run(() => testQuestRepLink(14));
 run(() => testBrowse("factions", "", "Items"));
 run(() => testZone(12, "Elwynn"));
+run(() => testZoneObjectLink(400));              // zone Objects tab links to ?object=
 run(() => testZone(5561, "Balor"));             // 1.18.1 zone, populated via migrations
 run(() => testZoneQuests(331, 20));             // Ashenvale quests tab (incl. sub-zones)
 run(() => testZoneFloors(5204, 2));             // Black Morass: multi-floor switcher

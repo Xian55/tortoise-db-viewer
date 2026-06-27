@@ -152,7 +152,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   const objByEntry = new Map();
   for (const o of objects) {
     const ll = toLatLng(o.x, o.y);
-    if (!focus) addDot(objTypeLabel(o.type), objTypeLabel(o.type), hexToNum(OBJ_COLOR), ll, esc(o.name) || `Object #${o.entry}`, null);
+    if (!focus) addDot(objTypeLabel(o.type), objTypeLabel(o.type), hexToNum(OBJ_COLOR), ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`);
     let e = objByEntry.get(o.entry);
     if (!e) { e = { name: o.name || `Object #${o.entry}`, lls: [] }; objByEntry.set(o.entry, e); }
     e.lls.push(ll);
