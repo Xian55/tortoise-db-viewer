@@ -257,7 +257,8 @@ async function showItem(id) {
     for (const p of gatherSpawns) {
       const areaid = p.areaid || 0, zone = p.zone || "Unknown";
       const key = `${p.name}|${areaid}`;
-      const g = agg.get(key) || { object: p.name, areaid, zone, count: 0 };
+      const g = agg.get(key) || { object: p.name, entry: p.entry, areaid, zone, count: 0 };
+      if (p.entry && (!g.entry || p.entry < g.entry)) g.entry = p.entry; // canonical = lowest entry
       g.count++; agg.set(key, g);
     }
     gatherRows = [...agg.values()].sort((a, b) => b.count - a.count);
@@ -278,7 +279,7 @@ async function showItem(id) {
     { label: "Chance", num: true, cell: (o) => pct(o.chance), value: (o) => o.chance || 0 },
   ];
   const gatherCols = [
-    { label: "Object", cell: (r) => esc(r.object), value: (r) => r.object },
+    { label: "Object", cell: (r) => (r.entry ? objectLink(r.entry, r.object) : esc(r.object)), value: (r) => r.object },
     // zone link carries &gather=<item> so the zone map opens focused on this node
     { label: "Zone", cell: (r) => (r.areaid ? `<a class="ilink zone" href="?zone=${r.areaid}&gather=${id}">${esc(r.zone)}</a>` : esc(r.zone)), value: (r) => r.zone },
     { label: "Spawns", num: true, cell: (r) => r.count, value: (r) => r.count },

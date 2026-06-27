@@ -200,7 +200,7 @@ export const Q_ITEM_SOURCES = `SELECT source FROM item_sources WHERE item = ?1`;
 // letting the planner scan every object spawn (kind='o'): ~272ms -> ~1ms for a
 // common ore. drops -> gameobjects(data1) -> spawn_points(kind,id), all indexed.
 export const Q_ITEM_OBJECT_SPAWNS = `
-  SELECT g.name, s.zone AS areaid, z.name AS zone
+  SELECT g.entry, g.name, s.zone AS areaid, z.name AS zone
   FROM drops d
   CROSS JOIN gameobjects g ON g.data1 = d.owner
   CROSS JOIN spawn_points s ON s.kind = 'o' AND s.id = g.entry

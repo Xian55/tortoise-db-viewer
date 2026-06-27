@@ -545,6 +545,16 @@ async function testObject(id, expectName, expectItem) {
   return name.includes(expectName) && tabList.some((t) => t.includes("Contains")) && hasMap
     && items.some((t) => t.includes(expectItem)) && zones > 1 && active === 1 && src1 !== src2;
 }
+// Item "Gathered in" tab: the gathering object (herb/ore/egg node) links to ?object=.
+async function testItemGatherLink(id) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  await page.evaluate(() => { const t = [...document.querySelectorAll(".item-rel .tab")].find((x) => /Gathered in/.test(x.textContent)); if (t) t.click(); });
+  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  const objLink = (await page.$(".item-rel .tabpane:not(.hidden) a.ilink.object[href*='object=']")) !== null;
+  console.log(`item-gather-link ${id}: objLink=${objLink}`);
+  return objLink;
+}
 // Icons index: searchable grid; filter + page live in the URL (?icons=term&page=n),
 // non-renderable junk icons (BTN* etc.) are filtered out, and a deep-link pre-fills.
 async function testIcons() {
@@ -1176,6 +1186,7 @@ run(() => testSearchFaction("Darnassus"));      // unified search includes facti
 run(() => testSearchItemSet("Dreadnaught"));    // unified search includes item sets
 run(() => testSearchObjects("Copper Vein"));    // unified search includes objects
 run(() => testQuestObjectLink(42087));          // quest req-item object source links to ?object=
+run(() => testItemGatherLink(12467));           // item Gathered-in object links to ?object= (Alien Egg)
 run(() => testBrowse("itemsets", "", "Pieces"));      // item-sets browse category
 run(() => testBrowse("items", "&class=1", "Slots"));  // container browse shows slot count
 run(() => testBrowse("items", "&slot=18", "Slots"));  // Bag-slot filter (bags + quivers) shows slot count
