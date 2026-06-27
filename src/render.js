@@ -247,15 +247,18 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, se
   // flavor
   if (it.description) line(`"${esc(it.description)}"`, "tt-flavor");
 
-  // sell price
-  if (it.sell_price) {
-    const { g, s, c } = money(it.sell_price);
+  // vendor prices: Buy only when actually vendor-purchasable (build-db `buyable`),
+  // Sell whenever the item has a sell value.
+  const coins = (cp) => {
+    const { g, s, c } = money(cp);
     const parts = [];
     if (g) parts.push(`<span class="coin g">${g}</span>`);
     if (s) parts.push(`<span class="coin s">${s}</span>`);
     parts.push(`<span class="coin c">${c}</span>`);
-    line(`Sell Price: ${parts.join(" ")}`, "tt-sell");
-  }
+    return parts.join(" ");
+  };
+  if (it.buyable && it.buy_price) line(`Buy Price: ${coins(it.buy_price)}`, "tt-buy");
+  if (it.sell_price) line(`Sell Price: ${coins(it.sell_price)}`, "tt-sell");
 
   return `<div class="tooltip">${L.join("")}</div>`;
 }

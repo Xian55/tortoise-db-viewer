@@ -545,6 +545,20 @@ async function testObject(id, expectName, expectItem) {
   return name.includes(expectName) && tabList.some((t) => t.includes("Contains")) && hasMap
     && items.some((t) => t.includes(expectItem)) && zones > 1 && active === 1 && src1 !== src2;
 }
+// Item tooltip "Buy Price": shown only for vendor-purchasable items (build-db
+// `buyable`); a drop/quest item with no vendor shows Sell but not Buy.
+async function testItemBuyPrice(buyableId, dropId) {
+  const buyLine = async (id) => {
+    await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
+    await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
+    const buy = (await page.$(".tooltip .tt-buy")) !== null;
+    const sell = (await page.$(".tooltip .tt-sell")) !== null;
+    return { buy, sell };
+  };
+  const b = await buyLine(buyableId), d = await buyLine(dropId);
+  console.log(`item-buy-price: buyable#${buyableId}=${JSON.stringify(b)} drop#${dropId}=${JSON.stringify(d)}`);
+  return b.buy && b.sell && !d.buy;
+}
 // Item "Found in object" tab (merged gather + object source): the node links to
 // ?object= and the row carries spawn count + drop chance.
 async function testItemGatherLink(id) {
@@ -1221,6 +1235,7 @@ run(() => testBrowseSource("vendor"));
 run(() => testBrowseSource("worlddrop"));  // new World Drop source filter
 run(() => testBrowseSpellCat());           // spell category + class filters
 run(() => testItemSources(2770));
+run(() => testItemBuyPrice(68, 65));   // vendor item shows Buy Price; non-vendor item doesn't
 run(() => testItemSources(5031, "Unobtainable"));
 run(() => testUnobtainable());
 run(() => testFilter("bind", "2"));

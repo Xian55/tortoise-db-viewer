@@ -1140,6 +1140,14 @@ flagJunk("quests", "title");
 flagJunk("spells", "name", "rank");
 flagJunk("maps", "name");
 
+// Buyable flag: item_template.buy_price is set on most items but only meaningful
+// when a vendor actually sells it (~2.6k of ~20k) -- so the tooltip can show a
+// "Buy Price" without implying a drop/quest item is purchasable.
+db.exec(`ALTER TABLE items ADD COLUMN buyable INTEGER NOT NULL DEFAULT 0`);
+db.exec(`UPDATE items SET buyable = 1 WHERE buy_price > 0 AND entry IN (
+  SELECT item FROM npc_vendor UNION SELECT item FROM npc_vendor_template)`);
+console.log(`  buyable items: ${db.prepare("SELECT COUNT(*) n FROM items WHERE buyable=1").get().n}`);
+
 // ---- Full-text search over item / creature / quest names (unified search) ----
 console.log("Building FTS indexes...");
 db.exec(`CREATE VIRTUAL TABLE items_fts USING fts5(name, content='items', content_rowid='entry', tokenize='unicode61')`);

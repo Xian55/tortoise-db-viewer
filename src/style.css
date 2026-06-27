@@ -149,7 +149,9 @@ a.set-bonus-link:hover { text-decoration: underline; }
 /* spell links in the tooltip keep the green effect color (not the .ilink blue) */
 .tt-spell a.ilink { color: inherit; }
 .tt-flavor { color: var(--gold); font-style: italic; margin-top: 4px; }
+.tt-buy { color: var(--muted); margin-top: 6px; }
 .tt-sell { color: var(--muted); margin-top: 6px; }
+.tt-buy + .tt-sell { margin-top: 2px; }
 .coin { padding-left: 14px; background-size: 12px; background-repeat: no-repeat; background-position: right center; }
 .coin.g { color: #ffd100; } .coin.s { color: #c7c7cf; } .coin.c { color: #eda55f; }
 
