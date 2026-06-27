@@ -59,6 +59,22 @@ function discTexture() {
   return discTex;
 }
 
+// Soft radial-gradient blob for the farm heatmap. Drawn with additive blending so
+// overlapping spawn points accumulate into bright "where to farm" hotspots.
+let heatTex = null;
+function heatTexture() {
+  if (heatTex) return heatTex;
+  const s = 64, c = document.createElement("canvas");
+  c.width = c.height = s;
+  const x = c.getContext("2d");
+  const g = x.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  x.fillStyle = g; x.fillRect(0, 0, s, s);
+  heatTex = PIXI.Texture.from(c);
+  return heatTex;
+}
+
 let currentMap = null, currentOverlay = null;
 
 // The "minimap" POI sprite sheet (16 cols, 32px cells; src: WowClassicGrindBot).
@@ -159,15 +175,17 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   }
 
   const DOT_PX = 11; // on-screen diameter, constant across zoom
+  const HEAT_PX = 48; // heat blob screen diameter
   const overlay = L.pixiOverlay((utils) => {
     // the overlay scales the whole container by utils.getScale(zoom); counter it
-    // so dots stay a fixed screen size instead of growing as you zoom in.
-    const dotScale = (DOT_PX / disc.width) / utils.getScale(utils.getMap().getZoom());
+    // so dots/blobs stay a fixed screen size instead of growing as you zoom in.
+    const z = utils.getScale(utils.getMap().getZoom());
+    const dotScale = (DOT_PX / disc.width) / z;
     for (const sp of container.children) {
       if (!sp.visible) continue;
       const p = utils.latLngToLayerPoint(sp.ll);
       sp.x = p.x; sp.y = p.y;
-      sp.scale.set(dotScale);
+      sp.scale.set(sp.isHeat ? (HEAT_PX / sp.texture.width) / z : dotScale);
     }
     utils.getRenderer().render(container);
   }, container, { autoPreventDefault: false });
@@ -213,17 +231,23 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     for (const b of bosses) bossMark(toLatLng(b.x, b.y), b.name, b.entry).addTo(bossLayer);
   }
 
-  // focus layer: the gathered node's own icon, bright, zoomed-to.
-  let focusBounds = null, focusLayer = null;
+  // focus layer: the gathered node's own icon, bright, zoomed-to. Plus a Pixi heat
+  // layer (additive blobs) over the same points -> the "where to farm" density view.
+  let focusBounds = null, focusLayer = null, heatSprites = [];
   const FKEY = focus ? `★ ${focus.label}` : null;
   if (focus && focus.points.length) {
     const lls = [];
     focusLayer = L.layerGroup();
+    const htex = heatTexture();
     for (const p of focus.points) {
       const ll = toLatLng(p.x, p.y);
       lls.push(ll);
       const mark = focus.npc ? npcMark(ll, focus.label, focus.npc) : iconMark(ll, focus.icon, focus.label);
       mark.addTo(focusLayer);
+      const hs = new PIXI.Sprite(htex);
+      hs.anchor.set(0.5); hs.blendMode = PIXI.BLEND_MODES.ADD; hs.tint = 0xff7a18; hs.alpha = 0.35;
+      hs.ll = ll; hs.isHeat = true; hs.visible = false;
+      container.addChild(hs); heatSprites.push(hs);
     }
     focusBounds = L.latLngBounds(lls);
   }
@@ -240,7 +264,17 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   // All category layers start OFF (a normal zone view is a clean map you opt into
   // via the layer control); the boss + gather/focus layers are on by default.
   if (bossLayer) { overlays[`Bosses (${bosses.length})`] = bossLayer; bossLayer.addTo(map); }
-  if (focusLayer) { overlays[FKEY] = focusLayer; focusLayer.addTo(map); }
+  // With enough nodes the heatmap is the clean default "where to farm" view; the
+  // individual node icons would just clutter it, so they default off (toggleable).
+  // Few nodes -> the heatmap reads poorly, so show the exact icons instead. NPC
+  // focus (a single mob's spawns) keeps its pins on -- it's a "where is it" view.
+  const heatDefault = !focus?.npc && heatSprites.length >= 8;
+  if (focusLayer) { overlays[FKEY] = focusLayer; if (!heatDefault) focusLayer.addTo(map); }
+  if (heatSprites.length) {
+    const heatLayer = new DotLayer(heatSprites);
+    overlays["🔥 Farm heatmap"] = heatLayer;
+    if (heatDefault) heatLayer.addTo(map);
+  }
   for (const [key] of NPC_CATS) addCat(key, false);
   addCat("rare", false); // single toggle for all rare / rare-elite spawns
   const objKeys = [...cats.keys()].filter((k) => k.startsWith("Obj: "))

@@ -1022,6 +1022,17 @@ async function testZone(id, expectName) {
   return name.includes(expectName) && cats > 0 && tabList.length >= 3 && rows > 0;
 }
 
+// Farm heatmap: a dense gather focus (?zone&gather=item) adds a "Farm heatmap"
+// overlay and the map renders.
+async function testFarmHeatmap(areaid, item) {
+  await page.goto(`${BASE}?zone=${areaid}&gather=${item}`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await new Promise((r) => setTimeout(r, 600));
+  const overlays = await page.$$eval(".leaflet-control-layers-overlays label", (e) => e.map((x) => x.textContent.trim()));
+  const hasHeat = overlays.some((o) => /heatmap/i.test(o));
+  console.log(`farm-heatmap ${areaid}/${item}: overlays=[${overlays.join(", ")}] heat=${hasHeat}`);
+  return hasHeat;
+}
 // Zone Objects tab: gameobject names link to ?object= (not plain text).
 async function testZoneObjectLink(id) {
   await page.goto(`${BASE}?zone=${id}`, { waitUntil: WAIT, timeout: 60000 });
@@ -1153,6 +1164,7 @@ run(() => testQuestRepLink(14));
 run(() => testBrowse("factions", "", "Items"));
 run(() => testZone(12, "Elwynn"));
 run(() => testZoneObjectLink(400));              // zone Objects tab links to ?object=
+run(() => testFarmHeatmap(17, 2770));            // dense gather focus -> "Farm heatmap" overlay (Copper in Barrens)
 run(() => testZone(5561, "Balor"));             // 1.18.1 zone, populated via migrations
 run(() => testZoneQuests(331, 20));             // Ashenvale quests tab (incl. sub-zones)
 run(() => testZoneFloors(5204, 2));             // Black Morass: multi-floor switcher
