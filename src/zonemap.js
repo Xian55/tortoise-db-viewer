@@ -249,10 +249,11 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
 
   L.control.layers(null, overlays, { collapsed: true }).addTo(map);
   if (focusBounds && focusBounds.isValid()) {
-    // NPC view: a tight spawn cluster would otherwise slam to maxZoom. Keep zone
-    // context -- pad wide and cap the fit a couple levels above the whole-zone fit.
-    if (focus.npc) map.fitBounds(focusBounds.pad(0.6), { maxZoom: Math.min(map.getMaxZoom(), fitZoom + 2), padding: [30, 30] });
-    else map.fitBounds(focusBounds.pad(0.3));
+    // A tight spawn/node cluster would otherwise slam to maxZoom (object pages open
+    // zoomed way in, forcing a manual zoom-out). Keep zone context: pad wide and cap
+    // the fit a couple levels above the whole-zone fit, for both NPC and node focus.
+    const cap = { maxZoom: Math.min(map.getMaxZoom(), fitZoom + 2), padding: [30, 30] };
+    map.fitBounds(focusBounds.pad(focus.npc ? 0.6 : 0.4), cap);
   }
   setTimeout(() => { map.invalidateSize(); redraw(); }, 0);
 
