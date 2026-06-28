@@ -1184,11 +1184,12 @@ async function showQuest(id) {
     { id: "choice", label: "Choice of", ...regTable(itemCols, byRole("choice")) },
   ];
 
-  // Walkthrough link: a channel-scoped YouTube search for the quest title on the
-  // community "Turtle WoW Quests Archives" channel (one quest/video, start->finish).
-  // A search (not a hard-coded video id) so it needs no per-quest data and never
-  // goes stale -- if a video exists it's the top result.
-  const ytUrl = `https://www.youtube.com/@TurtleWoWQuests/search?query=${encodeURIComponent(q.title)}`;
+  // Walkthrough link: a channel-scoped YouTube search on the community "Turtle WoW
+  // Quests Archives" channel (one quest/video, start->finish). The channel titles
+  // its videos "[lvl] <title> | <zone> (ID: <questId>)", so we search title + the
+  // exact "(ID: <entry>)" token -> the right video lands as the top result. A search
+  // (not a hard-coded video id) needs no per-quest data and never goes stale.
+  const ytUrl = `https://www.youtube.com/@TurtleWoWQuests/search?query=${encodeURIComponent(`${q.title} (ID: ${q.entry})`)}`;
 
   app.innerHTML =
     `<div class="npc-page quest-page">

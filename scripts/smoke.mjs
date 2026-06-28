@@ -828,8 +828,8 @@ async function testQuestVideoLink(id) {
   const target = await page.$eval(".quest-page .yt-link", (e) => e.getAttribute("target"));
   const title = await page.$eval(".quest-page .npc-head h1", (e) => e.textContent.trim());
   const m = /\/@TurtleWoWQuests\/search\?query=(.+)$/.exec(href || "");
-  const queryOk = !!m && decodeURIComponent(m[1]) === title;
-  console.log(`quest-video-link ${id}: href="${href}" target=${target} queryMatchesTitle=${queryOk}`);
+  const queryOk = !!m && decodeURIComponent(m[1]) === `${title} (ID: ${id})`;
+  console.log(`quest-video-link ${id}: href="${href}" target=${target} queryMatchesTitleAndId=${queryOk}`);
   return queryOk && target === "_blank";
 }
 
