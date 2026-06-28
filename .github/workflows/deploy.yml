@@ -56,10 +56,16 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
-          # DB: immutable (cache-busted by ?v=); served as octet-stream
-          aws s3 cp public/data/tortoise.sqlite s3://tortoise-db-viewer/data/tortoise.sqlite \
+          # DB: immutable (cache-busted by ?v=). Pre-brotli it and store with
+          # Content-Encoding: br so the browser fetch() transparently decompresses
+          # (~73 MB -> ~13 MB on the wire; OPFS still caches the full DB). Same
+          # object key, so the client URL is unchanged. Compress via Bun's
+          # node:zlib (already installed -- no apt dependency).
+          bun -e 'import {brotliCompressSync,constants} from "node:zlib"; import {readFileSync,writeFileSync} from "node:fs"; const i=readFileSync("public/data/tortoise.sqlite"); const o=brotliCompressSync(i,{params:{[constants.BROTLI_PARAM_QUALITY]:11,[constants.BROTLI_PARAM_SIZE_HINT]:i.length}}); writeFileSync("public/data/tortoise.sqlite.br",o); console.log("brotli",i.length,"->",o.length);'
+          aws s3 cp public/data/tortoise.sqlite.br s3://tortoise-db-viewer/data/tortoise.sqlite \
             --endpoint-url "$R2_ENDPOINT" \
-            --content-type application/octet-stream
+            --content-type application/octet-stream \
+            --content-encoding br
           # version pointer: must never cache (drives cache invalidation)
           aws s3 cp public/data/version.json s3://tortoise-db-viewer/data/version.json \
             --endpoint-url "$R2_ENDPOINT" \
