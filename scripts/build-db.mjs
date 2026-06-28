@@ -1131,6 +1131,49 @@ console.log("Importing zones + spawn points...");
   }
 }
 
+// ---- Flight (taxi) network for the world map (scripts/data/taxi.json, client) ----
+// Nodes + route polylines + continent bounds. Faction is derived from the flight
+// graph itself -- BFS from the Alliance (Stormwind) and Horde (Orgrimmar) hubs over
+// the (undirected) path edges -- which is reliable where the mount-id heuristic is
+// not (neutral hubs like Booty Bay carry an Alliance mount model). Absent file =>
+// no flight map (graceful); the data is committed (CI can't read the client).
+{
+  const tf = join(ROOT, "scripts", "data", "taxi.json");
+  if (existsSync(tf)) {
+    console.log("Ingesting flight network...");
+    const taxi = JSON.parse(readFileSync(tf, "utf8"));
+    db.exec(`CREATE TABLE taxi_nodes (id INTEGER PRIMARY KEY, map INTEGER, x REAL, y REAL, name TEXT, faction TEXT)`);
+    db.exec(`CREATE TABLE taxi_pathnodes (path INTEGER, idx INTEGER, map INTEGER, x REAL, y REAL)`);
+    db.exec(`CREATE TABLE taxi_continents (map INTEGER PRIMARY KEY, dir TEXT, w INTEGER, h INTEGER, locleft REAL, locright REAL, loctop REAL, locbottom REAL)`);
+    // edge endpoints per path (TaxiPath) -> faction + route metadata
+    db.exec(`CREATE TABLE taxi_paths (id INTEGER PRIMARY KEY, "from" INTEGER, "to" INTEGER, cost INTEGER, faction TEXT)`);
+    const adj = new Map();
+    const link = (a, b) => { (adj.get(a) || adj.set(a, []).get(a)).push(b); };
+    for (const p of taxi.paths) { link(p.from, p.to); link(p.to, p.from); }
+    const bfs = (start) => { const seen = new Set([start]); const q = [start]; while (q.length) { const n = q.shift(); for (const m of (adj.get(n) || [])) if (!seen.has(m)) { seen.add(m); q.push(m); } } return seen; };
+    const byName = (re) => taxi.nodes.find((n) => re.test(n.name));
+    const aSet = byName(/Stormwind/) ? bfs(byName(/Stormwind/).id) : new Set();
+    const hSet = byName(/Orgrimmar/) ? bfs(byName(/Orgrimmar/).id) : new Set();
+    const faction = (id) => { const a = aSet.has(id), h = hSet.has(id); return a && h ? "N" : a ? "A" : h ? "H" : "N"; };
+    db.transaction(() => {
+      const insN = db.prepare(`INSERT INTO taxi_nodes VALUES (?,?,?,?,?,?)`);
+      for (const n of taxi.nodes) insN.run(n.id, n.map, n.x, n.y, n.name, faction(n.id));
+      const insP = db.prepare(`INSERT INTO taxi_paths VALUES (?,?,?,?,?)`);
+      // a path's faction = its endpoints' (both ends share a side, else neutral)
+      for (const p of taxi.paths) { const f = faction(p.from) === faction(p.to) ? faction(p.from) : "N"; insP.run(p.id, p.from, p.to, p.cost, f); }
+      const insW = db.prepare(`INSERT INTO taxi_pathnodes VALUES (?,?,?,?,?)`);
+      for (const w of taxi.pathnodes) insW.run(w.path, w.idx, w.map, w.x, w.y);
+      const insC = db.prepare(`INSERT INTO taxi_continents VALUES (?,?,?,?,?,?,?,?)`);
+      for (const c of taxi.continents) insC.run(c.mapId, c.dir, c.w, c.h, c.locleft, c.locright, c.loctop, c.locbottom);
+    })();
+    db.exec(`CREATE INDEX idx_taxi_pathnodes ON taxi_pathnodes(path, idx)`);
+    db.exec(`CREATE INDEX idx_taxi_nodes_map ON taxi_nodes(map)`);
+    console.log(`  taxi: ${taxi.nodes.length} nodes (A ${aSet.size}/H ${hSet.size}), ${taxi.paths.length} paths, ${taxi.pathnodes.length} waypoints`);
+  } else {
+    console.log("  (no scripts/data/taxi.json -- run scripts/extract-taxi.py; flight map disabled)");
+  }
+}
+
 // staging tables have served their purpose; drop them so VACUUM reclaims the
 // space (they hold the full raw mangos rows, much larger than the viewer tables).
 src.drop();

@@ -375,6 +375,44 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   return { map, toggleObject, toggleNpc };
 }
 
+// Flight-path world map: a continent parchment with the taxi nodes (faction-coloured
+// markers) + every route as a faint polyline. continent: { imgUrl, w, h, loc* }.
+// nodes: [{ x, y, name, faction }]. routes: [{ faction, pts:[{x,y}] }]. Reuses the
+// CRS.Simple + WorldMapArea-bounds projection from the zone map.
+const FACTION_COLOR = { A: "#5b86ff", H: "#e0524a", N: "#ffce4a" };
+export function initFlightMap(el, continent, nodes, routes, navigate) {
+  if (currentOverlay) { try { currentOverlay.destroy(); } catch (_) { /* gone */ } currentOverlay = null; }
+  if (currentMap) { currentMap.remove(); currentMap = null; }
+
+  const W = continent.w, H = continent.h;
+  const map = L.map(el, { crs: L.CRS.Simple, maxZoom: 4, preferCanvas: true, attributionControl: false, zoomControl: true });
+  currentMap = map;
+  const bounds = [[0, 0], [H, W]];
+  L.imageOverlay(continent.imgUrl, bounds, { pane: "tilePane" }).addTo(map);
+  map.fitBounds(bounds);
+  map.setMinZoom(map.getBoundsZoom(bounds));
+  map.setMaxBounds(L.latLngBounds(bounds).pad(0.2));
+
+  const dx = continent.loctop - continent.locbottom, dy = continent.locleft - continent.locright;
+  const toLatLng = (x, y) => L.latLng(dx ? (H * (x - continent.locbottom)) / dx : 0, dy ? (W * (continent.locleft - y)) / dy : 0);
+
+  // routes first (under the node markers), faint + faction-coloured
+  for (const r of routes) {
+    if (r.pts.length < 2) continue;
+    L.polyline(r.pts.map((p) => toLatLng(p.x, p.y)), { color: FACTION_COLOR[r.faction] || FACTION_COLOR.N, weight: 1.5, opacity: 0.35 }).addTo(map);
+  }
+  // nodes: a coloured dot per flight master, click-to-search by name
+  for (const n of nodes) {
+    L.marker(toLatLng(n.x, n.y), {
+      icon: L.divIcon({ html: `<span class="flight-node" style="background:${FACTION_COLOR[n.faction] || FACTION_COLOR.N}"></span>`, className: "flight-div", iconSize: [13, 13], iconAnchor: [6, 6] }),
+    }).bindTooltip(esc(n.name), { direction: "top" })
+      .on("click", () => navigate(`?search=${encodeURIComponent(n.name.split(",")[0])}`))
+      .addTo(map);
+  }
+  setTimeout(() => map.invalidateSize(), 0);
+  return map;
+}
+
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

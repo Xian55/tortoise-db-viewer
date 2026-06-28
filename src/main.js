@@ -106,6 +106,7 @@ function route() {
   else if (object) showObject(Number(object));
   else if (icon) showIcon(icon);
   else if (params.get("icons") !== null) showIcons();
+  else if (params.get("flights") !== null) showFlights(params.get("cont") ? Number(params.get("cont")) : 0);
   else if (params.get("dungeons") !== null) showDungeons();
   else if (term) { searchInput.value = term; showSearch(term); }
   else showHome();
@@ -125,6 +126,7 @@ function showHome() {
        <a class="nav" href="?browse=zones">zones</a> /
        <a class="nav" href="?dungeons">dungeons &amp; raids</a> /
        <a class="nav" href="?browse=objects">objects</a> /
+       <a class="nav" href="?flights">flight paths</a> /
        <a class="nav" href="?icons">icons</a>.
        Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?zone=ID</code>.</p>
     <p class="muted">Examples:
@@ -1464,6 +1466,42 @@ async function showDungeons() {
   const t = regTable(cols, rows);
   app.innerHTML = `<div class="results"><h1>Dungeons &amp; Raids</h1>${t.html}</div>`;
   mountTables();
+}
+
+// Flight-path world map: a continent parchment with every flight master (faction-
+// coloured) + all routes as polylines. ?flights[&cont=0|1]; switch continents.
+async function showFlights(mapId = 0) {
+  document.title = "Flight Paths - Tortoise-WoW DB";
+  app.innerHTML = `<div class="loading">Loading…</div>`;
+  let continents, cont, nodes, routeRows;
+  try {
+    continents = await query(Q.Q_TAXI_CONTINENTS);
+    if (!continents.length) { app.innerHTML = `<div class="home"><p>No flight-path data in this build.</p></div>`; return; }
+    cont = continents.find((c) => c.map === mapId) || continents[0];
+    [nodes, routeRows] = await Promise.all([query(Q.Q_TAXI_NODES, [cont.map]), query(Q.Q_TAXI_ROUTES, [cont.map])]);
+  } catch (e) { app.innerHTML = errorBox(e); return; }
+  // group route waypoints (ordered) into one polyline per path
+  const byPath = new Map();
+  for (const r of routeRows) { let g = byPath.get(r.path); if (!g) { g = { faction: r.faction, pts: [] }; byPath.set(r.path, g); } g.pts.push({ x: r.x, y: r.y }); }
+  const routes = [...byPath.values()];
+
+  const switcher = `<div id="contswitch" class="floor-switch">${continents.map((c) =>
+    `<button data-cont="${c.map}"${c.map === cont.map ? ' class="active"' : ""}>${esc(CONTINENT[c.map] || c.dir)}</button>`).join("")}</div>`;
+  const dot = (col, label) => `<span class="flight-leg"><span class="flight-node" style="background:${col};position:static;display:inline-block"></span> ${label}</span>`;
+  app.innerHTML = `<div class="zone-page">
+    <div class="npc-head"><h1>Flight Paths</h1>
+      <div class="npc-meta muted">${nodes.length} flight masters · ${routes.length} routes · ${dot("#5b86ff", "Alliance")} ${dot("#e0524a", "Horde")} ${dot("#ffce4a", "Neutral")}</div>
+    </div>
+    ${switcher}
+    <div id="zonemap"></div>
+  </div>`;
+  const el = document.getElementById("zonemap");
+  try {
+    const { initFlightMap } = await import("./zonemap.js");
+    initFlightMap(el, { ...cont, imgUrl: `${ASSETS_BASE}maps/continent-${cont.map}.webp` }, nodes, routes, navigate);
+  } catch (e) { el.innerHTML = errorBox(e); }
+  const csw = document.getElementById("contswitch");
+  if (csw) csw.addEventListener("click", (e) => { const b = e.target.closest("button[data-cont]"); if (b) navigate(`?flights&cont=${b.dataset.cont}`); });
 }
 
 // Legacy ?dungeon=<mapid> route. Dungeons/raids are now rendered by the unified

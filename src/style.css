@@ -156,6 +156,11 @@ a.set-bonus-link:hover { text-decoration: underline; }
 /* farming-route waypoints on the zone map (numbered gold circles) */
 .route-div { background: none; border: none; }
 .route-stop { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--gold); color: #000; font-weight: 700; font-size: 12px; border: 2px solid #000; box-shadow: 0 0 0 1px var(--gold); }
+
+/* flight-path world map: faction-coloured flight-master dots + legend */
+.flight-div { background: none; border: none; }
+.flight-node { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 0 1px rgba(255,255,255,.35); }
+.flight-leg { white-space: nowrap; margin-left: 8px; }
 .coin { padding-left: 14px; background-size: 12px; background-repeat: no-repeat; background-position: right center; }
 .coin.g { color: #ffd100; } .coin.s { color: #c7c7cf; } .coin.c { color: #eda55f; }
 

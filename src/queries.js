@@ -421,6 +421,15 @@ export const Q_ICON_SPELLS = `
   SELECT entry, name, icon, skill FROM spells
   WHERE icon = ?1 AND hidden = 0 ORDER BY name LIMIT 1000`;
 
+// ---- flight (taxi) network world map ----
+export const Q_TAXI_CONTINENTS = `SELECT map, dir, w, h, locleft, locright, loctop, locbottom FROM taxi_continents ORDER BY map`;
+export const Q_TAXI_NODES = `SELECT id, x, y, name, faction FROM taxi_nodes WHERE map = ?1 ORDER BY name`;
+// every route's waypoints on a continent (grouped by path client-side into polylines).
+export const Q_TAXI_ROUTES = `
+  SELECT pn.path, pn.x, pn.y, p.faction
+  FROM taxi_pathnodes pn JOIN taxi_paths p ON p.id = pn.path
+  WHERE pn.map = ?1 ORDER BY pn.path, pn.idx`;
+
 // ---- dungeons / raids ----
 export const Q_DUNGEONS = `SELECT id, name, type, min_level, max_level FROM maps WHERE type IN (1,2) AND name <> '' AND hidden = 0 ORDER BY type, name`;
 export const Q_DUNGEON = `SELECT id, name, type FROM maps WHERE id = ?1`;

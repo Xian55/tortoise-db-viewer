@@ -501,6 +501,22 @@ async function testBrowseCriteria() {
     && critRows === 2 && cstats.includes("agi") && cstats.includes("sta");
 }
 
+// Flight-path world map: faction-coloured nodes on a continent parchment, with a
+// continent switcher that swaps the map.
+async function testFlights() {
+  await page.goto(`${BASE}?flights`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await new Promise((r) => setTimeout(r, 500));
+  const nodes = await page.$$eval(".flight-node", (e) => e.length);
+  const conts = await page.$$eval("#contswitch button", (b) => b.length).catch(() => 0);
+  const src1 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src"));
+  await page.evaluate(() => { const b = [...document.querySelectorAll("#contswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await new Promise((r) => setTimeout(r, 500));
+  const src2 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src"));
+  console.log(`flights: nodes=${nodes} continents=${conts} src1=${src1} src2=${src2} switched=${src1 !== src2}`);
+  return nodes > 20 && conts === 2 && src1 !== src2;
+}
 async function testDungeons() {
   await page.goto(`${BASE}?dungeons`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
@@ -1216,6 +1232,7 @@ run(() => testNpcMapZone(14890, 331));        // Taerar -> Ashenvale (exact ADT 
 run(() => testNpcMapZone(60735, 5103));       // Hateforge Quarry boss stays in the instance (was continent zone 46)
 run(() => testNpcLocationLabel(596, 40));
 run(() => testDungeons());
+run(() => testFlights());                        // flight-path world map + continent switch
 run(() => testObjectsBrowse());                       // objects finder (interactive gameobjects)
 run(() => testObject(1731, "Copper Vein", "Copper Ore"));  // object detail: contains item + map
 run(() => testIcons());                               // icons index: grid + filter
