@@ -553,6 +553,15 @@ async function testObjectFocusZone(id, areaid) {
   console.log(`object-focus-zone ${id}&fz=${areaid}: map=${src} active="${active}"`);
   return src.includes(`/${areaid}.webp`);
 }
+// ?npc=ID&fz=<areaid>: a mob's map opens on the farmed zone (when it spawns there),
+// not its busiest one -- the zone Farming tab links mobs here too.
+async function testNpcFocusZone(id, areaid) {
+  await page.goto(`${BASE}?npc=${id}&fz=${areaid}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  const src = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src"));
+  console.log(`npc-focus-zone ${id}&fz=${areaid}: map=${src}`);
+  return src.includes(`/${areaid}.webp`);
+}
 async function testObject(id, expectName, expectItem) {
   await page.goto(`${BASE}?object=${id}`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".npc-head h1", { timeout: 40000 });
@@ -1247,6 +1256,7 @@ run(() => testFlights());                        // flight-path world map + cont
 run(() => testObjectsBrowse());                       // objects finder (interactive gameobjects)
 run(() => testObject(1731, "Copper Vein", "Copper Ore"));  // object detail: contains item + map
 run(() => testObjectFocusZone(2852, 10));   // Solid Chest opens on the focused zone (Duskwood) via &fz
+run(() => testNpcFocusZone(524, 10));       // Rockhide Boar (busiest Elwynn) opens on Duskwood via &fz
 run(() => testIcons());                               // icons index: grid + filter
 run(() => testIcon("INV_Ore_Copper_01", "Copper Ore"));  // icon detail: items using it
 run(() => testDungeon(36, "Deadmines"));          // ?dungeon= redirects to the zone view
