@@ -542,6 +542,17 @@ async function testObjectsBrowse() {
 // Object detail: aggregates same-name entries -> Contains tab links the looted item
 // (Copper Vein -> Copper Ore); a multi-zone node gets a zone switcher that re-draws
 // the map (one button per zone), like the dungeon floor switcher.
+// ?object=ID&fz=<areaid> opens the object map on that zone (not the busiest) -- the
+// zone Farming tab links here so a node opens in the zone you're farming.
+async function testObjectFocusZone(id, areaid) {
+  await page.goto(`${BASE}?object=${id}&fz=${areaid}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await new Promise((r) => setTimeout(r, 300));
+  const src = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src"));
+  const active = await page.$eval("#objzoneswitch button.active", (e) => e.textContent.trim()).catch(() => "");
+  console.log(`object-focus-zone ${id}&fz=${areaid}: map=${src} active="${active}"`);
+  return src.includes(`/${areaid}.webp`);
+}
 async function testObject(id, expectName, expectItem) {
   await page.goto(`${BASE}?object=${id}`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".npc-head h1", { timeout: 40000 });
@@ -1235,6 +1246,7 @@ run(() => testDungeons());
 run(() => testFlights());                        // flight-path world map + continent switch
 run(() => testObjectsBrowse());                       // objects finder (interactive gameobjects)
 run(() => testObject(1731, "Copper Vein", "Copper Ore"));  // object detail: contains item + map
+run(() => testObjectFocusZone(2852, 10));   // Solid Chest opens on the focused zone (Duskwood) via &fz
 run(() => testIcons());                               // icons index: grid + filter
 run(() => testIcon("INV_Ore_Copper_01", "Copper Ore"));  // icon detail: items using it
 run(() => testDungeon(36, "Deadmines"));          // ?dungeon= redirects to the zone view

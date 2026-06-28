@@ -646,6 +646,10 @@ async function showNpc(id) {
   if (zoneIds.length) for (const z of await query(Q.qZonesByIds(zoneIds.length), zoneIds)) zinfo.set(z.areaid, z);
   let mapZone = null, top = -1;
   for (const [aid, n] of zoneCount) if (n > top && zinfo.get(aid)) { top = n; mapZone = zinfo.get(aid); }
+  // ?fz=<areaid> (focus zone, e.g. from the zone Farming tab) opens the map on that
+  // zone instead of the busiest one, when the NPC actually spawns there.
+  const fz = Number(new URLSearchParams(location.search).get("fz")) || 0;
+  if (fz && zinfo.get(fz)) mapZone = zinfo.get(fz);
   const mapPts = mapZone ? npcSpawns.filter((s) => s.zone === mapZone.areaid) : [];
   const bestZoneForMap = (mid) => {
     const mm = byMapZone.get(mid); if (!mm) return null;
@@ -783,7 +787,11 @@ async function showObject(id) {
     .map(([aid, n]) => ({ zone: zinfo.get(aid), n }))
     .filter((z) => z.zone)
     .sort((a, b) => b.n - a.n);
-  const activeZone = objZones.length ? objZones[0].zone : null;
+  // ?fz=<areaid> (focus zone) opens the map on that zone -- e.g. the zone Farming
+  // tab links here so clicking a node shows it in the zone you're farming, not the
+  // busiest one. Falls back to the busiest zone.
+  const fz = Number(new URLSearchParams(location.search).get("fz")) || 0;
+  const activeZone = (fz && (objZones.find((z) => z.zone.areaid === fz) || {}).zone) || (objZones.length ? objZones[0].zone : null);
 
   const lootCols = [
     { label: "Item", cell: (d) => itemLink(d.entry, d.name, d.quality, d.icon), value: (d) => d.name },
@@ -1366,7 +1374,8 @@ async function showZone(id, gatherItem = null) {
   // Farming: best gold targets, sorted by total expected drop value. Each links to
   // its own page where the per-target farming route is shown.
   const farmCols = [
-    { label: "Target", cell: (r) => (r.kind === "c" ? npcLink(r.entry, r.name) : objectLink(r.entry, r.name)), value: (r) => r.name },
+    // link to the target's page focused on THIS zone (&fz) so its map opens here
+    { label: "Target", cell: (r) => `<a class="ilink ${r.kind === "c" ? "npc" : "object"}" href="?${r.kind === "c" ? "npc" : "object"}=${r.entry}&fz=${z.areaid}">${esc(r.name)}</a>`, value: (r) => r.name },
     { label: "Type", cls: "muted", cell: (r) => (r.kind === "c" ? "Mob" : (GAMEOBJECT_TYPE[r.type] || "Object")), value: (r) => (r.kind === "c" ? "Mob" : "Object") },
     { label: "Level", num: true, cls: "muted", cell: (r) => (r.kind === "c" ? lvlRange(r) : ""), value: (r) => r.level_max || r.level_min || 0 },
     { label: "Spawns", num: true, cls: "muted", cell: (r) => r.count, value: (r) => r.count },
