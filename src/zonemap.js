@@ -61,6 +61,28 @@ function discTexture() {
 
 let currentMap = null, currentOverlay = null;
 
+// Right-click marker menu (wowhead-style): copy a spawn's in-game map coordinate or
+// a TomTom /way command -- for the clicked marker, or every spawn of that NPC/node.
+// One body-level element, refilled + repositioned per open (it must escape the map's
+// clipped overflow). No "In-Game Map Pin": the /way map-pin API doesn't exist in 1.12.
+let ctxEl = null;
+function ctxMenuEl() {
+  if (ctxEl) return ctxEl;
+  ctxEl = document.createElement("div");
+  ctxEl.className = "map-ctx";
+  ctxEl.style.display = "none";
+  document.body.appendChild(ctxEl);
+  const hide = () => { ctxEl.style.display = "none"; };
+  // Dismiss on an outside left-click (a right-click fires `contextmenu`, not
+  // `click`, so the opening gesture can't immediately self-close the menu), Escape,
+  // or window blur. (No scroll-dismiss: the menu is position:fixed, and Leaflet's
+  // init layout fires a window scroll that would otherwise close it instantly.)
+  document.addEventListener("click", (e) => { if (!ctxEl.contains(e.target)) hide(); }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+  window.addEventListener("blur", hide);
+  return ctxEl;
+}
+
 // The "minimap" POI sprite sheet (16 cols, 32px cells; src: WowClassicGrindBot).
 // Elite (the skull) sits at grid [11,14] -> used for boss markers.
 const POI_URL = `${ASSETS_BASE}icons/poi-atlas.webp`;
@@ -108,6 +130,47 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     dy ? (W * (zone.locleft - y)) / dy : 0,
   );
 
+  // world (x,y) -> the in-game zone map coordinate WoW shows as "X, Y" (0-100).
+  const toMapCoord = (x, y) => [
+    dy ? (100 * (zone.locleft - y)) / dy : 0,   // X (horizontal)
+    dx ? (100 * (zone.loctop - x)) / dx : 0,    // Y (vertical)
+  ];
+  const fmtCoord = (p) => { const [cx, cy] = toMapCoord(p.x, p.y); return `${cx.toFixed(1)}, ${cy.toFixed(1)}`; };
+  const fmtWay = (p, label) => {
+    const [cx, cy] = toMapCoord(p.x, p.y);
+    return `/way ${zone.name || ""} ${cx.toFixed(1)} ${cy.toFixed(1)}${label ? " " + label : ""}`.replace(/\s+/g, " ").trim();
+  };
+  const copyText = (t) => { try { return navigator.clipboard.writeText(t); } catch (_) { return Promise.resolve(); } };
+  // Open the copy menu at the cursor for a marker: `point` is its world coord,
+  // `all` every world coord of the same entry (>1 -> a "Copy All" section).
+  function openMarkerMenu(domEv, point, all, label) {
+    if (!domEv) return;
+    domEv.preventDefault();
+    const m = ctxMenuEl();
+    m.innerHTML = "";
+    const section = (title, rows) => {
+      const h = L.DomUtil.create("div", "map-ctx-h", m);
+      h.textContent = title;
+      for (const [t, fn] of rows) {
+        const b = L.DomUtil.create("button", "map-ctx-i", m);
+        b.type = "button"; b.textContent = t;
+        b.addEventListener("click", () => { fn(); m.style.display = "none"; });
+      }
+    };
+    section("Copy", [
+      ["Coordinates", () => copyText(fmtCoord(point))],
+      ["TomTom Command", () => copyText(fmtWay(point, label))],
+    ]);
+    if (all && all.length > 1) section("Copy All", [
+      ["Coordinates", () => copyText(all.map(fmtCoord).join("\n"))],
+      ["TomTom Command", () => copyText(all.map((p) => fmtWay(p, label)).join("\n"))],
+    ]);
+    m.style.display = "block";
+    const r = m.getBoundingClientRect();
+    m.style.left = `${Math.max(6, Math.min(domEv.clientX, window.innerWidth - r.width - 6))}px`;
+    m.style.top = `${Math.max(6, Math.min(domEv.clientY, window.innerHeight - r.height - 6))}px`;
+  }
+
   // ---- Pixi overlay: category dots (high volume) ----
   const container = new PIXI.Container();
   const cats = new Map(); // key -> { label, sprites:[] }
@@ -117,11 +180,11 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     return g;
   };
   const disc = discTexture();
-  const addDot = (key, label, color, ll, html, href) => {
+  const addDot = (key, label, color, ll, html, href, wpt) => {
     const sp = new PIXI.Sprite(disc);
     sp.anchor.set(0.5);
     sp.tint = color;
-    sp.ll = ll; sp.label = html; sp.href = href; sp.visible = false;
+    sp.ll = ll; sp.label = html; sp.href = href; sp.wpt = wpt; sp.visible = false;
     container.addChild(sp);
     cat(key, label).sprites.push(sp);
   };
@@ -133,29 +196,30 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   for (const s of spawns) {
     const ll = toLatLng(s.x, s.y);
     let e = npcByEntry.get(s.entry);
-    if (!e) { e = { name: s.name || `NPC #${s.entry}`, lls: [] }; npcByEntry.set(s.entry, e); }
-    e.lls.push(ll);
+    if (!e) { e = { name: s.name || `NPC #${s.entry}`, lls: [], pts: [] }; npcByEntry.set(s.entry, e); }
+    e.lls.push(ll); e.pts.push({ x: s.x, y: s.y });
     if (!focus) {
       const html = `${esc(s.name) || "?"} <span class="dim">(${lvl(s)})</span>`;
+      const wpt = { x: s.x, y: s.y };
       for (const role of npcRolesFor(s)) {
         const def = NPC_CATS.find((c) => c[0] === role);
-        addDot(role, def ? def[1] : role, hexToNum(NPC_COLOR[role]), ll, html, `?npc=${s.entry}`);
+        addDot(role, def ? def[1] : role, hexToNum(NPC_COLOR[role]), ll, html, `?npc=${s.entry}`, wpt);
       }
       // rares get an extra dot in their own cross-cutting category (rank 2/4)
       if (s.rank === 2 || s.rank === 4) {
         const rk = s.rank === 4 ? "Rare Elite" : "Rare";
         addDot("rare", "Rare / Rare Elite", hexToNum(RARE_COLOR), ll,
-          `${esc(s.name) || "?"} <span class="dim">(${lvl(s)}) · ${rk}</span>`, `?npc=${s.entry}`);
+          `${esc(s.name) || "?"} <span class="dim">(${lvl(s)}) · ${rk}</span>`, `?npc=${s.entry}`, wpt);
       }
     }
   }
   const objByEntry = new Map();
   for (const o of objects) {
     const ll = toLatLng(o.x, o.y);
-    if (!focus) addDot(objTypeLabel(o.type), objTypeLabel(o.type), hexToNum(OBJ_COLOR), ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`);
+    if (!focus) addDot(objTypeLabel(o.type), objTypeLabel(o.type), hexToNum(OBJ_COLOR), ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y });
     let e = objByEntry.get(o.entry);
-    if (!e) { e = { name: o.name || `Object #${o.entry}`, lls: [] }; objByEntry.set(o.entry, e); }
-    e.lls.push(ll);
+    if (!e) { e = { name: o.name || `Object #${o.entry}`, lls: [], pts: [] }; objByEntry.set(o.entry, e); }
+    e.lls.push(ll); e.pts.push({ x: o.x, y: o.y });
   }
 
   const DOT_PX = 11; // on-screen diameter, constant across zoom
@@ -182,8 +246,12 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   });
 
   // ---- icon markers (few): a gathered node + toggled objects, as HTML ----
+  // bubblingMouseEvents:false on every HTML marker -> its click/contextmenu don't
+  // also bubble to the map-level dot hit-test (which would double-open the menu /
+  // mis-navigate to a nearby category dot).
   const iconMark = (ll, icon, label) => L.marker(ll, {
     icon: L.divIcon({ html: iconMarker(icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] }),
+    bubblingMouseEvents: false,
   }).bindTooltip(label, { direction: "top" });
   // toggled NPC spawns: a bright pin (creatures have no item icon), a distinct
   // colour per creature so multiple toggled NPCs are tellable apart; clicking it
@@ -192,6 +260,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   const npcMark = (ll, label, entry) => {
     const m = L.marker(ll, {
       icon: L.divIcon({ html: `<span class="map-pin" style="background:${npcColor(entry)}"></span>`, className: "poi-div", iconSize: [16, 16], iconAnchor: [8, 8] }),
+      bubblingMouseEvents: false,
     }).bindTooltip(label, { direction: "top" });
     if (entry) m.on("click", () => navigate(`?npc=${entry}`));
     return m;
@@ -200,7 +269,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   const bossMark = (ll, name, entry) => {
     const m = L.marker(ll, {
       icon: L.divIcon({ html: `<span class="map-boss" style="${poiSpriteStyle(BOSS_GRID, 26)}"></span>`, className: "poi-div", iconSize: [26, 26], iconAnchor: [13, 13] }),
-      zIndexOffset: 1000,
+      zIndexOffset: 1000, bubblingMouseEvents: false,
     }).bindTooltip(esc(name), { direction: "top" });
     if (entry) m.on("click", () => navigate(`?npc=${entry}`));
     return m;
@@ -210,7 +279,11 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   let bossLayer = null;
   if (bosses && bosses.length) {
     bossLayer = L.layerGroup();
-    for (const b of bosses) bossMark(toLatLng(b.x, b.y), b.name, b.entry).addTo(bossLayer);
+    for (const b of bosses) {
+      const m = bossMark(toLatLng(b.x, b.y), b.name, b.entry);
+      m.on("contextmenu", (e) => openMarkerMenu(e.originalEvent, b, [b], b.name));
+      m.addTo(bossLayer);
+    }
   }
 
   // focus layer: the gathered node's own icon, bright, zoomed-to.
@@ -223,6 +296,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
       const ll = toLatLng(p.x, p.y);
       lls.push(ll);
       const mark = focus.npc ? npcMark(ll, focus.label, focus.npc) : iconMark(ll, focus.icon, focus.label);
+      mark.on("contextmenu", (e) => openMarkerMenu(e.originalEvent, p, focus.points, focus.label));
       mark.addTo(focusLayer);
     }
     focusBounds = L.latLngBounds(lls);
@@ -341,6 +415,20 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     const sp = nearest(e.containerPoint);
     if (sp && sp.href) navigate(sp.href);
   });
+  // right-click a category dot -> the same copy menu. "Copy All" pulls every spawn
+  // of that entry (resolved from the npc/obj index via the dot's href).
+  map.on("contextmenu", (e) => {
+    const sp = nearest(e.containerPoint);
+    if (!sp || !sp.wpt) return;
+    let all = [sp.wpt], label = "";
+    const mm = /\?(npc|object)=(\d+)/.exec(sp.href || "");
+    if (mm) {
+      const ent = (mm[1] === "npc" ? npcByEntry : objByEntry).get(Number(mm[2]));
+      if (ent) { label = ent.name; if (ent.pts && ent.pts.length) all = ent.pts; }
+    }
+    if (!label && sp.label) label = sp.label.replace(/<[^>]*>/g, "").trim();
+    openMarkerMenu(e.originalEvent, sp.wpt, all, label);
+  });
 
   // ---- Objects-tab toggle: show/hide one object's icon markers (HTML) ----
   const objLayers = new Map();
@@ -365,7 +453,11 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
       if (!rec) {
         const e = npcByEntry.get(entry);
         rec = L.layerGroup();
-        if (e) for (const ll of e.lls) npcMark(ll, e.name, entry).addTo(rec);
+        if (e) e.lls.forEach((ll, i) => {
+          const m = npcMark(ll, e.name, entry);
+          m.on("contextmenu", (ev) => openMarkerMenu(ev.originalEvent, e.pts[i], e.pts, e.name));
+          m.addTo(rec);
+        });
         npcLayers.set(entry, rec);
       }
       rec.addTo(map);

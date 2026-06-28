@@ -283,6 +283,15 @@ a.ilink.zone { color: #8fd18f; }
 /* boss marker: the skull POI sprite, drawn above the dots with a dark halo */
 .map-boss { display: block; background-repeat: no-repeat; cursor: pointer;
   filter: drop-shadow(0 0 2px #000) drop-shadow(0 0 2px #000); }
+/* right-click marker menu (copy coordinates / TomTom command), wowhead-style */
+.map-ctx { position: fixed; z-index: 10000; min-width: 152px; padding: 4px 0;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .5); font-size: 13px; }
+.map-ctx-h { padding: 5px 12px 3px; font-weight: 700; color: var(--text); }
+.map-ctx-i { display: block; width: 100%; box-sizing: border-box; text-align: left;
+  padding: 4px 12px 4px 20px; background: none; border: none; cursor: pointer;
+  color: var(--gold); font: inherit; }
+.map-ctx-i:hover { background: var(--panel2); }
 /* Objects-tab "add to map" toggle */
 .mapchk { display: inline-flex; align-items: center; cursor: pointer; }
 /* Quest chain tab: the current quest is bolded gold in the table */

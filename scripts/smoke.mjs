@@ -416,6 +416,63 @@ async function testNpcMap(id) {
   return hasMap && pins > 0;
 }
 
+// Right-clicking an NPC-page spawn pin opens a wowhead-style copy menu (Copy /
+// Copy All -> Coordinates, TomTom command). Torn Fin Oracle (2376) has many spawns
+// (so "Copy All" shows); the first item copies a "X.X, Y.Y" coordinate pair.
+async function testNpcMapMenu(id) {
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-marker-icon", { timeout: 30000 });
+  await page.click("#zonemap .leaflet-marker-icon", { button: "right" });
+  await page.waitForSelector(".map-ctx", { visible: true, timeout: 10000 }).catch(() => {});
+  const headers = await page.$$eval(".map-ctx .map-ctx-h", (e) => e.map((h) => h.textContent.trim()));
+  const items = await page.$$eval(".map-ctx .map-ctx-i", (e) => e.map((b) => b.textContent.trim()));
+  await page.click(".map-ctx .map-ctx-i");   // first item = Copy > Coordinates
+  const copied = await page.evaluate(() => window.__copied);
+  const coordOk = /^-?\d+\.\d, -?\d+\.\d$/.test(copied || "");
+  console.log(`npc-map-menu ${id}: headers=[${headers.join(",")}] items=[${items.join(",")}] copied="${copied}" coordOk=${coordOk}`);
+  return headers.includes("Copy") && headers.includes("Copy All")
+    && items.filter((t) => t === "Coordinates").length === 2
+    && items.filter((t) => /TomTom/.test(t)).length === 2 && coordOk;
+}
+
+// The same copy menu works on the zone-page Pixi category dots (GPU sprites, no
+// DOM): enable the dense Quest Givers layer, sweep the cursor until the hover
+// tooltip reveals a dot, right-click it -> Copy > Coordinates copies "X.X, Y.Y".
+async function testZoneDotMenu(id) {
+  await page.setViewport({ width: 1280, height: 900 });
+  await page.goto(`${BASE}?zone=${id}`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await new Promise((r) => setTimeout(r, 600));
+  // open the collapsed layer control + tick the densest category
+  await page.evaluate(() => { const t = document.querySelector(".leaflet-control-layers-toggle"); if (t) t.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
+  await new Promise((r) => setTimeout(r, 200));
+  await page.evaluate(() => {
+    const ls = [...document.querySelectorAll(".leaflet-control-layers-overlays label")];
+    const target = ls.find((l) => /Quest Givers/i.test(l.textContent)) || ls.find((l) => /\(\d{2,}\)/.test(l.textContent)) || ls[0];
+    if (target) target.querySelector("input").click();
+  });
+  await new Promise((r) => setTimeout(r, 400));
+  const box = await page.$eval("#zonemap", (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+  let found = null;
+  for (let gy = 40; gy < box.h - 40 && !found; gy += 8) {
+    for (let gx = 40; gx < box.w - 40; gx += 8) {
+      const px = box.x + gx, py = box.y + gy;
+      await page.mouse.move(px, py);
+      if (await page.$eval(".pixi-tip", (e) => getComputedStyle(e).display === "block").catch(() => false)) { found = { px, py }; break; }
+    }
+  }
+  if (!found) { console.log(`zone-dot-menu ${id}: no dot found`); return false; }
+  await page.mouse.click(found.px, found.py, { button: "right" });
+  await page.waitForSelector(".map-ctx", { visible: true, timeout: 5000 }).catch(() => {});
+  const headers = await page.$$eval(".map-ctx .map-ctx-h", (e) => e.map((h) => h.textContent.trim()));
+  const items = await page.$$eval(".map-ctx .map-ctx-i", (e) => e.map((b) => b.textContent.trim()));
+  await page.click(".map-ctx .map-ctx-i");   // Copy > Coordinates
+  const copied = await page.evaluate(() => window.__copied);
+  const coordOk = /^-?\d+\.\d, -?\d+\.\d$/.test(copied || "");
+  console.log(`zone-dot-menu ${id}: at=${JSON.stringify(found)} headers=[${headers.join(",")}] items=[${items.join(",")}] copied="${copied}" coordOk=${coordOk}`);
+  return headers.includes("Copy") && items.includes("Coordinates") && items.some((t) => /TomTom/.test(t)) && coordOk;
+}
+
 // The NPC-page map uses each spawn's exact precomputed home zone (ADT-derived),
 // so overlapping WMA boxes no longer mis-assign: NPC 596 (Deadmines-entrance spawn)
 // resolves to its real terrain zone Westfall (40), not Stranglethorn.
@@ -1228,6 +1285,7 @@ run(() => testQuestRepLink(14));
 run(() => testBrowse("factions", "", "Items"));
 run(() => testZone(12, "Elwynn"));
 run(() => testZoneObjectLink(400));              // zone Objects tab links to ?object=
+run(() => testZoneDotMenu(12));                  // right-click a Pixi category dot -> copy menu
 run(() => testFarmRoute(17, 2770));              // gather focus -> numbered farming-route circuit (Copper in Barrens)
 run(() => testZoneFarm(17));                     // zone Farming tab (best gold targets) + Gold route overlay
 run(() => testZone(5561, "Balor"));             // 1.18.1 zone, populated via migrations
@@ -1242,6 +1300,7 @@ run(() => testTrainerCols(5038));  // single-profession trainer hides Profession
 run(() => testNpc(10981, "", "Skinning"));
 run(() => testNpcTypeLink(2376));
 run(() => testNpcMap(2376));  // NPC page shows its zone map + spawn pins
+run(() => testNpcMapMenu(2376));  // right-click pin -> copy coords / TomTom menu
 run(() => testNpcSells(1249, 5));  // template-vendor (vendor_id) stock on Sells tab
 run(() => testNpcNoSpawn(80101));  // no-spawn NPC shows an explanatory note
 run(() => testNpcMapZone(596, 40));    // exact ADT area: Deadmines-entrance spawn is Westfall terrain
