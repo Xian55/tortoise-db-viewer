@@ -44,10 +44,10 @@ function wireTabs() {
 // ---- routing ----
 function navigate(url, replace = false) {
   history[replace ? "replaceState" : "pushState"]({}, "", url);
-  route();
+  renderRoute();
   window.scrollTo(0, 0); // new view starts at the top (SPA nav keeps scroll otherwise)
 }
-window.addEventListener("popstate", route);
+window.addEventListener("popstate", renderRoute);
 
 document.addEventListener("click", (e) => {
   const a = e.target.closest("a.ilink, a.nav");
@@ -111,6 +111,42 @@ function route() {
   else if (params.get("dungeons") !== null) return showDungeons();
   else if (term) { searchInput.value = term; return showSearch(term); }
   else return showHome();
+}
+
+// Detail routes -> their prerendered OG-stub path prefix (scripts/build-og.mjs).
+// Sharing that /<prefix>/<id> link (not the ?param= URL) is what unfurls in
+// Discord/Twitter, so detail pages get a "Share" button that copies it.
+const SHARE_PREFIX = { item: "i", npc: "n", quest: "q", spell: "s", object: "o", zone: "z", faction: "f", itemset: "is" };
+function addShareButton() {
+  const params = new URLSearchParams(location.search);
+  let param = null, id = null;
+  for (const k in SHARE_PREFIX) { const v = params.get(k); if (v) { param = k; id = v; break; } }
+  if (!id) return;
+  // anchor: the page heading (most pages) or the meta line (item/spell pages put
+  // the name in a tooltip card, not an <h1>).
+  const anchor = app.querySelector("h1, .item-meta, .spell-sub");
+  if (!anchor || (anchor.nextElementSibling && anchor.nextElementSibling.classList.contains("share-btn"))) return;
+  const url = `${location.origin}${import.meta.env.BASE_URL}${SHARE_PREFIX[param]}/${id}`;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "share-btn";
+  btn.title = "Copy a link that shows a rich preview in Discord, Twitter, etc.";
+  btn.textContent = "🔗 Share";
+  btn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      btn.textContent = "✓ Link copied";
+      setTimeout(() => { btn.textContent = "🔗 Share"; }, 1600);
+    } catch { btn.textContent = "Copy failed"; }
+  });
+  anchor.insertAdjacentElement("afterend", btn);
+}
+
+// route() then drop the Share button onto the rendered detail page.
+function renderRoute() {
+  const p = Promise.resolve(route());
+  p.then(addShareButton, addShareButton);
+  return p;
 }
 
 // ---- views ----
@@ -1623,5 +1659,5 @@ initSearchDropdown(searchInput, document.getElementById("searchForm"), navigate)
 // Wait for the atlas (small JSON) so the first paint shows custom icons; route
 // anyway if it fails or is missing. Time the first render for the footer.
 loadIconAtlas()
-  .then(route, route)
+  .then(renderRoute, renderRoute)
   .finally(() => showFooterMeta(performance.now()));

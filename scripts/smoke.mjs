@@ -819,6 +819,18 @@ async function testQuest(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
+// Detail pages carry a "Share" button that copies the prerendered /<prefix>/<id>
+// link (the one that unfurls in Discord, vs the non-unfurling ?param= URL).
+async function testShareButton(param, id, prefix) {
+  await page.goto(`${BASE}?${param}=${id}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".share-btn", { timeout: 40000 });
+  await page.click(".share-btn");
+  const copied = await page.evaluate(() => window.__copied);
+  const ok = typeof copied === "string" && copied.endsWith(`/${prefix}/${id}`);
+  console.log(`share-btn ${param}=${id}: copied="${copied}" ok=${ok}`);
+  return ok;
+}
+
 // Quest page carries a "Watch walkthrough" link: a channel-scoped YouTube search
 // for the quest title (opens in a new tab).
 async function testQuestVideoLink(id) {
@@ -1289,6 +1301,9 @@ run(() => testCustomIcon(9376, "Jang"));
 run(() => testSearch("thunder"));
 run(() => testQuest(14, "Militia"));
 run(() => testQuestVideoLink(14));  // quest page: YouTube walkthrough search link
+run(() => testShareButton("quest", 14, "q"));  // Share button copies the OG-stub link
+run(() => testShareButton("item", 2770, "i"));
+run(() => testShareButton("spell", 41746, "s"));  // spell page anchors on .spell-sub
 run(() => testQuestChain(55220, 11));  // mid-chain quest: back + forward + start locations
 run(() => testQuestNpcLocation(55220));  // Starts/Ends (NPC) Location column
 run(() => testQuestZoneChain(783));      // continent > zone > sub-zone

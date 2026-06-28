@@ -89,6 +89,31 @@ jobs:
           VITE_DATA_BASE: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/data/
           VITE_ASSETS_BASE: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/
 
+      # Per-entity Open Graph "stub" pages so pasted links (Discord/Twitter/Slack)
+      # unfurl with the real title/description instead of index.html's generic meta
+      # (crawlers don't run JS, and a static host can't vary a file by ?quest=N).
+      # The stubs are a pure function of the built DB, so gate generation on a content
+      # hash: a code-only deploy (DB unchanged) restores them from cache in seconds
+      # instead of regenerating tens of thousands of files. They still ship in the
+      # artifact either way -- the cache only skips the CPU of regenerating.
+      - name: OG stub content hash
+        id: oghash
+        run: echo "hash=$(HASH_ONLY=1 bun scripts/build-og.mjs)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore prerendered OG stubs
+        id: ogcache
+        uses: actions/cache@v4
+        with:
+          path: og-stubs
+          key: og-${{ steps.oghash.outputs.hash }}
+
+      - name: Prerender OG stubs (cache miss only)
+        if: steps.ogcache.outputs.cache-hit != 'true'
+        run: OUT_DIR=og-stubs bun scripts/build-og.mjs
+
+      - name: Merge OG stubs into the site
+        run: cp -r og-stubs/. dist/
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
