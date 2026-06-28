@@ -183,6 +183,9 @@ th.sortable.active { color: var(--gold); }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--panel2); }
 .ilink:hover { text-decoration: underline; }
+/* quest-page "Watch walkthrough" link to the community YouTube channel */
+.yt-link { display: inline-flex; align-items: center; gap: 4px; color: #ff4d4d; font-weight: 600; }
+.yt-link:hover { text-decoration: underline; }
 .il-icon { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; border-radius: 3px; border: 1px solid #000; background: #000; }
 /* custom-icon sprite from the atlas (render.js); span needs inline-block to size like the img */
 .icon-sprite { display: inline-block; background-repeat: no-repeat; background-color: #000; }

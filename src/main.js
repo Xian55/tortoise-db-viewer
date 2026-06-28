@@ -1184,12 +1184,19 @@ async function showQuest(id) {
     { id: "choice", label: "Choice of", ...regTable(itemCols, byRole("choice")) },
   ];
 
+  // Walkthrough link: a channel-scoped YouTube search for the quest title on the
+  // community "Turtle WoW Quests Archives" channel (one quest/video, start->finish).
+  // A search (not a hard-coded video id) so it needs no per-quest data and never
+  // goes stale -- if a video exists it's the top result.
+  const ytUrl = `https://www.youtube.com/@TurtleWoWQuests/search?query=${encodeURIComponent(q.title)}`;
+
   app.innerHTML =
     `<div class="npc-page quest-page">
       <div class="npc-head">
         <h1>${esc(q.title)}</h1>
         <div class="npc-meta muted">${bits.join(" · ")}<span class="dim"> · Quest #${q.entry}</span></div>
         ${restr.length ? `<div class="npc-meta muted">${restr.map(esc).join(" · ")}</div>` : ""}
+        <div class="npc-meta"><a class="yt-link" href="${ytUrl}" target="_blank" rel="noopener noreferrer">▶ Watch walkthrough on YouTube</a></div>
       </div>
       ${desc.length ? `<div class="panel quest-desc">${desc.join("")}</div>` : ""}
       ${tabs(tabDefs)}

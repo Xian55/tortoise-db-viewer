@@ -819,6 +819,20 @@ async function testQuest(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
+// Quest page carries a "Watch walkthrough" link: a channel-scoped YouTube search
+// for the quest title (opens in a new tab).
+async function testQuestVideoLink(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".quest-page .yt-link", { timeout: 40000 });
+  const href = await page.$eval(".quest-page .yt-link", (e) => e.getAttribute("href"));
+  const target = await page.$eval(".quest-page .yt-link", (e) => e.getAttribute("target"));
+  const title = await page.$eval(".quest-page .npc-head h1", (e) => e.textContent.trim());
+  const m = /\/@TurtleWoWQuests\/search\?query=(.+)$/.exec(href || "");
+  const queryOk = !!m && decodeURIComponent(m[1]) === title;
+  console.log(`quest-video-link ${id}: href="${href}" target=${target} queryMatchesTitle=${queryOk}`);
+  return queryOk && target === "_blank";
+}
+
 // spell detail: header name + relation tabs + sortable pane (+ Learned-from link
 // when craft-taught -- the recipe item links back from the spell page).
 async function testSpell(id, expectName) {
@@ -1259,6 +1273,7 @@ run(() => testTeaches(70204, "Shadowforged"));  // recipe -> Teaches tab
 run(() => testCustomIcon(9376, "Jang"));
 run(() => testSearch("thunder"));
 run(() => testQuest(14, "Militia"));
+run(() => testQuestVideoLink(14));  // quest page: YouTube walkthrough search link
 run(() => testQuestChain(55220, 11));  // mid-chain quest: back + forward + start locations
 run(() => testQuestNpcLocation(55220));  // Starts/Ends (NPC) Location column
 run(() => testQuestZoneChain(783));      // continent > zone > sub-zone
