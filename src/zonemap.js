@@ -13,20 +13,17 @@ import { GAMEOBJECT_TYPE } from "./constants.js";
 import { iconMarker } from "./render.js";
 import { ASSETS_BASE } from "./config.js";
 
+// [key, label] per NPC role; the marker/legend icon comes from CAT_ICON (below).
 const NPC_CATS = [
-  ["quest", "Quest Givers", "#ffd100"],
-  ["vendor", "Vendors", "#39d353"],
-  ["repair", "Repair", "#b9bcc4"],
-  ["trainer", "Trainers", "#66c2cc"],
-  ["flight", "Flight Masters", "#7fa0ff"],
-  ["inn", "Innkeepers", "#e08a3c"],
-  ["bank", "Bankers", "#d0b020"],
-  ["mob", "Enemy Mobs", "#e0524a"],
+  ["quest", "Quest Givers"],
+  ["vendor", "Vendors"],
+  ["repair", "Repair"],
+  ["trainer", "Trainers"],
+  ["flight", "Flight Masters"],
+  ["inn", "Innkeepers"],
+  ["bank", "Bankers"],
+  ["mob", "Enemy Mobs"],
 ];
-const NPC_COLOR = Object.fromEntries(NPC_CATS.map(([k, , c]) => [k, c]));
-const OBJ_COLOR = "#a070d0";
-// rare (rank 2) + rare elite (rank 4): one cross-cutting category, distinct hue
-const RARE_COLOR = "#ff66cc";
 const objTypeLabel = (t) => `Obj: ${GAMEOBJECT_TYPE[t] || "Other"}`;
 
 const FLAG = { vendor: 128, repair: 4096, trainer: 16, flight: 8192, inn: 131072, bank: 65536 };
@@ -43,21 +40,6 @@ function npcRolesFor(s) {
   return r;
 }
 const lvl = (s) => (s.level_max && s.level_max !== s.level_min ? `${s.level_min}-${s.level_max}` : (s.level_min || "?"));
-const hexToNum = (h) => parseInt(h.replace("#", ""), 16);
-
-// One small white disc texture, tinted per category for the dot markers.
-let discTex = null;
-function discTexture() {
-  if (discTex) return discTex;
-  const s = 16, c = document.createElement("canvas");
-  c.width = c.height = s;
-  const x = c.getContext("2d");
-  x.beginPath(); x.arc(s / 2, s / 2, 5.5, 0, Math.PI * 2);
-  x.fillStyle = "#fff"; x.fill();
-  x.lineWidth = 1.5; x.strokeStyle = "rgba(0,0,0,.85)"; x.stroke();
-  discTex = PIXI.Texture.from(c);
-  return discTex;
-}
 
 let currentMap = null, currentOverlay = null;
 
@@ -90,9 +72,52 @@ const POI_CELL = 32, POI_COLS = 16;
 const BOSS_GRID = [11, 14]; // "Elite" = skull
 // CSS background for a POI sprite scaled to `size` px.
 function poiSpriteStyle([col, row], size) {
-  const scale = size / POI_CELL;
   return `background-image:url(${POI_URL});background-size:${POI_COLS * size}px auto;` +
     `background-position:-${col * size}px -${row * size}px;width:${size}px;height:${size}px`;
+}
+
+// Marker/legend icons drawn from the POI atlas (so categories read as real icons,
+// not coloured blobs). [col,row] cells verified against the atlas art -- a few
+// differ from the upstream icon_atlas.js names, which are unreliable. Boss keeps
+// BOSS_GRID (the skull). Object categories key off their GAMEOBJECT_TYPE name.
+const CAT_ICON = {
+  quest: [9, 3], vendor: [6, 16], repair: [8, 20], trainer: [3, 17],
+  flight: [7, 16], inn: [4, 4], bank: [8, 16], mob: [1, 18], rare: [13, 14],
+};
+const OBJ_ICON = {
+  Chest: [14, 17], Mailbox: [5, 16], "Fishing Hole": [0, 3], "Fishing Node": [0, 3],
+  Door: [5, 8], "Quest Giver": [9, 3], "Meeting Stone": [2, 16],
+};
+const OBJ_GENERIC = [12, 3]; // blue cog -- generic gameobject
+// category key -> atlas [col,row]
+function catGrid(key) {
+  if (CAT_ICON[key]) return CAT_ICON[key];
+  if (key && key.startsWith("Obj: ")) return OBJ_ICON[key.slice(5)] || OBJ_GENERIC;
+  return OBJ_GENERIC;
+}
+// One POI atlas BaseTexture shared across maps; per-category sub-textures are 32px
+// frames into it. (BaseTexture.from caches by URL, so re-inits reuse it.)
+let poiBase = null;
+const poiTexCache = new Map();
+function poiTexture(key) {
+  if (!poiBase) poiBase = PIXI.BaseTexture.from(POI_URL);
+  let t = poiTexCache.get(key);
+  if (!t) {
+    const [col, row] = catGrid(key);
+    t = new PIXI.Texture(poiBase, new PIXI.Rectangle(col * POI_CELL, row * POI_CELL, POI_CELL, POI_CELL));
+    poiTexCache.set(key, t);
+  }
+  return t;
+}
+// Layer-control label: a small atlas sprite + the text (Leaflet renders the name
+// via innerHTML, so HTML here is fine).
+function catLabel(key, text) {
+  return `<span class="cat-ico" style="${poiSpriteStyle(catGrid(key), 16)};` +
+    `display:inline-block;vertical-align:-4px;margin-right:5px"></span>${text}`;
+}
+// Redraw once the atlas finishes loading (frames render blank until then).
+function whenPoiReady(cb) {
+  if (poiBase && !poiBase.valid) poiBase.once("loaded", cb);
 }
 
 // zone: row from Q_ZONE (+ imgUrl). spawns/objects: Q_ZONE_SPAWNS / Q_ZONE_OBJECTS
@@ -179,11 +204,10 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     if (!g) { g = { label, sprites: [] }; cats.set(key, g); }
     return g;
   };
-  const disc = discTexture();
-  const addDot = (key, label, color, ll, html, href, wpt) => {
-    const sp = new PIXI.Sprite(disc);
+  // each category sprite is its atlas icon (no tint) -- real POI icons, not blobs.
+  const addDot = (key, label, ll, html, href, wpt) => {
+    const sp = new PIXI.Sprite(poiTexture(key));
     sp.anchor.set(0.5);
-    sp.tint = color;
     sp.ll = ll; sp.label = html; sp.href = href; sp.wpt = wpt; sp.visible = false;
     container.addChild(sp);
     cat(key, label).sprites.push(sp);
@@ -203,12 +227,12 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
       const wpt = { x: s.x, y: s.y };
       for (const role of npcRolesFor(s)) {
         const def = NPC_CATS.find((c) => c[0] === role);
-        addDot(role, def ? def[1] : role, hexToNum(NPC_COLOR[role]), ll, html, `?npc=${s.entry}`, wpt);
+        addDot(role, def ? def[1] : role, ll, html, `?npc=${s.entry}`, wpt);
       }
       // rares get an extra dot in their own cross-cutting category (rank 2/4)
       if (s.rank === 2 || s.rank === 4) {
         const rk = s.rank === 4 ? "Rare Elite" : "Rare";
-        addDot("rare", "Rare / Rare Elite", hexToNum(RARE_COLOR), ll,
+        addDot("rare", "Rare / Rare Elite", ll,
           `${esc(s.name) || "?"} <span class="dim">(${lvl(s)}) · ${rk}</span>`, `?npc=${s.entry}`, wpt);
       }
     }
@@ -216,17 +240,17 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   const objByEntry = new Map();
   for (const o of objects) {
     const ll = toLatLng(o.x, o.y);
-    if (!focus) addDot(objTypeLabel(o.type), objTypeLabel(o.type), hexToNum(OBJ_COLOR), ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y });
+    if (!focus) addDot(objTypeLabel(o.type), objTypeLabel(o.type), ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y });
     let e = objByEntry.get(o.entry);
     if (!e) { e = { name: o.name || `Object #${o.entry}`, lls: [], pts: [] }; objByEntry.set(o.entry, e); }
     e.lls.push(ll); e.pts.push({ x: o.x, y: o.y });
   }
 
-  const DOT_PX = 11; // on-screen diameter, constant across zoom
+  const ICON_PX = 20; // on-screen icon diameter, constant across zoom
   const overlay = L.pixiOverlay((utils) => {
     // the overlay scales the whole container by utils.getScale(zoom); counter it
-    // so dots stay a fixed screen size instead of growing as you zoom in.
-    const dotScale = (DOT_PX / disc.width) / utils.getScale(utils.getMap().getZoom());
+    // so icons stay a fixed screen size instead of growing as you zoom in.
+    const dotScale = (ICON_PX / POI_CELL) / utils.getScale(utils.getMap().getZoom());
     for (const sp of container.children) {
       if (!sp.visible) continue;
       const p = utils.latLngToLayerPoint(sp.ll);
@@ -239,6 +263,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   currentOverlay = overlay;
 
   const redraw = () => overlay.redraw();
+  whenPoiReady(redraw); // re-render once the atlas texture finishes loading
   const DotLayer = L.Layer.extend({
     initialize(sprites) { this._s = sprites; },
     onAdd() { for (const s of this._s) s.visible = true; redraw(); },
@@ -350,12 +375,15 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     const g = cats.get(key);
     if (!g || !g.sprites.length) return;
     const layer = new DotLayer(g.sprites);
-    overlays[`${g.label} (${g.sprites.length})`] = layer;
+    overlays[catLabel(key, `${g.label} (${g.sprites.length})`)] = layer; // icon + text
     if (on) layer.addTo(map);
   };
   // All category layers start OFF (a normal zone view is a clean map you opt into
   // via the layer control); the boss + gather/focus layers are on by default.
-  if (bossLayer) { overlays[`Bosses (${bosses.length})`] = bossLayer; bossLayer.addTo(map); }
+  if (bossLayer) {
+    const bossLbl = `<span class="cat-ico" style="${poiSpriteStyle(BOSS_GRID, 16)};display:inline-block;vertical-align:-4px;margin-right:5px"></span>Bosses (${bosses.length})`;
+    overlays[bossLbl] = bossLayer; bossLayer.addTo(map);
+  }
   // Farming route is the default "where to farm" view for a gathered target; the
   // individual node icons then default off (toggleable) so the path reads cleanly.
   // NPC focus keeps its pins on and offers the route as an opt-in toggle.
@@ -533,6 +561,9 @@ export function initWorldMap(el, conf, spawns, objects, navigate) {
     maxZoom: NZ + 2, zoomSnap: 0.5, wheelPxPerZoomLevel: 120,
   });
   currentMap = map;
+  // Fill the area beyond the continent (and the unexplored, transparent tiles)
+  // with the in-game ocean colour instead of the default black.
+  map.getContainer().style.background = "#061d28";
 
   // world (x,y) -> latLng (lat=row axis/down, lng=col axis/right)
   const toLatLng = (x, y) => L.latLng(
@@ -558,10 +589,11 @@ export function initWorldMap(el, conf, spawns, objects, navigate) {
     if (!g) { g = { label, sprites: [] }; cats.set(key, g); }
     return g;
   };
-  const disc = discTexture();
-  const addDot = (key, label, color, ll, html, href) => {
-    const sp = new PIXI.Sprite(disc);
-    sp.anchor.set(0.5); sp.tint = color;
+  // each category sprite is its atlas icon (no tint) -- categories read as real
+  // POI icons instead of coloured blobs.
+  const addDot = (key, label, ll, html, href) => {
+    const sp = new PIXI.Sprite(poiTexture(key));
+    sp.anchor.set(0.5);
     sp.ll = ll; sp.label = html; sp.href = href; sp.visible = false;
     container.addChild(sp);
     cat(key, label).sprites.push(sp);
@@ -572,22 +604,22 @@ export function initWorldMap(el, conf, spawns, objects, navigate) {
     const html = `${esc(s.name) || "?"} <span class="dim">(${lvl(s)})</span>`;
     for (const role of npcRolesFor(s)) {
       const def = NPC_CATS.find((c) => c[0] === role);
-      addDot(role, def ? def[1] : role, hexToNum(NPC_COLOR[role]), ll, html, `?npc=${s.entry}`);
+      addDot(role, def ? def[1] : role, ll, html, `?npc=${s.entry}`);
     }
     if (s.rank === 2 || s.rank === 4) {
       const rk = s.rank === 4 ? "Rare Elite" : "Rare";
-      addDot("rare", "Rare / Rare Elite", hexToNum(RARE_COLOR), ll,
+      addDot("rare", "Rare / Rare Elite", ll,
         `${esc(s.name) || "?"} <span class="dim">(${lvl(s)}) · ${rk}</span>`, `?npc=${s.entry}`);
     }
   }
   for (const o of objects) {
-    addDot(objTypeLabel(o.type), objTypeLabel(o.type), hexToNum(OBJ_COLOR),
+    addDot(objTypeLabel(o.type), objTypeLabel(o.type),
       toLatLng(o.x, o.y), esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`);
   }
 
-  const DOT_PX = 9;
+  const ICON_PX = 18; // on-screen icon diameter, constant across zoom
   const overlay = L.pixiOverlay((utils) => {
-    const dotScale = (DOT_PX / disc.width) / utils.getScale(utils.getMap().getZoom());
+    const dotScale = (ICON_PX / POI_CELL) / utils.getScale(utils.getMap().getZoom());
     for (const sp of container.children) {
       if (!sp.visible) continue;
       const p = utils.latLngToLayerPoint(sp.ll);
@@ -599,6 +631,7 @@ export function initWorldMap(el, conf, spawns, objects, navigate) {
   currentOverlay = overlay;
 
   const redraw = () => overlay.redraw();
+  whenPoiReady(redraw); // re-render once the atlas texture finishes loading
   const DotLayer = L.Layer.extend({
     initialize(sprites) { this._s = sprites; },
     onAdd() { for (const s of this._s) s.visible = true; redraw(); },
@@ -606,11 +639,12 @@ export function initWorldMap(el, conf, spawns, objects, navigate) {
   });
 
   // layer control: every category OFF by default (a clean continent you opt into).
+  // Each entry shows its atlas icon (catLabel) so the long list is scannable.
   const overlays = {};
   const addCat = (key) => {
     const g = cats.get(key);
     if (!g || !g.sprites.length) return;
-    overlays[`${g.label} (${g.sprites.length})`] = new DotLayer(g.sprites);
+    overlays[catLabel(key, `${g.label} (${g.sprites.length})`)] = new DotLayer(g.sprites);
   };
   for (const [key] of NPC_CATS) addCat(key);
   addCat("rare");

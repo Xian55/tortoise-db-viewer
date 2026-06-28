@@ -291,8 +291,11 @@ Re-run `extract-minimap.py` + commit on client map changes.
   `scripts/data/spell-lookups.json`), zone maps (`public/maps/*.webp`,
   `scripts/data/zones.json`), per-area ADT bounds (`scripts/data/subzone-bounds.json`
   via `extract-area-bounds.py`, for exact coord→zone), and the "minimap" POI sprite
-  sheet `public/icons/poi-atlas.webp` (16-col, 32px grid; `Elite` at [11,14] is the
-  skull used for boss markers; sourced from the WowClassicGrindBot atlas), and
+  sheet `public/icons/poi-atlas.webp` (16-col, 32px grid; sourced from the
+  WowClassicGrindBot atlas). `Elite` at [11,14] is the boss-marker skull; the zone +
+  world map markers and the layer-control legend draw their per-category icons from
+  it via the `CAT_ICON`/`OBJ_ICON` cell map in `src/zonemap.js` (cells verified
+  against the art -- the upstream `icon_atlas.js` names are unreliable). Plus
   item-set names + bonus spells (`scripts/data/item-sets.json` via
   `extract-item-sets.py`, from the client `ItemSet.dbc`; set members derive from
   `items.set_id` in the SQL dump), and skill-line categories
