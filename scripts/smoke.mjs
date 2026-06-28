@@ -988,6 +988,21 @@ async function testNpcNoSpawn(id) {
   return note && noMap;
 }
 
+// Site footer: shows the page load time always, and an "Updated <date>" stamp
+// when version.json carries builtAt (CI build writes it).
+async function testFooter() {
+  await page.goto(`${BASE}?item=2770`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
+  await page.waitForFunction(() => { const e = document.getElementById("footLoad"); return e && /\d/.test(e.textContent); }, { timeout: 15000 }).catch(() => {});
+  const load = await page.$eval("#footLoad", (e) => e.textContent.trim()).catch(() => "");
+  const updated = await page.$eval("#footUpdated", (e) => e.textContent.trim()).catch(() => "");
+  const srcLink = (await page.$(".sitefoot .foot-src a[href*='github.com']")) !== null;
+  const loadOk = /Loaded in \d+(\.\d+)? (ms|s)/.test(load);
+  const updatedOk = /^Updated /.test(updated);   // present when builtAt is set
+  console.log(`footer: load="${load}" updated="${updated}" srcLink=${srcLink}`);
+  return loadOk && updatedOk && srcLink;
+}
+
 // Mobile: the top nav collapses behind a hamburger that toggles it open.
 async function testMobileNav() {
   await page.setViewport({ width: 390, height: 800 });
@@ -1382,6 +1397,7 @@ run(() => testBrowse("items", "&class=2&subclass=0,4,7,13,15", "DPS"));  // One-
 run(() => testSubclassMulti());                             // Subtype multi-select reflects the URL
 run(() => testFishingPoleCols());                           // fishing poles: +N Fishing column, no DPS/Speed
 run(() => testBrowse("zones", "&cont=0", "Zone"));          // Zones continent filter
+run(() => testFooter());      // site footer: load time + "Updated" stamp + source link
 run(() => testMobileNav());   // responsive top bar (run last; resets viewport)
 
 // Execute the (optionally filtered) queue serially on the single page.

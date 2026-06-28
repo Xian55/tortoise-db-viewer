@@ -186,6 +186,15 @@ tbody tr:hover { background: var(--panel2); }
 /* quest-page "Watch walkthrough" link to the community YouTube channel */
 .yt-link { display: inline-flex; align-items: center; gap: 4px; color: #ff4d4d; font-weight: 600; }
 .yt-link:hover { text-decoration: underline; }
+/* site footer: build date + page load time + source link */
+.sitefoot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px;
+  justify-content: center; padding: 16px 12px 22px; margin-top: 24px;
+  border-top: 1px solid var(--border); font-size: 12px; }
+.sitefoot:empty { display: none; }
+.sitefoot .foot-src { margin-left: auto; }
+.sitefoot a { color: inherit; text-decoration: underline; }
+.sitefoot a:hover { color: var(--text); }
+@media (max-width: 600px) { .sitefoot .foot-src { margin-left: 0; } }
 .il-icon { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; border-radius: 3px; border: 1px solid #000; background: #000; }
 /* custom-icon sprite from the atlas (render.js); span needs inline-block to size like the img */
 .icon-sprite { display: inline-block; background-repeat: no-repeat; background-color: #000; }

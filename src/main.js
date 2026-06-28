@@ -1,5 +1,5 @@
 import "./style.css";
-import { query, queryOne, preconnect } from "./db.js";
+import { query, queryOne, preconnect, getMeta } from "./db.js";
 import * as Q from "./queries.js";
 import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
@@ -94,22 +94,23 @@ function route() {
   const term = params.get("search");
   // Browse first: browse URLs carry filter params (e.g. faction=a|h) that would
   // otherwise collide with the singular entity-detail routes below.
-  if (browse) showBrowse(browse, navigate);
-  else if (item) showItem(Number(item));
-  else if (npc) showNpc(Number(npc));
-  else if (quest) showQuest(Number(quest));
-  else if (spell) showSpell(Number(spell));
-  else if (itemset) showItemSet(Number(itemset));
-  else if (faction) showFaction(Number(faction));
-  else if (zone) showZone(Number(zone), params.get("gather") ? Number(params.get("gather")) : null);
-  else if (dungeon) showDungeon(Number(dungeon));
-  else if (object) showObject(Number(object));
-  else if (icon) showIcon(icon);
-  else if (params.get("icons") !== null) showIcons();
-  else if (params.get("flights") !== null) showFlights(params.get("cont") ? Number(params.get("cont")) : 0);
-  else if (params.get("dungeons") !== null) showDungeons();
-  else if (term) { searchInput.value = term; showSearch(term); }
-  else showHome();
+  // return the view's promise so boot can time the first render (page load).
+  if (browse) return showBrowse(browse, navigate);
+  else if (item) return showItem(Number(item));
+  else if (npc) return showNpc(Number(npc));
+  else if (quest) return showQuest(Number(quest));
+  else if (spell) return showSpell(Number(spell));
+  else if (itemset) return showItemSet(Number(itemset));
+  else if (faction) return showFaction(Number(faction));
+  else if (zone) return showZone(Number(zone), params.get("gather") ? Number(params.get("gather")) : null);
+  else if (dungeon) return showDungeon(Number(dungeon));
+  else if (object) return showObject(Number(object));
+  else if (icon) return showIcon(icon);
+  else if (params.get("icons") !== null) return showIcons();
+  else if (params.get("flights") !== null) return showFlights(params.get("cont") ? Number(params.get("cont")) : 0);
+  else if (params.get("dungeons") !== null) return showDungeons();
+  else if (term) { searchInput.value = term; return showSearch(term); }
+  else return showHome();
 }
 
 // ---- views ----
@@ -1597,10 +1598,30 @@ async function loadIconAtlas() {
   } catch { /* fall back to CDN icons */ }
 }
 
+// Footer: "Updated <build date>" (from version.json's builtAt) + how long the
+// first page render took (performance.now() = ms since navigation start). Set once
+// on boot; the footer persists across SPA navigation so it reflects initial load.
+async function showFooterMeta(loadMs) {
+  const load = document.getElementById("footLoad");
+  if (load) load.textContent = `Loaded in ${loadMs < 1000 ? `${Math.round(loadMs)} ms` : `${(loadMs / 1000).toFixed(1)} s`}`;
+  const upd = document.getElementById("footUpdated");
+  if (!upd) return;
+  try {
+    const { builtAt } = await getMeta();
+    if (!builtAt) return;
+    const d = new Date(builtAt);
+    if (isNaN(d)) return;
+    upd.textContent = `Updated ${d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`;
+    upd.title = d.toLocaleString();
+  } catch { /* no build stamp -> omit */ }
+}
+
 // ---- boot ----
 preconnect();
 initHovercards();
 initSearchDropdown(searchInput, document.getElementById("searchForm"), navigate);
 // Wait for the atlas (small JSON) so the first paint shows custom icons; route
-// anyway if it fails or is missing.
-loadIconAtlas().finally(route);
+// anyway if it fails or is missing. Time the first render for the footer.
+loadIconAtlas()
+  .then(route, route)
+  .finally(() => showFooterMeta(performance.now()));

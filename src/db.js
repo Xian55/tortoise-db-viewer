@@ -21,12 +21,20 @@ function send(msg) {
   });
 }
 
+// version.json: { version: <content hash>, builtAt: <ISO build time> }. Fetched
+// once and cached; drives both the cache key and the footer "Updated" stamp.
+let metaPromise = null;
+export function getMeta() {
+  if (!metaPromise) {
+    metaPromise = fetch(`${DATA_BASE}version.json`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : {}))
+      .catch(() => ({}));
+  }
+  return metaPromise;
+}
+
 async function getVersion() {
-  try {
-    const res = await fetch(`${DATA_BASE}version.json`, { cache: "no-store" });
-    if (res.ok) return (await res.json()).version || "0";
-  } catch { /* fall through */ }
-  return "0";
+  return (await getMeta()).version || "0";
 }
 
 async function init() {

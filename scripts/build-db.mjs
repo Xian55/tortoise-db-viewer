@@ -1225,7 +1225,7 @@ db.close();
 // content hash -> version.json (drives client cache invalidation)
 const buf = readFileSync(OUT);
 const version = createHash("sha256").update(buf).digest("hex").slice(0, 12);
-writeFileSync(join(ROOT, "public", "data", "version.json"), JSON.stringify({ version }));
+writeFileSync(join(ROOT, "public", "data", "version.json"), JSON.stringify({ version, builtAt: new Date().toISOString() }));
 
 const mb = (buf.length / 1048576).toFixed(1);
 console.log(`\nDone in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${OUT} (${mb} MB, version ${version})`);
