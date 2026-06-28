@@ -56,6 +56,10 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
+          # The minimap pyramid is ~2400 tiny files. Bump the AWS CLI's S3
+          # parallelism so the (one-time) bulk upload isn't serialized 10-at-a-time.
+          aws configure set default.s3.max_concurrent_requests 64
+          aws configure set default.s3.max_queue_size 10000
           # DB: immutable (cache-busted by ?v=). Pre-brotli it and store with
           # Content-Encoding: br so the browser fetch() transparently decompresses
           # (~73 MB -> ~13 MB on the wire; OPFS still caches the full DB). Same
@@ -75,10 +79,14 @@ jobs:
             --endpoint-url "$R2_ENDPOINT" \
             --content-type image/webp --delete
           # seamless world-map tile pyramid (committed; CI can't rebuild it -- no
-          # client): all .webp, immutable (tile paths are content-stable per build)
+          # client): ~2400 .webp. --size-only: a fresh git checkout re-stamps every
+          # file's mtime, so the default size+mtime compare would re-upload ALL tiles
+          # every deploy; compare by size alone -> only changed tiles upload (a
+          # re-extracted tile virtually always differs in byte size). --no-progress
+          # keeps the log readable.
           aws s3 sync public/minimap s3://tortoise-db-viewer/minimap \
             --endpoint-url "$R2_ENDPOINT" \
-            --content-type image/webp \
+            --content-type image/webp --size-only --no-progress \
             --cache-control "public,max-age=31536000,immutable" --delete
           # icons: webp sprites first (exclude the manifest)...
           aws s3 sync public/icons s3://tortoise-db-viewer/icons \
