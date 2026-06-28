@@ -55,8 +55,11 @@ def main():
         index[name] = i
 
     os.makedirs(OUT_DIR, exist_ok=True)
-    # method=6 = slowest/best; quality high but lossy keeps the sheet small.
-    atlas.save(OUT_IMG, "WEBP", quality=92, method=6)
+    # method=6 = slowest/best. quality=75 stays visually clean at the on-screen
+    # icon sizes (18px lists, ~40px tooltips) while cutting the sheet ~44% vs the
+    # old 92 (~1.0 MB -> ~0.58 MB) -- the atlas is the single biggest asset on
+    # item/NPC pages, so this is the main page-weight win.
+    atlas.save(OUT_IMG, "WEBP", quality=75, method=6)
     with open(OUT_JSON, "w", encoding="utf-8") as f:
         json.dump(
             {"cell": cell, "cols": cols, "rows": rows, "count": len(names), "icons": index},
