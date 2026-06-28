@@ -269,6 +269,21 @@ async function testBrowseSpellCat() {
     && headers.includes("Level") && !headers.includes("Profession");  // class view swaps Profession -> Level
 }
 
+// Quest browse: the Origin=Turtle WoW filter shows only custom (entry>=10000)
+// quests, each tagged "TW"; and a custom quest's page header carries the badge.
+async function testQuestOrigin(customQuestId) {
+  await page.goto(`${BASE}?browse=quests&origin=tw`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const origin = await page.$eval('select[data-f="origin"]', (el) => el.value);
+  const twTags = await page.$$eval(".browse td .tagx.tw-tag", (e) => e.length);
+  await page.goto(`${BASE}?quest=${customQuestId}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".quest-page .npc-head h1", { timeout: 40000 });
+  const badge = await page.$eval(".quest-page .npc-head h1 .tagx.tw-tag", (e) => e.textContent.trim()).catch(() => "");
+  console.log(`quest-origin: rows=${rows} origin="${origin}" twTags=${twTags} pageBadge="${badge}"`);
+  return rows > 0 && origin === "tw" && twTags > 0 && badge === "Turtle WoW";
+}
+
 async function testItemSources(id, expectTag) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".item-sources .tagx", { timeout: 40000 });
@@ -1392,6 +1407,7 @@ run(() => testReagentNoReq());                         // reagents hide the empt
 run(() => testBrowseSource("vendor"));
 run(() => testBrowseSource("worlddrop"));  // new World Drop source filter
 run(() => testBrowseSpellCat());           // spell category + class filters
+run(() => testQuestOrigin(41189));         // quest Origin=Turtle WoW filter + TW badge
 run(() => testItemSources(2770));
 run(() => testItemBuyPrice(68, 65));   // vendor item shows Buy Price; non-vendor item doesn't
 run(() => testItemSources(5031, "Unobtainable"));

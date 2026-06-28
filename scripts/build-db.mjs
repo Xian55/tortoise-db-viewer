@@ -1198,6 +1198,14 @@ flagJunk("quests", "title");
 flagJunk("spells", "name", "rank");
 flagJunk("maps", "name");
 
+// Turtle-WoW custom content flag. The base dump is already Turtle's world, so
+// "custom" means "not in vanilla 1.12": vanilla quest IDs top out at ~9665, and
+// Turtle allocates its added quests in dedicated high ranges (20000+, 40000+,
+// 60000+, 80000+ ...). Flag entry >= 10000 so the viewer can label + filter them.
+db.exec(`ALTER TABLE quests ADD COLUMN custom INTEGER NOT NULL DEFAULT 0`);
+db.exec(`UPDATE quests SET custom = 1 WHERE entry >= 10000`);
+console.log(`  custom (Turtle) quests: ${db.prepare("SELECT COUNT(*) n FROM quests WHERE custom=1").get().n}`);
+
 // Buyable flag: item_template.buy_price is set on most items but only meaningful
 // when a vendor actually sells it (~2.6k of ~20k) -- so the tooltip can show a
 // "Buy Price" without implying a drop/quest item is purchasable.

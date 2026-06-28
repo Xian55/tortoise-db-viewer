@@ -429,11 +429,14 @@ async function browseQuests(p) {
   const f = {
     q: p.get("q") || "", zone: p.get("zone") || "", type: p.get("type") || "",
     minlvl: p.get("minlvl") || "", maxlvl: p.get("maxlvl") || "",
-    class: p.get("class") || "", faction: p.get("faction") || "",
+    class: p.get("class") || "", faction: p.get("faction") || "", origin: p.get("origin") || "",
   };
   const where = ["q.title <> ''", "q.hidden = 0"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
   if (f.q) add("q.title LIKE ?", `%${f.q}%`);
+  // origin: Turtle-WoW custom additions (q.custom = 1) vs vanilla 1.12 (0).
+  if (f.origin === "tw") where.push("q.custom = 1");
+  else if (f.origin === "vanilla") where.push("q.custom = 0");
   if (f.zone !== "") add("q.zone = ?", +f.zone);
   if (f.type !== "") add("q.type = ?", +f.type);
   if (f.minlvl !== "") add("q.level >= ?", +f.minlvl);
@@ -446,7 +449,7 @@ async function browseQuests(p) {
   else if (f.faction === "h") { where.push(factionCond); binds.push(RACE_HORDE, RACE_ALLIANCE); }
   const whereSql = "WHERE " + where.join(" AND ");
   const rows = await query(
-    `SELECT q.entry, q.title, q.level, q.zone, q.type, a.name AS zone_name, z.areaid AS zone_page
+    `SELECT q.entry, q.title, q.level, q.zone, q.type, q.custom, a.name AS zone_name, z.areaid AS zone_page
      FROM quests q LEFT JOIN areas a ON a.entry = q.zone
      LEFT JOIN zones z ON z.areaid = q.zone ${whereSql}
      ORDER BY q.level, q.title`, binds);
@@ -457,7 +460,7 @@ async function browseQuests(p) {
     .filter(([, l]) => l).sort((a, b) => a[1].localeCompare(b[1]));
 
   const cols = [
-    { key: "name", label: "Title", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
+    { key: "name", label: "Title", cell: (r) => questLink(r.entry, r.title) + (r.custom ? ' <span class="tagx tw-tag" title="Added by Turtle WoW (not in vanilla 1.12)">TW</span>' : ""), value: (r) => r.title },
     { key: "level", label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
     { key: "zone", label: "Zone", cls: "muted",
       cell: (r) => (r.zone_page ? zoneLink(r.zone, questZoneLabel(r.zone, r.zone_name)) : esc(questZoneLabel(r.zone, r.zone_name))),
@@ -471,6 +474,7 @@ async function browseQuests(p) {
     ${numField("minlvl", "Level ≥", f.minlvl)} ${numField("maxlvl", "Level ≤", f.maxlvl)}
     ${selectField("class", "Class", options(CLASS_MASK, f.class, "Any class"))}
     ${selectField("faction", "Faction", options([["a", "Alliance"], ["h", "Horde"]], f.faction, "Any"))}
+    ${selectField("origin", "Origin", options([["tw", "Turtle WoW"], ["vanilla", "Classic 1.12"]], f.origin, "Any"))}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
   const hide = [f.zone !== "" && "zone", f.type !== "" && "type"].filter(Boolean);

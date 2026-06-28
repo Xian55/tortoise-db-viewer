@@ -350,6 +350,9 @@ td.src-col .tagx { margin: 1px 4px 1px 0; }
 .tagx.fac-alliance { border-color: #3f6fb8; color: #6fa8e0; }
 .tagx.fac-horde { border-color: #a33a3a; color: #e06666; }
 .tagx.fac-neutral { border-color: #8a6d3b; color: #d3b066; }
+/* Turtle-WoW custom-content badge (quest browse + quest page header) */
+.tagx.tw-tag { border-color: #3f7a4f; color: #74c98a; vertical-align: middle; }
+h1 .tagx.tw-tag { font-size: 13px; vertical-align: middle; }
 
 /* tabs */
 .tabbar { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }

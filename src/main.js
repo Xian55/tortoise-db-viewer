@@ -1231,7 +1231,7 @@ async function showQuest(id) {
   app.innerHTML =
     `<div class="npc-page quest-page">
       <div class="npc-head">
-        <h1>${esc(q.title)}</h1>
+        <h1>${esc(q.title)}${q.custom ? ' <span class="tagx tw-tag" title="Added by Turtle WoW (not in vanilla 1.12)">Turtle WoW</span>' : ""}</h1>
         <div class="npc-meta muted">${bits.join(" · ")}<span class="dim"> · Quest #${q.entry}</span></div>
         ${restr.length ? `<div class="npc-meta muted">${restr.map(esc).join(" · ")}</div>` : ""}
         <div class="npc-meta"><a class="yt-link" href="${ytUrl}" target="_blank" rel="noopener noreferrer">▶ Watch walkthrough on YouTube</a></div>
