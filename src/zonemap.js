@@ -505,6 +505,156 @@ export function initFlightMap(el, continent, nodes, routes, navigate) {
   return map;
 }
 
+// 1x1 transparent webp -> Leaflet draws nothing for the sparse (unexplored) tiles
+// instead of a broken-image box.
+const BLANK_TILE =
+  "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+// Seamless continent minimap (?worldmap=mapid): one Leaflet CRS.Simple slippy map
+// over the client's stitched minimap tile PYRAMID (z/x/y webp on R2, built by
+// scripts/extract-minimap.py), with every spawn reprojected onto it. Unlike the
+// per-zone parchment, the projection is uniform: the ADT grid is regular, so
+//   gpx = tile*(grid/2 - worldY/adt)   gpy = tile*(grid/2 - worldX/adt)
+// and one CRS unit = native px / 2^maxNativeZoom (= tile/grid). Reuses the Pixi
+// dot overlay + category toggles + hover/click from the zone map.
+// conf: { mapId, name, bbox:[c0,c1,r0,r1], tile, adt, grid, maxNativeZoom, tilesBase }.
+export function initWorldMap(el, conf, spawns, objects, navigate) {
+  if (currentOverlay) { try { currentOverlay.destroy(); } catch (_) { /* gone */ } currentOverlay = null; }
+  if (currentMap) { currentMap.remove(); currentMap = null; }
+
+  const { tile, adt, grid, maxNativeZoom: NZ, bbox } = conf;
+  const div = Math.pow(2, NZ);          // 1 CRS unit = native px / div
+  const upt = tile / div;               // CRS units per ADT tile
+  const [c0, c1, r0, r1] = bbox;
+  // y-down identity transform -> standard XYZ tile addressing (x=col, y=row).
+  const crs = L.extend({}, L.CRS.Simple, { transformation: new L.Transformation(1, 0, 1, 0) });
+  const map = L.map(el, {
+    crs, preferCanvas: true, attributionControl: false, zoomControl: true,
+    maxZoom: NZ + 2, zoomSnap: 0.5, wheelPxPerZoomLevel: 120,
+  });
+  currentMap = map;
+
+  // world (x,y) -> latLng (lat=row axis/down, lng=col axis/right)
+  const toLatLng = (x, y) => L.latLng(
+    (tile * (grid / 2 - x / adt)) / div,
+    (tile * (grid / 2 - y / adt)) / div,
+  );
+  const occupied = L.latLngBounds([[r0 * upt, c0 * upt], [(r1 + 1) * upt, (c1 + 1) * upt]]);
+
+  L.tileLayer(`${conf.tilesBase}${conf.mapId}/{z}/{x}/{y}.webp`, {
+    tileSize: tile, minZoom: 0, maxNativeZoom: NZ, bounds: occupied,
+    noWrap: true, errorTileUrl: BLANK_TILE, keepBuffer: 4, pane: "tilePane",
+  }).addTo(map);
+
+  map.fitBounds(occupied);
+  map.setMinZoom(map.getBoundsZoom(occupied));
+  map.setMaxBounds(occupied.pad(0.1));
+
+  // ---- Pixi overlay: category dots (reused machinery from the zone map) ----
+  const container = new PIXI.Container();
+  const cats = new Map();
+  const cat = (key, label) => {
+    let g = cats.get(key);
+    if (!g) { g = { label, sprites: [] }; cats.set(key, g); }
+    return g;
+  };
+  const disc = discTexture();
+  const addDot = (key, label, color, ll, html, href) => {
+    const sp = new PIXI.Sprite(disc);
+    sp.anchor.set(0.5); sp.tint = color;
+    sp.ll = ll; sp.label = html; sp.href = href; sp.visible = false;
+    container.addChild(sp);
+    cat(key, label).sprites.push(sp);
+  };
+
+  for (const s of spawns) {
+    const ll = toLatLng(s.x, s.y);
+    const html = `${esc(s.name) || "?"} <span class="dim">(${lvl(s)})</span>`;
+    for (const role of npcRolesFor(s)) {
+      const def = NPC_CATS.find((c) => c[0] === role);
+      addDot(role, def ? def[1] : role, hexToNum(NPC_COLOR[role]), ll, html, `?npc=${s.entry}`);
+    }
+    if (s.rank === 2 || s.rank === 4) {
+      const rk = s.rank === 4 ? "Rare Elite" : "Rare";
+      addDot("rare", "Rare / Rare Elite", hexToNum(RARE_COLOR), ll,
+        `${esc(s.name) || "?"} <span class="dim">(${lvl(s)}) · ${rk}</span>`, `?npc=${s.entry}`);
+    }
+  }
+  for (const o of objects) {
+    addDot(objTypeLabel(o.type), objTypeLabel(o.type), hexToNum(OBJ_COLOR),
+      toLatLng(o.x, o.y), esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`);
+  }
+
+  const DOT_PX = 9;
+  const overlay = L.pixiOverlay((utils) => {
+    const dotScale = (DOT_PX / disc.width) / utils.getScale(utils.getMap().getZoom());
+    for (const sp of container.children) {
+      if (!sp.visible) continue;
+      const p = utils.latLngToLayerPoint(sp.ll);
+      sp.x = p.x; sp.y = p.y; sp.scale.set(dotScale);
+    }
+    utils.getRenderer().render(container);
+  }, container, { autoPreventDefault: false });
+  overlay.addTo(map);
+  currentOverlay = overlay;
+
+  const redraw = () => overlay.redraw();
+  const DotLayer = L.Layer.extend({
+    initialize(sprites) { this._s = sprites; },
+    onAdd() { for (const s of this._s) s.visible = true; redraw(); },
+    onRemove() { for (const s of this._s) s.visible = false; redraw(); },
+  });
+
+  // layer control: every category OFF by default (a clean continent you opt into).
+  const overlays = {};
+  const addCat = (key) => {
+    const g = cats.get(key);
+    if (!g || !g.sprites.length) return;
+    overlays[`${g.label} (${g.sprites.length})`] = new DotLayer(g.sprites);
+  };
+  for (const [key] of NPC_CATS) addCat(key);
+  addCat("rare");
+  for (const key of [...cats.keys()].filter((k) => k.startsWith("Obj: "))
+    .sort((a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length)) addCat(key);
+  L.control.layers(null, overlays, { collapsed: true }).addTo(map);
+
+  // ---- hover tooltip + click for the dots (throttled nearest hit-test) ----
+  const tip = L.DomUtil.create("div", "pixi-tip", el);
+  tip.style.cssText = "position:absolute;z-index:1000;pointer-events:none;display:none;" +
+    "background:#16181f;border:1px solid #2a2e3a;border-radius:6px;padding:3px 7px;" +
+    "font-size:12px;color:#e6e8ee;white-space:nowrap;transform:translate(-50%,-140%)";
+  const HIT = 8;
+  let raf = 0;
+  const nearest = (cp) => {
+    let best = null, bd = HIT * HIT;
+    for (const sp of container.children) {
+      if (!sp.visible) continue;
+      const p = map.latLngToContainerPoint(sp.ll);
+      const d = (p.x - cp.x) ** 2 + (p.y - cp.y) ** 2;
+      if (d <= bd) { bd = d; best = sp; }
+    }
+    return best;
+  };
+  map.on("mousemove", (e) => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const sp = nearest(e.containerPoint);
+      el.style.cursor = sp && sp.href ? "pointer" : "";
+      if (!sp) { tip.style.display = "none"; return; }
+      tip.innerHTML = sp.label;
+      tip.style.left = `${e.containerPoint.x}px`;
+      tip.style.top = `${e.containerPoint.y}px`;
+      tip.style.display = "block";
+    });
+  });
+  map.on("mouseout", () => { tip.style.display = "none"; });
+  map.on("click", (e) => { const sp = nearest(e.containerPoint); if (sp && sp.href) navigate(sp.href); });
+
+  setTimeout(() => { map.invalidateSize(); redraw(); }, 0);
+  return map;
+}
+
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

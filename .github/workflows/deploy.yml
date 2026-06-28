@@ -74,6 +74,12 @@ jobs:
           aws s3 sync public/maps s3://tortoise-db-viewer/maps \
             --endpoint-url "$R2_ENDPOINT" \
             --content-type image/webp --delete
+          # seamless world-map tile pyramid (committed; CI can't rebuild it -- no
+          # client): all .webp, immutable (tile paths are content-stable per build)
+          aws s3 sync public/minimap s3://tortoise-db-viewer/minimap \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type image/webp \
+            --cache-control "public,max-age=31536000,immutable" --delete
           # icons: webp sprites first (exclude the manifest)...
           aws s3 sync public/icons s3://tortoise-db-viewer/icons \
             --endpoint-url "$R2_ENDPOINT" \

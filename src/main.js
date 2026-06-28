@@ -9,6 +9,9 @@ import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
 import { ASSETS_BASE } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
+// Seamless-minimap transform manifest (tile/adt/grid + per-continent bbox). Tiny,
+// committed; bundled at build time. The tile pyramid itself lives on R2.
+import minimapManifest from "../scripts/data/minimap.json";
 
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
@@ -108,6 +111,7 @@ function route() {
   else if (icon) return showIcon(icon);
   else if (params.get("icons") !== null) return showIcons();
   else if (params.get("flights") !== null) return showFlights(params.get("cont") ? Number(params.get("cont")) : 0);
+  else if (params.get("worldmap") !== null) return showWorldMap(params.get("worldmap") ? Number(params.get("worldmap")) : 0);
   else if (params.get("dungeons") !== null) return showDungeons();
   else if (term) { searchInput.value = term; return showSearch(term); }
   else return showHome();
@@ -163,6 +167,7 @@ function showHome() {
        <a class="nav" href="?browse=zones">zones</a> /
        <a class="nav" href="?dungeons">dungeons &amp; raids</a> /
        <a class="nav" href="?browse=objects">objects</a> /
+       <a class="nav" href="?worldmap">world map</a> /
        <a class="nav" href="?flights">flight paths</a> /
        <a class="nav" href="?icons">icons</a>.
        Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?zone=ID</code>.</p>
@@ -1556,6 +1561,46 @@ async function showFlights(mapId = 0) {
   } catch (e) { el.innerHTML = errorBox(e); }
   const csw = document.getElementById("contswitch");
   if (csw) csw.addEventListener("click", (e) => { const b = e.target.closest("button[data-cont]"); if (b) navigate(`?flights&cont=${b.dataset.cont}`); });
+}
+
+// Seamless continent minimap (?worldmap=mapid): one zoomable slippy map over the
+// client's stitched minimap tiles (R2 pyramid) with every spawn reprojected onto
+// it. Categories live in the layer control (default off) -- a continent has tens of
+// thousands of spawns, so opt-in keeps the initial view clean + fast.
+async function showWorldMap(mapId = 0) {
+  const maps = minimapManifest.maps || {};
+  const ids = Object.keys(maps).map(Number).sort((a, b) => a - b);
+  if (!ids.length) { app.innerHTML = `<div class="home"><p>No world-map data in this build.</p></div>`; return; }
+  if (!maps[String(mapId)]) mapId = ids[0];
+  const m = maps[String(mapId)];
+  document.title = `${m.name} Map - Tortoise-WoW DB`;
+  app.innerHTML = `<div class="loading">Loading…</div>`;
+
+  let spawns, objects;
+  try {
+    [spawns, objects] = await Promise.all([query(Q.Q_WORLD_SPAWNS, [mapId]), query(Q.Q_WORLD_OBJECTS, [mapId])]);
+  } catch (e) { app.innerHTML = errorBox(e); return; }
+
+  const switcher = `<div id="contswitch" class="floor-switch">${ids.map((id) =>
+    `<button data-cont="${id}"${id === mapId ? ' class="active"' : ""}>${esc(maps[String(id)].name)}</button>`).join("")}</div>`;
+  app.innerHTML = `<div class="zone-page">
+    <div class="npc-head"><h1>${esc(m.name)} <span class="dim">— World Map</span></h1>
+      <div class="npc-meta muted">${spawns.length.toLocaleString()} creature spawns · ${objects.length.toLocaleString()} objects · toggle categories in the layer control (top-right)</div>
+    </div>
+    ${switcher}
+    <div id="zonemap"></div>
+  </div>`;
+  const el = document.getElementById("zonemap");
+  try {
+    const { initWorldMap } = await import("./zonemap.js");
+    initWorldMap(el, {
+      mapId, name: m.name, bbox: m.bbox,
+      tile: minimapManifest.tile, adt: minimapManifest.adt, grid: minimapManifest.grid,
+      maxNativeZoom: minimapManifest.maxNativeZoom, tilesBase: `${ASSETS_BASE}minimap/`,
+    }, spawns, objects, navigate);
+  } catch (e) { el.innerHTML = errorBox(e); }
+  const csw = document.getElementById("contswitch");
+  if (csw) csw.addEventListener("click", (e) => { const b = e.target.closest("button[data-cont]"); if (b) navigate(`?worldmap=${b.dataset.cont}`); });
 }
 
 // Legacy ?dungeon=<mapid> route. Dungeons/raids are now rendered by the unified

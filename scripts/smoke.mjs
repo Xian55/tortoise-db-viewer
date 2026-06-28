@@ -589,6 +589,30 @@ async function testFlights() {
   console.log(`flights: nodes=${nodes} continents=${conts} src1=${src1} src2=${src2} switched=${src1 !== src2}`);
   return nodes > 20 && conts === 2 && src1 !== src2;
 }
+// Seamless world map: a Leaflet tile pyramid (not a single parchment) over the
+// continent, with spawn-category layers in the layer control and a continent
+// switcher that swaps the tile source (…/minimap/0/… -> …/minimap/1/…).
+async function testWorldMap() {
+  await page.setViewport({ width: 1280, height: 900 });
+  await page.goto(`${BASE}?worldmap`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 });
+  await new Promise((r) => setTimeout(r, 500));
+  const tiles = await page.$$eval("#zonemap img.leaflet-tile-loaded", (e) => e.length);
+  const src1 = await page.$eval("#zonemap img.leaflet-tile", (e) => e.getAttribute("src")).catch(() => "");
+  const conts = await page.$$eval("#contswitch button", (b) => b.length).catch(() => 0);
+  // layer control carries spawn categories with counts, e.g. "Quest Givers (123)"
+  await page.evaluate(() => { const t = document.querySelector(".leaflet-control-layers-toggle"); if (t) t.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
+  await new Promise((r) => setTimeout(r, 150));
+  const cats = await page.$$eval(".leaflet-control-layers-overlays label", (ls) => ls.filter((l) => /\(\d+\)/.test(l.textContent)).length).catch(() => 0);
+  // switch continents -> tiles re-request from the other map's pyramid path
+  await page.evaluate(() => { const b = [...document.querySelectorAll("#contswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
+  await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 });
+  await new Promise((r) => setTimeout(r, 500));
+  const src2 = await page.$eval("#zonemap img.leaflet-tile", (e) => e.getAttribute("src")).catch(() => "");
+  const m1 = /minimap\/(\d+)\//.exec(src1)?.[1], m2 = /minimap\/(\d+)\//.exec(src2)?.[1];
+  console.log(`worldmap: tiles=${tiles} conts=${conts} cats=${cats} map1=${m1} map2=${m2} switched=${m1 !== m2}`);
+  return tiles > 0 && conts === 2 && cats > 0 && m1 != null && m2 != null && m1 !== m2;
+}
 async function testDungeons() {
   await page.goto(`${BASE}?dungeons`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
@@ -1372,6 +1396,7 @@ run(() => testNpcMapZone(60735, 5103));       // Hateforge Quarry boss stays in 
 run(() => testNpcLocationLabel(596, 40));
 run(() => testDungeons());
 run(() => testFlights());                        // flight-path world map + continent switch
+run(() => testWorldMap());                        // seamless continent minimap (tile pyramid + categories)
 run(() => testObjectsBrowse());                       // objects finder (interactive gameobjects)
 run(() => testObject(1731, "Copper Vein", "Copper Ore"));  // object detail: contains item + map
 run(() => testObjectFocusZone(2852, 10));   // Solid Chest opens on the focused zone (Duskwood) via &fz

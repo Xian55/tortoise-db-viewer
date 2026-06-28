@@ -657,6 +657,23 @@ export const Q_MAP_OBJECTS = `
   WHERE s.kind = 'o' AND s.map = ?1
   LIMIT 4000`;
 
+// Seamless continent minimap (?worldmap=mapid): every spawn on an OVERWORLD map,
+// reprojected onto the tile pyramid. A continent has ~67k creature spawns, so the
+// instance-map LIMITs above are far too tight -> generous caps (categories render
+// lazily and default off, so the cost is paid only when a layer is toggled on).
+export const Q_WORLD_SPAWNS = `
+  SELECT s.x, s.y, s.zone, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags, c.loot_value,
+         (EXISTS(SELECT 1 FROM creature_quest_start q WHERE q.id = c.entry)
+       OR EXISTS(SELECT 1 FROM creature_quest_end q WHERE q.id = c.entry)) AS questgiver
+  FROM spawn_points s INDEXED BY idx_spawn_map JOIN creatures c ON c.entry = s.id
+  WHERE s.kind = 'c' AND s.map = ?1
+  LIMIT 120000`;
+export const Q_WORLD_OBJECTS = `
+  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type, g.loot_value
+  FROM spawn_points s INDEXED BY idx_spawn_map JOIN gameobjects g ON g.entry = s.id
+  WHERE s.kind = 'o' AND s.map = ?1
+  LIMIT 60000`;
+
 // Items dropped by creatures assigned to the zone (for the zone's Items tab).
 // Collapse the spawns to their distinct loot tables FIRST (a few hundred), then
 // join drops -> items; otherwise the loot join runs per-spawn (12x redundant) and

@@ -93,6 +93,7 @@ python scripts/extract-maps.py        # LOCAL: client -> public/maps/*.webp + sc
 python scripts/extract-area-bounds.py # LOCAL: client ADTs -> scripts/data/subzone-bounds.json (exact coord->area)
 python scripts/extract-item-sets.py   # LOCAL: client ItemSet.dbc -> scripts/data/item-sets.json (set names + bonuses)
 python scripts/extract-skill-lines.py # LOCAL: client SkillLine.dbc -> scripts/data/skill-lines.json (skill categories)
+python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/minimap/<map>/{z}/{x}/{y}.webp tile pyramid + scripts/data/minimap.json
 ```
 
 `SQL_DIR` defaults to `../tortoise-wow/sql/base`; `UPDATES_DIR` defaults to its
@@ -145,6 +146,33 @@ share the `Interface\Icons` pool with items, so standard basenames load straight
 from the CDN; only Turtle-custom spell icons (not on the CDN) are extracted into
 the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
 `spells.icon`; absent map ⇒ text/CDN-fallback spell links (graceful).
+
+### Seamless world map (?worldmap=)
+
+A continuous, zoomable continent minimap (Eastern Kingdoms map 0, Kalimdor map 1)
+— wowhead/gamermaps-style — alongside the per-zone parchments. `extract-minimap.py`
+(LOCAL) stitches the client's per-ADT-block minimap BLPs (md5-renamed; resolved via
+`textures\Minimap\md5translate.trs`) into a Leaflet XYZ tile **pyramid**
+(`public/minimap/<mapId>/{z}/{x}/{y}.webp`, z0..6, 256px, y-down) and writes the
+tiny transform manifest `scripts/data/minimap.json`. The ADT grid is regular, so
+world→pixel is **linear + uniform** (no per-zone WorldMapArea bounds):
+`gpx = tile*(32 - worldY/adt)`, `gpy = tile*(32 - worldX/adt)` (tile=256,
+adt=1600/3); one CRS unit = native px / 2^maxNativeZoom. `src/zonemap.js`
+`initWorldMap()` draws the pyramid (CRS.Simple, y-down `Transformation(1,0,1,0)`)
+and reprojects every spawn with that formula, reusing the zone map's Pixi dot
+overlay + category toggles. `src/main.js` `showWorldMap()` (route `?worldmap=<map>`)
+loads the bundled manifest, queries `Q_WORLD_SPAWNS`/`Q_WORLD_OBJECTS` (generous
+LIMITs — a continent has ~67k spawns; categories default OFF so the cost is paid
+only on toggle), and serves tiles from `${ASSETS_BASE}minimap/`.
+
+Only overworld continents WITH spawns ship (the `SHIP` map in the script): Outland
+/ Kalidar exist as client art but have no spawns → excluded. Scope = maps 0,1.
+
+**The tile pyramid IS committed** (`public/minimap/`, ~2400 webp) — like
+`public/maps`, because CI can't regenerate it (no client), and the deploy workflow
+**syncs it to R2** (`aws s3 sync`, see "Deploy") alongside the other assets. The
+committed `scripts/data/minimap.json` (bundled by Vite) carries the transform.
+Re-run `extract-minimap.py` + commit on client map changes.
 
 ## File map
 
@@ -201,7 +229,12 @@ the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
   (`{mapId: [{i:areaId, x0,x1,y0,y1}]}`). build-db assigns each spawn the smallest
   box containing it, walked up `area_template.zone_id` to the render zone — exact
   coord→zone the SQL dumps lack. Re-run on client updates.
-  Future seamless minimap: `X:\Programming\WoWTools.Minimaps` (.NET).
+- `scripts/extract-minimap.py` — LOCAL: stitches the client's per-ADT-block minimap
+  BLPs into the seamless-world-map tile pyramid `public/minimap/<mapId>/{z}/{x}/{y}.webp`
+  (committed — CI can't rebuild it; synced to R2 by deploy.yml) + the committed
+  transform manifest `scripts/data/minimap.json`. See "Seamless world map (?worldmap=)".
+  Per-map runs MERGE the manifest. Standalone reference C# tooling:
+  `X:\Programming\WoWTools.Minimaps` (not used by the build).
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
 - `scripts/lib/sqlite.mjs` — Bun/Node SQLite wrapper.
@@ -265,7 +298,11 @@ the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
   `items.set_id` in the SQL dump), and skill-line categories
   (`scripts/data/skill-lines.json` via `extract-skill-lines.py`, from the client
   `SkillLine.dbc`; build-db joins these onto `skill_line_ability` to set
-  `spells.category` for the browse filter). See "Custom icons" / `scripts/extract-maps.py`.
+  `spells.category` for the browse filter), and the seamless-world-map transform
+  manifest (`scripts/data/minimap.json` via `extract-minimap.py`) + the world-map
+  **tile pyramid** itself (`public/minimap/`, ~2400 webp — committed like
+  `public/maps`; CI can't rebuild it, deploy.yml syncs it to R2). See "Custom
+  icons" / `scripts/extract-maps.py` / "Seamless world map".
 - **Zone assignment is ADT-exact.** Each spawn's `spawn_points.zone` is precomputed
   in build-db from `scripts/data/subzone-bounds.json` (per-AreaTable bounding boxes
   extracted from the client ADT terrain chunks by `extract-area-bounds.py`): the
@@ -295,4 +332,12 @@ the shared `assets/icons/custom/` atlas pool. `build-db.mjs` joins the map onto
 `.github/workflows/deploy.yml` (push to `main`): sparse-checks out the server
 repo's `sql/base`, builds the DB with Bun, runs `vite build`, deploys `dist/` to
 Pages. Pages base path is `/tortoise-db-viewer/` (`vite.config.js`; override with
-`BASE_PATH`).
+`BASE_PATH`). Heavy assets (DB, zone maps, icon atlas) are pushed to Cloudflare R2
+(`aws s3 sync`, S3 API) and served from `VITE_ASSETS_BASE` to spare Pages bandwidth.
+
+**World-map tiles sync via CI** like the zone maps: they're committed
+(`public/minimap/`, CI can't rebuild them — no client), and the "Upload assets to
+Cloudflare R2" step `aws s3 sync`s them to `s3://tortoise-db-viewer/minimap`. The
+frontend reads `${VITE_ASSETS_BASE}minimap/<map>/{z}/{x}/{y}.webp`; the committed
+`scripts/data/minimap.json` (bundled by Vite) supplies the transform. Re-run
+`extract-minimap.py` + commit on client map changes; the next deploy pushes them.

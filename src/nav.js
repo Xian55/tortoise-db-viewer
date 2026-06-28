@@ -111,6 +111,7 @@ export const MENU = [
   CRAFTING,
   { label: "Factions", href: "?browse=factions" },
   ZONES,
+  { label: "World Map", href: "?worldmap" },
   { label: "Dungeons", href: "?dungeons" },
   { label: "Objects", href: "?browse=objects" },
   { label: "Flights", href: "?flights" },
