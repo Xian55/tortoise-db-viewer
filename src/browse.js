@@ -34,6 +34,8 @@ const COL = {
   // fishing poles' "+N Fishing" equip bonus (item_stats stat='fishing'); replaces
   // DPS/Speed when the Fishing Pole subtype is the only one filtered.
   fishing: { key: "fishing", label: "Fishing", num: true, cls: "muted", cell: (r) => (r.fishing ? `+${r.fishing}` : ""), value: (r) => r.fishing || 0 },
+  // recipe (class 9) profession the item teaches/requires, from items.required_skill.
+  prof: { key: "prof", label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.required_skill] || ""), value: (r) => PROFESSION_LABEL[r.required_skill] || "" },
 };
 
 // columns adapt to the class filter: weapons show DPS/Speed, armor shows Armor.
@@ -43,12 +45,16 @@ const COL = {
 // per criterion stat is inserted (right after Name). Fishing poles (the sole
 // weapon subtype filtered = 20) swap DPS/Speed for the "+N Fishing" column --
 // neither is meaningful on a pole.
-function buildItemCols(cls, statCols, subclass) {
-  const base = cls === "2" && subclass === "20" ? [COL.name, COL.fishing, COL.ilvl, COL.req, COL.source]
+function buildItemCols(cls, statCols, subclass, hideProf) {
+  let base = cls === "2" && subclass === "20" ? [COL.name, COL.fishing, COL.ilvl, COL.req, COL.source]
     : cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.source]
       : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.source]
         : cls === "6" ? [COL.name, COL.ammo, COL.ilvl, COL.req, COL.source]
-          : [COL.name, COL.slots, COL.ilvl, COL.req, COL.slot, COL.source];
+          // recipes: show the profession the recipe teaches (drop slot/slots — N/A)
+          : cls === "9" ? [COL.name, COL.prof, COL.req, COL.source]
+            : [COL.name, COL.slots, COL.ilvl, COL.req, COL.slot, COL.source];
+  // a single-profession filter makes the column uniform -> drop it
+  if (hideProf) base = base.filter((c) => c !== COL.prof);
   return statCols.length ? [base[0], ...statCols, ...base.slice(1)] : base;
 }
 
@@ -220,7 +226,7 @@ async function browseItems(p) {
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
   const rows = await query(
     `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, i.display_id,
-            i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, di.icon${statSel2}${fishingSel},
+            i.required_skill, i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, di.icon${statSel2}${fishingSel},
             (SELECT GROUP_CONCAT(source,',') FROM item_sources s WHERE s.item = i.entry) AS sources
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
@@ -259,7 +265,7 @@ async function browseItems(p) {
     ${critBlock}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  return { rows, cols: buildItemCols(f.class, statCols, f.subclass), filters, noun: "items" };
+  return { rows, cols: buildItemCols(f.class, statCols, f.subclass, f.prof !== ""), filters, noun: "items" };
 }
 
 async function browseNpcs(p) {
