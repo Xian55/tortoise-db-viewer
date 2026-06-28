@@ -135,7 +135,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     dy ? (100 * (zone.locleft - y)) / dy : 0,   // X (horizontal)
     dx ? (100 * (zone.loctop - x)) / dx : 0,    // Y (vertical)
   ];
-  const fmtCoord = (p) => { const [cx, cy] = toMapCoord(p.x, p.y); return `${cx.toFixed(1)}, ${cy.toFixed(1)}`; };
+  const fmtCoord = (p) => { const [cx, cy] = toMapCoord(p.x, p.y); return `${cx.toFixed(1)} ${cy.toFixed(1)}`; };
   const fmtWay = (p, label) => {
     const [cx, cy] = toMapCoord(p.x, p.y);
     return `/way ${zone.name || ""} ${cx.toFixed(1)} ${cy.toFixed(1)}${label ? " " + label : ""}`.replace(/\s+/g, " ").trim();

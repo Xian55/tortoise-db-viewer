@@ -428,7 +428,7 @@ async function testNpcMapMenu(id) {
   const items = await page.$$eval(".map-ctx .map-ctx-i", (e) => e.map((b) => b.textContent.trim()));
   await page.click(".map-ctx .map-ctx-i");   // first item = Copy > Coordinates
   const copied = await page.evaluate(() => window.__copied);
-  const coordOk = /^-?\d+\.\d, -?\d+\.\d$/.test(copied || "");
+  const coordOk = /^-?\d+\.\d -?\d+\.\d$/.test(copied || "");
   console.log(`npc-map-menu ${id}: headers=[${headers.join(",")}] items=[${items.join(",")}] copied="${copied}" coordOk=${coordOk}`);
   return headers.includes("Copy") && headers.includes("Copy All")
     && items.filter((t) => t === "Coordinates").length === 2
@@ -468,7 +468,7 @@ async function testZoneDotMenu(id) {
   const items = await page.$$eval(".map-ctx .map-ctx-i", (e) => e.map((b) => b.textContent.trim()));
   await page.click(".map-ctx .map-ctx-i");   // Copy > Coordinates
   const copied = await page.evaluate(() => window.__copied);
-  const coordOk = /^-?\d+\.\d, -?\d+\.\d$/.test(copied || "");
+  const coordOk = /^-?\d+\.\d -?\d+\.\d$/.test(copied || "");
   console.log(`zone-dot-menu ${id}: at=${JSON.stringify(found)} headers=[${headers.join(",")}] items=[${items.join(",")}] copied="${copied}" coordOk=${coordOk}`);
   return headers.includes("Copy") && items.includes("Coordinates") && items.some((t) => /TomTom/.test(t)) && coordOk;
 }
