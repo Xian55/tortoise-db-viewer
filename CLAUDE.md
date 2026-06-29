@@ -70,8 +70,19 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
 - **Search is unified + FTS-backed.** `?search=` renders a tabbed page across
   items/NPCs/quests/dungeons/zones; the top-bar input also shows a live flat
   top-5 dropdown (`src/search.js`, `runSearch()` + `initSearchDropdown()`). Items,
-  creatures, and quests have FTS5 tables (`*_fts`); dungeons (maps) and zones use
-  LIKE over their small tables.
+  creatures, quests, and spells have FTS5 tables (`*_fts`, `unicode61`, prefix);
+  dungeons (maps) and zones use LIKE over their small tables. Each searchable
+  entity also has a **contentless `trigram` index on its name** (`*_tg`) so search
+  matches **substrings/infix** ("fang" -> "Shadowfang"); the query OR-matches the
+  prefix index (covers <3-char + ranking) and the trigram index. `search.js` builds
+  both MATCH strings (`ftsQuery` prefix, `trigramQuery` quoted ≥3-char substrings
+  AND-combined, with a no-match sentinel for short terms). The trigram indexes add
+  ~2 MB to the brotli download — worth it for items/creatures (the bulk; trimming
+  spells/quests saves only ~0.6 MB).
+- **DB build runs `ANALYZE`** (sqlite_stat1) before the final VACUUM so the planner
+  has stats for the heavy joins. The DB-worker opens read-only with tuned pragmas
+  (`cache_size=-32768` 32 MB, `temp_store=MEMORY`, `query_only=ON`). `page_size`
+  stays 4096 — measured optimal for the brotli download (8k/16k/32k compress worse).
 
 ## Commands
 

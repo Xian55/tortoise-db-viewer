@@ -41,20 +41,25 @@ export const Q_ITEMSET_STATS = `
   WHERE st.item IN (SELECT entry FROM items WHERE set_id = ?1 AND hidden = 0)`;
 
 // ---- Unified search (items/NPCs/quests via FTS5; dungeons via LIKE) ----
-// FTS queries: ?1 = FTS MATCH string (prefix tokens), ?2 = raw term (exact/prefix
-// tiebreak), ?3 = LIMIT. Dungeons: ?1 = LIKE pattern, ?2 = raw term, ?3 = LIMIT.
+// FTS queries: ?1 = prefix MATCH string (unicode61 tokens), ?2 = raw term
+// (exact/prefix tiebreak), ?3 = LIMIT, ?4 = trigram MATCH string (substring/infix;
+// a no-match sentinel when the term is <3 chars). Each row matches the prefix index
+// OR the trigram index, so "fang" finds "Shadowfang" while short terms still work.
+// Dungeons: ?1 = LIKE pattern, ?2 = raw term, ?3 = LIMIT.
 export const Q_SEARCH_ITEMS = `
   SELECT i.entry, i.name, i.quality, i.item_level, i.required_level, di.icon
-  FROM items_fts f JOIN items i ON i.entry = f.rowid
+  FROM items i
   LEFT JOIN item_display_info di ON di.ID = i.display_id
-  WHERE items_fts MATCH ?1
+  WHERE (i.entry IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?1)
+      OR i.entry IN (SELECT rowid FROM items_tg WHERE items_tg MATCH ?4))
   ORDER BY (i.name = ?2) DESC, (i.name LIKE ?2 || '%') DESC, i.quality DESC, i.item_level DESC
   LIMIT ?3`;
 
 export const Q_SEARCH_NPCS = `
   SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.type
-  FROM creatures_fts f JOIN creatures c ON c.entry = f.rowid
-  WHERE creatures_fts MATCH ?1
+  FROM creatures c
+  WHERE (c.entry IN (SELECT rowid FROM creatures_fts WHERE creatures_fts MATCH ?1)
+      OR c.entry IN (SELECT rowid FROM creatures_tg WHERE creatures_tg MATCH ?4))
   ORDER BY (c.name = ?2) DESC, (c.name LIKE ?2 || '%') DESC, c.level_max DESC
   LIMIT ?3`;
 
@@ -67,15 +72,17 @@ export const Q_SEARCH_FACTIONS = `
 
 export const Q_SEARCH_QUESTS = `
   SELECT q.entry, q.title, q.level, q.zone, q.type
-  FROM quests_fts f JOIN quests q ON q.entry = f.rowid
-  WHERE quests_fts MATCH ?1
+  FROM quests q
+  WHERE (q.entry IN (SELECT rowid FROM quests_fts WHERE quests_fts MATCH ?1)
+      OR q.entry IN (SELECT rowid FROM quests_tg WHERE quests_tg MATCH ?4))
   ORDER BY (q.title = ?2) DESC, (q.title LIKE ?2 || '%') DESC, q.level
   LIMIT ?3`;
 
 export const Q_SEARCH_SPELLS = `
   SELECT s.entry, s.name, s.icon, s.skill
-  FROM spells_fts f JOIN spells s ON s.entry = f.rowid
-  WHERE spells_fts MATCH ?1
+  FROM spells s
+  WHERE (s.entry IN (SELECT rowid FROM spells_fts WHERE spells_fts MATCH ?1)
+      OR s.entry IN (SELECT rowid FROM spells_tg WHERE spells_tg MATCH ?4))
   ORDER BY (s.name = ?2) DESC, (s.name LIKE ?2 || '%') DESC, s.name, s.entry
   LIMIT ?3`;
 

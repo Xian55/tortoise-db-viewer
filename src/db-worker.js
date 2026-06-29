@@ -66,7 +66,15 @@ async function open(version, url) {
 self.onmessage = async (ev) => {
   const { id, type, sql, params, version, url } = ev.data;
   try {
-    if (type === "open") { self.postMessage({ id, result: await open(version, url) }); return; }
+    if (type === "open") {
+      const result = await open(version, url);
+      // Read-only tuning: a 32 MB page cache keeps the hot b-tree resident (faster
+      // repeat zone/search queries), temp b-trees (ORDER BY / GROUP BY) build in
+      // RAM, and query_only guards against accidental writes. Best-effort.
+      try { db.exec("PRAGMA cache_size=-32768; PRAGMA temp_store=MEMORY; PRAGMA query_only=ON;"); } catch { /* non-fatal */ }
+      self.postMessage({ id, result });
+      return;
+    }
     if (type === "query") {
       const rows = db.exec({ sql, bind: params, rowMode: "object", returnValue: "resultRows" });
       self.postMessage({ id, result: rows });

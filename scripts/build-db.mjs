@@ -1225,8 +1225,25 @@ db.exec(`INSERT INTO quests_fts(rowid, title) SELECT entry, title FROM quests WH
 db.exec(`CREATE VIRTUAL TABLE spells_fts USING fts5(name, description, content='spells', content_rowid='entry', tokenize='unicode61')`);
 db.exec(`INSERT INTO spells_fts(rowid, name, description) SELECT entry, name, description FROM spells WHERE name IS NOT NULL AND name <> '' AND teaches IS NULL AND hidden = 0`);
 
+// Trigram indexes on the NAME columns -> substring/infix search ("fang" finds
+// "Shadowfang"), which the unicode61 prefix index above can't do. Contentless
+// (content='') -> only rowid + the tokenized trigrams are stored (smallest); the
+// search query joins back to the base table by rowid. The prefix index stays for
+// short (<3 char) terms and prefix ranking; the search OR-matches both.
+db.exec(`CREATE VIRTUAL TABLE items_tg USING fts5(name, tokenize='trigram', content='')`);
+db.exec(`INSERT INTO items_tg(rowid, name) SELECT entry, name FROM items WHERE hidden = 0`);
+db.exec(`CREATE VIRTUAL TABLE creatures_tg USING fts5(name, tokenize='trigram', content='')`);
+db.exec(`INSERT INTO creatures_tg(rowid, name) SELECT entry, name FROM creatures WHERE name IS NOT NULL AND name <> '' AND hidden = 0`);
+db.exec(`CREATE VIRTUAL TABLE quests_tg USING fts5(title, tokenize='trigram', content='')`);
+db.exec(`INSERT INTO quests_tg(rowid, title) SELECT entry, title FROM quests WHERE title IS NOT NULL AND title <> '' AND hidden = 0`);
+db.exec(`CREATE VIRTUAL TABLE spells_tg USING fts5(name, tokenize='trigram', content='')`);
+db.exec(`INSERT INTO spells_tg(rowid, name) SELECT entry, name FROM spells WHERE name IS NOT NULL AND name <> '' AND teaches IS NULL AND hidden = 0`);
+
 console.log("Optimizing...");
 db.pragma("journal_mode = DELETE");
+// Collect planner statistics (sqlite_stat1) so the query planner picks the right
+// index on the heavy joins (drops ~550k, spawn_points ~150k, multi-join search).
+db.exec("ANALYZE");
 db.exec("VACUUM");
 db.close();
 

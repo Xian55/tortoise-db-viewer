@@ -212,6 +212,19 @@ async function testSearch(term) {
   return count > 0;
 }
 
+// Trigram infix search: a mid-name substring (not a prefix of any token) still
+// finds results -- e.g. "owfang" matches "Shadowfang ...". Proves the trigram
+// index, since the prefix FTS could never match a non-leading fragment.
+async function testSearchInfix(term, expectSub) {
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".results", { timeout: 40000 });
+  await page.waitForSelector(".results a.ilink", { timeout: 20000 }).catch(() => {});
+  const names = await page.$$eval(".results a.ilink", (a) => a.map((x) => x.textContent.toLowerCase()));
+  const hit = names.some((n) => n.includes(expectSub));
+  console.log(`search-infix "${term}": hit(${expectSub})=${hit} names=${JSON.stringify(names.slice(0, 4))}`);
+  return hit;
+}
+
 async function testNpc(id, expectName, expectTab) {
   await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".npc-head h1", { timeout: 40000 });
@@ -1338,6 +1351,7 @@ run(() => testContainer(16882, "Junkbox"));  // lockbox -> Contains tab
 run(() => testTeaches(70204, "Shadowforged"));  // recipe -> Teaches tab
 run(() => testCustomIcon(9376, "Jang"));
 run(() => testSearch("thunder"));
+run(() => testSearchInfix("owfang", "owfang"));  // trigram infix: finds Shadowfang* from a mid-name fragment
 run(() => testQuest(14, "Militia"));
 run(() => testQuestVideoLink(14));  // quest page: YouTube walkthrough search link
 run(() => testShareButton("quest", 14, "q"));  // Share button copies the OG-stub link

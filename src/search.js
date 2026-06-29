@@ -5,10 +5,19 @@ import { query } from "./db.js";
 import { Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES, Q_SEARCH_FACTIONS, Q_SEARCH_ITEMSETS, Q_SEARCH_OBJECTS } from "./queries.js";
 import { itemLink, npcLink, questLink, spellLink, dungeonLink, zoneLink, factionLink, objectLink, esc } from "./render.js";
 
-// FTS5 MATCH string: prefix-match each alnum token ("fire bl" -> "fire* bl*").
+// FTS5 prefix MATCH: prefix-match each alnum token ("fire bl" -> "fire* bl*").
 function ftsQuery(term) {
   const toks = term.toLowerCase().match(/[a-z0-9]+/g);
   return toks && toks.length ? toks.map((t) => `${t}*`).join(" ") : null;
+}
+// Trigram MATCH for substring/infix search: each >=3-char token becomes a quoted
+// substring, AND-combined ("shadow fang" -> '"shadow" AND "fang"', matches
+// "Shadowfang"). Trigram can't index <3-char tokens, so they're dropped; if none
+// remain the sentinel matches nothing (the prefix index still covers short terms).
+const TG_SENTINEL = '"qzqzqzq"';
+function trigramQuery(term) {
+  const toks = (term.toLowerCase().match(/[a-z0-9]+/g) || []).filter((t) => t.length >= 3);
+  return toks.length ? toks.map((t) => `"${t}"`).join(" AND ") : TG_SENTINEL;
 }
 
 // Run all entity searches in parallel; `limit` rows per entity.
@@ -17,12 +26,13 @@ export async function runSearch(term, limit) {
   const empty = { items: [], npcs: [], quests: [], spells: [], dungeons: [], zones: [], factions: [], itemsets: [], objects: [] };
   if (!t) return empty;
   const fts = ftsQuery(t);
+  const tg = trigramQuery(t);
   const like = `%${t}%`;
   const [items, npcs, quests, spells, dungeons, zones, factions, itemsets, objects] = await Promise.all([
-    fts ? query(Q_SEARCH_ITEMS, [fts, t, limit]) : [],
-    fts ? query(Q_SEARCH_NPCS, [fts, t, limit]) : [],
-    fts ? query(Q_SEARCH_QUESTS, [fts, t, limit]) : [],
-    fts ? query(Q_SEARCH_SPELLS, [fts, t, limit]) : [],
+    fts ? query(Q_SEARCH_ITEMS, [fts, t, limit, tg]) : [],
+    fts ? query(Q_SEARCH_NPCS, [fts, t, limit, tg]) : [],
+    fts ? query(Q_SEARCH_QUESTS, [fts, t, limit, tg]) : [],
+    fts ? query(Q_SEARCH_SPELLS, [fts, t, limit, tg]) : [],
     query(Q_SEARCH_DUNGEONS, [like, t, limit]),
     query(Q_SEARCH_ZONES, [like, t, limit]),
     query(Q_SEARCH_FACTIONS, [like, t, limit]),
