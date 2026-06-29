@@ -1115,7 +1115,16 @@ console.log("Importing zones + spawn points...");
     const mining = ids("mining"), herb = ids("herbalism");
     if (mining.length) db.exec(`UPDATE gameobjects SET gather='mining' WHERE data0 IN (${mining.join(",")})`);
     if (herb.length) db.exec(`UPDATE gameobjects SET gather='herbalism' WHERE data0 IN (${herb.join(",")})`);
-    console.log(`  gather: ${db.prepare("SELECT COUNT(*) n FROM gameobjects WHERE gather IS NOT NULL").get().n} nodes (${mining.length} mining + ${herb.length} herb locks)`);
+    // gather_icon: the node's primary yielded item's icon basename (Copper Vein ->
+    // INV_Ore_Copper_01) so the map can draw each ore/herb's real icon. Correlated
+    // subquery but only over the ~130 gather rows -> fast.
+    db.exec(`ALTER TABLE gameobjects ADD COLUMN gather_icon TEXT`);
+    db.exec(`UPDATE gameobjects SET gather_icon = (
+      SELECT di.icon FROM drops d JOIN items it ON it.entry = d.item
+        LEFT JOIN item_display_info di ON di.ID = it.display_id
+      WHERE d.src = 'o' AND d.owner = gameobjects.data1 AND di.icon IS NOT NULL AND di.icon <> ''
+      ORDER BY d.chance DESC LIMIT 1) WHERE gather IS NOT NULL`);
+    console.log(`  gather: ${db.prepare("SELECT COUNT(*) n FROM gameobjects WHERE gather IS NOT NULL").get().n} nodes (${mining.length} mining + ${herb.length} herb locks), ${db.prepare("SELECT COUNT(*) n FROM gameobjects WHERE gather_icon IS NOT NULL").get().n} with icons`);
   } else {
     console.log("  (no scripts/data/locks.json -- run scripts/extract-locks.py; gather split disabled)");
   }

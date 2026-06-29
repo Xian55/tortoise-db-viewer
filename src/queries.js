@@ -646,7 +646,7 @@ export const Q_ZONE_SPAWNS = `
   LIMIT 8000`;
 
 export const Q_ZONE_OBJECTS = `
-  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type, g.gather, g.loot_value
+  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type, g.gather, g.gather_icon, g.loot_value
   FROM spawn_points s JOIN gameobjects g ON g.entry = s.id
   WHERE s.kind = 'o' AND s.zone = ?1
   LIMIT 4000`;
@@ -661,7 +661,7 @@ export const Q_MAP_SPAWNS = `
   WHERE s.kind = 'c' AND s.map = ?1
   LIMIT 8000`;
 export const Q_MAP_OBJECTS = `
-  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type, g.gather, g.loot_value
+  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type, g.gather, g.gather_icon, g.loot_value
   FROM spawn_points s INDEXED BY idx_spawn_map JOIN gameobjects g ON g.entry = s.id
   WHERE s.kind = 'o' AND s.map = ?1
   LIMIT 4000`;
@@ -671,17 +671,24 @@ export const Q_MAP_OBJECTS = `
 // instance-map LIMITs above are far too tight -> generous caps (categories render
 // lazily and default off, so the cost is paid only when a layer is toggled on).
 export const Q_WORLD_SPAWNS = `
-  SELECT s.x, s.y, s.zone, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags, c.loot_value,
+  SELECT s.x, s.y, s.zone, c.entry, c.name, c.level_min, c.level_max, c.rank, c.npc_flags,
          (EXISTS(SELECT 1 FROM creature_quest_start q WHERE q.id = c.entry)
        OR EXISTS(SELECT 1 FROM creature_quest_end q WHERE q.id = c.entry)) AS questgiver
   FROM spawn_points s INDEXED BY idx_spawn_map JOIN creatures c ON c.entry = s.id
   WHERE s.kind = 'c' AND s.map = ?1
   LIMIT 120000`;
 export const Q_WORLD_OBJECTS = `
-  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type, g.gather, g.loot_value
+  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type, g.gather, g.gather_icon, g.loot_value
   FROM spawn_points s INDEXED BY idx_spawn_map JOIN gameobjects g ON g.entry = s.id
   WHERE s.kind = 'o' AND s.map = ?1
   LIMIT 60000`;
+// World-map npc name filter, FTS-backed (prefix ?1 + trigram/infix ?2, same indexes
+// as the global search) -> matching creature entries; the map filters its markers.
+export const Q_WORLD_NPC_FILTER = `
+  SELECT c.entry FROM creatures c
+  WHERE c.entry IN (SELECT rowid FROM creatures_fts WHERE creatures_fts MATCH ?1)
+     OR c.entry IN (SELECT rowid FROM creatures_tg WHERE creatures_tg MATCH ?2)
+  LIMIT 8000`;
 
 // Items dropped by creatures assigned to the zone (for the zone's Items tab).
 // Collapse the spawns to their distinct loot tables FIRST (a few hundred), then
