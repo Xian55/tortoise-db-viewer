@@ -1576,6 +1576,10 @@ async function showWorldMap(mapId = 0) {
   document.title = `${m.name} Map - Tortoise-WoW DB`;
   app.innerHTML = `<div class="loading">Loading…</div>`;
 
+  // Kick off the (large) zonemap chunk download NOW so it overlaps the DB query +
+  // worker round-trip instead of waiting for them (the chunk req otherwise sits in
+  // a ~1s network-idle gap after the spawns resolve).
+  const zonemapMod = import("./zonemap.js");
   let spawns, objects, zones;
   try {
     [spawns, objects, zones] = await Promise.all([
@@ -1612,13 +1616,23 @@ async function showWorldMap(mapId = 0) {
     if (s.q) np.set("q", s.q); else np.delete("q");
     history.replaceState({}, "", "?" + np.toString());
   };
+  // FTS npc filter for the map: prefix + trigram MATCH (same indexes as global
+  // search) -> the Set of matching creature entries the map narrows its markers to.
+  const searchNpcs = async (term) => {
+    const toks = term.toLowerCase().match(/[a-z0-9]+/g);
+    if (!toks || !toks.length) return null;
+    const fts = toks.map((t) => `${t}*`).join(" ");
+    const tg = toks.filter((t) => t.length >= 3).map((t) => `"${t}"`).join(" AND ") || '"qzqzqzq"';
+    const rows = await query(Q.Q_WORLD_NPC_FILTER, [fts, tg]);
+    return new Set(rows.map((r) => r.entry));
+  };
   try {
-    const { initWorldMap } = await import("./zonemap.js");
+    const { initWorldMap } = await zonemapMod;
     initWorldMap(el, {
       mapId, name: m.name, bbox: m.bbox,
       tile: minimapManifest.tile, adt: minimapManifest.adt, grid: minimapManifest.grid,
       maxNativeZoom: minimapManifest.maxNativeZoom, tilesBase: `${ASSETS_BASE}minimap/`,
-    }, spawns, objects, navigate, { zones, initial, onState });
+    }, spawns, objects, navigate, { zones, initial, onState, searchNpcs });
   } catch (e) { el.innerHTML = errorBox(e); }
   const csw = document.getElementById("contswitch");
   if (csw) csw.addEventListener("click", (e) => { const b = e.target.closest("button[data-cont]"); if (b) navigate(`?worldmap=${b.dataset.cont}`); });

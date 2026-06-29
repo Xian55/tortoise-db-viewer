@@ -10,7 +10,7 @@ import "leaflet/dist/leaflet.css";
 import * as PIXI from "pixi.js";
 import "leaflet-pixi-overlay";
 import { GAMEOBJECT_TYPE } from "./constants.js";
-import { iconMarker } from "./render.js";
+import { iconMarker, getIconAtlas } from "./render.js";
 import { ASSETS_BASE } from "./config.js";
 
 // [key, label] per NPC role; the marker/legend icon comes from CAT_ICON (below).
@@ -25,14 +25,58 @@ const NPC_CATS = [
   ["mob", "Enemy Mobs"],
 ];
 const objTypeLabel = (t) => `Obj: ${GAMEOBJECT_TYPE[t] || "Other"}`;
-// Gather nodes split out of the generic "Obj: Chest" bucket via gameobjects.gather
-// (the Lock.dbc skill); everything else still buckets by GAMEOBJECT_TYPE.
-const objLabel = (o) => o.gather === "mining" ? "Obj: Mining"
+// World map: gather nodes get a per-node category (e.g. "Mining: Copper Vein",
+// "Herb: Peacebloom") via gameobjects.gather, so each ore/herb is a separate toggle
+// with its own icon. Zone map: the coarser "Obj: Mining"/"Obj: Herbalism" buckets
+// (a single zone has few node types; the per-node split is a continent-scale need).
+const objLabel = (o) => o.gather === "mining" ? `Mining: ${o.name}`
+  : o.gather === "herbalism" ? `Herb: ${o.name}` : objTypeLabel(o.type);
+const objLabelCoarse = (o) => o.gather === "mining" ? "Obj: Mining"
   : o.gather === "herbalism" ? "Obj: Herbalism" : objTypeLabel(o.type);
-// URL-safe code for a category key (NPC roles + "rare" are already safe; object
-// buckets "Obj: Chest" -> "o:chest"). Used to persist enabled layers in the URL.
-const catCode = (key) => key.startsWith("Obj: ")
-  ? "o:" + key.slice(5).toLowerCase().replace(/\s+/g, "-") : key;
+// URL-safe code for a category key. NPC roles + "rare" are already safe; the
+// "<Prefix>: <name>" buckets slug to "<p>:<name>" so enabled layers persist.
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+const catCode = (key) =>
+  key.startsWith("Mining: ") ? "m:" + slug(key.slice(8)) :
+  key.startsWith("Herb: ") ? "h:" + slug(key.slice(6)) :
+  key.startsWith("Obj: ") ? "o:" + slug(key.slice(5)) : key;
+
+// Gather-node markers/legends draw the yielded item's real icon from the Blizzard
+// CDN (CORS-enabled, so it textures the WebGL overlay). Turtle-custom icons aren't
+// on the CDN (they live only in the sprite atlas), so those fall back to the
+// generic Mining/Herbalism POI cell instead of a broken texture.
+const ICON_CDN = "https://render-us.worldofwarcraft.com/icons/56";
+// Sprites start on the generic Mining/Herb POI cell and get UPGRADED to the real
+// item icon once it loads. We preload via a plain Image (not PIXI.Texture.from) so
+// a 404 (stale / Turtle-only icon name) never reaches Pixi's error path -- it just
+// leaves the sprite on its generic cell. One request per distinct basename.
+const iconReq = new Map();
+function requestIcon(basename, sp) {
+  const key = basename.toLowerCase();
+  let r = iconReq.get(key);
+  if (r && r.tex) { sp.texture = r.tex; sp.basePx = r.tex.width || 56; return; }
+  if (r) { if (!r.failed) r.sprites.push(sp); return; }
+  r = { tex: null, failed: false, sprites: [sp] };
+  iconReq.set(key, r);
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    r.tex = PIXI.Texture.from(img);
+    const px = img.naturalWidth || 56;
+    for (const s of r.sprites) { s.texture = r.tex; s.basePx = px; }
+    r.sprites = [];
+    if (currentOverlay) currentOverlay.redraw();
+  };
+  img.onerror = () => { r.failed = true; r.sprites = []; }; // keep the generic cell
+  img.src = `${ICON_CDN}/${key}.jpg`;
+}
+// CDN-usable icon basename for a gather node, or null (custom/none -> generic cell).
+const cdnIconOf = (o) => {
+  const b = o.gather_icon;
+  if (!b) return null;
+  const atlas = getIconAtlas();
+  return atlas && atlas.icons[b.toLowerCase()] != null ? null : b;
+};
 
 const FLAG = { vendor: 128, repair: 4096, trainer: 16, flight: 8192, inn: 131072, bank: 65536 };
 function npcRolesFor(s) {
@@ -101,7 +145,9 @@ const OBJ_GENERIC = [12, 3]; // blue cog -- generic gameobject
 // category key -> atlas [col,row]
 function catGrid(key) {
   if (CAT_ICON[key]) return CAT_ICON[key];
-  if (key && key.startsWith("Obj: ")) return OBJ_ICON[key.slice(5)] || OBJ_GENERIC;
+  if (key.startsWith("Mining: ")) return OBJ_ICON.Mining;     // generic fallback for
+  if (key.startsWith("Herb: ")) return OBJ_ICON.Herbalism;    // gather nodes w/o a CDN icon
+  if (key.startsWith("Obj: ")) return OBJ_ICON[key.slice(5)] || OBJ_GENERIC;
   return OBJ_GENERIC;
 }
 // One POI atlas BaseTexture shared across maps; per-category sub-textures are 32px
@@ -120,7 +166,10 @@ function poiTexture(key) {
 }
 // Layer-control label: a small atlas sprite + the text (Leaflet renders the name
 // via innerHTML, so HTML here is fine).
-function catLabel(key, text) {
+function catLabel(key, text, icon) {
+  if (icon) return `<img class="cat-ico" src="${ICON_CDN}/${icon.toLowerCase()}.jpg" alt="" ` +
+    `onerror="this.style.visibility='hidden'" ` +
+    `style="width:16px;height:16px;vertical-align:-4px;margin-right:5px">${text}`;
   return `<span class="cat-ico" style="${poiSpriteStyle(catGrid(key), 16)};` +
     `display:inline-block;vertical-align:-4px;margin-right:5px"></span>${text}`;
 }
@@ -249,7 +298,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   const objByEntry = new Map();
   for (const o of objects) {
     const ll = toLatLng(o.x, o.y);
-    if (!focus) addDot(objLabel(o), objLabel(o), ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y });
+    if (!focus) addDot(objLabelCoarse(o), objLabelCoarse(o), ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y });
     let e = objByEntry.get(o.entry);
     if (!e) { e = { name: o.name || `Object #${o.entry}`, lls: [], pts: [] }; objByEntry.set(o.entry, e); }
     e.lls.push(ll); e.pts.push({ x: o.x, y: o.y });
@@ -566,7 +615,7 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
   // y-down identity transform -> standard XYZ tile addressing (x=col, y=row).
   const crs = L.extend({}, L.CRS.Simple, { transformation: new L.Transformation(1, 0, 1, 0) });
   const map = L.map(el, {
-    crs, preferCanvas: true, attributionControl: false, zoomControl: true,
+    crs, preferCanvas: true, attributionControl: false, zoomControl: false,
     maxZoom: NZ + 2, zoomSnap: 0.5, wheelPxPerZoomLevel: 120,
   });
   currentMap = map;
@@ -591,7 +640,7 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
   map.setMaxBounds(occupied.pad(0.1));
 
   // ---- Pixi overlay: category dots (reused machinery from the zone map) ----
-  const { zones = [], initial = {}, onState } = opts;
+  const { zones = [], initial = {}, onState, searchNpcs } = opts;
   const container = new PIXI.Container();
   const cats = new Map();
   const cat = (key, label) => {
@@ -599,22 +648,26 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
     if (!g) { g = { label, code: catCode(key), sprites: [] }; cats.set(key, g); }
     return g;
   };
-  // each category sprite is its atlas icon (no tint) -- categories read as real
-  // POI icons instead of coloured blobs. Carry the bits zone-focus + the name
-  // filter need (the source row otherwise gets discarded at sprite creation).
-  const addDot = (key, label, ll, html, href, meta) => {
-    const sp = new PIXI.Sprite(poiTexture(key));
+  // each sprite is its category's POI icon, or (gather nodes) the yielded item's
+  // CDN icon. Carry the bits zone-focus + the name filter need (zone/name/entry/
+  // isNpc), otherwise discarded at sprite creation. `icon` = CDN basename or null.
+  const addDot = (key, label, ll, html, href, meta, icon) => {
+    const sp = new PIXI.Sprite(poiTexture(key)); // generic cell; upgraded by requestIcon
     sp.anchor.set(0.5);
+    sp.basePx = POI_CELL; // POI cells are 32px; bumped to the icon's size on upgrade
     sp.ll = ll; sp.label = html; sp.href = href; sp.visible = false;
-    sp.catCode = catCode(key); sp.zone = meta.zone; sp.name = meta.name; sp.entry = meta.entry;
+    sp.catCode = catCode(key); sp.zone = meta.zone; sp.name = meta.name; sp.entry = meta.entry; sp.isNpc = !!meta.isNpc;
     container.addChild(sp);
-    cat(key, label).sprites.push(sp);
+    if (icon) requestIcon(icon, sp);
+    const g = cat(key, label);
+    g.sprites.push(sp);
+    if (icon && !g.icon) g.icon = icon; // legend icon for this category
   };
 
   for (const s of spawns) {
     const ll = toLatLng(s.x, s.y);
     const html = `${esc(s.name) || "?"} <span class="dim">(${lvl(s)})</span>`;
-    const meta = { zone: s.zone, name: s.name || "", entry: s.entry };
+    const meta = { zone: s.zone, name: s.name || "", entry: s.entry, isNpc: true };
     for (const role of npcRolesFor(s)) {
       const def = NPC_CATS.find((c) => c[0] === role);
       addDot(role, def ? def[1] : role, ll, html, `?npc=${s.entry}`, meta);
@@ -628,15 +681,17 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
   for (const o of objects) {
     const key = objLabel(o);
     addDot(key, key, toLatLng(o.x, o.y), esc(o.name) || `Object #${o.entry}`,
-      `?object=${o.entry}`, { zone: o.zone, name: o.name || "", entry: o.entry });
+      `?object=${o.entry}`, { zone: o.zone, name: o.name || "", entry: o.entry, isNpc: false }, cdnIconOf(o));
   }
 
-  // ---- visibility = enabled layer AND zone focus AND name filter (one source) ----
+  // ---- visibility = enabled layer AND zone focus AND npc name filter (one source) ----
+  // The name filter is FTS-backed: `matchedNpcs` is the Set of creature entries the
+  // DB matched (or null = inactive); it only narrows npc sprites, not objects.
   let focusZone = initial.focus != null ? initial.focus : null;
-  let nameFilter = (initial.q || "").toLowerCase();
+  let nameFilter = (initial.q || "").trim();
+  let matchedNpcs = null;
   const enabledCats = new Set(initial.cats || []);
-  const matchesName = (sp) => !nameFilter
-    || (sp.name && sp.name.toLowerCase().includes(nameFilter)) || String(sp.entry) === nameFilter;
+  const matchesName = (sp) => !sp.isNpc || matchedNpcs == null || matchedNpcs.has(sp.entry);
   const applyVisibility = () => {
     for (const sp of container.children)
       sp.visible = enabledCats.has(sp.catCode)
@@ -662,6 +717,17 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
   };
   const writeStateD = debounce(writeState, 200);
 
+  // FTS-backed npc name filter: a pure number is an instant entry-id match; text
+  // goes to the DB full-text index (prefix + trigram/infix) via the injected
+  // searchNpcs, narrowing only npc sprites. Empty -> filter off.
+  const setNameFilter = async (term) => {
+    nameFilter = (term || "").trim();
+    if (!nameFilter) matchedNpcs = null;
+    else if (/^\d+$/.test(nameFilter)) matchedNpcs = new Set([Number(nameFilter)]);
+    else matchedNpcs = (searchNpcs ? await searchNpcs(nameFilter) : null) || new Set();
+    applyVisibility();
+  };
+
   // Dot diameter scales with zoom: small at the continent overview (less clutter)
   // -> large when zoomed into a zone (prominent, dungeon-like). Still zoom-crisp.
   const MIN_PX = 14, MAX_PX = 30;
@@ -669,11 +735,11 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
     const z = utils.getMap().getZoom();
     const lo = map.getMinZoom(), hi = NZ + 2;
     const t = hi > lo ? Math.min(1, Math.max(0, (z - lo) / (hi - lo))) : 1;
-    const dotScale = ((MIN_PX + t * (MAX_PX - MIN_PX)) / POI_CELL) / utils.getScale(z);
+    const target = (MIN_PX + t * (MAX_PX - MIN_PX)) / utils.getScale(z);
     for (const sp of container.children) {
       if (!sp.visible) continue;
       const p = utils.latLngToLayerPoint(sp.ll);
-      sp.x = p.x; sp.y = p.y; sp.scale.set(dotScale);
+      sp.x = p.x; sp.y = p.y; sp.scale.set(target / sp.basePx); // basePx: 56 icon / 32 POI
     }
     utils.getRenderer().render(container);
   }, container, { autoPreventDefault: false });
@@ -696,13 +762,19 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
     const g = cats.get(key);
     if (!g || !g.sprites.length) return;
     const layer = new DotLayer(g.code);
-    overlays[catLabel(key, `${g.label} (${g.sprites.length})`)] = layer;
+    overlays[catLabel(key, `${g.label} (${g.sprites.length})`, g.icon)] = layer;
     layerByCode.set(g.code, layer);
   };
   for (const [key] of NPC_CATS) addCat(key);
   addCat("rare");
-  for (const key of [...cats.keys()].filter((k) => k.startsWith("Obj: "))
-    .sort((a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length)) addCat(key);
+  // gather nodes grouped (Mining:* then Herb:*), each alphabetical; then the
+  // remaining Obj:* type buckets by descending spawn count.
+  const keysWith = (pfx, cmp) => [...cats.keys()].filter((k) => k.startsWith(pfx)).sort(cmp);
+  const byName = (a, b) => a.localeCompare(b);
+  const byCount = (a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length;
+  for (const key of keysWith("Mining: ", byName)) addCat(key);
+  for (const key of keysWith("Herb: ", byName)) addCat(key);
+  for (const key of keysWith("Obj: ", byCount)) addCat(key);
   // Enable restored categories BEFORE the control is built (so checkboxes reflect
   // them) and BEFORE the state listeners attach (so it doesn't echo a write).
   for (const code of enabledCats) { const ly = layerByCode.get(code); if (ly) ly.addTo(map); }
@@ -734,18 +806,18 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
         writeState();
       });
       const inp = div.querySelector(".wm-name");
-      inp.addEventListener("input", () => {
-        nameFilter = inp.value.trim().toLowerCase();
-        applyVisibility(); writeStateD();
-      });
+      const onName = debounce(() => { setNameFilter(inp.value).then(writeState); }, 250);
+      inp.addEventListener("input", onName);
       return div;
     },
   });
   map.addControl(new FilterCtl());
+  L.control.zoom({ position: "topleft" }).addTo(map); // added after the filter -> sits below it
 
-  // restore the saved view (else fit the continent / the focused zone)
+  // restore the saved view (else fit the continent / the focused zone) + npc filter
   if (initial.c && initial.z != null) map.setView(initial.c, initial.z);
   else if (focusZone != null) { const b = focusBounds(focusZone); if (b) map.fitBounds(b, { padding: [40, 40] }); }
+  if (nameFilter) setNameFilter(nameFilter);
 
   // ---- hover tooltip + click for the dots (throttled nearest hit-test) ----
   const tip = L.DomUtil.create("div", "pixi-tip", el);
