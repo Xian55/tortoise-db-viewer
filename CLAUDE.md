@@ -104,6 +104,7 @@ python scripts/extract-maps.py        # LOCAL: client -> public/maps/*.webp + sc
 python scripts/extract-area-bounds.py # LOCAL: client ADTs -> scripts/data/subzone-bounds.json (exact coord->area)
 python scripts/extract-item-sets.py   # LOCAL: client ItemSet.dbc -> scripts/data/item-sets.json (set names + bonuses)
 python scripts/extract-skill-lines.py # LOCAL: client SkillLine.dbc -> scripts/data/skill-lines.json (skill categories)
+python scripts/extract-locks.py       # LOCAL: client Lock.dbc -> scripts/data/locks.json (lockId -> mining/herbalism; splits gather nodes)
 python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/minimap/<map>/{z}/{x}/{y}.webp tile pyramid + scripts/data/minimap.json
 ```
 
@@ -312,7 +313,11 @@ Re-run `extract-minimap.py` + commit on client map changes.
   `items.set_id` in the SQL dump), and skill-line categories
   (`scripts/data/skill-lines.json` via `extract-skill-lines.py`, from the client
   `SkillLine.dbc`; build-db joins these onto `skill_line_ability` to set
-  `spells.category` for the browse filter), and the seamless-world-map transform
+  `spells.category` for the browse filter), gather-node skills
+  (`scripts/data/locks.json` via `extract-locks.py`, from the client `Lock.dbc`;
+  maps a gameobject's `data0` lockId -> `mining`/`herbalism` so build-db sets
+  `gameobjects.gather`, splitting veins/herbs out of the map's `Obj: Chest` bucket),
+  and the seamless-world-map transform
   manifest (`scripts/data/minimap.json` via `extract-minimap.py`) + the world-map
   **tile pyramid** itself (`public/minimap/`, ~2400 webp — committed like
   `public/maps`; CI can't rebuild it, deploy.yml syncs it to R2). See "Custom

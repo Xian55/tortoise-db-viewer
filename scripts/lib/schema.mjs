@@ -54,7 +54,8 @@ export const IMPORTS = [
     file: "tw_world_gameobject_template.sql",
     table: "gameobject_template",
     target: "gameobjects",
-    columns: ["entry", "type", "displayId", "name", "data1"],
+    // data0 = lockId (gather skill via Lock.dbc -> gameobjects.gather); data1 = loot ref.
+    columns: ["entry", "type", "displayId", "name", "data0", "data1"],
     text: ["name"],
     pk: "entry",
     indexes: ["data1"],
