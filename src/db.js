@@ -6,7 +6,7 @@
 // Cache invalidation: build-db.mjs writes data/version.json with a content hash;
 // the worker keys the OPFS filename by it and wipes stale copies.
 
-import { DATA_BASE } from "./config.js";
+import { DATA_BASE, MIRROR_DATA_BASE, getProbedMeta } from "./config.js";
 
 let worker = null;
 let readyPromise = null;
@@ -26,9 +26,12 @@ function send(msg) {
 let metaPromise = null;
 export function getMeta() {
   if (!metaPromise) {
-    metaPromise = fetch(`${DATA_BASE}version.json`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : {}))
-      .catch(() => ({}));
+    const probed = getProbedMeta(); // resolveOrigins() already fetched it during boot
+    metaPromise = probed
+      ? Promise.resolve(probed)
+      : fetch(`${DATA_BASE}version.json`, { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : {}))
+          .catch(() => ({}));
   }
   return metaPromise;
 }
@@ -51,8 +54,12 @@ async function init() {
     pending.clear();
   };
   const version = await getVersion();
-  const url = `${DATA_BASE}tortoise.sqlite?v=${version}`;
-  const mode = await send({ type: "open", version, url });
+  // DATA_BASE is the origin resolveOrigins() picked; still list the Pages mirror
+  // as a second attempt for the case R2 serves version.json but throttles the DB.
+  const primary = `${DATA_BASE}tortoise.sqlite?v=${version}`;
+  const mirror = `${MIRROR_DATA_BASE}tortoise.sqlite?v=${version}`;
+  const urls = [...new Set([primary, mirror])];
+  const mode = await send({ type: "open", version, urls });
   if (typeof mode === "string" && mode.startsWith("memory")) {
     console.warn("OPFS unavailable; loading DB in-memory.", mode.slice(7));
   }
