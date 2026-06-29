@@ -103,6 +103,13 @@ jobs:
           VITE_DATA_BASE: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/data/
           VITE_ASSETS_BASE: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/
 
+      # Per-icon custom webp for link-unfurl og:image. Turtle-custom icons aren't on
+      # Blizzard's CDN and ship only as the packed atlas sprite, which can't be an
+      # og:image; the individual committed files (assets/icons/custom) are served
+      # from the site so build-og.mjs can point custom items/spells at them.
+      - name: Copy custom icons for OG embeds
+        run: cp -r assets/icons/custom dist/icons/custom
+
       # Per-entity Open Graph "stub" pages so pasted links (Discord/Twitter/Slack)
       # unfurl with the real title/description instead of index.html's generic meta
       # (crawlers don't run JS, and a static host can't vary a file by ?quest=N).

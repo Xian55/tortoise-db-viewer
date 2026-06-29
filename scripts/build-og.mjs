@@ -13,7 +13,7 @@
 //       <OUT>/og-manifest.json           (count + content hash)
 // Env:  OUT_DIR (default "dist"), BASE_PATH (default "/tortoise-db-viewer/"),
 //       SITE_URL (default "https://xian55.github.io"), DB_PATH.
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { createHash } from "crypto";
 import { fileURLToPath } from "url";
@@ -31,7 +31,7 @@ if (!BASE.endsWith("/")) BASE += "/";
 const SITE = (process.env.SITE_URL || "https://xian55.github.io").replace(/\/$/, "");
 // Bump when the stub TEMPLATE/description logic changes so the CI cache key shifts
 // even if the DB is unchanged (the hash folds this in).
-const OG_VERSION = "1";
+const OG_VERSION = "3";
 // HASH_ONLY=1 -> compute + print only the content hash, write nothing (the fast
 // pass the deploy uses to key the cache). OG_TYPES -> comma list of prefixes to
 // limit which entity kinds are generated (default: all).
@@ -61,6 +61,28 @@ const trim = (s, n) => {
 
 const lvlRange = (r) => (r.level_max && r.level_max !== r.level_min ? `${r.level_min}-${r.level_max}` : `${r.level_min || "?"}`);
 
+// og:image icons. Standard WoW icons live on Blizzard's CDN as 56px JPGs keyed by
+// basename. Turtle-custom icons aren't on the CDN; the per-icon webp files
+// (committed at assets/icons/custom/, copied to dist/icons/custom/ by the deploy)
+// are served from the site itself. The custom atlas's `icons` keys ARE those
+// basenames, so it tells us which basename is custom vs CDN. NPCs use Wowhead/
+// zamimg's pre-rendered model webthumb (keyed by creature display_id; 404s for
+// some custom NPCs -> Discord just shows no image, graceful).
+const ICON_CDN = "https://render-us.worldofwarcraft.com/icons/56";
+let customIcons = new Set(); // lowercased basenames present in the custom atlas
+try {
+  const atlas = JSON.parse(readFileSync(join(ROOT, "public", "icons", "custom-atlas.json"), "utf8"));
+  customIcons = new Set(Object.keys(atlas.icons || {}).map((k) => k.toLowerCase()));
+} catch { /* no atlas -> treat every basename as a CDN icon */ }
+
+function iconUrl(basename) {
+  if (!basename) return null;
+  const b = String(basename).toLowerCase();
+  return customIcons.has(b) ? `${SITE}${BASE}icons/custom/${b}.webp` : `${ICON_CDN}/${b}.jpg`;
+}
+const npcThumb = (displayId) =>
+  displayId ? `https://wow.zamimg.com/modelviewer/classic/webthumbs/npc/${displayId % 256}/${displayId}.webp` : null;
+
 function itemDesc(r) {
   const q = QUALITY[r.quality] && QUALITY[r.quality].name;
   const sub = r.class === 2 ? WEAPON_SUBCLASS[r.subclass]
@@ -70,7 +92,8 @@ function itemDesc(r) {
   // armor: append the slot so it reads "Plate Chest"; otherwise fall back to slot/class.
   const kind = sub ? (r.class === 4 && slot ? `${sub} ${slot}` : sub) : (slot || ITEM_CLASS[r.class] || "");
   const ilvl = r.item_level > 0 ? ` · Item Level ${r.item_level}` : "";
-  return ([q, kind].filter(Boolean).join(" ") + ilvl).trim() || "Item in Tortoise-WoW.";
+  const req = r.required_level > 0 ? ` · Requires Level ${r.required_level}` : "";
+  return ([q, kind].filter(Boolean).join(" ") + ilvl + req).trim() || "Item in Tortoise-WoW.";
 }
 function npcDesc(r) {
   const rank = CREATURE_RANK[r.rank] ? `${CREATURE_RANK[r.rank]} ` : "";
@@ -85,14 +108,14 @@ const ENTITIES = [
     title: (r) => r.title,
     desc: (r) => trim((r.level > 0 ? `Level ${r.level} quest. ` : "") + (clean(r.objectives) || clean(r.details)), 200) || "Quest in Tortoise-WoW." },
   { param: "item", prefix: "i",
-    sql: "SELECT entry id, name, quality, class, subclass, inventory_type, item_level FROM items WHERE name <> '' AND COALESCE(hidden,0) = 0",
-    title: (r) => r.name, desc: (r) => trim(itemDesc(r), 180) },
+    sql: "SELECT i.entry id, i.name, i.quality, i.class, i.subclass, i.inventory_type, i.item_level, i.required_level, di.icon FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id WHERE i.name <> '' AND COALESCE(i.hidden,0) = 0",
+    title: (r) => r.name, desc: (r) => trim(itemDesc(r), 180), image: (r) => iconUrl(r.icon) },
   { param: "npc", prefix: "n",
-    sql: "SELECT entry id, name, subname, level_min, level_max, rank, type FROM creatures WHERE name <> '' AND COALESCE(hidden,0) = 0",
-    title: (r) => r.name, desc: (r) => trim(npcDesc(r), 180) },
+    sql: "SELECT entry id, name, subname, level_min, level_max, rank, type, display_id FROM creatures WHERE name <> '' AND COALESCE(hidden,0) = 0",
+    title: (r) => r.name, desc: (r) => trim(npcDesc(r), 180), image: (r) => npcThumb(r.display_id) },
   { param: "spell", prefix: "s",
-    sql: "SELECT entry id, name, description FROM spells WHERE name <> '' AND COALESCE(hidden,0) = 0",
-    title: (r) => r.name, desc: (r) => trim(clean(r.description) || "Spell in Tortoise-WoW.", 200) },
+    sql: "SELECT entry id, name, description, icon FROM spells WHERE name <> '' AND COALESCE(hidden,0) = 0",
+    title: (r) => r.name, desc: (r) => trim(clean(r.description) || "Spell in Tortoise-WoW.", 200), image: (r) => iconUrl(r.icon) },
   { param: "object", prefix: "o",
     sql: "SELECT entry id, name, type FROM gameobjects WHERE name <> ''",
     title: (r) => r.name, desc: (r) => `${GAMEOBJECT_TYPE[r.type] || "Object"} in Tortoise-WoW.` },
@@ -107,8 +130,14 @@ const ENTITIES = [
     title: (r) => r.name, desc: () => "Item set in Tortoise-WoW." },
 ];
 
-function stubHtml(title, desc, appPath, ogUrl, canonical) {
+function stubHtml(title, desc, appPath, ogUrl, canonical, image) {
   const t = esc(title), d = esc(desc);
+  // Square icon -> twitter:card "summary" (right-side thumbnail), not the stretched
+  // "summary_large_image" banner. og:image omitted entirely when there's no icon.
+  const img = image ? `
+<meta property="og:image" content="${esc(image)}">
+<meta property="og:image:alt" content="${t}">
+<meta name="twitter:image" content="${esc(image)}">` : "";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -121,7 +150,7 @@ function stubHtml(title, desc, appPath, ogUrl, canonical) {
 <meta property="og:site_name" content="Tortoise-WoW Database">
 <meta property="og:title" content="${t}">
 <meta property="og:description" content="${d}">
-<meta property="og:url" content="${esc(ogUrl)}">
+<meta property="og:url" content="${esc(ogUrl)}">${img}
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="${t}">
 <meta name="twitter:description" content="${d}">
@@ -147,7 +176,8 @@ for (const e of ENTITIES) {
     if (r.id == null) continue;
     const title = e.title(r) || `#${r.id}`;
     const desc = e.desc(r);
-    hash.update(`${e.prefix}\t${r.id}\t${title}\t${desc}\n`);
+    const image = e.image ? e.image(r) : null;
+    hash.update(`${e.prefix}\t${r.id}\t${title}\t${desc}\t${image || ""}\n`);
     total++;
     if (HASH_ONLY) continue;
     const appPath = `${BASE}?${e.param}=${r.id}`;
@@ -155,7 +185,7 @@ for (const e of ENTITIES) {
     // /<prefix>/<id> (no redirect, no per-id directory). og:url uses that clean path.
     const ogUrl = `${SITE}${BASE}${e.prefix}/${r.id}`;
     const canonical = `${SITE}${appPath}`;
-    writeFileSync(join(OUT, e.prefix, `${r.id}.html`), stubHtml(title, desc, appPath, ogUrl, canonical));
+    writeFileSync(join(OUT, e.prefix, `${r.id}.html`), stubHtml(title, desc, appPath, ogUrl, canonical, image));
   }
   if (!HASH_ONLY) console.log(`  ${e.prefix}: ${rows.length}`);
 }
