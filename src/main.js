@@ -7,7 +7,7 @@ import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDIN
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
-import { ASSETS_BASE } from "./config.js";
+import { ASSETS_BASE, resolveOrigins } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 // Seamless-minimap transform manifest (tile/adt/grid + per-continent bbox). Tiny,
 // committed; bundled at build time. The tile pyramid itself lives on R2.
@@ -1698,11 +1698,15 @@ async function showFooterMeta(loadMs) {
 }
 
 // ---- boot ----
-preconnect();
-initHovercards();
-initSearchDropdown(searchInput, document.getElementById("searchForm"), navigate);
-// Wait for the atlas (small JSON) so the first paint shows custom icons; route
-// anyway if it fails or is missing. Time the first render for the footer.
-loadIconAtlas()
-  .then(renderRoute, renderRoute)
-  .finally(() => showFooterMeta(performance.now()));
+// Resolve the asset origin first (probe R2, fall over to the Pages mirror if it's
+// blocked) so nothing below reads DATA_BASE/ASSETS_BASE before they're settled.
+resolveOrigins().finally(() => {
+  preconnect();
+  initHovercards();
+  initSearchDropdown(searchInput, document.getElementById("searchForm"), navigate);
+  // Wait for the atlas (small JSON) so the first paint shows custom icons; route
+  // anyway if it fails or is missing. Time the first render for the footer.
+  loadIconAtlas()
+    .then(renderRoute, renderRoute)
+    .finally(() => showFooterMeta(performance.now()));
+});

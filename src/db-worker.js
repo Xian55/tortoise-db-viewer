@@ -9,10 +9,22 @@ const OPFS_POOL = "tortoise-db";
 const OPFS_LOCK = "tortoise-db-opfs-vfs";
 let db = null;
 
-async function fetchBytes(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`DB download failed: HTTP ${res.status}`);
-  return new Uint8Array(await res.arrayBuffer());
+// Try each URL in order (primary R2, then the Pages mirror). A per-attempt abort
+// keeps a throttled/stalled R2 transfer from hanging forever before we fall over.
+async function fetchBytes(urls) {
+  const list = Array.isArray(urls) ? urls : [urls];
+  let lastErr;
+  for (const u of list) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 60000);
+      const res = await fetch(u, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return new Uint8Array(await res.arrayBuffer());
+    } catch (e) { lastErr = e; }
+  }
+  throw new Error(`DB download failed: ${lastErr?.message || lastErr}`);
 }
 
 // Only one tab may use the OPFS SAHPool VFS: it takes *exclusive* sync access
@@ -31,7 +43,7 @@ function acquireOpfsLock() {
   });
 }
 
-async function open(version, url) {
+async function open(version, urls) {
   const sqlite3 = await sqlite3InitModule();
   let poolErr = null;
   // Preferred: durable OPFS SAHPool, keyed by version so a new deploy refreshes.
@@ -44,7 +56,7 @@ async function open(version, url) {
         for (const f of pool.getFileNames()) {
           if (f.startsWith("/tortoise-") && f.endsWith(".sqlite")) { try { pool.unlink(f); } catch { /* ignore */ } }
         }
-        pool.importDb(file, await fetchBytes(url));
+        pool.importDb(file, await fetchBytes(urls));
       }
       db = new pool.OpfsSAHPoolDb(file);
       return "opfs";
@@ -54,7 +66,7 @@ async function open(version, url) {
   }
   // Fallback: deserialize into memory (secondary tab, or OPFS unavailable). Relies
   // on the HTTP cache for the bytes.
-  const bytes = await fetchBytes(url);
+  const bytes = await fetchBytes(urls);
   db = new sqlite3.oo1.DB();
   const p = sqlite3.wasm.allocFromTypedArray(bytes);
   db.checkRc(sqlite3.capi.sqlite3_deserialize(
@@ -64,10 +76,10 @@ async function open(version, url) {
 }
 
 self.onmessage = async (ev) => {
-  const { id, type, sql, params, version, url } = ev.data;
+  const { id, type, sql, params, version, urls } = ev.data;
   try {
     if (type === "open") {
-      const result = await open(version, url);
+      const result = await open(version, urls);
       // Read-only tuning: a 32 MB page cache keeps the hot b-tree resident (faster
       // repeat zone/search queries), temp b-trees (ORDER BY / GROUP BY) build in
       // RAM, and query_only guards against accidental writes. Best-effort.
