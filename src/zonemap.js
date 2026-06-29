@@ -25,6 +25,14 @@ const NPC_CATS = [
   ["mob", "Enemy Mobs"],
 ];
 const objTypeLabel = (t) => `Obj: ${GAMEOBJECT_TYPE[t] || "Other"}`;
+// Gather nodes split out of the generic "Obj: Chest" bucket via gameobjects.gather
+// (the Lock.dbc skill); everything else still buckets by GAMEOBJECT_TYPE.
+const objLabel = (o) => o.gather === "mining" ? "Obj: Mining"
+  : o.gather === "herbalism" ? "Obj: Herbalism" : objTypeLabel(o.type);
+// URL-safe code for a category key (NPC roles + "rare" are already safe; object
+// buckets "Obj: Chest" -> "o:chest"). Used to persist enabled layers in the URL.
+const catCode = (key) => key.startsWith("Obj: ")
+  ? "o:" + key.slice(5).toLowerCase().replace(/\s+/g, "-") : key;
 
 const FLAG = { vendor: 128, repair: 4096, trainer: 16, flight: 8192, inn: 131072, bank: 65536 };
 function npcRolesFor(s) {
@@ -87,6 +95,7 @@ const CAT_ICON = {
 const OBJ_ICON = {
   Chest: [14, 17], Mailbox: [5, 16], "Fishing Hole": [0, 3], "Fishing Node": [0, 3],
   Door: [5, 8], "Quest Giver": [9, 3], "Meeting Stone": [2, 16],
+  Mining: [4, 17], Herbalism: [4, 13], // gather nodes (ore vein / green sprout)
 };
 const OBJ_GENERIC = [12, 3]; // blue cog -- generic gameobject
 // category key -> atlas [col,row]
@@ -240,7 +249,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   const objByEntry = new Map();
   for (const o of objects) {
     const ll = toLatLng(o.x, o.y);
-    if (!focus) addDot(objTypeLabel(o.type), objTypeLabel(o.type), ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y });
+    if (!focus) addDot(objLabel(o), objLabel(o), ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y });
     let e = objByEntry.get(o.entry);
     if (!e) { e = { name: o.name || `Object #${o.entry}`, lls: [], pts: [] }; objByEntry.set(o.entry, e); }
     e.lls.push(ll); e.pts.push({ x: o.x, y: o.y });
@@ -546,7 +555,7 @@ const BLANK_TILE =
 // and one CRS unit = native px / 2^maxNativeZoom (= tile/grid). Reuses the Pixi
 // dot overlay + category toggles + hover/click from the zone map.
 // conf: { mapId, name, bbox:[c0,c1,r0,r1], tile, adt, grid, maxNativeZoom, tilesBase }.
-export function initWorldMap(el, conf, spawns, objects, navigate) {
+export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
   if (currentOverlay) { try { currentOverlay.destroy(); } catch (_) { /* gone */ } currentOverlay = null; }
   if (currentMap) { currentMap.remove(); currentMap = null; }
 
@@ -582,19 +591,22 @@ export function initWorldMap(el, conf, spawns, objects, navigate) {
   map.setMaxBounds(occupied.pad(0.1));
 
   // ---- Pixi overlay: category dots (reused machinery from the zone map) ----
+  const { zones = [], initial = {}, onState } = opts;
   const container = new PIXI.Container();
   const cats = new Map();
   const cat = (key, label) => {
     let g = cats.get(key);
-    if (!g) { g = { label, sprites: [] }; cats.set(key, g); }
+    if (!g) { g = { label, code: catCode(key), sprites: [] }; cats.set(key, g); }
     return g;
   };
   // each category sprite is its atlas icon (no tint) -- categories read as real
-  // POI icons instead of coloured blobs.
-  const addDot = (key, label, ll, html, href) => {
+  // POI icons instead of coloured blobs. Carry the bits zone-focus + the name
+  // filter need (the source row otherwise gets discarded at sprite creation).
+  const addDot = (key, label, ll, html, href, meta) => {
     const sp = new PIXI.Sprite(poiTexture(key));
     sp.anchor.set(0.5);
     sp.ll = ll; sp.label = html; sp.href = href; sp.visible = false;
+    sp.catCode = catCode(key); sp.zone = meta.zone; sp.name = meta.name; sp.entry = meta.entry;
     container.addChild(sp);
     cat(key, label).sprites.push(sp);
   };
@@ -602,24 +614,62 @@ export function initWorldMap(el, conf, spawns, objects, navigate) {
   for (const s of spawns) {
     const ll = toLatLng(s.x, s.y);
     const html = `${esc(s.name) || "?"} <span class="dim">(${lvl(s)})</span>`;
+    const meta = { zone: s.zone, name: s.name || "", entry: s.entry };
     for (const role of npcRolesFor(s)) {
       const def = NPC_CATS.find((c) => c[0] === role);
-      addDot(role, def ? def[1] : role, ll, html, `?npc=${s.entry}`);
+      addDot(role, def ? def[1] : role, ll, html, `?npc=${s.entry}`, meta);
     }
     if (s.rank === 2 || s.rank === 4) {
       const rk = s.rank === 4 ? "Rare Elite" : "Rare";
       addDot("rare", "Rare / Rare Elite", ll,
-        `${esc(s.name) || "?"} <span class="dim">(${lvl(s)}) · ${rk}</span>`, `?npc=${s.entry}`);
+        `${esc(s.name) || "?"} <span class="dim">(${lvl(s)}) · ${rk}</span>`, `?npc=${s.entry}`, meta);
     }
   }
   for (const o of objects) {
-    addDot(objTypeLabel(o.type), objTypeLabel(o.type),
-      toLatLng(o.x, o.y), esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`);
+    const key = objLabel(o);
+    addDot(key, key, toLatLng(o.x, o.y), esc(o.name) || `Object #${o.entry}`,
+      `?object=${o.entry}`, { zone: o.zone, name: o.name || "", entry: o.entry });
   }
 
-  const ICON_PX = 18; // on-screen icon diameter, constant across zoom
+  // ---- visibility = enabled layer AND zone focus AND name filter (one source) ----
+  let focusZone = initial.focus != null ? initial.focus : null;
+  let nameFilter = (initial.q || "").toLowerCase();
+  const enabledCats = new Set(initial.cats || []);
+  const matchesName = (sp) => !nameFilter
+    || (sp.name && sp.name.toLowerCase().includes(nameFilter)) || String(sp.entry) === nameFilter;
+  const applyVisibility = () => {
+    for (const sp of container.children)
+      sp.visible = enabledCats.has(sp.catCode)
+        && (focusZone == null || sp.zone === focusZone)
+        && matchesName(sp);
+    redraw();
+  };
+
+  // ---- URL state persistence (debounced replaceState; reuses browse.js shape) ----
+  // `ready` gates out the writes from the initial restore (layer adds + setView)
+  // so a passive load/Back doesn't clobber the URL before the user interacts.
+  const debounce = (fn, ms) => { let h; return (...a) => { clearTimeout(h); h = setTimeout(() => fn(...a), ms); }; };
+  let ready = false;
+  const writeState = () => {
+    if (!ready || !onState) return;
+    const c = map.getCenter();
+    onState({
+      cats: [...enabledCats],
+      z: Math.round(map.getZoom() * 2) / 2,
+      c: [Math.round(c.lat * 100) / 100, Math.round(c.lng * 100) / 100],
+      focus: focusZone, q: nameFilter,
+    });
+  };
+  const writeStateD = debounce(writeState, 200);
+
+  // Dot diameter scales with zoom: small at the continent overview (less clutter)
+  // -> large when zoomed into a zone (prominent, dungeon-like). Still zoom-crisp.
+  const MIN_PX = 14, MAX_PX = 30;
   const overlay = L.pixiOverlay((utils) => {
-    const dotScale = (ICON_PX / POI_CELL) / utils.getScale(utils.getMap().getZoom());
+    const z = utils.getMap().getZoom();
+    const lo = map.getMinZoom(), hi = NZ + 2;
+    const t = hi > lo ? Math.min(1, Math.max(0, (z - lo) / (hi - lo))) : 1;
+    const dotScale = ((MIN_PX + t * (MAX_PX - MIN_PX)) / POI_CELL) / utils.getScale(z);
     for (const sp of container.children) {
       if (!sp.visible) continue;
       const p = utils.latLngToLayerPoint(sp.ll);
@@ -633,24 +683,69 @@ export function initWorldMap(el, conf, spawns, objects, navigate) {
   const redraw = () => overlay.redraw();
   whenPoiReady(redraw); // re-render once the atlas texture finishes loading
   const DotLayer = L.Layer.extend({
-    initialize(sprites) { this._s = sprites; },
-    onAdd() { for (const s of this._s) s.visible = true; redraw(); },
-    onRemove() { for (const s of this._s) s.visible = false; redraw(); },
+    initialize(code) { this._code = code; },
+    onAdd() { enabledCats.add(this._code); applyVisibility(); writeState(); },
+    onRemove() { enabledCats.delete(this._code); applyVisibility(); writeState(); },
   });
 
-  // layer control: every category OFF by default (a clean continent you opt into).
-  // Each entry shows its atlas icon (catLabel) so the long list is scannable.
+  // layer control: every category OFF by default (a clean continent you opt into),
+  // except those restored from the URL. Each entry shows its atlas icon (catLabel).
   const overlays = {};
+  const layerByCode = new Map();
   const addCat = (key) => {
     const g = cats.get(key);
     if (!g || !g.sprites.length) return;
-    overlays[catLabel(key, `${g.label} (${g.sprites.length})`)] = new DotLayer(g.sprites);
+    const layer = new DotLayer(g.code);
+    overlays[catLabel(key, `${g.label} (${g.sprites.length})`)] = layer;
+    layerByCode.set(g.code, layer);
   };
   for (const [key] of NPC_CATS) addCat(key);
   addCat("rare");
   for (const key of [...cats.keys()].filter((k) => k.startsWith("Obj: "))
     .sort((a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length)) addCat(key);
+  // Enable restored categories BEFORE the control is built (so checkboxes reflect
+  // them) and BEFORE the state listeners attach (so it doesn't echo a write).
+  for (const code of enabledCats) { const ly = layerByCode.get(code); if (ly) ly.addTo(map); }
+  applyVisibility();
   L.control.layers(null, overlays, { collapsed: true }).addTo(map);
+
+  // ---- zone-focus + name/id filter control (top-left) ----
+  const focusBounds = (areaid) => {
+    const lls = [];
+    for (const sp of container.children) if (sp.zone === areaid) lls.push(sp.ll);
+    return lls.length ? L.latLngBounds(lls) : null;
+  };
+  const FilterCtl = L.Control.extend({
+    options: { position: "topleft" },
+    onAdd() {
+      const div = L.DomUtil.create("div", "wm-filter leaflet-bar");
+      const optHtml = ['<option value="">All zones</option>'].concat(zones.map((z) =>
+        `<option value="${z.areaid}"${z.areaid === focusZone ? " selected" : ""}>${esc(z.name)}</option>`)).join("");
+      div.innerHTML = `<select class="wm-zone" title="Focus a zone">${optHtml}</select>` +
+        `<input class="wm-name" type="text" placeholder="npc name / id" value="${esc(nameFilter)}">`;
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      const sel = div.querySelector(".wm-zone");
+      sel.addEventListener("change", () => {
+        focusZone = sel.value ? Number(sel.value) : null;
+        applyVisibility();
+        const b = focusZone != null && focusBounds(focusZone);
+        map.fitBounds(b || occupied, b ? { padding: [40, 40] } : undefined);
+        writeState();
+      });
+      const inp = div.querySelector(".wm-name");
+      inp.addEventListener("input", () => {
+        nameFilter = inp.value.trim().toLowerCase();
+        applyVisibility(); writeStateD();
+      });
+      return div;
+    },
+  });
+  map.addControl(new FilterCtl());
+
+  // restore the saved view (else fit the continent / the focused zone)
+  if (initial.c && initial.z != null) map.setView(initial.c, initial.z);
+  else if (focusZone != null) { const b = focusBounds(focusZone); if (b) map.fitBounds(b, { padding: [40, 40] }); }
 
   // ---- hover tooltip + click for the dots (throttled nearest hit-test) ----
   const tip = L.DomUtil.create("div", "pixi-tip", el);
@@ -685,7 +780,8 @@ export function initWorldMap(el, conf, spawns, objects, navigate) {
   map.on("mouseout", () => { tip.style.display = "none"; });
   map.on("click", (e) => { const sp = nearest(e.containerPoint); if (sp && sp.href) navigate(sp.href); });
 
-  setTimeout(() => { map.invalidateSize(); redraw(); }, 0);
+  map.on("moveend zoomend", writeStateD); // persist pan/zoom (layer + focus + filter write directly)
+  setTimeout(() => { map.invalidateSize(); redraw(); ready = true; }, 0);
   return map;
 }
 

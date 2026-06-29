@@ -626,6 +626,41 @@ async function testWorldMap() {
   console.log(`worldmap: tiles=${tiles} conts=${conts} cats=${cats} map1=${m1} map2=${m2} switched=${m1 !== m2}`);
   return tiles > 0 && conts === 2 && cats > 0 && m1 != null && m2 != null && m1 !== m2;
 }
+// World-map usability: layer/zone/name state round-trips through the URL (so Back
+// restores it), the zone-focus dropdown + npc name filter exist, and ?cats=mob
+// restores that layer checked.
+async function testWorldMapState() {
+  await page.setViewport({ width: 1280, height: 900 });
+  const qp = async (k) => new URLSearchParams(new URL(await page.url()).search).get(k);
+  await page.goto(`${BASE}?worldmap=0&cats=mob`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 });
+  await page.waitForSelector("#zonemap .wm-filter .wm-zone", { timeout: 20000 });
+  const zoneOpts = await page.$$eval("#zonemap .wm-filter .wm-zone option", (o) => o.length);
+  const hasNameInput = (await page.$("#zonemap .wm-filter .wm-name")) !== null;
+  await page.evaluate(() => { const t = document.querySelector(".leaflet-control-layers-toggle"); if (t) t.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
+  await new Promise((r) => setTimeout(r, 200));
+  const mobChecked = await page.evaluate(() => {
+    const l = [...document.querySelectorAll(".leaflet-control-layers-overlays label")].find((x) => /Enemy Mobs/.test(x.textContent));
+    return !!l?.querySelector("input")?.checked;
+  });
+  // toggle Vendors on -> cats in URL gains it
+  await page.evaluate(() => {
+    const l = [...document.querySelectorAll(".leaflet-control-layers-overlays label")].find((x) => /Vendors/.test(x.textContent));
+    l?.querySelector("input")?.click();
+  });
+  await new Promise((r) => setTimeout(r, 350));
+  const catsUrl = (await qp("cats")) || "";
+  // focus a zone -> URL gains focus=<areaid>
+  await page.evaluate(() => { const s = document.querySelector("#zonemap .wm-zone"); s.value = [...s.options].find((o) => o.value)?.value; s.dispatchEvent(new Event("change", { bubbles: true })); });
+  await new Promise((r) => setTimeout(r, 350));
+  const focusUrl = await qp("focus");
+  // name filter -> URL gains q=
+  await page.evaluate(() => { const i = document.querySelector("#zonemap .wm-name"); i.value = "wolf"; i.dispatchEvent(new Event("input", { bubbles: true })); });
+  await new Promise((r) => setTimeout(r, 400));
+  const qUrl = await qp("q");
+  console.log(`worldmap-state: zoneOpts=${zoneOpts} nameInput=${hasNameInput} mobChecked=${mobChecked} cats="${catsUrl}" focus=${focusUrl} q=${qUrl}`);
+  return zoneOpts > 1 && hasNameInput && mobChecked && /(^|,)mob(,|$)/.test(catsUrl) && /vendor/.test(catsUrl) && focusUrl != null && qUrl === "wolf";
+}
 async function testDungeons() {
   await page.goto(`${BASE}?dungeons`, { waitUntil: WAIT, timeout: 40000 });
   await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
@@ -1411,6 +1446,7 @@ run(() => testNpcLocationLabel(596, 40));
 run(() => testDungeons());
 run(() => testFlights());                        // flight-path world map + continent switch
 run(() => testWorldMap());                        // seamless continent minimap (tile pyramid + categories)
+run(() => testWorldMapState());                   // world-map layer/zone/name state persists to URL (Back-restorable)
 run(() => testObjectsBrowse());                       // objects finder (interactive gameobjects)
 run(() => testObject(1731, "Copper Vein", "Copper Ore"));  // object detail: contains item + map
 run(() => testObjectFocusZone(2852, 10));   // Solid Chest opens on the focused zone (Duskwood) via &fz

@@ -278,6 +278,14 @@ a.ilink.zone { color: #8fd18f; }
   background: var(--panel); color: var(--text); border-bottom: 1px solid var(--border); }
 #zonemap .leaflet-bar a:hover { background: var(--panel2); color: var(--text); }
 #zonemap .leaflet-bar a.leaflet-disabled { background: var(--panel); color: var(--muted); opacity: .45; }
+/* world-map zone-focus + npc name/id filter control */
+#zonemap .wm-filter { display: flex; gap: 5px; padding: 5px; align-items: center; }
+#zonemap .wm-filter select, #zonemap .wm-filter input {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; font: inherit; font-size: 12px; padding: 3px 6px; }
+#zonemap .wm-filter select { max-width: 150px; }
+#zonemap .wm-filter input { width: 120px; }
+#zonemap .wm-filter input::placeholder { color: var(--muted); }
 /* native Leaflet tooltips (toggled NPC/object markers) -> match the dark pixi-tip */
 #zonemap .leaflet-tooltip {
   background: var(--panel); color: var(--text);

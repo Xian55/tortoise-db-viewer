@@ -1576,9 +1576,10 @@ async function showWorldMap(mapId = 0) {
   document.title = `${m.name} Map - Tortoise-WoW DB`;
   app.innerHTML = `<div class="loading">Loading…</div>`;
 
-  let spawns, objects;
+  let spawns, objects, zones;
   try {
-    [spawns, objects] = await Promise.all([query(Q.Q_WORLD_SPAWNS, [mapId]), query(Q.Q_WORLD_OBJECTS, [mapId])]);
+    [spawns, objects, zones] = await Promise.all([
+      query(Q.Q_WORLD_SPAWNS, [mapId]), query(Q.Q_WORLD_OBJECTS, [mapId]), query(Q.Q_CONTINENT_ZONES, [mapId])]);
   } catch (e) { app.innerHTML = errorBox(e); return; }
 
   const switcher = `<div id="contswitch" class="floor-switch">${ids.map((id) =>
@@ -1591,13 +1592,33 @@ async function showWorldMap(mapId = 0) {
     <div id="zonemap"></div>
   </div>`;
   const el = document.getElementById("zonemap");
+  // Restore map state from the URL (so browser Back recreates layers + view), and
+  // mirror changes back via replaceState (no new history entry, like browse pages).
+  const p = new URLSearchParams(location.search);
+  const initial = {
+    cats: (p.get("cats") || "").split(",").filter(Boolean),
+    z: p.get("z") != null ? Number(p.get("z")) : null,
+    c: p.get("c") ? p.get("c").split(",").map(Number) : null,
+    focus: p.get("focus") != null ? Number(p.get("focus")) : null,
+    q: p.get("q") || "",
+  };
+  const onState = (s) => {
+    const np = new URLSearchParams(location.search);
+    np.set("worldmap", String(mapId));
+    if (s.cats && s.cats.length) np.set("cats", s.cats.join(",")); else np.delete("cats");
+    if (s.z != null) np.set("z", String(s.z)); else np.delete("z");
+    if (s.c) np.set("c", s.c.join(",")); else np.delete("c");
+    if (s.focus != null) np.set("focus", String(s.focus)); else np.delete("focus");
+    if (s.q) np.set("q", s.q); else np.delete("q");
+    history.replaceState({}, "", "?" + np.toString());
+  };
   try {
     const { initWorldMap } = await import("./zonemap.js");
     initWorldMap(el, {
       mapId, name: m.name, bbox: m.bbox,
       tile: minimapManifest.tile, adt: minimapManifest.adt, grid: minimapManifest.grid,
       maxNativeZoom: minimapManifest.maxNativeZoom, tilesBase: `${ASSETS_BASE}minimap/`,
-    }, spawns, objects, navigate);
+    }, spawns, objects, navigate, { zones, initial, onState });
   } catch (e) { el.innerHTML = errorBox(e); }
   const csw = document.getElementById("contswitch");
   if (csw) csw.addEventListener("click", (e) => { const b = e.target.closest("button[data-cont]"); if (b) navigate(`?worldmap=${b.dataset.cont}`); });

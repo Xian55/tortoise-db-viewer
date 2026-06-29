@@ -1102,6 +1102,24 @@ console.log("Importing zones + spawn points...");
     WHERE d.src = 'o' AND d.owner = gameobjects.data1), 0)`);
   console.log(`  farm values: ${db.prepare("SELECT COUNT(*) n FROM creatures WHERE loot_value>0").get().n} mobs, ${db.prepare("SELECT COUNT(*) n FROM gameobjects WHERE loot_value>0").get().n} objects`);
 
+  // Gather classification: mining veins / herb nodes / treasure chests are all
+  // GAMEOBJECT_TYPE 3 and indistinguishable in the SQL dump. The real signal is the
+  // gathering skill on the object's lock (data0 = lockId; Lock.dbc -> mining/herb),
+  // dumped to scripts/data/locks.json by extract-locks.py. Absent file -> all NULL
+  // (the map falls back to one "Obj: Chest" bucket).
+  db.exec(`ALTER TABLE gameobjects ADD COLUMN gather TEXT`);
+  const lf = join(ROOT, "scripts", "data", "locks.json");
+  if (existsSync(lf)) {
+    const locks = JSON.parse(readFileSync(lf, "utf8"));
+    const ids = (kind) => Object.keys(locks).filter((k) => locks[k] === kind).map(Number).filter(Number.isFinite);
+    const mining = ids("mining"), herb = ids("herbalism");
+    if (mining.length) db.exec(`UPDATE gameobjects SET gather='mining' WHERE data0 IN (${mining.join(",")})`);
+    if (herb.length) db.exec(`UPDATE gameobjects SET gather='herbalism' WHERE data0 IN (${herb.join(",")})`);
+    console.log(`  gather: ${db.prepare("SELECT COUNT(*) n FROM gameobjects WHERE gather IS NOT NULL").get().n} nodes (${mining.length} mining + ${herb.length} herb locks)`);
+  } else {
+    console.log("  (no scripts/data/locks.json -- run scripts/extract-locks.py; gather split disabled)");
+  }
+
   // Validation: every instance boss (unique spawn, cnt=1) should plot inside its
   // dungeon parchment. A boss whose coords fall outside its zone's WorldMapArea
   // rectangle renders off-image. The cross-map cases are fixed by the homeZone
