@@ -644,14 +644,23 @@ async function testWorldMap() {
     return { filtered, all: vis() };
   }).catch(() => ({ filtered: 0, all: 0 }));
   const searchOk = search.filtered >= 1 && search.filtered < search.all;
+  // clicking a group header collapses/expands it (real DOM click, exercises the handler)
+  const collapseOk = await (async () => {
+    const head = await page.$("#zonemap .wm-panel .wm-group-head");
+    if (!head) return false;
+    const before = await page.$eval("#zonemap .wm-panel .wm-group", (g) => g.classList.contains("collapsed"));
+    await head.click();
+    const after = await page.$eval("#zonemap .wm-panel .wm-group", (g) => g.classList.contains("collapsed"));
+    return before !== after;
+  })().catch(() => false);
   // switch continents -> tiles re-request from the other map's pyramid path
   await page.evaluate(() => { const b = [...document.querySelectorAll("#contswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
   await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 });
   await new Promise((r) => setTimeout(r, 500));
   const src2 = await page.$eval("#zonemap img.leaflet-tile", (e) => e.getAttribute("src")).catch(() => "");
   const m1 = /minimap\/(\d+)\//.exec(src1)?.[1], m2 = /minimap\/(\d+)\//.exec(src2)?.[1];
-  console.log(`worldmap: tiles=${tiles} conts=${conts} cats=${cats} search=${search.filtered}/${search.all} map1=${m1} map2=${m2} switched=${m1 !== m2}`);
-  return tiles > 0 && conts === 2 && cats > 0 && searchOk && m1 != null && m2 != null && m1 !== m2;
+  console.log(`worldmap: tiles=${tiles} conts=${conts} cats=${cats} search=${search.filtered}/${search.all} collapse=${collapseOk} map1=${m1} map2=${m2} switched=${m1 !== m2}`);
+  return tiles > 0 && conts === 2 && cats > 0 && searchOk && collapseOk && m1 != null && m2 != null && m1 !== m2;
 }
 // World-map usability: layer/zone/name state round-trips through the URL (so Back
 // restores it), the zone-focus dropdown + npc name filter exist, and ?cats=mob

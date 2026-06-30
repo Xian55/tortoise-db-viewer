@@ -219,7 +219,7 @@ function buildLayerPanel(map, { groups = [], header = null } = {}) {
         const rowsBox = L.DomUtil.create("div", "wm-group-rows", gEl);
         L.DomEvent.on(gh, "click", (e) => {
           if (e.target === allB || e.target === noneB) return; // those have their own action
-          L.DomUtil.toggleClass(gEl, "collapsed");
+          gEl.classList.toggle("collapsed");
         });
         const groupRows = [];
         for (const r of g.rows) {
@@ -244,7 +244,7 @@ function buildLayerPanel(map, { groups = [], header = null } = {}) {
       const groupEls = [...body.querySelectorAll(".wm-group")];
       L.DomEvent.on(search, "input", () => {
         const q = search.value.trim().toLowerCase();
-        L.DomUtil[q ? "addClass" : "removeClass"](body, "searching");
+        body.classList.toggle("searching", !!q);
         for (const r of allRows) r.el.style.display = (!q || r.label.includes(q)) ? "" : "none";
         for (const gEl of groupEls) {
           const any = [...gEl.querySelectorAll(".wm-row")].some((e) => e.style.display !== "none");
@@ -252,8 +252,8 @@ function buildLayerPanel(map, { groups = [], header = null } = {}) {
         }
       });
 
-      L.DomEvent.on(hideBtn, "click", () => L.DomUtil.addClass(root, "wm-collapsed"));
-      L.DomEvent.on(showBtn, "click", () => L.DomUtil.removeClass(root, "wm-collapsed"));
+      L.DomEvent.on(hideBtn, "click", () => root.classList.add("wm-collapsed"));
+      L.DomEvent.on(showBtn, "click", () => root.classList.remove("wm-collapsed"));
       L.DomEvent.disableClickPropagation(root);
       L.DomEvent.disableScrollPropagation(root);
       return root;
