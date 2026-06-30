@@ -501,6 +501,13 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     const sp = nearest(e.containerPoint);
     if (sp && sp.href) navigate(sp.href);
   });
+  // middle-click -> open the dot's entity in a new tab, leaving the map open
+  el.addEventListener("mousedown", (e) => { if (e.button === 1) e.preventDefault(); }); // kill autoscroll glyph
+  el.addEventListener("auxclick", (e) => {
+    if (e.button !== 1) return;
+    const sp = nearest(map.mouseEventToContainerPoint(e));
+    if (sp && sp.href) { e.preventDefault(); window.open(new URL(sp.href, location.href).href, "_blank", "noopener"); }
+  });
   // right-click a category dot -> the same copy menu. "Copy All" pulls every spawn
   // of that entry (resolved from the npc/obj index via the dot's href).
   map.on("contextmenu", (e) => {
@@ -851,6 +858,13 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
   });
   map.on("mouseout", () => { tip.style.display = "none"; });
   map.on("click", (e) => { const sp = nearest(e.containerPoint); if (sp && sp.href) navigate(sp.href); });
+  // middle-click -> open the dot's entity in a new tab, leaving the map open
+  el.addEventListener("mousedown", (e) => { if (e.button === 1) e.preventDefault(); }); // kill autoscroll glyph
+  el.addEventListener("auxclick", (e) => {
+    if (e.button !== 1) return;
+    const sp = nearest(map.mouseEventToContainerPoint(e));
+    if (sp && sp.href) { e.preventDefault(); window.open(new URL(sp.href, location.href).href, "_blank", "noopener"); }
+  });
 
   map.on("moveend zoomend", writeStateD); // persist pan/zoom (layer + focus + filter write directly)
   setTimeout(() => { map.invalidateSize(); redraw(); ready = true; }, 0);
