@@ -603,6 +603,10 @@ export function initFlightMap(el, continent, nodes, routes, navigate) {
 const BLANK_TILE =
   "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
+// fullscreen-toggle glyphs (corner brackets): out = enter, in = exit
+const FS_ENTER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+const FS_EXIT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
+
 // Seamless continent minimap (?worldmap=mapid): one Leaflet CRS.Simple slippy map
 // over the client's stitched minimap tile PYRAMID (z/x/y webp on R2, built by
 // scripts/extract-minimap.py), with every spawn reprojected onto it. Unlike the
@@ -820,6 +824,38 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
   });
   map.addControl(new FilterCtl());
   L.control.zoom({ position: "topleft" }).addTo(map); // added after the filter -> sits below it
+
+  // ---- fullscreen toggle (top-left) -> the map fills the screen, reclaiming the
+  // unused page margins. Uses the browser Fullscreen API on the #zonemap element;
+  // invalidateSize+redraw on every change so Leaflet/Pixi refit (incl. Esc-exit). ----
+  if (el.requestFullscreen) {
+    let fsBtn = null;
+    const FsCtl = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd() {
+        const div = L.DomUtil.create("div", "leaflet-bar wm-fs");
+        fsBtn = L.DomUtil.create("a", "", div);
+        fsBtn.href = "#"; fsBtn.title = "Fullscreen"; fsBtn.setAttribute("role", "button");
+        fsBtn.innerHTML = FS_ENTER;
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.on(fsBtn, "click", (e) => {
+          L.DomEvent.preventDefault(e);
+          if (document.fullscreenElement) document.exitFullscreen();
+          else el.requestFullscreen();
+        });
+        return div;
+      },
+    });
+    map.addControl(new FsCtl());
+    const onFsChange = () => {
+      const on = document.fullscreenElement === el;
+      if (fsBtn) { fsBtn.innerHTML = on ? FS_EXIT : FS_ENTER; fsBtn.title = on ? "Exit fullscreen" : "Fullscreen"; }
+      map.invalidateSize();
+      redraw();
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    map.on("unload", () => document.removeEventListener("fullscreenchange", onFsChange));
+  }
 
   // restore the saved view (else fit the continent / the focused zone) + npc filter
   if (initial.c && initial.z != null) map.setView(initial.c, initial.z);

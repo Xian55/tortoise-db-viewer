@@ -259,6 +259,9 @@ a.ilink.zone { color: #8fd18f; }
    its controls stay under the sticky topbar + hovercard. */
 #zonemap { height: 72vh; min-height: 440px; position: relative; z-index: 0;
   border: 1px solid var(--border); border-radius: 8px; background: #06060a; }
+/* native fullscreen: fill the screen, drop the framing so no gaps show */
+#zonemap:fullscreen { border: 0; border-radius: 0; }
+#zonemap .wm-fs a { display: flex; align-items: center; justify-content: center; }
 .zone-page .npc-head { margin-bottom: 12px; }
 /* Dark theme for Leaflet controls. leaflet.css ships in the lazy zonemap chunk
    and loads AFTER this file, so scope under #zonemap -- the id beats leaflet's
