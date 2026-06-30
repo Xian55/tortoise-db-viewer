@@ -102,13 +102,17 @@ async function testQuestMap(single, multi) {
   await page.waitForSelector("#zonemap .wm-panel .wm-row", { timeout: 20000 }).catch(() => {});
   const rows = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
   const has = (re) => rows.some((r) => re.test(r));
-  const giver = has(/Quest giver/), turnin = has(/Turn in/), kill = has(/Kill \/ use/), route = has(/Suggested route/);
+  // giver/turn-in may be one merged row ("Quest giver & turn-in") when it's the same NPC
+  const giver = has(/quest giver/i), turnin = has(/turn[- ]?in/i), route = has(/Suggested route/);
+  // objectives are per-target layers now (named after the kill/collect target) -> any
+  // marker row that isn't giver/turn-in/route counts as an objective layer.
+  const objective = rows.some((r) => !/quest giver|turn[- ]?in|Suggested route/i.test(r));
   await page.goto(`${BASE}?quest=${multi}`, { waitUntil: WAIT, timeout: 60000 });
   const worldTiles = await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 }).then(() => true).catch(() => false);
   const mrows = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
-  const worldGiver = mrows.some((r) => /Quest giver/.test(r));
-  console.log(`quest-map single=${single}: giver=${giver} turnin=${turnin} kill=${kill} route=${route} | multi=${multi}: worldTiles=${worldTiles} giver=${worldGiver}`);
-  return giver && turnin && kill && route && worldTiles && worldGiver;
+  const worldGiver = mrows.some((r) => /quest giver/i.test(r));
+  console.log(`quest-map single=${single}: giver=${giver} turnin=${turnin} objective=${objective} route=${route} | multi=${multi}: worldTiles=${worldTiles} giver=${worldGiver}`);
+  return giver && turnin && objective && route && worldTiles && worldGiver;
 }
 
 // A required item whose ReqSourceId duplicates it must NOT appear as "Provided items".

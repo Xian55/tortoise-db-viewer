@@ -6,24 +6,31 @@
 import { query } from "./db.js";
 import * as Q from "./queries.js";
 
-// Marker colours per role (creature pins; object points use the item/POI icon).
-const COLOR = { giver: "#39d353", ender: "#ffd100", kill: "#f0506e", collect: "#7cc4ff" };
-const COLLECT_CAP = 80; // max collect-source markers (shown-surface only)
+const COLOR = { giver: "#39d353", ender: "#ffd100" }; // giver=green, turn-in=gold
+const COLLECT_CAP = 80; // max markers per collect layer (shown-surface only)
+// Golden-angle hue per successive objective layer -> adjacent layers are ~137 deg
+// apart, so each kill target / collected item reads as a clearly distinct colour
+// (e.g. Lord Vash'arj vs Lady Renirja, whose entry ids are consecutive).
+function makeHue() {
+  let i = 0;
+  return () => `hsl(${Math.round((i++ * 137.508 + 25) % 360)} 72% 52%)`;
+}
 
-// sources: { giversN, endersN, giversG, endersG, qcreatures, collect }
+// sources: { giversN, endersN, giversG, endersG, kills, collects }
 //   giversN/endersN: [{entry,name}] creatures   giversG/endersG: [{entry,name}] objects
-//   qcreatures: [{target,is_go,name}] (kill/use objectives)
-//   collect: [{entry,name,kind:'c'|'o',icon}] (drop/gather sources of req items)
+//   kills:    [{entry,name,kind:'c'|'o',count}]            (one per kill/use objective)
+//   collects: [{entry,name,kind:'c'|'o',icon,group,groupName}]  (drop/gather sources,
+//             grouped by the collected item: `group` id + `groupName` label)
 // Returns { markerLayers, surface, route } or { markerLayers:[], surface:null }.
 export async function buildQuestMap(sources) {
-  const { giversN = [], endersN = [], giversG = [], endersG = [], qcreatures = [], collect = [] } = sources;
+  const { giversN = [], endersN = [], giversG = [], endersG = [], kills = [], collects = [] } = sources;
   const tagged = [
     ...giversN.map((c) => ({ role: "giver", kind: "c", entry: c.entry, name: c.name })),
     ...giversG.map((g) => ({ role: "giver", kind: "o", entry: g.entry, name: g.name })),
     ...endersN.map((c) => ({ role: "ender", kind: "c", entry: c.entry, name: c.name })),
     ...endersG.map((g) => ({ role: "ender", kind: "o", entry: g.entry, name: g.name })),
-    ...qcreatures.map((o) => ({ role: "kill", kind: o.is_go ? "o" : "c", entry: o.target, name: o.name })),
-    ...collect.map((s) => ({ role: "collect", kind: s.kind, entry: s.entry, name: s.name, icon: s.icon })),
+    ...kills.map((k) => ({ role: "kill", kind: k.kind, entry: k.entry, name: k.name, count: k.count })),
+    ...collects.map((s) => ({ role: "collect", kind: s.kind, entry: s.entry, name: s.name, icon: s.icon, group: s.group, groupName: s.groupName })),
   ].filter((t) => t.entry);
 
   // batch entry -> spawn coordinates, one query per kind
@@ -45,41 +52,70 @@ export async function buildQuestMap(sources) {
   const all = tagged.flatMap((t) => t.points);
   if (!all.length) return { markerLayers: [], surface: null };
 
-  // surface: one map + one zone -> that zone's parchment; otherwise the world map of
-  // the dominant (most-marked) continent.
+  // pick the continent the map shows by a WEIGHTED score: the actual quest work
+  // (kill/collect objectives) outweighs giver/turn-in, so a quest you pick up on one
+  // continent but complete on another shows where the work is (e.g. quest 272).
   const zoneSet = new Set(all.map((p) => p.zone));
-  const mapCount = new Map(), zoneCount = new Map();
-  for (const p of all) { mapCount.set(p.map, (mapCount.get(p.map) || 0) + 1); zoneCount.set(p.zone, (zoneCount.get(p.zone) || 0) + 1); }
+  const mapScore = new Map();
+  const W = { giver: 1, ender: 1, kill: 3, collect: 3 };
+  for (const t of tagged) for (const p of t.points) mapScore.set(p.map, (mapScore.get(p.map) || 0) + (W[t.role] || 1));
   let domMap = null, best = -1;
-  for (const [m, n] of mapCount) if (n > best) { best = n; domMap = m; }
+  for (const [m, s] of mapScore) if (s > best) { best = s; domMap = m; }
+  // dominant zone = most-marked zone ON the chosen continent (parchment + fallback)
+  const zOnDom = new Map();
+  for (const p of all) if (p.map === domMap) zOnDom.set(p.zone, (zOnDom.get(p.zone) || 0) + 1);
   let domZone = null, bz = -1;
-  for (const [z, n] of zoneCount) if (n > bz) { bz = n; domZone = z; }
-  // single map + single zone -> that zone's parchment; else the world map of the
-  // dominant continent. `areaid` always carries the dominant zone so the caller can
-  // fall back to a parchment if that continent ships no minimap pyramid (instances).
-  const surface = (mapCount.size === 1 && zoneSet.size === 1)
-    ? { kind: "zone", areaid: domZone, mapId: domMap, zones: 1 }
-    : { kind: "world", mapId: domMap, areaid: domZone, zones: zoneSet.size };
+  for (const [z, n] of zOnDom) if (n > bz) { bz = n; domZone = z; }
+  // roles stranded on other continents -> a note (can't plot them on this surface)
+  const offRoles = new Set();
+  for (const t of tagged) for (const p of t.points) if (p.map !== domMap) offRoles.add(t.role);
+  const surface = (mapScore.size === 1 && zoneSet.size === 1)
+    ? { kind: "zone", areaid: domZone, mapId: domMap, zones: 1, off: [] }
+    : { kind: "world", mapId: domMap, areaid: domZone, zones: zoneSet.size, off: [...offRoles] };
   const inSurface = (p) => (surface.kind === "zone" ? p.zone === surface.areaid : p.map === surface.mapId);
 
-  const rolePts = (role) => tagged.filter((t) => t.role === role).flatMap((t) => t.points).filter(inSurface);
-  const giverP = rolePts("giver"), enderP = rolePts("ender"), killP = rolePts("kill");
-  let collectP = rolePts("collect");
-  if (collectP.length > COLLECT_CAP) collectP = collectP.slice(0, COLLECT_CAP);
-  const collectIcon = (tagged.find((t) => t.role === "collect" && t.icon) || {}).icon;
+  const ptsOf = (role) => tagged.filter((t) => t.role === role).flatMap((t) => t.points).filter(inSurface);
+  const giverP = ptsOf("giver"), enderP = ptsOf("ender");
 
   const markerLayers = [];
-  const push = (key, label, color, points, extra = {}) => {
-    if (points.length) markerLayers.push({ key, label, color, poi: "Quest Giver", points, on: true, ...extra });
-  };
-  push("giver", "Quest giver", COLOR.giver, giverP);
-  push("ender", "Turn in", COLOR.ender, enderP);
-  push("kill", "Kill / use", COLOR.kill, killP, { poi: "Chest" });
-  if (collectP.length) markerLayers.push({ key: "collect", label: "Collect", color: COLOR.collect, icon: collectIcon, points: collectP, on: true });
+  const nextHue = makeHue();
+  // giver/ender: a coloured dot legend (green/gold); object givers/enders still render
+  // the default "Quest Giver" POI marker (buildMarkerLayer's fallback for kind 'o').
+  // When the same NPC(s) both START and END the quest, one combined marker -- two
+  // overlapping pins on the same spot are redundant.
+  const giverIds = new Set([...giversN, ...giversG].map((x) => x.entry));
+  const enderIds = new Set([...endersN, ...endersG].map((x) => x.entry));
+  const sameNpc = giverIds.size > 0 && giverIds.size === enderIds.size && [...giverIds].every((id) => enderIds.has(id));
+  if (sameNpc) {
+    if (giverP.length) markerLayers.push({ key: "giver", label: "Quest giver & turn-in", color: COLOR.giver, points: giverP, on: true });
+  } else {
+    if (giverP.length) markerLayers.push({ key: "giver", label: "Quest giver", color: COLOR.giver, points: giverP, on: true });
+    if (enderP.length) markerLayers.push({ key: "ender", label: "Turn in", color: COLOR.ender, points: enderP, on: true });
+  }
+  // one layer PER kill/use objective target (each its own colour + toggle)
+  for (const t of tagged.filter((x) => x.role === "kill")) {
+    const pts = t.points.filter(inSurface);
+    if (!pts.length) continue;
+    markerLayers.push({ key: `kill-${t.entry}`, label: t.count > 1 ? `${t.name} ×${t.count}` : t.name, color: nextHue(), poi: t.kind === "o" ? "Chest" : undefined, points: pts, on: true });
+  }
+  // one layer PER collected item (sources grouped by `group`)
+  const byGroup = new Map();
+  for (const t of tagged.filter((x) => x.role === "collect")) {
+    const g = byGroup.get(t.group) || { name: t.groupName, icon: t.icon, pts: [] };
+    for (const p of t.points) g.pts.push(p);
+    byGroup.set(t.group, g);
+  }
+  for (const [gid, g] of byGroup) {
+    let pts = g.pts.filter(inSurface);
+    if (!pts.length) continue;
+    if (pts.length > COLLECT_CAP) pts = pts.slice(0, COLLECT_CAP);
+    markerLayers.push({ key: `collect-${gid}`, label: `Collect: ${g.name}`, color: nextHue(), icon: g.icon, points: pts, on: true });
+  }
 
   // opt-in open-path route: giver -> objective clusters -> turn-in (within the surface).
-  const routePts = [...giverP, ...killP, ...collectP, ...enderP];
-  const route = (giverP.length && routePts.length >= 3)
+  const objPts = markerLayers.filter((l) => /^(kill|collect)-/.test(l.key)).flatMap((l) => l.points);
+  const routePts = [...giverP, ...objPts, ...enderP];
+  const route = (routePts.length >= 3)
     ? { points: routePts, start: giverP[0], end: enderP[0] || undefined, label: "Suggested route" }
     : null;
 

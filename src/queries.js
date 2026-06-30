@@ -131,6 +131,23 @@ export const Q_OBJECT_SOURCE = `
   SELECT MIN(g.entry) AS entry, g.name, MAX(d.chance) AS chance
   FROM drops d JOIN gameobjects g ON g.data1 = d.owner
   WHERE d.src='o' AND d.item = ?1 GROUP BY g.name ORDER BY chance DESC LIMIT 50`;
+// EVERY gameobject entry that drops an item (one row per entry, not name-collapsed) ->
+// so the quest map can plot all of an object's distinct spawn locations.
+export const Q_OBJECT_SOURCE_ENTRIES = `
+  SELECT g.entry, g.name, MAX(d.chance) AS chance
+  FROM drops d JOIN gameobjects g ON g.data1 = d.owner
+  WHERE d.src='o' AND d.item = ?1 GROUP BY g.entry ORDER BY chance DESC LIMIT 200`;
+
+// Create-recipe reagents of a set of result items: for a quest item that is itself
+// crafted/combined (e.g. two half-pendants -> the pendant), resolve the components so
+// the quest map/required-items can fall back to where the REAGENTS are collected.
+export const qItemReagents = (n) => `
+  SELECT sc.item AS result, sr.item AS reagent, i.name AS reagent_name, i.quality, di.icon
+  FROM spell_creates sc
+  JOIN spell_reagent sr ON sr.spell = sc.spell
+  JOIN items i ON i.entry = sr.item
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE sc.item IN (${inList(n)}) AND sr.item <> sc.item`;
 
 // NPCs that sell an item: direct npc_vendor entries + creatures whose vendor_id
 // references a npc_vendor_template that stocks it.

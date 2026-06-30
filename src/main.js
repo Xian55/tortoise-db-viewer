@@ -1132,31 +1132,51 @@ async function showQuest(id) {
   const reqDropRows = [];
   const collectSources = []; // {entry,name,kind,icon} drop/gather sources -> quest map "Collect" layer
   if (reqItems.length) {
+    // Items with no direct drop source that are CRAFTED/COMBINED (e.g. a pendant from
+    // two half-pendants) fall back to where their create-recipe REAGENTS are collected.
+    const reagentRows = await query(Q.qItemReagents(reqItems.length), reqItems.map((r) => r.entry));
+    const reagentsByResult = new Map();
+    for (const r of reagentRows) { const a = reagentsByResult.get(r.result) || []; a.push(r); reagentsByResult.set(r.result, a); }
+    // per req item -> the "parts" we actually look up sources for (itself, or its reagents)
     const per = await Promise.all(reqItems.map(async (ri) => {
-      const [npcs, objs] = await Promise.all([query(Q.Q_DROPPED_BY, [ri.entry]), query(Q.Q_OBJECT_SOURCE, [ri.entry])]);
-      return { ri, npcs, objs };
+      const [npcs, objs] = await Promise.all([query(Q.Q_DROPPED_BY, [ri.entry]), query(Q.Q_OBJECT_SOURCE_ENTRIES, [ri.entry])]);
+      if (npcs.length || objs.length) return { ri, parts: [{ item: ri, npcs, objs }] };
+      const reags = reagentsByResult.get(ri.entry) || [];
+      const parts = await Promise.all(reags.map(async (rg) => {
+        const [rn, ro] = await Promise.all([query(Q.Q_DROPPED_BY, [rg.reagent]), query(Q.Q_OBJECT_SOURCE_ENTRIES, [rg.reagent])]);
+        return { item: { entry: rg.reagent, name: rg.reagent_name, quality: rg.quality, icon: rg.icon }, npcs: rn, objs: ro, via: ri };
+      }));
+      return { ri, parts };
     }));
+    const allParts = per.flatMap((p) => p.parts);
     const [npcLoc, objLoc] = await Promise.all([
-      resolveNpcLocations(per.flatMap((p) => p.npcs.map((n) => n.entry)), "c"),
-      resolveNpcLocations(per.flatMap((p) => p.objs.map((o) => o.entry)), "o"),
+      resolveNpcLocations(allParts.flatMap((pt) => pt.npcs.map((n) => n.entry)), "c"),
+      resolveNpcLocations(allParts.flatMap((pt) => pt.objs.map((o) => o.entry)), "o"),
     ]);
-    for (const { ri, npcs, objs } of per) {
+    for (const { ri, parts } of per) {
       const base = { item: ri.entry, itemName: ri.name, quality: ri.quality, icon: ri.icon, qty: ri.count };
-      for (const n of npcs) {
-        const loc = npcLoc.get(n.entry) || {};
-        const tag = n.skin_chance != null ? ' <span class="muted">(skin)</span>' : n.pick_chance != null ? ' <span class="muted">(pickpocket)</span>' : "";
-        reqDropRows.push({ ...base, srcHtml: npcLink(n.entry, n.name) + tag, srcName: n.name, zoneHtml: loc.html || "", zoneText: loc.text || "", chance: n.drop_chance ?? n.skin_chance ?? n.pick_chance });
-        collectSources.push({ entry: n.entry, name: n.name, kind: "c", icon: ri.icon });
+      let anySrc = false;
+      for (const pt of parts) {
+        const via = pt.via ? ` <span class="muted">(from ${esc(pt.item.name)})</span>` : ""; // a reagent fallback
+        for (const n of pt.npcs) {
+          anySrc = true;
+          const loc = npcLoc.get(n.entry) || {};
+          const tag = n.skin_chance != null ? ' <span class="muted">(skin)</span>' : n.pick_chance != null ? ' <span class="muted">(pickpocket)</span>' : "";
+          reqDropRows.push({ ...base, srcHtml: npcLink(n.entry, n.name) + tag + via, srcName: n.name, zoneHtml: loc.html || "", zoneText: loc.text || "", chance: n.drop_chance ?? n.skin_chance ?? n.pick_chance });
+          collectSources.push({ entry: n.entry, name: n.name, kind: "c", icon: pt.item.icon || ri.icon, group: pt.item.entry, groupName: pt.item.name });
+        }
+        const seenObjName = new Set(); // table: one row per object NAME; map: every entry
+        for (const o of pt.objs) {
+          if (!o.entry) continue;
+          anySrc = true;
+          collectSources.push({ entry: o.entry, name: o.name, kind: "o", icon: pt.item.icon || ri.icon, group: pt.item.entry, groupName: pt.item.name });
+          if (seenObjName.has(o.name)) continue;
+          seenObjName.add(o.name);
+          const loc = objLoc.get(o.entry) || {};
+          reqDropRows.push({ ...base, srcHtml: `${objectLink(o.entry, o.name)} <span class="muted">(object)</span>${via}`, srcName: o.name, zoneHtml: loc.html || "", zoneText: loc.text || "", chance: o.chance });
+        }
       }
-      for (const o of objs) {
-        const loc = objLoc.get(o.entry) || {};
-        const src = o.entry ? objectLink(o.entry, o.name) : esc(o.name);
-        reqDropRows.push({ ...base, srcHtml: `${src} <span class="muted">(object)</span>`, srcName: o.name, zoneHtml: loc.html || "", zoneText: loc.text || "", chance: o.chance });
-        if (o.entry) collectSources.push({ entry: o.entry, name: o.name, kind: "o", icon: ri.icon });
-      }
-      if (!npcs.length && !objs.length) {
-        reqDropRows.push({ ...base, srcHtml: '<span class="muted">No recorded drop source</span>', srcName: "", zoneHtml: "", zoneText: "", chance: null });
-      }
+      if (!anySrc) reqDropRows.push({ ...base, srcHtml: '<span class="muted">No recorded drop source</span>', srcName: "", zoneHtml: "", zoneText: "", chance: null });
     }
   }
 
@@ -1170,9 +1190,17 @@ async function showQuest(id) {
   // ---- quest map plan: giver / turn-in / kill-use / collect markers + opt-in route,
   // on the single zone's parchment or (cross-zone) the seamless world map ----
   let questMap = { markerLayers: [], surface: null, route: null };
-  try { questMap = await buildQuestMap({ giversN, endersN, giversG, endersG, qcreatures, collect: collectSources }); } catch (_) { /* no map */ }
+  try {
+    questMap = await buildQuestMap({
+      giversN, endersN, giversG, endersG,
+      kills: qcreatures.map((o) => ({ entry: o.target, name: o.name || `#${o.target}`, kind: o.is_go ? "o" : "c", count: o.count })),
+      collects: collectSources,
+    });
+  } catch (_) { /* no map */ }
+  const off = questMap.surface && questMap.surface.off || [];
+  const offLabel = { giver: "quest giver", ender: "turn-in", kill: "kill targets", collect: "collect spots" };
   const mapNote = questMap.surface && questMap.surface.kind === "world"
-    ? ` <span class="dim">— spans ${questMap.surface.zones} zones, shown on the world map</span>` : "";
+    ? ` <span class="dim">— spans ${questMap.surface.zones} zones, shown on the world map${off.length ? `; ${off.map((r) => offLabel[r] || r).join(" / ")} on another continent` : ""}</span>` : "";
   const mapHtml = questMap.surface
     ? `<div class="panel quest-map"><h3 class="quest-map-h">Map${mapNote}</h3><div id="zonemap"></div></div>` : "";
 
