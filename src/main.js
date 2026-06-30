@@ -9,6 +9,7 @@ import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
 import { ASSETS_BASE, resolveOrigins } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
+import { buildQuestMap } from "./questmap.js";
 // Seamless-minimap transform manifest (tile/adt/grid + per-continent bbox). Tiny,
 // committed; bundled at build time. The tile pyramid itself lives on R2.
 import minimapManifest from "../scripts/data/minimap.json";
@@ -789,7 +790,7 @@ async function showNpc(id) {
       const { initZoneMap } = await import("./zonemap.js");
       const imgUrl = `${ASSETS_BASE}maps/${mapZone.areaid}.webp`;
       const focus = { label: npc.name, npc: npc.entry, points: mapPts };
-      initZoneMap(el, { ...mapZone, imgUrl }, [], [], navigate, focus);
+      initZoneMap(el, { ...mapZone, imgUrl }, [], [], navigate, { focus });
     } catch (e) { el.innerHTML = errorBox(e); }
   }
 }
@@ -890,7 +891,7 @@ async function showObject(id) {
       const renderZone = (zone) => {
         const pts = spawns.filter((s) => s.zone === zone.areaid);
         const imgUrl = `${ASSETS_BASE}maps/${zone.areaid}.webp`;
-        initZoneMap(el, { ...zone, imgUrl }, [], [], navigate, { label: obj.name, icon: focusIcon, points: pts });
+        initZoneMap(el, { ...zone, imgUrl }, [], [], navigate, { focus: { label: obj.name, icon: focusIcon, points: pts } });
         app.querySelectorAll("#objzoneswitch button").forEach((b) => b.classList.toggle("active", Number(b.dataset.zone) === zone.areaid));
       };
       renderZone(activeZone);
@@ -1129,6 +1130,7 @@ async function showQuest(id) {
   // the wolves (and their zones) you can farm.
   const reqItems = byRole("req");
   const reqDropRows = [];
+  const collectSources = []; // {entry,name,kind,icon} drop/gather sources -> quest map "Collect" layer
   if (reqItems.length) {
     const per = await Promise.all(reqItems.map(async (ri) => {
       const [npcs, objs] = await Promise.all([query(Q.Q_DROPPED_BY, [ri.entry]), query(Q.Q_OBJECT_SOURCE, [ri.entry])]);
@@ -1144,11 +1146,13 @@ async function showQuest(id) {
         const loc = npcLoc.get(n.entry) || {};
         const tag = n.skin_chance != null ? ' <span class="muted">(skin)</span>' : n.pick_chance != null ? ' <span class="muted">(pickpocket)</span>' : "";
         reqDropRows.push({ ...base, srcHtml: npcLink(n.entry, n.name) + tag, srcName: n.name, zoneHtml: loc.html || "", zoneText: loc.text || "", chance: n.drop_chance ?? n.skin_chance ?? n.pick_chance });
+        collectSources.push({ entry: n.entry, name: n.name, kind: "c", icon: ri.icon });
       }
       for (const o of objs) {
         const loc = objLoc.get(o.entry) || {};
         const src = o.entry ? objectLink(o.entry, o.name) : esc(o.name);
         reqDropRows.push({ ...base, srcHtml: `${src} <span class="muted">(object)</span>`, srcName: o.name, zoneHtml: loc.html || "", zoneText: loc.text || "", chance: o.chance });
+        if (o.entry) collectSources.push({ entry: o.entry, name: o.name, kind: "o", icon: ri.icon });
       }
       if (!npcs.length && !objs.length) {
         reqDropRows.push({ ...base, srcHtml: '<span class="muted">No recorded drop source</span>', srcName: "", zoneHtml: "", zoneText: "", chance: null });
@@ -1162,6 +1166,15 @@ async function showQuest(id) {
     resolveNpcLocations(qcreatures.filter((o) => o.is_go).map((o) => o.target), "o"),
   ]);
   const killLoc = (o) => (o.is_go ? killObjLoc : killNpcLoc).get(o.target) || {};
+
+  // ---- quest map plan: giver / turn-in / kill-use / collect markers + opt-in route,
+  // on the single zone's parchment or (cross-zone) the seamless world map ----
+  let questMap = { markerLayers: [], surface: null, route: null };
+  try { questMap = await buildQuestMap({ giversN, endersN, giversG, endersG, qcreatures, collect: collectSources }); } catch (_) { /* no map */ }
+  const mapNote = questMap.surface && questMap.surface.kind === "world"
+    ? ` <span class="dim">— spans ${questMap.surface.zones} zones, shown on the world map</span>` : "";
+  const mapHtml = questMap.surface
+    ? `<div class="panel quest-map"><h3 class="quest-map-h">Map${mapNote}</h3><div id="zonemap"></div></div>` : "";
 
   // ---- reward summary ----
   const rewBits = [];
@@ -1242,10 +1255,44 @@ async function showQuest(id) {
         <div class="npc-meta"><a class="yt-link" href="${ytUrl}" target="_blank" rel="noopener noreferrer">▶ Watch walkthrough on YouTube</a></div>
       </div>
       ${desc.length ? `<div class="panel quest-desc">${desc.join("")}</div>` : ""}
+      ${mapHtml}
       ${tabs(tabDefs)}
     </div>`;
   mountTables();
   wireTabs();
+
+  // lazy-init the quest map (the heavy Leaflet/Pixi chunk) onto the chosen surface.
+  if (questMap.surface) {
+    const el = document.getElementById("zonemap");
+    const s = questMap.surface;
+    const mapOpts = { markerLayers: questMap.markerLayers, route: questMap.route };
+    try {
+      const { initZoneMap, initWorldMap } = await import("./zonemap.js");
+      if (s.kind === "zone") {
+        const [zone] = await query(Q.qZonesByIds(1), [s.areaid]);
+        if (zone) initZoneMap(el, { ...zone, imgUrl: `${ASSETS_BASE}maps/${zone.areaid}.webp` }, [], [], navigate, mapOpts);
+        else el.closest(".quest-map")?.remove();
+      } else {
+        const m = (minimapManifest.maps || {})[String(s.mapId)];
+        if (m) initWorldMap(el, {
+          mapId: s.mapId, name: m.name, bbox: m.bbox,
+          tile: minimapManifest.tile, adt: minimapManifest.adt, grid: minimapManifest.grid,
+          maxNativeZoom: minimapManifest.maxNativeZoom, tilesBase: `${ASSETS_BASE}minimap/`,
+        }, [], [], navigate, mapOpts);
+        else {
+          // that continent ships no minimap pyramid (e.g. an instance map) -> fall back
+          // to the dominant zone's parchment with the markers/route filtered to it.
+          const [zone] = s.areaid ? await query(Q.qZonesByIds(1), [s.areaid]) : [];
+          const f = (pts) => pts.filter((p) => p.zone === s.areaid);
+          const fLayers = questMap.markerLayers.map((l) => ({ ...l, points: f(l.points) })).filter((l) => l.points.length);
+          const fRoute = questMap.route ? { ...questMap.route, points: f(questMap.route.points) } : null;
+          if (zone && fLayers.length) initZoneMap(el, { ...zone, imgUrl: `${ASSETS_BASE}maps/${zone.areaid}.webp` }, [], [], navigate,
+            { markerLayers: fLayers, route: fRoute && fRoute.points.length >= 3 ? fRoute : null });
+          else el.closest(".quest-map")?.remove();
+        }
+      }
+    } catch (e) { el.closest(".quest-map")?.remove(); }
+  }
 }
 
 async function showFaction(id) {
@@ -1480,7 +1527,7 @@ async function showZone(id, gatherItem = null) {
       const fs = isInstance ? spawns.filter((s) => s.zone === fl.areaid) : spawns;
       const fo = isInstance ? objects.filter((o) => o.zone === fl.areaid) : objects;
       const fb = isInstance ? bosses.filter((b) => b.zone === fl.areaid) : bosses;
-      zmap = initZoneMap(el, { ...fl, imgUrl: `${base}maps/${fl.areaid}.webp` }, fs, fo, navigate, fl.areaid === z.areaid ? focus : null, fb, isInstance ? null : farmPoints);
+      zmap = initZoneMap(el, { ...fl, imgUrl: `${base}maps/${fl.areaid}.webp` }, fs, fo, navigate, { focus: fl.areaid === z.areaid ? focus : null, bosses: fb, farm: isInstance ? null : farmPoints });
       app.querySelectorAll("#floorswitch button").forEach((b) => b.classList.toggle("active", Number(b.dataset.floor) === fl.areaid));
     };
     renderFloor(activeFloor);
@@ -1590,7 +1637,7 @@ async function showWorldMap(mapId = 0) {
     `<button data-cont="${id}"${id === mapId ? ' class="active"' : ""}>${esc(maps[String(id)].name)}</button>`).join("")}</div>`;
   app.innerHTML = `<div class="zone-page">
     <div class="npc-head"><h1>${esc(m.name)} <span class="dim">— World Map</span></h1>
-      <div class="npc-meta muted">${spawns.length.toLocaleString()} creature spawns · ${objects.length.toLocaleString()} objects · toggle categories in the layer control (top-right)</div>
+      <div class="npc-meta muted">${spawns.length.toLocaleString()} creature spawns · ${objects.length.toLocaleString()} objects</div>
     </div>
     ${switcher}
     <div id="zonemap"></div>

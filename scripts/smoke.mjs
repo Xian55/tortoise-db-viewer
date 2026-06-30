@@ -93,6 +93,24 @@ async function testQuestKillLocation(id) {
   return li >= 0 && locs.length > 0;
 }
 
+// Quest map: a single-zone quest embeds the zone parchment with categorized highlight
+// rows (Quest giver / Turn in / Kill / use) + an opt-in Suggested route toggle; a
+// cross-zone quest embeds the seamless world map (tile pyramid) with the same rows.
+async function testQuestMap(single, multi) {
+  await page.goto(`${BASE}?quest=${single}`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector("#zonemap .wm-panel .wm-row", { timeout: 20000 }).catch(() => {});
+  const rows = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
+  const has = (re) => rows.some((r) => re.test(r));
+  const giver = has(/Quest giver/), turnin = has(/Turn in/), kill = has(/Kill \/ use/), route = has(/Suggested route/);
+  await page.goto(`${BASE}?quest=${multi}`, { waitUntil: WAIT, timeout: 60000 });
+  const worldTiles = await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 }).then(() => true).catch(() => false);
+  const mrows = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
+  const worldGiver = mrows.some((r) => /Quest giver/.test(r));
+  console.log(`quest-map single=${single}: giver=${giver} turnin=${turnin} kill=${kill} route=${route} | multi=${multi}: worldTiles=${worldTiles} giver=${worldGiver}`);
+  return giver && turnin && kill && route && worldTiles && worldGiver;
+}
+
 // A required item whose ReqSourceId duplicates it must NOT appear as "Provided items".
 async function testQuestNoProvided(id) {
   await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
@@ -471,12 +489,13 @@ async function testZoneDotMenu(id) {
   await page.goto(`${BASE}?zone=${id}`, { waitUntil: WAIT, timeout: 60000 });
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
   await new Promise((r) => setTimeout(r, 600));
-  // open the collapsed layer control + tick the densest category
-  await page.evaluate(() => { const t = document.querySelector(".leaflet-control-layers-toggle"); if (t) t.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
-  await new Promise((r) => setTimeout(r, 200));
+  // the docked layer panel is open by default; tick the densest category row
   await page.evaluate(() => {
-    const ls = [...document.querySelectorAll(".leaflet-control-layers-overlays label")];
-    const target = ls.find((l) => /Quest Givers/i.test(l.textContent)) || ls.find((l) => /\(\d{2,}\)/.test(l.textContent)) || ls[0];
+    const rows = [...document.querySelectorAll("#zonemap .wm-panel .wm-row")];
+    const txt = (r) => r.querySelector(".wm-row-main")?.textContent || "";
+    const num = (r) => +(r.querySelector(".wm-row-n")?.textContent || 0);
+    const target = rows.find((r) => /Quest Givers/i.test(txt(r)))
+      || rows.slice().sort((a, b) => num(b) - num(a))[0] || rows[0];
     if (target) target.querySelector("input").click();
   });
   await new Promise((r) => setTimeout(r, 400));
@@ -613,18 +632,26 @@ async function testWorldMap() {
   const tiles = await page.$$eval("#zonemap img.leaflet-tile-loaded", (e) => e.length);
   const src1 = await page.$eval("#zonemap img.leaflet-tile", (e) => e.getAttribute("src")).catch(() => "");
   const conts = await page.$$eval("#contswitch button", (b) => b.length).catch(() => 0);
-  // layer control carries spawn categories with counts, e.g. "Quest Givers (123)"
-  await page.evaluate(() => { const t = document.querySelector(".leaflet-control-layers-toggle"); if (t) t.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
-  await new Promise((r) => setTimeout(r, 150));
-  const cats = await page.$$eval(".leaflet-control-layers-overlays label", (ls) => ls.filter((l) => /\(\d+\)/.test(l.textContent)).length).catch(() => 0);
+  // docked layer panel (open by default) lists spawn categories, each with a count
+  const cats = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-n", (ns) => ns.filter((n) => /\d/.test(n.textContent)).length).catch(() => 0);
+  // global search filters the category rows (and hides emptied groups)
+  const search = await page.evaluate(() => {
+    const i = document.querySelector("#zonemap .wm-search");
+    const vis = () => [...document.querySelectorAll("#zonemap .wm-panel .wm-row")].filter((r) => r.style.display !== "none").length;
+    i.value = "ven"; i.dispatchEvent(new Event("input", { bubbles: true }));
+    const filtered = vis();
+    i.value = ""; i.dispatchEvent(new Event("input", { bubbles: true }));
+    return { filtered, all: vis() };
+  }).catch(() => ({ filtered: 0, all: 0 }));
+  const searchOk = search.filtered >= 1 && search.filtered < search.all;
   // switch continents -> tiles re-request from the other map's pyramid path
   await page.evaluate(() => { const b = [...document.querySelectorAll("#contswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
   await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 });
   await new Promise((r) => setTimeout(r, 500));
   const src2 = await page.$eval("#zonemap img.leaflet-tile", (e) => e.getAttribute("src")).catch(() => "");
   const m1 = /minimap\/(\d+)\//.exec(src1)?.[1], m2 = /minimap\/(\d+)\//.exec(src2)?.[1];
-  console.log(`worldmap: tiles=${tiles} conts=${conts} cats=${cats} map1=${m1} map2=${m2} switched=${m1 !== m2}`);
-  return tiles > 0 && conts === 2 && cats > 0 && m1 != null && m2 != null && m1 !== m2;
+  console.log(`worldmap: tiles=${tiles} conts=${conts} cats=${cats} search=${search.filtered}/${search.all} map1=${m1} map2=${m2} switched=${m1 !== m2}`);
+  return tiles > 0 && conts === 2 && cats > 0 && searchOk && m1 != null && m2 != null && m1 !== m2;
 }
 // World-map usability: layer/zone/name state round-trips through the URL (so Back
 // restores it), the zone-focus dropdown + npc name filter exist, and ?cats=mob
@@ -637,17 +664,10 @@ async function testWorldMapState() {
   await page.waitForSelector("#zonemap .wm-filter .wm-zone", { timeout: 20000 });
   const zoneOpts = await page.$$eval("#zonemap .wm-filter .wm-zone option", (o) => o.length);
   const hasNameInput = (await page.$("#zonemap .wm-filter .wm-name")) !== null;
-  await page.evaluate(() => { const t = document.querySelector(".leaflet-control-layers-toggle"); if (t) t.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
-  await new Promise((r) => setTimeout(r, 200));
-  const mobChecked = await page.evaluate(() => {
-    const l = [...document.querySelectorAll(".leaflet-control-layers-overlays label")].find((x) => /Enemy Mobs/.test(x.textContent));
-    return !!l?.querySelector("input")?.checked;
-  });
+  const rowByText = (re) => `[...document.querySelectorAll("#zonemap .wm-panel .wm-row")].find((x) => ${re}.test(x.querySelector(".wm-row-main").textContent))`;
+  const mobChecked = await page.evaluate(`!!(${rowByText("/Enemy Mobs/")})?.querySelector("input")?.checked`);
   // toggle Vendors on -> cats in URL gains it
-  await page.evaluate(() => {
-    const l = [...document.querySelectorAll(".leaflet-control-layers-overlays label")].find((x) => /Vendors/.test(x.textContent));
-    l?.querySelector("input")?.click();
-  });
+  await page.evaluate(`(${rowByText("/Vendors/")})?.querySelector("input")?.click()`);
   await new Promise((r) => setTimeout(r, 350));
   const catsUrl = (await qp("cats")) || "";
   // focus a zone -> URL gains focus=<areaid>
@@ -1250,7 +1270,7 @@ async function testZone(id, expectName) {
   await page.waitForSelector(".zone-page .npc-head h1", { timeout: 40000 });
   const name = await page.$eval(".zone-page .npc-head h1", (e) => e.textContent);
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
-  const cats = await page.$$eval(".leaflet-control-layers-overlays label", (e) => e.length);
+  const cats = await page.$$eval("#zonemap .wm-panel .wm-row", (e) => e.length);
   const tabList = await page.$$eval(".zone-page .tabbar .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) table tbody tr", (r) => r.length);
   console.log(`zone ${id}: name="${name}" mapImg=yes categories=${cats} tabs=[${tabList.join(", ")}] firstPaneRows=${rows}`);
@@ -1273,7 +1293,7 @@ async function testFarmRoute(areaid, item) {
   await page.goto(`${BASE}?zone=${areaid}&gather=${item}`, { waitUntil: WAIT, timeout: 60000 });
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
   await new Promise((r) => setTimeout(r, 700));
-  const overlays = await page.$$eval(".leaflet-control-layers-overlays label", (e) => e.map((x) => x.textContent.trim()));
+  const overlays = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim()));
   const stops = await page.$$eval(".route-stop", (e) => e.length);
   const hasRoute = overlays.some((o) => /route/i.test(o));
   console.log(`farm-route ${areaid}/${item}: overlays=[${overlays.join(", ")}] stops=${stops} route=${hasRoute}`);
@@ -1288,7 +1308,7 @@ async function testZoneFarm(areaid) {
   await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
   const headers = await page.$$eval(".zone-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) table tbody tr", (r) => r.length);
-  const goldRoute = (await page.$$eval(".leaflet-control-layers-overlays label", (e) => e.map((x) => x.textContent))).some((o) => /Gold route/.test(o));
+  const goldRoute = (await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent))).some((o) => /Gold route/.test(o));
   console.log(`zone-farm ${areaid}: rows=${rows} headers=[${headers.join(",")}] goldRoute=${goldRoute}`);
   return rows > 5 && headers.includes("Total value") && goldRoute;
 }
@@ -1399,6 +1419,7 @@ run(() => testBrowseQuestZoneLink());    // browse quests links zones
 run(() => testQuestNoProvided(179));     // ReqSourceId==ReqItemId not shown as Provided
 run(() => testQuestRequiredDrops(179));  // objective item collapses to its drop sources + zones
 run(() => testQuestKillLocation(41189)); // Kill / Use targets show their zone
+run(() => testQuestMap(12, 52));         // quest map: single-zone parchment (+route) + cross-zone world map, categorized markers
 run(() => testItemDropLocation(750));    // dropped-by NPC locations resolved
 run(() => testSearchTabs("defias"));
 run(() => testSearchZone("Tanaris"));

@@ -366,6 +366,12 @@ export const qNpcZoneSpawns = (n, kind = "c") => `
   JOIN zones z ON z.areaid = s.zone
   LEFT JOIN maps m ON m.id = z.mapid
   WHERE s.kind = '${kind === "o" ? "o" : "c"}' AND s.id IN (${inList(n)}) AND s.zone IS NOT NULL`;
+// Batch spawn COORDINATES for a set of creature ('c') / object ('o') entries -> plot
+// them on a map (quest giver/turn-in/kill/collect markers). Returns one row per spawn.
+export const qSpawnPointsFor = (n, kind = "c") => `
+  SELECT s.id AS entry, s.x, s.y, s.map, s.zone
+  FROM spawn_points s INDEXED BY idx_spawn_id
+  WHERE s.kind = '${kind === "o" ? "o" : "c"}' AND s.id IN (${inList(n)}) AND s.zone IS NOT NULL LIMIT 8000`;
 // Zone rows (bounds + image dims) for a set of areaids -> render the NPC-page map.
 export const qZonesByIds = (n) => `
   SELECT areaid, name, mapid, locleft, locright, loctop, locbottom, img_w, img_h

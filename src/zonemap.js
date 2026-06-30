@@ -178,14 +178,156 @@ function whenPoiReady(cb) {
   if (poiBase && !poiBase.valid) poiBase.once("loaded", cb);
 }
 
-// zone: row from Q_ZONE (+ imgUrl). spawns/objects: Q_ZONE_SPAWNS / Q_ZONE_OBJECTS
-// rows. focus (optional): { label, icon, points:[{x,y}], npc? } -> a highlighted
-// layer with every other category off + the view zoomed to it (e.g. only herb
-// nodes, or one NPC's spawns). With focus.npc set, points draw as creature pins
-// (no item icon) coloured by that entry; otherwise as the focus.icon marker.
-// bosses (optional): [{entry, name, x, y}] -> an always-on "Bosses" layer of skull
-// markers (instance unique-spawns), drawn above the dots.
-export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, bosses = [], farm = null) {
+// Shared docked layer panel -- replaces Leaflet's stock `L.control.layers` on both
+// maps. A persistent, collapsible sidebar (top-right) with ONE global search and
+// collapsible groups, instead of a flat hover-expanded checkbox list. UI-only: each
+// row carries { label, count, html, on, toggle(bool) }, so the world map (mutating
+// `enabledCats`) and the zone map (adding/removing layers) wire their own semantics
+// without the panel knowing about either. `header` (optional DOM node) mounts above
+// the groups (world map: the zone-focus select + npc name/id filter). `groups`:
+// [{ title, open?, rows:[...] }]. Returns an L.Control.
+function buildLayerPanel(map, { groups = [], header = null } = {}) {
+  const Ctl = L.Control.extend({
+    options: { position: "topright" },
+    onAdd() {
+      const root = L.DomUtil.create("div", "wm-panel"); // not .leaflet-bar (avoid its <a> button styling)
+      // reopen button (CSS shows it only while the panel is collapsed)
+      const showBtn = L.DomUtil.create("button", "wm-panel-show", root);
+      showBtn.type = "button"; showBtn.title = "Layers";
+      const full = L.DomUtil.create("div", "wm-panel-full", root);
+      const head = L.DomUtil.create("div", "wm-panel-head", full);
+      const search = L.DomUtil.create("input", "wm-search", head);
+      search.type = "text"; search.placeholder = "Search layers…";
+      const hideBtn = L.DomUtil.create("button", "wm-panel-hide", head);
+      hideBtn.type = "button"; hideBtn.title = "Hide panel"; hideBtn.textContent = "✕";
+      if (header) full.appendChild(header);
+      const body = L.DomUtil.create("div", "wm-panel-body", full);
+
+      const allRows = []; // { el, label, cb, toggle } across every group, for search
+      for (const g of groups) {
+        if (!g.rows || !g.rows.length) continue;
+        const gEl = L.DomUtil.create("div", "wm-group" + (g.open ? "" : " collapsed"), body);
+        const gh = L.DomUtil.create("div", "wm-group-head", gEl);
+        L.DomUtil.create("span", "wm-caret", gh);
+        const title = L.DomUtil.create("span", "wm-group-title", gh);
+        title.textContent = g.title;
+        const cnt = L.DomUtil.create("span", "wm-group-count", gh);
+        cnt.textContent = `${g.rows.length}`;
+        const acts = L.DomUtil.create("span", "wm-group-acts", gh);
+        const allB = L.DomUtil.create("a", "wm-all", acts); allB.textContent = "all";
+        const noneB = L.DomUtil.create("a", "wm-none", acts); noneB.textContent = "none";
+        const rowsBox = L.DomUtil.create("div", "wm-group-rows", gEl);
+        L.DomEvent.on(gh, "click", (e) => {
+          if (e.target === allB || e.target === noneB) return; // those have their own action
+          L.DomUtil.toggleClass(gEl, "collapsed");
+        });
+        const groupRows = [];
+        for (const r of g.rows) {
+          const lab = L.DomUtil.create("label", "wm-row", rowsBox);
+          const cb = L.DomUtil.create("input", "", lab); cb.type = "checkbox"; cb.checked = !!r.on;
+          const main = L.DomUtil.create("span", "wm-row-main", lab); main.innerHTML = r.html;
+          if (r.count != null) { const n = L.DomUtil.create("span", "wm-row-n", lab); n.textContent = `${r.count}`; }
+          L.DomEvent.on(cb, "change", () => r.toggle(cb.checked));
+          const rec = { el: lab, label: (r.label || "").toLowerCase(), cb, toggle: r.toggle };
+          allRows.push(rec); groupRows.push(rec);
+        }
+        const setAll = (on) => { for (const rr of groupRows) {
+          if (rr.el.style.display === "none" || rr.cb.checked === on) continue; // skip filtered/no-op
+          rr.cb.checked = on; rr.toggle(on);
+        } };
+        L.DomEvent.on(allB, "click", (e) => { L.DomEvent.stop(e); setAll(true); });
+        L.DomEvent.on(noneB, "click", (e) => { L.DomEvent.stop(e); setAll(false); });
+      }
+
+      // global search: hide rows whose label lacks the term, hide emptied groups, and
+      // force-expand groups (via `.searching`) so matches in collapsed groups show.
+      const groupEls = [...body.querySelectorAll(".wm-group")];
+      L.DomEvent.on(search, "input", () => {
+        const q = search.value.trim().toLowerCase();
+        L.DomUtil[q ? "addClass" : "removeClass"](body, "searching");
+        for (const r of allRows) r.el.style.display = (!q || r.label.includes(q)) ? "" : "none";
+        for (const gEl of groupEls) {
+          const any = [...gEl.querySelectorAll(".wm-row")].some((e) => e.style.display !== "none");
+          gEl.style.display = any ? "" : "none";
+        }
+      });
+
+      L.DomEvent.on(hideBtn, "click", () => L.DomUtil.addClass(root, "wm-collapsed"));
+      L.DomEvent.on(showBtn, "click", () => L.DomUtil.removeClass(root, "wm-collapsed"));
+      L.DomEvent.disableClickPropagation(root);
+      L.DomEvent.disableScrollPropagation(root);
+      return root;
+    },
+  });
+  return new Ctl();
+}
+
+// ---- shared HTML-marker kit + generic categorized overlay (used by BOTH maps) ----
+// The reusable foundation for plotting an arbitrary set of categorized entity points
+// (quest giver/turn-in/kill/collect, future guides, etc.) as toggleable layers.
+const npcColor = (entry) => `hsl(${((entry || 0) * 47) % 360} 70% 55%)`;
+// Marker primitives, parameterised by `navigate` (the only map-specific dep). Reused
+// by initZoneMap's focus/boss layers and by buildMarkerLayer on both maps.
+function makeMarkerKit(navigate) {
+  const div = (html, size, cls = "poi-div") => L.divIcon({ html, className: cls, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+  // item/POI icon marker (gather node, object); `icon` is a CDN/atlas basename.
+  const iconMark = (ll, icon, label) => L.marker(ll, { icon: div(iconMarker(icon, "map-poi"), 22), bubblingMouseEvents: false }).bindTooltip(label, { direction: "top" });
+  // a POI-atlas sprite marker (giver/turn-in/objective cells) keyed by category.
+  const poiMark = (ll, poiKey, label) => L.marker(ll, { icon: div(`<span class="map-poi" style="${poiSpriteStyle(catGrid(poiKey), 22)}"></span>`, 22), bubblingMouseEvents: false }).bindTooltip(label, { direction: "top" });
+  // coloured creature pin (click -> npc page); `color` overrides the per-entry hue.
+  const npcMark = (ll, label, entry, color) => {
+    const m = L.marker(ll, { icon: div(`<span class="map-pin" style="background:${color || npcColor(entry)}"></span>`, 16), bubblingMouseEvents: false }).bindTooltip(label, { direction: "top" });
+    if (entry) m.on("click", () => navigate(`?npc=${entry}`));
+    return m;
+  };
+  // boss skull, drawn above everything (click -> npc page).
+  const bossMark = (ll, name, entry) => {
+    const m = L.marker(ll, { icon: div(`<span class="map-boss" style="${poiSpriteStyle(BOSS_GRID, 26)}"></span>`, 26), bubblingMouseEvents: false }).bindTooltip(esc(name), { direction: "top" });
+    m.options.zIndexOffset = 1000;
+    if (entry) m.on("click", () => navigate(`?npc=${entry}`));
+    return m;
+  };
+  return { iconMark, poiMark, npcMark, bossMark };
+}
+// Turn one marker-layer spec into an L.layerGroup + its lat/lng bounds. Per-point
+// style: kind 'o' (object) -> icon/POI marker + click ?object=; else creature pin.
+// `ctx` = { toLatLng, openMarkerMenu?, kit, navigate } (per-map projection + menu).
+// spec: { key, label, kind?, color?, icon?, poi?, on?, points:[{x,y,entry,name,kind}] }.
+function buildMarkerLayer(spec, ctx) {
+  const { toLatLng, openMarkerMenu, kit, navigate } = ctx;
+  const grp = L.layerGroup(); const lls = [];
+  for (const p of spec.points) {
+    const ll = toLatLng(p.x, p.y); lls.push(ll);
+    const label = p.name || spec.label;
+    let mk;
+    if (p.kind === "o") {
+      mk = spec.icon ? kit.iconMark(ll, spec.icon, label) : kit.poiMark(ll, spec.poi || "Quest Giver", label);
+      if (p.entry) mk.on("click", () => navigate(`?object=${p.entry}`));
+    } else {
+      mk = kit.npcMark(ll, label, p.entry, spec.color);
+    }
+    if (openMarkerMenu) mk.on("contextmenu", (e) => openMarkerMenu(e.originalEvent, p, spec.points, label));
+    mk.addTo(grp);
+  }
+  return { grp, bounds: lls.length ? L.latLngBounds(lls) : null };
+}
+// Layer-panel legend HTML for a marker-layer row (icon/POI sprite or a coloured dot).
+function layerLegendHtml(spec) {
+  if (spec.icon) return catLabel(spec.label, esc(spec.label), spec.icon);
+  if (spec.poi) return catLabel(spec.poi, esc(spec.label));
+  return `<span class="wm-legdot" style="background:${spec.color || "#888"}"></span>${esc(spec.label)}`;
+}
+
+// zone: row from Q_ZONE (+ imgUrl). spawns/objects: Q_ZONE_SPAWNS / Q_ZONE_OBJECTS rows.
+// opts (all optional):
+//   focus { label, icon, points:[{x,y}], npc? } -> a single highlighted layer + zoom-to
+//     (one NPC's spawns / a gather node). With focus.npc set, points are creature pins.
+//   bosses [{entry,name,x,y}] -> an always-on "Bosses" skull layer (instance bosses).
+//   farm   -> value-weighted points for the opt-in "Gold route" overlay.
+//   markerLayers [spec,...] -> N categorized toggleable highlight layers (see buildMarkerLayer).
+//   route { points, start?, end?, color?, label? } -> an opt-in open-path circuit overlay.
+export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
+  const { focus = null, bosses = [], farm = null, markerLayers = null, route = null } = opts;
   // destroy the previous overlay first -> frees its WebGL context (browsers cap
   // these, so leaking one per zone navigation would eventually break the map).
   if (currentOverlay) { try { currentOverlay.destroy(); } catch (_) { /* gone */ } currentOverlay = null; }
@@ -328,35 +470,10 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     onRemove() { for (const s of this._s) s.visible = false; redraw(); },
   });
 
-  // ---- icon markers (few): a gathered node + toggled objects, as HTML ----
-  // bubblingMouseEvents:false on every HTML marker -> its click/contextmenu don't
-  // also bubble to the map-level dot hit-test (which would double-open the menu /
-  // mis-navigate to a nearby category dot).
-  const iconMark = (ll, icon, label) => L.marker(ll, {
-    icon: L.divIcon({ html: iconMarker(icon, "map-poi"), className: "poi-div", iconSize: [22, 22], iconAnchor: [11, 11] }),
-    bubblingMouseEvents: false,
-  }).bindTooltip(label, { direction: "top" });
-  // toggled NPC spawns: a bright pin (creatures have no item icon), a distinct
-  // colour per creature so multiple toggled NPCs are tellable apart; clicking it
-  // opens the NPC page.
-  const npcColor = (entry) => `hsl(${(entry * 47) % 360} 70% 55%)`;
-  const npcMark = (ll, label, entry) => {
-    const m = L.marker(ll, {
-      icon: L.divIcon({ html: `<span class="map-pin" style="background:${npcColor(entry)}"></span>`, className: "poi-div", iconSize: [16, 16], iconAnchor: [8, 8] }),
-      bubblingMouseEvents: false,
-    }).bindTooltip(label, { direction: "top" });
-    if (entry) m.on("click", () => navigate(`?npc=${entry}`));
-    return m;
-  };
-  // boss marker: the skull POI sprite, drawn above everything, click -> NPC page.
-  const bossMark = (ll, name, entry) => {
-    const m = L.marker(ll, {
-      icon: L.divIcon({ html: `<span class="map-boss" style="${poiSpriteStyle(BOSS_GRID, 26)}"></span>`, className: "poi-div", iconSize: [26, 26], iconAnchor: [13, 13] }),
-      zIndexOffset: 1000, bubblingMouseEvents: false,
-    }).bindTooltip(esc(name), { direction: "top" });
-    if (entry) m.on("click", () => navigate(`?npc=${entry}`));
-    return m;
-  };
+  // HTML-marker kit (shared with the world map). bubblingMouseEvents:false keeps a
+  // marker's click/contextmenu off the map-level dot hit-test.
+  const kit = makeMarkerKit(navigate);
+  const { iconMark, npcMark, bossMark } = kit;
 
   // ---- boss layer (always on): skull markers for bosses / world bosses ----
   let bossLayer = null;
@@ -389,7 +506,10 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   // circuit, and draw a numbered dashed loop -- the path to walk while farming (the
   // gathering/grinding TSP, approximated greedily). Used for a per-target focus
   // (every cluster, equal weight) and the zone gold route (value-weighted, top stops).
-  const routeFrom = (pts, topK, color, tip) => {
+  // routeOpts: { closed=true } closes the loop (farming circuit); closed:false draws an
+  // OPEN path and pins the first stop to the cluster nearest `start` (latLng) and the
+  // last to the one nearest `end` -- e.g. a quest's giver -> objectives -> turn-in walk.
+  const routeFrom = (pts, topK, color, tip, routeOpts = {}) => {
     if (!pts || pts.length < 3) return null;
     const R = Math.max(H, W) * 0.08; // merge points within ~8% of the map into one stop
     const clusters = [];
@@ -405,16 +525,24 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
     let pick = clusters;
     if (topK && clusters.length > topK) pick = clusters.slice().sort((a, b) => b.w - a.w).slice(0, topK);
     if (pick.length < 2) return null;
-    const rest = pick.slice().sort((a, b) => b.w - a.w); // start at the richest/densest stop
-    const ordered = [rest.shift()];
-    while (rest.length) {
-      const last = ordered[ordered.length - 1].center;
-      let bi = 0, bd = Infinity;
-      for (let i = 0; i < rest.length; i++) { const d = map.distance(last, rest[i].center); if (d < bd) { bd = d; bi = i; } }
-      ordered.push(rest.splice(bi, 1)[0]);
+    const { closed = true, start, end } = routeOpts;
+    const nearest = (ll, arr) => arr.reduce((b, c) => (map.distance(c.center, ll) < map.distance(b.center, ll) ? c : b), arr[0]);
+    const greedy = (seed, pool) => { const ord = [seed]; const rem = pool.slice();
+      while (rem.length) { const last = ord[ord.length - 1].center; let bi = 0, bd = Infinity;
+        for (let i = 0; i < rem.length; i++) { const d = map.distance(last, rem[i].center); if (d < bd) { bd = d; bi = i; } }
+        ord.push(rem.splice(bi, 1)[0]); } return ord; };
+    let ordered;
+    if (!closed && start) {
+      const s = nearest(start, pick);
+      const e = end ? nearest(end, pick.filter((c) => c !== s)) : null;
+      const mid = pick.filter((c) => c !== s && c !== e);
+      ordered = greedy(s, mid); if (e) ordered.push(e);
+    } else {
+      const rest = pick.slice().sort((a, b) => b.w - a.w); // start at the richest/densest stop
+      ordered = greedy(rest.shift(), rest);
     }
     const layer = L.layerGroup();
-    const line = ordered.map((c) => c.center); line.push(line[0]); // close the loop
+    const line = ordered.map((c) => c.center); if (closed) line.push(line[0]);
     L.polyline(line, { color, weight: 3, opacity: 0.85, dashArray: "7 7" }).addTo(layer);
     ordered.forEach((c, i) => {
       L.marker(c.center, { icon: L.divIcon({ html: `<span class="route-stop">${i + 1}</span>`, className: "route-div", iconSize: [22, 22], iconAnchor: [11, 11] }) })
@@ -427,42 +555,71 @@ export function initZoneMap(el, zone, spawns, objects, navigate, focus = null, b
   const goldG = (c) => (c.w >= 10000 ? `~${(c.w / 10000).toFixed(1)}g` : c.w >= 100 ? `~${Math.round(c.w / 100)}s` : `~${Math.round(c.w)}c`);
   const goldLayer = routeFrom(farm, 12, "#39d353", goldG);
 
-  // ---- layer control: dot categories + the focus layer ----
-  const overlays = {};
-  const addCat = (key, on) => {
-    const g = cats.get(key);
-    if (!g || !g.sprites.length) return;
-    const layer = new DotLayer(g.sprites);
-    overlays[catLabel(key, `${g.label} (${g.sprites.length})`)] = layer; // icon + text
-    if (on) layer.addTo(map);
-  };
-  // All category layers start OFF (a normal zone view is a clean map you opt into
-  // via the layer control); the boss + gather/focus layers are on by default.
+  // ---- docked layer panel: a "Highlights" group (boss + focus/route specials, on
+  // by default) then the dot categories (NPCs, Objects), all OFF -- a clean zone you
+  // opt into. Each row toggles its layer's add/remove on the map (sprite visibility
+  // flips via DotLayer.onAdd/onRemove). Replaces Leaflet's stock layer control. ----
+  const toggleLayer = (layer) => (on) => { if (on) layer.addTo(map); else map.removeLayer(layer); };
+  const highlights = [];
   if (bossLayer) {
-    const bossLbl = `<span class="cat-ico" style="${poiSpriteStyle(BOSS_GRID, 16)};display:inline-block;vertical-align:-4px;margin-right:5px"></span>Bosses (${bosses.length})`;
-    overlays[bossLbl] = bossLayer; bossLayer.addTo(map);
+    bossLayer.addTo(map);
+    highlights.push({
+      label: "Bosses", count: bosses.length,
+      html: `<span class="cat-ico" style="${poiSpriteStyle(BOSS_GRID, 16)};display:inline-block;vertical-align:-4px;margin-right:5px"></span>Bosses`,
+      on: true, toggle: toggleLayer(bossLayer),
+    });
   }
-  // Farming route is the default "where to farm" view for a gathered target; the
-  // individual node icons then default off (toggleable) so the path reads cleanly.
-  // NPC focus keeps its pins on and offers the route as an opt-in toggle.
+  // Farming route is the default "where to farm" view for a gathered target; node
+  // icons default off so the path reads cleanly. NPC focus keeps its pins on instead.
   const routeDefault = routeLayer && !focus.npc;
-  if (focusLayer) { overlays[FKEY] = focusLayer; if (!routeDefault) focusLayer.addTo(map); }
-  if (routeLayer) { overlays["🧭 Farming route"] = routeLayer; if (routeDefault) routeLayer.addTo(map); }
-  // Zone gold route: opt-in overlay (toggle) of the most valuable farm spots.
-  if (goldLayer) overlays["💰 Gold route"] = goldLayer;
-  for (const [key] of NPC_CATS) addCat(key, false);
-  addCat("rare", false); // single toggle for all rare / rare-elite spawns
+  if (focusLayer) { if (!routeDefault) focusLayer.addTo(map);
+    highlights.push({ label: focus.label, html: `★ ${esc(focus.label)}`, on: !routeDefault, toggle: toggleLayer(focusLayer) }); }
+  if (routeLayer) { if (routeDefault) routeLayer.addTo(map);
+    highlights.push({ label: "Farming route", html: "🧭 Farming route", on: routeDefault, toggle: toggleLayer(routeLayer) }); }
+  if (goldLayer) highlights.push({ label: "Gold route", html: "💰 Gold route", on: false, toggle: toggleLayer(goldLayer) });
+
+  // generic categorized highlight layers (quest giver/turn-in/kill/collect, etc.) +
+  // an opt-in open-path route -- the reusable foundation, plotted as Highlights rows.
+  let markerBounds = null;
+  if (markerLayers) {
+    const ctx = { toLatLng, openMarkerMenu, kit, navigate };
+    for (const spec of markerLayers) {
+      if (!spec.points || !spec.points.length) continue;
+      const { grp, bounds } = buildMarkerLayer(spec, ctx);
+      if (bounds) markerBounds = markerBounds ? markerBounds.extend(bounds) : bounds;
+      const on = spec.on !== false;
+      if (on) grp.addTo(map);
+      highlights.push({ label: spec.label, count: spec.points.length, html: layerLegendHtml(spec), on, toggle: toggleLayer(grp) });
+    }
+    if (route && route.points && route.points.length >= 3) {
+      const rl = routeFrom(route.points, null, route.color || "#7cc4ff", (c) => `${c.n} stop${c.n === 1 ? "" : "s"}`,
+        { closed: false, start: route.start && toLatLng(route.start.x, route.start.y), end: route.end && toLatLng(route.end.x, route.end.y) });
+      if (rl) highlights.push({ label: route.label || "Route", html: `🧭 ${esc(route.label || "Route")}`, on: false, toggle: toggleLayer(rl) });
+    }
+  }
+
+  const catRow = (key) => {
+    const g = cats.get(key);
+    if (!g || !g.sprites.length) return null;
+    const layer = new DotLayer(g.sprites);
+    return { label: g.label, count: g.sprites.length, html: catLabel(key, esc(g.label.replace(/^Obj: /, ""))), on: false, toggle: toggleLayer(layer) };
+  };
+  const npcKeys = [...NPC_CATS.map((c) => c[0]), "rare"];
   const objKeys = [...cats.keys()].filter((k) => k.startsWith("Obj: "))
     .sort((a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length);
-  for (const key of objKeys) addCat(key, false);
-
-  L.control.layers(null, overlays, { collapsed: true }).addTo(map);
-  if (focusBounds && focusBounds.isValid()) {
+  const groups = [
+    highlights.length ? { title: "Highlights", open: true, rows: highlights } : null,
+    { title: "NPCs", open: !highlights.length, rows: npcKeys.map(catRow).filter(Boolean) },
+    { title: "Objects", rows: objKeys.map(catRow).filter(Boolean) },
+  ].filter(Boolean);
+  map.addControl(buildLayerPanel(map, { groups }));
+  const fitTo = (focusBounds && focusBounds.isValid() && focusBounds) || (markerBounds && markerBounds.isValid() && markerBounds);
+  if (fitTo) {
     // A tight spawn/node cluster would otherwise slam to maxZoom (object pages open
     // zoomed way in, forcing a manual zoom-out). Keep zone context: pad wide and cap
     // the fit a couple levels above the whole-zone fit, for both NPC and node focus.
     const cap = { maxZoom: Math.min(map.getMaxZoom(), fitZoom + 2), padding: [30, 30] };
-    map.fitBounds(focusBounds.pad(focus.npc ? 0.6 : 0.4), cap);
+    map.fitBounds(fitTo.pad(focus && focus.npc ? 0.6 : 0.4), cap);
   }
   setTimeout(() => { map.invalidateSize(); redraw(); }, 0);
 
@@ -651,7 +808,7 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
   map.setMaxBounds(occupied.pad(0.1));
 
   // ---- Pixi overlay: category dots (reused machinery from the zone map) ----
-  const { zones = [], initial = {}, onState, searchNpcs } = opts;
+  const { zones = [], initial = {}, onState, searchNpcs, markerLayers = null, route = null } = opts;
   const container = new PIXI.Container();
   const cats = new Map();
   const cat = (key, label) => {
@@ -759,71 +916,108 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
 
   const redraw = () => overlay.redraw();
   whenPoiReady(redraw); // re-render once the atlas texture finishes loading
-  const DotLayer = L.Layer.extend({
-    initialize(code) { this._code = code; },
-    onAdd() { enabledCats.add(this._code); applyVisibility(); writeState(); },
-    onRemove() { enabledCats.delete(this._code); applyVisibility(); writeState(); },
-  });
 
-  // layer control: every category OFF by default (a clean continent you opt into),
-  // except those restored from the URL. Each entry shows its atlas icon (catLabel).
-  const overlays = {};
-  const layerByCode = new Map();
-  const addCat = (key) => {
-    const g = cats.get(key);
-    if (!g || !g.sprites.length) return;
-    const layer = new DotLayer(g.code);
-    overlays[catLabel(key, `${g.label} (${g.sprites.length})`, g.icon)] = layer;
-    layerByCode.set(g.code, layer);
-  };
-  for (const [key] of NPC_CATS) addCat(key);
-  addCat("rare");
-  // gather nodes grouped (Mining:* then Herb:*), each alphabetical; then the
-  // remaining Obj:* type buckets by descending spawn count.
-  const keysWith = (pfx, cmp) => [...cats.keys()].filter((k) => k.startsWith(pfx)).sort(cmp);
-  const byName = (a, b) => a.localeCompare(b);
-  const byCount = (a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length;
-  for (const key of keysWith("Mining: ", byName)) addCat(key);
-  for (const key of keysWith("Herb: ", byName)) addCat(key);
-  for (const key of keysWith("Obj: ", byCount)) addCat(key);
-  // Enable restored categories BEFORE the control is built (so checkboxes reflect
-  // them) and BEFORE the state listeners attach (so it doesn't echo a write).
-  for (const code of enabledCats) { const ly = layerByCode.get(code); if (ly) ly.addTo(map); }
-  applyVisibility();
-  L.control.layers(null, overlays, { collapsed: true }).addTo(map);
-
-  // ---- zone-focus + name/id filter control (top-left) ----
+  // smallest WMA box per zone, for the focus-zone fit (used by the panel header).
   const focusBounds = (areaid) => {
     const lls = [];
     for (const sp of container.children) if (sp.zone === areaid) lls.push(sp.ll);
     return lls.length ? L.latLngBounds(lls) : null;
   };
-  const FilterCtl = L.Control.extend({
-    options: { position: "topleft" },
-    onAdd() {
-      const div = L.DomUtil.create("div", "wm-filter leaflet-bar");
-      const optHtml = ['<option value="">All zones</option>'].concat(zones.map((z) =>
-        `<option value="${z.areaid}"${z.areaid === focusZone ? " selected" : ""}>${esc(z.name)}</option>`)).join("");
-      div.innerHTML = `<select class="wm-zone" title="Focus a zone">${optHtml}</select>` +
-        `<input class="wm-name" type="text" placeholder="npc name / id" value="${esc(nameFilter)}">`;
-      L.DomEvent.disableClickPropagation(div);
-      L.DomEvent.disableScrollPropagation(div);
-      const sel = div.querySelector(".wm-zone");
-      sel.addEventListener("change", () => {
-        focusZone = sel.value ? Number(sel.value) : null;
-        applyVisibility();
-        const b = focusZone != null && focusBounds(focusZone);
-        map.fitBounds(b || occupied, b ? { padding: [40, 40] } : undefined);
-        writeState();
-      });
-      const inp = div.querySelector(".wm-name");
-      const onName = debounce(() => { setNameFilter(inp.value).then(writeState); }, 250);
-      inp.addEventListener("input", onName);
-      return div;
-    },
+
+  // ---- docked layer panel (top-right): grouped + searchable category toggles ----
+  // Categories default OFF (a clean continent you opt into), except those restored
+  // from the URL `cats=`; applyVisibility() below paints that initial state. Each
+  // row's toggle mutates `enabledCats` directly (no DotLayer) then re-paints + persists.
+  const keysWith = (pfx, cmp) => [...cats.keys()].filter((k) => k.startsWith(pfx)).sort(cmp);
+  const byName = (a, b) => a.localeCompare(b);
+  const byCount = (a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length;
+  const PFX = /^(Mining: |Herb: |Obj: )/;
+  const rowFor = (key) => {
+    const g = cats.get(key);
+    if (!g || !g.sprites.length) return null;
+    const disp = g.label.replace(PFX, ""); // group name already carries the prefix
+    return {
+      label: g.label, count: g.sprites.length, html: catLabel(key, esc(disp), g.icon),
+      on: enabledCats.has(g.code),
+      toggle: (on) => {
+        if (on) enabledCats.add(g.code); else enabledCats.delete(g.code);
+        applyVisibility(); writeState();
+      },
+    };
+  };
+  const groupRows = (keys) => keys.map(rowFor).filter(Boolean);
+  const npcKeys = [...NPC_CATS.map((c) => c[0]), "rare"];
+
+  // generic categorized highlight layers (quest giver/turn-in/kill/collect, etc.) over
+  // the continent -- HTML markers, not Pixi dots. Same `markerLayers` contract as the
+  // zone map; no copy menu here (the continent map has no per-zone /way coords).
+  const toggleLayerW = (layer) => (on) => { if (on) layer.addTo(map); else map.removeLayer(layer); };
+  const highlights = [];
+  let markerBounds = null;
+  if (markerLayers) {
+    const ctx = { toLatLng, kit: makeMarkerKit(navigate), navigate };
+    for (const spec of markerLayers) {
+      if (!spec.points || !spec.points.length) continue;
+      const { grp, bounds } = buildMarkerLayer(spec, ctx);
+      if (bounds) markerBounds = markerBounds ? markerBounds.extend(bounds) : bounds;
+      const on = spec.on !== false;
+      if (on) grp.addTo(map);
+      highlights.push({ label: spec.label, count: spec.points.length, html: layerLegendHtml(spec), on, toggle: toggleLayerW(grp) });
+    }
+    if (route && route.points && route.points.length >= 3) {
+      const stops = route.points.map((p) => ({ ...p }));
+      const R2 = (Math.max(Math.abs(occupied.getNorth() - occupied.getSouth()), Math.abs(occupied.getEast() - occupied.getWest()))) * 0.04;
+      const clusters = [];
+      for (const p of stops) { const ll = toLatLng(p.x, p.y); let best = null, bd = R2;
+        for (const c of clusters) { const d = map.distance(c.center, ll); if (d < bd) { bd = d; best = c; } }
+        if (best) { best.n++; best.center = L.latLng((best.center.lat + ll.lat) / 2, (best.center.lng + ll.lng) / 2); } else clusters.push({ center: ll, n: 1 }); }
+      if (clusters.length >= 2) {
+        const start = route.start && toLatLng(route.start.x, route.start.y);
+        const near = (ll, arr) => arr.reduce((b, c) => (map.distance(c.center, ll) < map.distance(b.center, ll) ? c : b), arr[0]);
+        const end = route.end && toLatLng(route.end.x, route.end.y);
+        const s = start ? near(start, clusters) : clusters[0];
+        const e = end ? near(end, clusters.filter((c) => c !== s)) : null;
+        const rem = clusters.filter((c) => c !== s && c !== e);
+        const ord = [s];
+        while (rem.length) { const last = ord[ord.length - 1].center; let bi = 0, bd = Infinity;
+          for (let i = 0; i < rem.length; i++) { const d = map.distance(last, rem[i].center); if (d < bd) { bd = d; bi = i; } } ord.push(rem.splice(bi, 1)[0]); }
+        if (e) ord.push(e);
+        const rl = L.layerGroup();
+        L.polyline(ord.map((c) => c.center), { color: route.color || "#7cc4ff", weight: 3, opacity: 0.85, dashArray: "7 7" }).addTo(rl);
+        ord.forEach((c, i) => L.marker(c.center, { icon: L.divIcon({ html: `<span class="route-stop">${i + 1}</span>`, className: "route-div", iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(rl));
+        highlights.push({ label: route.label || "Route", html: `🧭 ${esc(route.label || "Route")}`, on: false, toggle: toggleLayerW(rl) });
+      }
+    }
+  }
+
+  const groups = [
+    highlights.length ? { title: "Highlights", open: true, rows: highlights } : null,
+    { title: "NPCs", open: !highlights.length, rows: groupRows(npcKeys) },
+    { title: "Herbs", rows: groupRows(keysWith("Herb: ", byName)) },
+    { title: "Mining Veins", rows: groupRows(keysWith("Mining: ", byName)) },
+    { title: "Objects", rows: groupRows(keysWith("Obj: ", byCount)) },
+  ].filter(Boolean);
+  applyVisibility(); // paint the URL-restored categories before the user touches anything
+
+  // panel header: the zone-focus select + npc name/id FTS filter (folded in here).
+  const header = L.DomUtil.create("div", "wm-filter");
+  const optHtml = ['<option value="">All zones</option>'].concat(zones.map((z) =>
+    `<option value="${z.areaid}"${z.areaid === focusZone ? " selected" : ""}>${esc(z.name)}</option>`)).join("");
+  header.innerHTML = `<select class="wm-zone" title="Focus a zone">${optHtml}</select>` +
+    `<input class="wm-name" type="text" placeholder="npc name / id" value="${esc(nameFilter)}">`;
+  const sel = header.querySelector(".wm-zone");
+  sel.addEventListener("change", () => {
+    focusZone = sel.value ? Number(sel.value) : null;
+    applyVisibility();
+    const b = focusZone != null && focusBounds(focusZone);
+    map.fitBounds(b || occupied, b ? { padding: [40, 40] } : undefined);
+    writeState();
   });
-  map.addControl(new FilterCtl());
-  L.control.zoom({ position: "topleft" }).addTo(map); // added after the filter -> sits below it
+  const inp = header.querySelector(".wm-name");
+  inp.addEventListener("input", debounce(() => { setNameFilter(inp.value).then(writeState); }, 250));
+
+  map.addControl(buildLayerPanel(map, { groups, header }));
+  L.control.zoom({ position: "topleft" }).addTo(map);
 
   // ---- fullscreen toggle (top-left) -> the map fills the screen, reclaiming the
   // unused page margins. Uses the browser Fullscreen API on the #zonemap element;
@@ -860,6 +1054,7 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
   // restore the saved view (else fit the continent / the focused zone) + npc filter
   if (initial.c && initial.z != null) map.setView(initial.c, initial.z);
   else if (focusZone != null) { const b = focusBounds(focusZone); if (b) map.fitBounds(b, { padding: [40, 40] }); }
+  else if (markerBounds && markerBounds.isValid()) map.fitBounds(markerBounds.pad(0.3), { padding: [40, 40] });
   if (nameFilter) setNameFilter(nameFilter);
 
   // ---- hover tooltip + click for the dots (throttled nearest hit-test) ----
