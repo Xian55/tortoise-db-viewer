@@ -15,22 +15,32 @@ function makeHue() {
   let i = 0;
   return () => `hsl(${Math.round((i++ * 137.508 + 25) % 360)} 72% 52%)`;
 }
-// One representative waypoint for an objective: the centroid of its DENSEST region
-// (coarse 4x4 grid over the points' bounding box). A "kill 10 of X" objective with 50
-// spread spawns collapses to the one spot worth walking to -> a clean route instead of
-// a zig-zag through every spawn.
-function routeWaypoint(pts) {
+// One representative waypoint for an objective. Bucket its spawns into a coarse 6x6
+// grid (each cell = a candidate cluster), keep the SUBSTANTIAL cells (>= 40% of the
+// densest), then pick the one CLOSEST to `anchor` (the giver/turn-in). So a "kill 10
+// of X" objective that has both a far dense camp and a nearer decent cluster routes to
+// the nearer one -- you don't get dragged across the zone when a closer spot works.
+// Without an anchor, falls back to the densest cell.
+function routeWaypoint(pts, anchor) {
   if (pts.length <= 1) return { x: pts[0].x, y: pts[0].y };
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
-  const gx = (x1 - x0) / 4 || 1, gy = (y1 - y0) / 4 || 1;
+  const gx = (x1 - x0) / 6 || 1, gy = (y1 - y0) / 6 || 1;
   const cells = new Map();
   for (const p of pts) {
     const k = `${Math.floor((p.x - x0) / gx)},${Math.floor((p.y - y0) / gy)}`;
     const c = cells.get(k) || { n: 0, sx: 0, sy: 0 }; c.n++; c.sx += p.x; c.sy += p.y; cells.set(k, c);
   }
-  let best = null; for (const c of cells.values()) if (!best || c.n > best.n) best = c;
-  return { x: best.sx / best.n, y: best.sy / best.n };
+  const list = [...cells.values()].map((c) => ({ n: c.n, x: c.sx / c.n, y: c.sy / c.n }));
+  const maxN = Math.max(...list.map((c) => c.n));
+  const cand = list.filter((c) => c.n >= Math.max(2, 0.4 * maxN));
+  if (anchor) {
+    let best = null;
+    for (const c of cand) { const d = (c.x - anchor.x) ** 2 + (c.y - anchor.y) ** 2; if (!best || d < best.d) best = { c, d }; }
+    return { x: best.c.x, y: best.c.y };
+  }
+  let best = null; for (const c of cand) if (!best || c.n > best.n) best = c;
+  return { x: best.x, y: best.y };
 }
 
 // sources: { giversN, endersN, giversG, endersG, kills, collects }
@@ -135,7 +145,9 @@ export async function buildQuestMap(sources) {
   const objLayers = markerLayers.filter((l) => /^(kill|collect)-/.test(l.key));
   const startWp = giverP.length ? routeWaypoint(giverP) : null;
   const endWp = enderP.length ? routeWaypoint(enderP) : null;
-  const objWps = objLayers.map((l) => routeWaypoint(l.points));
+  // anchor objective waypoints to the giver/turn-in so nearer clusters win over far dense ones
+  const anchor = startWp && endWp ? { x: (startWp.x + endWp.x) / 2, y: (startWp.y + endWp.y) / 2 } : (startWp || endWp || null);
+  const objWps = objLayers.map((l) => routeWaypoint(l.points, anchor));
   const routePts = [...(startWp ? [startWp] : []), ...objWps, ...(!sameNpc && endWp ? [endWp] : [])];
   const route = (routePts.length >= 3)
     ? { points: routePts, start: startWp || undefined, end: (!sameNpc && endWp) || undefined, label: "Suggested route", mergeFrac: 0 }
