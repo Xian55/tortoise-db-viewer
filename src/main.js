@@ -1063,6 +1063,13 @@ function orderQuestChain(rows) {
     for (const c of adj.get(r.entry)) { deg.set(c, deg.get(c) - 1); if (deg.get(c) === 0) ready.push(byId.get(c)); }
   }
   for (const r of rows) if (!placed.has(r.entry)) order.push(r); // cycle / leftover fallback
+  // Annotate each quest with its DAG neighbours so the chain tab can flag branch
+  // points (a quest with >1 child "opens" several follow-up lines) and separate
+  // chains that connect in (a self-rooted quest, prevquest 0, pulled in via
+  // another quest's nextquest -- e.g. Milly Osworth off Brotherhood of Thieves).
+  const parents = new Map(rows.map((r) => [r.entry, []]));
+  for (const [a, outs] of adj) for (const b of outs) parents.get(b).push(a);
+  for (const r of rows) { r.children = adj.get(r.entry) || []; r.parents = parents.get(r.entry) || []; }
   return order;
 }
 
@@ -1134,11 +1141,16 @@ async function showQuest(id) {
   const locCol = { label: "Location", cls: "muted", cell: (c) => locHtml(c.entry), value: (c) => locText(c.entry) };
 
   // attach the step number + start NPC/location to each chain row for the chain tab
+  const chainById = new Map((chainOrdered || []).map((r) => [r.entry, r]));
   (chainOrdered || []).forEach((r, i) => {
     r.step = i + 1;
     const npc = (startByQuest.get(r.entry) || [])[0];
     r.startHtml = npc ? npcLink(npc.entry, npc.name) + (locHtml(npc.entry) ? ` <span class="dim">·</span> ${locHtml(npc.entry)}` : "") : "";
     r.startText = npc ? (locText(npc.entry) || npc.name) : "";
+    // "Follows" = the direct prerequisite quest(s); >1 prereq = a merge point.
+    const par = (r.parents || []).map((e) => chainById.get(e)).filter(Boolean);
+    r.followsHtml = par.map((p) => questLink(p.entry, p.title)).join(`<span class="dim">, </span>`);
+    r.followsText = par.map((p) => p.title).join(", ");
   });
 
   // ---- required (objective) items: per item, where it drops + the zone ----
@@ -1286,8 +1298,16 @@ async function showQuest(id) {
   // step's giver NPC + its location.
   const chainCols = [
     { label: "#", num: true, cls: "muted", cell: (r) => r.step, value: (r) => r.step },
-    { label: "Quest", cell: (r) => (r.entry === q.entry ? `<b class="qc-cur">${esc(r.title)}</b>` : questLink(r.entry, r.title)), value: (r) => r.title },
+    { label: "Quest", value: (r) => r.title, cell: (r) => {
+        const nm = r.entry === q.entry ? `<b class="qc-cur">${esc(r.title)}</b>` : questLink(r.entry, r.title);
+        const b = [];
+        const kids = (r.children || []).length;
+        if (kids > 1) b.push(`<span class="qc-branch" title="Opens ${kids} follow-up quest lines">⑂ ${kids}</span>`);
+        if (r.prevquest === 0 && (r.parents || []).length) b.push(`<span class="qc-branch qc-join" title="Start of a separate quest line that connects into this chain">↗ separate chain</span>`);
+        return nm + b.map((x) => ` ${x}`).join("");
+      } },
     { label: "Level", num: true, cls: "muted", cell: (r) => (r.level > 0 ? r.level : ""), value: (r) => r.level || 0 },
+    { label: "Follows", cls: "muted", cell: (r) => r.followsHtml || "", value: (r) => r.followsText || "" },
     { label: "Starts at", cls: "muted", cell: (r) => r.startHtml, value: (r) => r.startText },
   ];
   // Required items grouped by item (one collapsible row per objective); each row =

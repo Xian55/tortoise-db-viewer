@@ -897,6 +897,20 @@ async function testQuestChain(id, minLen) {
   return rows >= minLen && cur === 1 && hasBack && hasFwd && startLocs.length > 0 && headers.includes("#");
 }
 
+// A hub quest (783 "A Threat Within") forks into several follow-up lines: the
+// chain tab flags fork nodes with a ⑂ badge and adds a "Follows" (prereq) column.
+async function testQuestBranch(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".tab")].find((t) => t.textContent.includes("Quest Chain")); if (b) b.click(); });
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  const forks = await page.$$eval(".tabpane:not(.hidden) .qc-branch", (e) => e.length);
+  const headers = await page.$$eval(".tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const ok = forks > 0 && headers.includes("Follows");
+  console.log(`quest-branch ${id}: forks=${forks} headers=[${headers.join(",")}] ok=${ok}`);
+  return ok;
+}
+
 // A sub-zone quest resolves the full hierarchy continent > zone > sub-zone, with
 // the parent zone linked. Quest 783 -> Eastern Kingdoms > Elwynn Forest > Northshire Valley.
 async function testQuestZoneChain(id) {
@@ -1496,6 +1510,7 @@ run(() => testShareButton("spell", 41746, "s"));  // spell page anchors on .spel
 run(() => testQuestChain(55220, 11));  // mid-chain quest: back + forward + start locations
 run(() => testQuestNpcLocation(55220));  // Starts/Ends (NPC) Location column
 run(() => testQuestZoneChain(783));      // continent > zone > sub-zone
+run(() => testQuestBranch(783));         // hub quest: ⑂ fork badges + Follows column
 run(() => testBrowseQuestZoneLink());    // browse quests links zones
 run(() => testQuestNoProvided(179));     // ReqSourceId==ReqItemId not shown as Provided
 run(() => testQuestRequiredDrops(179));  // objective item collapses to its drop sources + zones
