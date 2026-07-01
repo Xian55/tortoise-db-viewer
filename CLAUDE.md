@@ -321,7 +321,14 @@ Re-run `extract-minimap.py` + commit on client map changes.
   manifest (`scripts/data/minimap.json` via `extract-minimap.py`) + the world-map
   **tile pyramid** itself (`public/minimap/`, ~2400 webp — committed like
   `public/maps`; CI can't rebuild it, deploy.yml syncs it to R2). See "Custom
-  icons" / `scripts/extract-maps.py` / "Seamless world map".
+  icons" / `scripts/extract-maps.py` / "Seamless world map". Plus scripted-transform
+  spawn links (`scripts/data/scripted-spawn-links.json`): creatures with no static
+  `creature` row that a server **C++** script swaps in at another NPC's location (the
+  transform is in `../tortoise-wow/src/scripts/world/*.cpp`, not ingestible SQL — e.g.
+  the "Stave of the Ancients" demons transform in place from a friendly NPC). Maps the
+  spawn-less entry -> the entry whose `spawns`/`spawn_points` it inherits, so build-db
+  can still map it. Committed (CI has no server `src/`); hand-maintained from the
+  scriptdev enums — extend when new transforms are found.
 - **Zone assignment is ADT-exact.** Each spawn's `spawn_points.zone` is precomputed
   in build-db from `scripts/data/subzone-bounds.json` (per-AreaTable bounding boxes
   extracted from the client ADT terrain chunks by `extract-area-bounds.py`): the

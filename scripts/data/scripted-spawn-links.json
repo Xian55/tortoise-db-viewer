@@ -1,0 +1,9 @@
+{
+  "_doc": "Creatures that never get a static `creature` spawn row because a server C++ script swaps them in at another NPC's location (in-place transform / summon). Maps a spawn-less creature entry -> the entry whose spawn coordinates it should inherit, so the viewer can still place it on a map. Source: ../tortoise-wow/src/scripts/world/*.cpp (scriptdev enums, e.g. ungoro_crater/winterspring/burning_steppes/silithus for the 'Stave of the Ancients' demons, quest 7636). CI has no server src/, so this mapping is committed like the other client/source-derived data. Extend when new scripted transforms are found.",
+  "links": {
+    "14533": 14527,
+    "14534": 14529,
+    "14530": 14536,
+    "14535": 14531
+  }
+}

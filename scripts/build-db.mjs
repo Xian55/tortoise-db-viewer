@@ -1073,7 +1073,30 @@ console.log("Importing zones + spawn points...");
   db.exec(`CREATE INDEX idx_spawn_map ON spawn_points(map)`);
   db.exec(`CREATE INDEX idx_spawn_id ON spawn_points(kind, id)`); // NPC-page zone lookup
   db.exec(`CREATE INDEX idx_spawn_zone ON spawn_points(zone, kind)`); // zone-page spawns
-  console.log(`  spawn_points: ${nc} creatures + ${ngo} objects`);
+
+  // Scripted transforms: some creatures never get a static `creature` row -- a server
+  // C++ script (src/scripts/world/*.cpp, not ingestible SQL) swaps them in at another
+  // NPC's location (e.g. the "Stave of the Ancients" demons transform in place from a
+  // friendly NPC). Copy the source NPC's spawn points onto them so they still map.
+  // Mapping is committed (CI has no server src/); see scripts/data/scripted-spawn-links.json.
+  let nlink = 0;
+  {
+    const lf = join(ROOT, "scripts", "data", "scripted-spawn-links.json");
+    if (existsSync(lf)) {
+      const { links = {} } = JSON.parse(readFileSync(lf, "utf8"));
+      const copy = db.prepare(`INSERT INTO spawn_points (kind, id, map, x, y, zone)
+        SELECT 'c', ?1, map, x, y, zone FROM spawn_points INDEXED BY idx_spawn_id WHERE kind = 'c' AND id = ?2`);
+      // Mirror into `spawns` (id,map,cnt) too, so Q_NPC_MAPS (map/Location label) sees them.
+      const copyMap = db.prepare(`INSERT INTO spawns (id, map, cnt) SELECT ?1, map, cnt FROM spawns WHERE id = ?2`);
+      db.transaction(() => {
+        for (const [dst, srcId] of Object.entries(links)) {
+          nlink += copy.run(Number(dst), Number(srcId)).changes ?? 0;
+          copyMap.run(Number(dst), Number(srcId));
+        }
+      })();
+    }
+  }
+  console.log(`  spawn_points: ${nc} creatures + ${ngo} objects${nlink ? ` (+${nlink} scripted-transform)` : ""}`);
 
   // precompute per-zone spawn count (home-zone membership) for the browse list
   db.exec(`UPDATE zones SET spawns = (SELECT COUNT(*) FROM spawn_points s WHERE s.zone = zones.areaid)`);
