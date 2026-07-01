@@ -389,6 +389,22 @@ export const qSpawnPointsFor = (n, kind = "c") => `
   SELECT s.id AS entry, s.x, s.y, s.map, s.zone
   FROM spawn_points s INDEXED BY idx_spawn_id
   WHERE s.kind = '${kind === "o" ? "o" : "c"}' AND s.id IN (${inList(n)}) AND s.zone IS NOT NULL LIMIT 8000`;
+// Fallback location for a spawn-less NPC (script/pool/event-placed bosses like
+// Kilrogg Deadeye carry no static coordinates in the server data): the zones of the
+// quests it gives or turns in, most-common first, limited to zones that have a
+// parchment map. Lets such an NPC still name + render its zone (no pins -- no exact
+// coords). Returns zone rows shaped like qZonesByIds so the page can draw the map.
+export const Q_NPC_QUEST_ZONES = `
+  SELECT z.areaid, z.name, z.mapid, z.locleft, z.locright, z.loctop, z.locbottom, z.img_w, z.img_h, COUNT(*) AS n
+  FROM (
+    SELECT quest FROM creature_quest_start WHERE id = ?1
+    UNION ALL
+    SELECT quest FROM creature_quest_end WHERE id = ?1
+  ) x
+  JOIN quests q ON q.entry = x.quest
+  JOIN zones z ON z.areaid = q.zone
+  GROUP BY z.areaid ORDER BY n DESC, z.areaid`;
+
 // Zone rows (bounds + image dims) for a set of areaids -> render the NPC-page map.
 export const qZonesByIds = (n) => `
   SELECT areaid, name, mapid, locleft, locright, loctop, locbottom, img_w, img_h

@@ -694,6 +694,14 @@ async function showNpc(id) {
   const fz = Number(new URLSearchParams(location.search).get("fz")) || 0;
   if (fz && zinfo.get(fz)) mapZone = zinfo.get(fz);
   const mapPts = mapZone ? npcSpawns.filter((s) => s.zone === mapZone.areaid) : [];
+  // Spawn-less NPCs (script/pool/event-placed bosses, e.g. Kilrogg Deadeye) carry no
+  // static coordinates. Fall back to the zone of the quests they give / turn in, so
+  // the page still names + maps the zone (no pins -- no exact coords exist).
+  let questZone = null;
+  if (!mapZone && !npcSpawns.length && (starts.length || ends.length)) {
+    const qz = await query(Q.Q_NPC_QUEST_ZONES, [id]);
+    if (qz.length) questZone = qz[0];
+  }
   const bestZoneForMap = (mid) => {
     const mm = byMapZone.get(mid); if (!mm) return null;
     let a = null, n = -1; for (const [aid, c] of mm) if (c > n && zinfo.get(aid)) { n = c; a = aid; }
@@ -764,10 +772,14 @@ async function showNpc(id) {
   // like Dire Maul), or the NPC has no recorded spawn at all (Turtle NPCs placed by
   // a script/pool/event carry no static coordinates in the server data we ingest).
   const instMap = maps.find((m) => m.type === 1 || m.type === 2);
-  const noMapNote = mapZone ? ""
+  const noMapNote = (mapZone || questZone) ? ""
     : npcSpawns.length
       ? `<div class="zone-empty muted">No spawn-location map is available${instMap ? ` — <b>${esc(instMap.name)}</b> has no interior map in the client data` : ""}.</div>`
       : `<div class="zone-empty muted">No spawn location is recorded for this NPC (it may be placed by a script or event).</div>`;
+  // Quest-inferred zone: show the parchment but caption that there are no exact coords.
+  const questZoneNote = questZone
+    ? `<div class="zone-empty muted">No exact spawn coordinates in the current data — this NPC is placed by a script or event; the zone above is inferred from its quests.</div>`
+    : "";
 
   app.innerHTML =
     `<div class="npc-page">
@@ -777,20 +789,25 @@ async function showNpc(id) {
         <div class="npc-meta muted">${bits.join(" · ")}${hp ? " · " + hp : ""}
           ${roles.map((r) => `<span class="tagx">${esc(r)}</span>`).join("")}
           <span class="dim">· NPC #${npc.entry}</span>${npc.display_id ? `<span class="dim"> · </span><span class="model-link" data-display="${npc.display_id}" tabindex="0" title="Hover to preview the 3D model">Model #${npc.display_id}</span>` : ""}</div>
-        ${mapHtml ? `<div class="npc-meta muted">Location: ${mapHtml}</div>` : ""}
+        ${mapHtml ? `<div class="npc-meta muted">Location: ${mapHtml}</div>`
+          : questZone ? `<div class="npc-meta muted">Location: ${zoneLink(questZone.areaid, questZone.name)} <span class="dim">(from quests)</span></div>`
+          : ""}
       </div>
-      ${mapZone ? `<div id="zonemap"></div>` : noMapNote}
+      ${(mapZone || questZone) ? `<div id="zonemap"></div>` : noMapNote}
+      ${questZoneNote}
       ${tabs(tabDefs)}
     </div>`;
   mountTables();
   wireTabs();
-  if (mapZone) {
+  const drawZone = mapZone || questZone;
+  if (drawZone) {
     const el = document.getElementById("zonemap");
     try {
       const { initZoneMap } = await import("./zonemap.js");
-      const imgUrl = `${ASSETS_BASE}maps/${mapZone.areaid}.webp`;
-      const focus = { label: npc.name, npc: npc.entry, points: mapPts };
-      initZoneMap(el, { ...mapZone, imgUrl }, [], [], navigate, { focus });
+      const imgUrl = `${ASSETS_BASE}maps/${drawZone.areaid}.webp`;
+      // Real spawns -> focus pins; quest-inferred zone -> parchment only (no coords).
+      const opts = mapZone ? { focus: { label: npc.name, npc: npc.entry, points: mapPts } } : {};
+      initZoneMap(el, { ...drawZone, imgUrl }, [], [], navigate, opts);
     } catch (e) { el.innerHTML = errorBox(e); }
   }
 }
