@@ -207,9 +207,13 @@ async function browseItems(p) {
   // usable by class: unrestricted (-1) or the class bit is set in allowable_class.
   if (f.uclass !== "") { where.push("(i.allowable_class = -1 OR (i.allowable_class & ?) <> 0)"); binds.push(+f.uclass); }
   // faction: items restricted to one side's races only (allowable_race set, no cross-faction bit).
+  // In the quest-reward view, also match items whose quests are all one faction
+  // (i.quest_faction), catching race-unrestricted rewards a single-faction quest gates.
+  const questSrc = srcVals.includes("quest");
   const factionCond = "(i.allowable_race <> -1 AND (i.allowable_race & ?) <> 0 AND (i.allowable_race & ?) = 0)";
-  if (f.faction === "a") { where.push(factionCond); binds.push(RACE_ALLIANCE, RACE_HORDE); }
-  else if (f.faction === "h") { where.push(factionCond); binds.push(RACE_HORDE, RACE_ALLIANCE); }
+  const facCond = (qf) => questSrc ? `(${factionCond} OR i.quest_faction = ${qf})` : factionCond;
+  if (f.faction === "a") { where.push(facCond(1)); binds.push(RACE_ALLIANCE, RACE_HORDE); }
+  else if (f.faction === "h") { where.push(facCond(2)); binds.push(RACE_HORDE, RACE_ALLIANCE); }
   if (f.unique === "1") where.push("i.max_count = 1");
   if (f.prof !== "") add("i.required_skill = ?", +f.prof);
   // each criterion -> presence-aware match against item_stats (op is whitelisted).
@@ -226,7 +230,7 @@ async function browseItems(p) {
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
   const rows = await query(
     `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, i.display_id,
-            i.required_skill, i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, di.icon${statSel2}${fishingSel},
+            i.required_skill, i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, i.quest_faction, di.icon${statSel2}${fishingSel},
             (SELECT GROUP_CONCAT(source,',') FROM item_sources s WHERE s.item = i.entry) AS sources
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
@@ -265,7 +269,15 @@ async function browseItems(p) {
     ${critBlock}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  return { rows, cols: buildItemCols(f.class, statCols, f.subclass, f.prof !== ""), filters, noun: "items" };
+  const cols = buildItemCols(f.class, statCols, f.subclass, f.prof !== "");
+  // Quest-reward view: surface which rewards are locked to a single faction.
+  if (questSrc) cols.push({
+    key: "quest_faction", label: "Faction", cls: "muted",
+    cell: (r) => r.quest_faction === 1 ? '<span class="tagx fac-alliance">Alliance</span>'
+      : r.quest_faction === 2 ? '<span class="tagx fac-horde">Horde</span>' : "",
+    value: (r) => r.quest_faction || 0,
+  });
+  return { rows, cols, filters, noun: "items" };
 }
 
 async function browseNpcs(p) {

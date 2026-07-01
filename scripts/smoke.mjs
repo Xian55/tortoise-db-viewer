@@ -302,6 +302,22 @@ async function testBrowseSource(src) {
   return rows > 0 && headers.includes("Source") && tags > 0 && checked.includes(src);
 }
 
+// Quest-reward view (source=quest) adds a Faction column, and the Faction=Alliance
+// filter returns only Alliance-locked rewards (incl. race-unrestricted items whose
+// quest is Alliance-only -- the item's own allowable_race can't express that).
+async function testQuestRewardFactionBrowse() {
+  await page.goto(`${BASE}?browse=items&source=quest&faction=a`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const li = headers.indexOf("Faction");
+  const facs = li < 0 ? [] : await page.$$eval(".browse table tbody tr",
+    (rs, idx) => rs.map((r) => r.querySelectorAll("td")[idx]?.textContent.trim()).filter(Boolean), li);
+  const allAlliance = facs.length > 0 && facs.every((f) => f === "Alliance");
+  console.log(`browse quest-reward faction: rows=${rows} hasFactionCol=${li >= 0} tags=${facs.length} allAlliance=${allAlliance}`);
+  return rows > 0 && li >= 0 && allAlliance;
+}
+
 // Spell browse: category + class filters (Class Skills / Mage). The Category
 // column + the two selects reflect the URL filter.
 async function testBrowseSpellCat() {
@@ -1616,6 +1632,7 @@ run(() => testBrowse("items", "&class=6", "Damage"));  // projectiles show ammo 
 run(() => testReagentNoReq());                         // reagents hide the empty Req column
 run(() => testBrowseSource("vendor"));
 run(() => testBrowseSource("worlddrop"));  // new World Drop source filter
+run(() => testQuestRewardFactionBrowse());  // quest-reward Faction column + faction filter
 run(() => testBrowseSpellCat());           // spell category + class filters
 run(() => testQuestOrigin(41189));         // quest Origin=Turtle WoW filter + TW badge
 run(() => testItemSources(2770));

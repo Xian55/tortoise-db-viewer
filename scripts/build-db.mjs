@@ -1285,6 +1285,38 @@ db.exec(`UPDATE items SET buyable = 1 WHERE buy_price > 0 AND entry IN (
   SELECT item FROM npc_vendor UNION SELECT item FROM npc_vendor_template)`);
 console.log(`  buyable items: ${db.prepare("SELECT COUNT(*) n FROM items WHERE buyable=1").get().n}`);
 
+// Quest-reward faction lock (0 none, 1 Alliance, 2 Horde). An item is faction-
+// locked when EVERY quest that rewards/offers it is one side's, none neutral --
+// so the item browse can tag + filter faction-exclusive quest rewards even when
+// the item itself is race-unrestricted (allowable_race = -1). Mirrors
+// questFaction() in src/constants.js: RACE_ALLIANCE_ALL = 589 (77 | High Elf 512),
+// RACE_HORDE_ALL = 434 (178 | Goblin 256); the two masks are bit-disjoint.
+db.exec(`ALTER TABLE items ADD COLUMN quest_faction INTEGER NOT NULL DEFAULT 0`);
+{
+  const A = 589, H = 434;
+  const acc = new Map(); // item -> { a, h, n }
+  for (const { item, rr } of db.prepare(
+    `SELECT qi.item AS item, q.reqraces AS rr FROM quest_item qi
+     JOIN quests q ON q.entry = qi.quest
+     WHERE qi.role IN ('reward','choice') AND q.hidden = 0`).all()) {
+    const ally = (rr & A) !== 0 && (rr & H) === 0;
+    const horde = (rr & H) !== 0 && (rr & A) === 0;
+    const e = acc.get(item) || { a: 0, h: 0, n: 0 };
+    if (ally) e.a++; else if (horde) e.h++; else e.n++; // neutral = both/no restriction
+    acc.set(item, e);
+  }
+  const upd = db.prepare(`UPDATE items SET quest_faction = ? WHERE entry = ?`);
+  let na = 0, nh = 0;
+  db.transaction(() => {
+    for (const [item, e] of acc) {
+      if (e.n) continue;                          // any neutral quest -> obtainable by both
+      if (e.a && !e.h) { upd.run(1, item); na++; }
+      else if (e.h && !e.a) { upd.run(2, item); nh++; } // mixed A+H -> stays 0
+    }
+  })();
+  console.log(`  quest-reward faction lock: ${na} Alliance, ${nh} Horde`);
+}
+
 // ---- Full-text search over item / creature / quest names (unified search) ----
 console.log("Building FTS indexes...");
 db.exec(`CREATE VIRTUAL TABLE items_fts USING fts5(name, content='items', content_rowid='entry', tokenize='unicode61')`);
