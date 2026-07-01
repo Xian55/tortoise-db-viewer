@@ -571,6 +571,46 @@ export const Q_QUEST_REP = `SELECT r.faction, r.value, f.name1 AS faction_name F
 // Reverse: quests that require killing this creature ("Objective of" on NPC page).
 export const Q_NPC_OBJECTIVE_OF = `SELECT q.entry, q.title, q.level, o.count FROM quest_creature_objective o JOIN quests q ON q.entry = o.quest WHERE o.target = ?1 AND o.is_go = 0 ORDER BY q.level LIMIT 100`;
 
+// ---- leveling guides (?guide=) ----
+// Clean, race-appropriate quests bound to a zone: directly (q.zone = areaid) or in
+// one of its sub-zones (mirrors Q_ZONE_QUESTS), excluding hidden/deprecated rows and
+// gating on the guide race bit. ?1 = areaid, ?2 = race bitmask (512 High Elf, 256
+// Goblin). reqraces=0 (all races) always passes. Ordered by level then title; the
+// caller re-sequences chains via orderQuestChain.
+export const Q_GUIDE_QUESTS = `
+  SELECT q.entry, q.title, q.level, q.minlevel, q.type, q.reqraces, q.custom,
+         q.prevquest, q.nextquest, q.xp, q.money, q.objectives
+  FROM quests q JOIN areas a ON a.entry = q.zone
+  WHERE (q.zone = ?1 OR a.zone_id = ?1)
+    AND q.title <> '' AND q.hidden = 0
+    AND (q.reqraces = 0 OR (q.reqraces & ?2) <> 0)
+  ORDER BY q.level, q.title LIMIT 1000`;
+
+// Batched quest relations for a set of quests (the guide's section) -- one round-trip
+// each, grouped client-side by quest entry. Creature givers reuse qQuestStartNpcs.
+export const qQuestEndNpcs = (n) => `
+  SELECT r.quest, c.entry, c.name FROM creature_quest_end r
+  JOIN creatures c ON c.entry = r.id WHERE r.quest IN (${inList(n)})`;
+export const qQuestStartObjects = (n) => `
+  SELECT r.quest, g.entry, g.name FROM gameobject_quest_start r
+  JOIN gameobjects g ON g.entry = r.id WHERE r.quest IN (${inList(n)})`;
+export const qQuestEndObjects = (n) => `
+  SELECT r.quest, g.entry, g.name FROM gameobject_quest_end r
+  JOIN gameobjects g ON g.entry = r.id WHERE r.quest IN (${inList(n)})`;
+// Kill/use objectives for a set of quests (creature is_go=0, object is_go=1).
+export const qGuideObjectives = (n) => `
+  SELECT o.quest, o.target, o.is_go, o.count, COALESCE(c.name, g.name) AS name
+  FROM quest_creature_objective o
+  LEFT JOIN creatures  c ON c.entry = o.target AND o.is_go = 0
+  LEFT JOIN gameobjects g ON g.entry = o.target AND o.is_go = 1
+  WHERE o.quest IN (${inList(n)})`;
+// All quest<->item links (req/source/reward/choice) for a set of quests.
+export const qGuideItems = (n) => `
+  SELECT qi.quest, qi.role, qi.count, i.entry, i.name, i.quality, di.icon
+  FROM quest_item qi JOIN items i ON i.entry = qi.item
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE qi.quest IN (${inList(n)})`;
+
 // ---- factions / reputation ----
 export const Q_FACTIONS = `SELECT id, name, items, repquests FROM factions ORDER BY name`;
 export const Q_FACTION = `SELECT id, name, listid, items, repquests FROM factions WHERE id = ?1`;

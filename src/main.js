@@ -10,6 +10,7 @@ import { runSearch, initSearchDropdown } from "./search.js";
 import { ASSETS_BASE, resolveOrigins } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
+import { showLeveling, showGuide } from "./guide.js";
 // Seamless-minimap transform manifest (tile/adt/grid + per-continent bbox). Tiny,
 // committed; bundled at build time. The tile pyramid itself lives on R2.
 import minimapManifest from "../scripts/data/minimap.json";
@@ -46,7 +47,7 @@ function wireTabs() {
 }
 
 // ---- routing ----
-function navigate(url, replace = false) {
+export function navigate(url, replace = false) {
   history[replace ? "replaceState" : "pushState"]({}, "", url);
   renderRoute();
   window.scrollTo(0, 0); // new view starts at the top (SPA nav keeps scroll otherwise)
@@ -114,6 +115,8 @@ function route() {
   else if (params.get("flights") !== null) return showFlights(params.get("cont") ? Number(params.get("cont")) : 0);
   else if (params.get("worldmap") !== null) return showWorldMap(params.get("worldmap") ? Number(params.get("worldmap")) : 0);
   else if (params.get("dungeons") !== null) return showDungeons();
+  else if (params.get("guides") !== null) return showLeveling();
+  else if (params.get("guide")) return showGuide(params.get("guide"));
   else if (term) { searchInput.value = term; return showSearch(term); }
   else return showHome();
 }
@@ -167,6 +170,7 @@ function showHome() {
        <a class="nav" href="?browse=factions">factions</a> /
        <a class="nav" href="?browse=zones">zones</a> /
        <a class="nav" href="?dungeons">dungeons &amp; raids</a> /
+       <a class="nav" href="?guides">leveling guides</a> /
        <a class="nav" href="?browse=objects">objects</a> /
        <a class="nav" href="?worldmap">world map</a> /
        <a class="nav" href="?flights">flight paths</a> /
@@ -1034,7 +1038,7 @@ function questText(t) {
 // first->last sequence. Edges: a quest's prevquest (abs covers the negative
 // "exclusive group" form) and nextquest. Topological sort; ties break by level
 // then entry. Returns the ordered rows, or null when there's no chain (<2 quests).
-function orderQuestChain(rows) {
+export function orderQuestChain(rows) {
   if (!rows || rows.length < 2) return null;
   const byId = new Map(rows.map((r) => [r.entry, r]));
   const cmp = (a, b) => (a.level || 0) - (b.level || 0) || a.entry - b.entry;

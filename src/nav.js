@@ -113,6 +113,7 @@ export const MENU = [
   ZONES,
   { label: "World Map", href: "?worldmap" },
   { label: "Dungeons", href: "?dungeons" },
+  { label: "Guides", href: "?guides" },
   { label: "Objects", href: "?browse=objects" },
   { label: "Flights", href: "?flights" },
   { label: "Icons", href: "?icons" },

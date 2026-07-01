@@ -1,0 +1,25 @@
+{
+  "high-elf": {
+    "name": "High Elf",
+    "faction": "Alliance",
+    "racebit": 512,
+    "levelRange": "1-14",
+    "blurb": "Thalassian Highlands, then Alah'Thalas — the High Elf starting path.",
+    "intro": "The High Elf begins amid the refugees of the Thalassian Highlands and moves on to the elven enclave of Alah'Thalas. Quests are pulled live from the database and batched by the hub where you pick them up and turn them in, to keep travel short. Tick each turn-in as you go — progress is saved in this browser.",
+    "sections": [
+      { "zone": 5225, "levelRange": "1-10", "note": "Clear the refugee hub quests, then work the coast. If quests run dry before the next giver, grind nearby mobs to ~level 6." },
+      { "zone": 2040, "levelRange": "10-14", "note": "A few pickups here are dropped or ground items rather than an NPC hand-in — those steps show an approximate map marker." }
+    ]
+  },
+  "goblin": {
+    "name": "Goblin",
+    "faction": "Horde",
+    "racebit": 256,
+    "levelRange": "1-10",
+    "blurb": "Blackstone Island — the Goblin starting path.",
+    "intro": "The Goblin starts as scrap-labor on Blackstone Island. Quests are pulled live from the database and batched by the hub where you pick them up and turn them in, to keep travel short. Tick each turn-in as you go — progress is saved in this browser.",
+    "sections": [
+      { "zone": 5536, "levelRange": "1-10", "note": "Work the foreman and robotics chains around the pit, then the shoreline salvage quests." }
+    ]
+  }
+}

@@ -1253,7 +1253,7 @@ src.drop();
 // so direct links still resolve). Matches unambiguous markers only -- NOT a bare
 // "test" (that hits legit "Test of Faith", "Testament of Rexxar", ...). ----
 console.log("Flagging dev/junk rows...");
-const JUNK = /placeholder|deprecated|\bunused\b|cashtest|qaspell|\[test\]|monster\s*-\s|\s-\s*qa\b|\(old\)/i;
+const JUNK = /placeholder|deprecated|cancell?ed|\bunused\b|cashtest|qaspell|\[test\]|monster\s*-\s|\s-\s*qa\b|\(old\)/i;
 const flagJunk = (table, ...cols) => {
   db.exec(`ALTER TABLE ${table} ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0`);
   const sel = `rowid AS rid, ${cols.join(", ")}`;

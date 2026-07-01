@@ -568,25 +568,57 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
     let pick = clusters;
     if (topK && clusters.length > topK) pick = clusters.slice().sort((a, b) => b.w - a.w).slice(0, topK);
     if (pick.length < 2) return null;
-    const { closed = true, start, end } = routeOpts;
+    const { closed = true, start, end, ordered: keepOrder = false } = routeOpts;
+    const dist = (a, b) => map.distance(a.center, b.center);
     const nearest = (ll, arr) => arr.reduce((b, c) => (map.distance(c.center, ll) < map.distance(b.center, ll) ? c : b), arr[0]);
     const greedy = (seed, pool) => { const ord = [seed]; const rem = pool.slice();
       while (rem.length) { const last = ord[ord.length - 1].center; let bi = 0, bd = Infinity;
         for (let i = 0; i < rem.length; i++) { const d = map.distance(last, rem[i].center); if (d < bd) { bd = d; bi = i; } }
         ord.push(rem.splice(bi, 1)[0]); } return ord; };
+    // 2-opt local search: repeatedly reverse the tour segment [i..k] whenever it
+    // shortens the path -- upgrades the greedy nearest-neighbour seed into a proper
+    // (near-optimal) TSP solution. `cycle` closes the loop; `fixedEnds` pins the first
+    // and last stop (a giver->...->turn-in walk keeps its endpoints). n is small (a
+    // handful of hubs) so full O(n^2) sweeps are cheap.
+    const tourLen = (a) => { let s = 0; for (let i = 0; i < a.length - 1; i++) s += dist(a[i], a[i + 1]); if (closed && a.length > 1) s += dist(a[a.length - 1], a[0]); return s; };
+    const twoOpt = (arr, fixedEnds) => {
+      const n = arr.length; if (n < 4) return arr;
+      let route = arr.slice(), best = tourLen(route), improved = true, guard = 0;
+      const lo = fixedEnds ? 1 : 0, hi = fixedEnds ? n - 2 : n - 1;
+      while (improved && guard++ < 50) {
+        improved = false;
+        for (let i = lo; i < hi; i++) for (let k = i + 1; k <= hi; k++) {
+          const cand = route.slice(0, i).concat(route.slice(i, k + 1).reverse(), route.slice(k + 1));
+          const len = tourLen(cand);
+          if (len + 1e-6 < best) { route = cand; best = len; improved = true; }
+        }
+      }
+      return route;
+    };
     let ordered;
-    if (!closed && start) {
+    if (keepOrder) {
+      // Pre-sequenced path (mergeFrac:0 keeps every waypoint its own stop, in input
+      // order) -- e.g. a leveling guide's giver-per-step route, so stop N == step N.
+      ordered = pick.slice();
+    } else if (!closed && start) {
       const s = nearest(start, pick);
       const e = end ? nearest(end, pick.filter((c) => c !== s)) : null;
       const mid = pick.filter((c) => c !== s && c !== e);
       ordered = greedy(s, mid); if (e) ordered.push(e);
+      ordered = twoOpt(ordered, true); // keep giver first / turn-in last
     } else {
       const rest = pick.slice().sort((a, b) => b.w - a.w); // start at the richest/densest stop
-      ordered = greedy(rest.shift(), rest);
+      ordered = twoOpt(greedy(rest.shift(), rest), false);
     }
     const layer = L.layerGroup();
     const line = ordered.map((c) => c.center); if (closed) line.push(line[0]);
-    L.polyline(line, { color, weight: 3, opacity: 0.85, dashArray: "7 7" }).addTo(layer);
+    // A route added to the map AT INIT (routeOpts.svg -> the guide's default-on route)
+    // must render via SVG: the map is preferCanvas, and L.Canvas hits its 2D ctx before
+    // it exists at init ("clearRect of undefined"). Toggle-added routes (farming/gold,
+    // added post-layout) stay on the default canvas -- no eager renderer, no extra cost.
+    const polyOpts = { color, weight: 3, opacity: 0.85, dashArray: "7 7" };
+    if (routeOpts.svg) polyOpts.renderer = L.svg();
+    L.polyline(line, polyOpts).addTo(layer);
     ordered.forEach((c, i) => {
       L.marker(c.center, { icon: L.divIcon({ html: `<span class="route-stop">${i + 1}</span>`, className: "route-div", iconSize: [22, 22], iconAnchor: [11, 11] }) })
         .bindTooltip(`Stop ${i + 1} · ${tip(c)}`, { direction: "top" }).addTo(layer);
@@ -635,9 +667,14 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
       highlights.push({ label: spec.label, count: spec.points.length, html: layerLegendHtml(spec), on, toggle: toggleLayer(grp) });
     }
     if (route && route.points && route.points.length >= 3) {
+      const on = route.on === true; // opt-in default-on (guides show the numbered path immediately)
       const rl = routeFrom(route.points, null, route.color || "#7cc4ff", (c) => `${c.n} stop${c.n === 1 ? "" : "s"}`,
-        { closed: false, mergeFrac: route.mergeFrac, start: route.start && toLatLng(route.start.x, route.start.y), end: route.end && toLatLng(route.end.x, route.end.y) });
-      if (rl) highlights.push({ label: route.label || "Route", html: `🧭 ${esc(route.label || "Route")}`, on: false, toggle: toggleLayer(rl) });
+        { closed: false, mergeFrac: route.mergeFrac, ordered: route.ordered, svg: on, // svg renderer only when drawn at init
+          start: route.start && toLatLng(route.start.x, route.start.y), end: route.end && toLatLng(route.end.x, route.end.y) });
+      if (rl) {
+        if (on) rl.addTo(map);
+        highlights.push({ label: route.label || "Route", html: `🧭 ${esc(route.label || "Route")}`, on, toggle: toggleLayer(rl) });
+      }
     }
   }
 
