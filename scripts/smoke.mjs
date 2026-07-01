@@ -940,6 +940,21 @@ async function testHover() {
   return name !== "(none)";
 }
 
+// The quest desc embeds objectives (collect items w/ icons) and rewards
+// ("You will receive:" item + icon) inline, like the in-game log. Quest 60141 ->
+// collect Rockhide Boar Meat, receive Linen Bag.
+async function testQuestObjectivesEmbed(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".quest-desc", { timeout: 40000 });
+  const goalItems = await page.$$eval(".quest-goals li a.ilink", (e) => e.length).catch(() => 0);
+  const goalIcons = await page.$$eval(".quest-goals li a.ilink .il-icon", (e) => e.length).catch(() => 0);
+  const rewLbls = await page.$$eval(".quest-desc .q-rew-lbl", (e) => e.map((x) => x.textContent.trim()));
+  const rewItems = await page.$$eval(".quest-desc .q-rew-grp .quest-items li a.ilink", (e) => e.length).catch(() => 0);
+  const receive = rewLbls.some((l) => /You will receive/i.test(l));
+  console.log(`quest-embed ${id}: goalItems=${goalItems} goalIcons=${goalIcons} rewLbls=${JSON.stringify(rewLbls)} rewItems=${rewItems}`);
+  return goalItems > 0 && goalIcons > 0 && receive && rewItems > 0;
+}
+
 // quest detail: header + tabs (givers/objectives/rewards) + sortable pane + desc.
 async function testQuest(id, expectName) {
   await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
@@ -1434,6 +1449,7 @@ run(() => testCustomIcon(9376, "Jang"));
 run(() => testSearch("thunder"));
 run(() => testSearchInfix("owfang", "owfang"));  // trigram infix: finds Shadowfang* from a mid-name fragment
 run(() => testQuest(14, "Militia"));
+run(() => testQuestObjectivesEmbed(60141));  // inline objective/reward items with icons
 run(() => testQuestVideoLink(14));  // quest page: YouTube walkthrough search link
 run(() => testShareButton("quest", 14, "q"));  // Share button copies the OG-stub link
 run(() => testShareButton("item", 2770, "i"));

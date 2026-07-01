@@ -403,6 +403,12 @@ a.ilink.zone { color: #8fd18f; }
 .quest-desc p { margin: 0; }
 .quest-obj { color: var(--gold); font-style: italic; }
 .quest-rew .coin { margin-left: 2px; }
+.quest-items { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.quest-items li { display: flex; align-items: center; }
+.quest-goals { margin-top: 6px; }
+.q-qty { color: var(--muted); margin-left: 4px; }
+.q-rew-grp { margin-top: 8px; }
+.q-rew-lbl { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
 
 /* item source tags (browse column + item-detail header). subtle accents per source. */
 .item-sources { margin-top: 8px; }

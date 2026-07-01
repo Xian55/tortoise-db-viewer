@@ -1230,19 +1230,40 @@ async function showQuest(id) {
   const mapHtml = mapViews.length
     ? `<div class="panel quest-map"><h3 class="quest-map-h">Map</h3>${mapSwitch}<div id="zonemap"></div></div>` : "";
 
-  // ---- reward summary ----
-  const rewBits = [];
-  if (q.money > 0) rewBits.push(moneyHtml(q.money));
-  if (q.xp > 0) rewBits.push(`${q.xp.toLocaleString()} XP`);
-  for (const r of qrep) if (r.value) rewBits.push(`+${r.value} ${factionLink(r.faction, r.faction_name)}`);
-  if (rewSpell) rewBits.push(`Learn: ${spellLink(rewSpell.entry, rewSpell.name, rewSpell.icon)}`);
+  // ---- objectives: kill/use targets + collect items, icons inline (like the
+  // in-game quest log / octowow). The tabs still carry the farming detail. ----
+  const goalItemQty = (n) => (n > 1 ? ` <span class="q-qty">(${n})</span>` : "");
+  const goalLis = [];
+  for (const o of qcreatures) {
+    const link = o.is_go ? objectLink(o.target, o.name || `Object #${o.target}`) : npcLink(o.target, o.name || `NPC #${o.target}`);
+    goalLis.push(`<li>${link}${goalItemQty(o.count)}</li>`);
+  }
+  for (const it of byRole("req")) goalLis.push(`<li>${itemLink(it.entry, it.name, it.quality, it.icon)}${goalItemQty(it.count)}</li>`);
+
+  // ---- rewards: reward + choice items with icons, plus money/xp/rep/spell ----
+  const rewItemLi = (it) => `<li>${itemLink(it.entry, it.name, it.quality, it.icon)}${it.count > 1 ? ` <span class="q-qty">×${it.count}</span>` : ""}</li>`;
+  const provided = byRole("source");
+  const choiceItems = byRole("choice");
+  const rewItems = byRole("reward");
+  const rewExtra = [];
+  if (q.money > 0) rewExtra.push(moneyHtml(q.money));
+  if (q.xp > 0) rewExtra.push(`${q.xp.toLocaleString()} XP`);
+  for (const r of qrep) if (r.value) rewExtra.push(`+${r.value} ${factionLink(r.faction, r.faction_name)}`);
+  if (rewSpell) rewExtra.push(`Learn: ${spellLink(rewSpell.entry, rewSpell.name, rewSpell.icon)}`);
+  const rewGroup = (lbl, items) => `<div class="q-rew-grp"><span class="q-rew-lbl">${lbl}</span><ul class="quest-items">${items.map(rewItemLi).join("")}</ul></div>`;
+  const rewardBlocks = [];
+  if (choiceItems.length) rewardBlocks.push(rewGroup("You will be able to choose one of these rewards:", choiceItems));
+  if (rewItems.length) rewardBlocks.push(rewGroup("You will receive:", rewItems));
+  if (rewExtra.length) rewardBlocks.push(`<p class="quest-rew">${rewExtra.join('<span class="dim"> · </span>')}</p>`);
 
   const desc = [];
   if (q.objectives) desc.push(`<p class="quest-obj">${questText(q.objectives)}</p>`);
+  if (goalLis.length) desc.push(`<ul class="quest-items quest-goals">${goalLis.join("")}</ul>`);
+  if (provided.length) desc.push(`<h3>Provided item${provided.length > 1 ? "s" : ""}</h3><ul class="quest-items">${provided.map(rewItemLi).join("")}</ul>`);
   if (q.details) desc.push(`<h3>Description</h3><p>${questText(q.details)}</p>`);
   if (q.objtext) desc.push(`<h3>Quest Objectives</h3><p>${questText(q.objtext)}</p>`);
   if (q.offertext) desc.push(`<h3>Completion</h3><p>${questText(q.offertext)}</p>`);
-  if (rewBits.length) desc.push(`<h3>Rewards</h3><p class="quest-rew">${rewBits.join('<span class="dim"> · </span>')}</p>`);
+  if (rewardBlocks.length) desc.push(`<h3>Rewards</h3>${rewardBlocks.join("")}`);
 
   // ---- relation tables ----
   const npcCols = [
