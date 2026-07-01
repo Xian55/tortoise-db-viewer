@@ -177,12 +177,23 @@ console.log("Importing maps + spawns...");
   db.exec(`CREATE INDEX idx_maps_type ON maps(type)`);
 
   const cc = srcColumns("creature", "tw_world_creature.sql");
-  const iId = cc.indexOf("id"), iMap = cc.indexOf("map");
+  // A creature spawn can roll one of up to 4 template ids (Turtle random-pick
+  // slots); count each distinct non-zero id so NPCs that only ever appear as an
+  // id2/3/4 alternate still get a spawn (else ~210 creatures have no location).
+  const idCols = ["id", "id2", "id3", "id4"].map((c) => cc.indexOf(c)).filter((i) => i >= 0);
+  const iMap = cc.indexOf("map");
   // spawn count per (creature, map) — cnt=1 marks a unique spawn (a boss heuristic)
   const counts = new Map();
   for (const r of srcRows("creature", "tw_world_creature.sql")) {
-    const k = `${clean(r[iId])}:${clean(r[iMap])}`;
-    counts.set(k, (counts.get(k) || 0) + 1);
+    const map = clean(r[iMap]);
+    const seen = new Set();
+    for (const i of idCols) {
+      const id = clean(r[i]);
+      if (!id || seen.has(id)) continue; // skip 0/null + within-row dupes
+      seen.add(id);
+      const k = `${id}:${map}`;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
   }
   db.exec(`CREATE TABLE spawns (id INTEGER, map INTEGER, cnt INTEGER)`);
   const ss = db.prepare(`INSERT INTO spawns VALUES (?,?,?)`);
@@ -1036,13 +1047,23 @@ console.log("Importing zones + spawn points...");
   const sSp = db.prepare(`INSERT INTO spawn_points VALUES (?,?,?,?,?,?)`);
   const loadSpawns = (file, table, kind) => {
     const cols = srcColumns(table, file);
-    const iId = cols.indexOf("id"), iMap = cols.indexOf("map"), iX = cols.indexOf("position_x"), iY = cols.indexOf("position_y");
+    // Emit a point per distinct non-zero id slot. creature has id/id2/id3/id4
+    // (random-pick); gameobject has only `id`, so the missing cols filter out.
+    const idCols = ["id", "id2", "id3", "id4"].map((c) => cols.indexOf(c)).filter((i) => i >= 0);
+    const iMap = cols.indexOf("map"), iX = cols.indexOf("position_x"), iY = cols.indexOf("position_y");
     let n = 0;
     db.transaction(() => {
       for (const row of srcRows(table, file)) {
         const map = clean(row[iMap]), x = clean(row[iX]), y = clean(row[iY]);
-        sSp.run(kind, clean(row[iId]), map, x, y, homeZone(map, x, y));
-        n++;
+        const zone = homeZone(map, x, y); // shared by every id at this point
+        const seen = new Set();
+        for (const i of idCols) {
+          const id = clean(row[i]);
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          sSp.run(kind, id, map, x, y, zone);
+          n++;
+        }
       }
     })();
     return n;
