@@ -511,7 +511,9 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
   // last to the one nearest `end` -- e.g. a quest's giver -> objectives -> turn-in walk.
   const routeFrom = (pts, topK, color, tip, routeOpts = {}) => {
     if (!pts || pts.length < 3) return null;
-    const R = Math.max(H, W) * 0.08; // merge points within ~8% of the map into one stop
+    // merge points within ~8% of the map into one stop; mergeFrac:0 keeps every point
+    // its own stop (quest routes pass pre-reduced waypoints -> don't re-cluster them).
+    const R = Math.max(H, W) * (routeOpts.mergeFrac ?? 0.08);
     const clusters = [];
     for (const p of pts) {
       const ll = toLatLng(p.x, p.y), w = p.value || 1;
@@ -593,7 +595,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
     }
     if (route && route.points && route.points.length >= 3) {
       const rl = routeFrom(route.points, null, route.color || "#7cc4ff", (c) => `${c.n} stop${c.n === 1 ? "" : "s"}`,
-        { closed: false, start: route.start && toLatLng(route.start.x, route.start.y), end: route.end && toLatLng(route.end.x, route.end.y) });
+        { closed: false, mergeFrac: route.mergeFrac, start: route.start && toLatLng(route.start.x, route.start.y), end: route.end && toLatLng(route.end.x, route.end.y) });
       if (rl) highlights.push({ label: route.label || "Route", html: `🧭 ${esc(route.label || "Route")}`, on: false, toggle: toggleLayer(rl) });
     }
   }
@@ -966,7 +968,7 @@ export function initWorldMap(el, conf, spawns, objects, navigate, opts = {}) {
     }
     if (route && route.points && route.points.length >= 3) {
       const stops = route.points.map((p) => ({ ...p }));
-      const R2 = (Math.max(Math.abs(occupied.getNorth() - occupied.getSouth()), Math.abs(occupied.getEast() - occupied.getWest()))) * 0.04;
+      const R2 = (Math.max(Math.abs(occupied.getNorth() - occupied.getSouth()), Math.abs(occupied.getEast() - occupied.getWest()))) * (route.mergeFrac ?? 0.04);
       const clusters = [];
       for (const p of stops) { const ll = toLatLng(p.x, p.y); let best = null, bd = R2;
         for (const c of clusters) { const d = map.distance(c.center, ll); if (d < bd) { bd = d; best = c; } }

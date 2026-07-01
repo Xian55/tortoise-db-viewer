@@ -15,6 +15,23 @@ function makeHue() {
   let i = 0;
   return () => `hsl(${Math.round((i++ * 137.508 + 25) % 360)} 72% 52%)`;
 }
+// One representative waypoint for an objective: the centroid of its DENSEST region
+// (coarse 4x4 grid over the points' bounding box). A "kill 10 of X" objective with 50
+// spread spawns collapses to the one spot worth walking to -> a clean route instead of
+// a zig-zag through every spawn.
+function routeWaypoint(pts) {
+  if (pts.length <= 1) return { x: pts[0].x, y: pts[0].y };
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+  const gx = (x1 - x0) / 4 || 1, gy = (y1 - y0) / 4 || 1;
+  const cells = new Map();
+  for (const p of pts) {
+    const k = `${Math.floor((p.x - x0) / gx)},${Math.floor((p.y - y0) / gy)}`;
+    const c = cells.get(k) || { n: 0, sx: 0, sy: 0 }; c.n++; c.sx += p.x; c.sy += p.y; cells.set(k, c);
+  }
+  let best = null; for (const c of cells.values()) if (!best || c.n > best.n) best = c;
+  return { x: best.sx / best.n, y: best.sy / best.n };
+}
 
 // sources: { giversN, endersN, giversG, endersG, kills, collects }
 //   giversN/endersN: [{entry,name}] creatures   giversG/endersG: [{entry,name}] objects
@@ -112,11 +129,16 @@ export async function buildQuestMap(sources) {
     markerLayers.push({ key: `collect-${gid}`, label: `Collect: ${g.name}`, color: nextHue(), icon: g.icon, points: pts, on: true });
   }
 
-  // opt-in open-path route: giver -> objective clusters -> turn-in (within the surface).
-  const objPts = markerLayers.filter((l) => /^(kill|collect)-/.test(l.key)).flatMap((l) => l.points);
-  const routePts = [...giverP, ...objPts, ...enderP];
+  // opt-in open-path route: giver -> ONE waypoint per objective (its densest spot) ->
+  // turn-in. Using a representative per objective (not every spawn) keeps the path from
+  // zig-zagging out to stray far-end spawns when a dense cluster has everything.
+  const objLayers = markerLayers.filter((l) => /^(kill|collect)-/.test(l.key));
+  const startWp = giverP.length ? routeWaypoint(giverP) : null;
+  const endWp = enderP.length ? routeWaypoint(enderP) : null;
+  const objWps = objLayers.map((l) => routeWaypoint(l.points));
+  const routePts = [...(startWp ? [startWp] : []), ...objWps, ...(!sameNpc && endWp ? [endWp] : [])];
   const route = (routePts.length >= 3)
-    ? { points: routePts, start: giverP[0], end: enderP[0] || undefined, label: "Suggested route" }
+    ? { points: routePts, start: startWp || undefined, end: (!sameNpc && endWp) || undefined, label: "Suggested route", mergeFrac: 0 }
     : null;
 
   return { markerLayers, surface, route };
