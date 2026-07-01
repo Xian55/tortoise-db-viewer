@@ -25,14 +25,11 @@ const NPC_CATS = [
   ["mob", "Enemy Mobs"],
 ];
 const objTypeLabel = (t) => `Obj: ${GAMEOBJECT_TYPE[t] || "Other"}`;
-// World map: gather nodes get a per-node category (e.g. "Mining: Copper Vein",
-// "Herb: Peacebloom") via gameobjects.gather, so each ore/herb is a separate toggle
-// with its own icon. Zone map: the coarser "Obj: Mining"/"Obj: Herbalism" buckets
-// (a single zone has few node types; the per-node split is a continent-scale need).
+// Gather nodes get a per-node category (e.g. "Mining: Copper Vein", "Herb: Peacebloom")
+// via gameobjects.gather, so each ore/herb is a separate toggle with its own icon --
+// used by BOTH the zone map and the continent world map.
 const objLabel = (o) => o.gather === "mining" ? `Mining: ${o.name}`
   : o.gather === "herbalism" ? `Herb: ${o.name}` : objTypeLabel(o.type);
-const objLabelCoarse = (o) => o.gather === "mining" ? "Obj: Mining"
-  : o.gather === "herbalism" ? "Obj: Herbalism" : objTypeLabel(o.type);
 // URL-safe code for a category key. NPC roles + "rare" are already safe; the
 // "<Prefix>: <name>" buckets slug to "<p>:<name>" so enabled layers persist.
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -186,6 +183,11 @@ function whenPoiReady(cb) {
 // without the panel knowing about either. `header` (optional DOM node) mounts above
 // the groups (world map: the zone-focus select + npc name/id filter). `groups`:
 // [{ title, open?, rows:[...] }]. Returns an L.Control.
+// The returned L.Control also exposes `addRow(title, row)` / `removeRow(title, key)`
+// so callers can inject/remove toggle rows AFTER init (e.g. the zone map's tab "show
+// on map" picks land in a lazily-created "Selected" group). A dynamic group is
+// created on the first addRow and removed when its last row goes; rows carry a
+// stable `key` for removal and join the global search + all/none like static ones.
 function buildLayerPanel(map, { groups = [], header = null } = {}) {
   const Ctl = L.Control.extend({
     options: { position: "topright" },
@@ -203,61 +205,92 @@ function buildLayerPanel(map, { groups = [], header = null } = {}) {
       if (header) full.appendChild(header);
       const body = L.DomUtil.create("div", "wm-panel-body", full);
 
-      const allRows = []; // { el, label, cb, toggle } across every group, for search
-      for (const g of groups) {
-        if (!g.rows || !g.rows.length) continue;
-        const gEl = L.DomUtil.create("div", "wm-group" + (g.open ? "" : " collapsed"), body);
+      const allRows = []; // { el, key, label, cb, toggle } across every group, for search
+      const groupRecs = new Map(); // title -> { gEl, rowsBox, cnt, groupRows }
+      const applySearch = () => {
+        const q = search.value.trim().toLowerCase();
+        body.classList.toggle("searching", !!q);
+        for (const r of allRows) r.el.style.display = (!q || r.label.includes(q)) ? "" : "none";
+        for (const [, rec] of groupRecs) {
+          const any = rec.groupRows.some((rr) => rr.el.style.display !== "none");
+          rec.gEl.style.display = any ? "" : "none";
+        }
+      };
+
+      const makeGroup = (title, open) => {
+        const gEl = L.DomUtil.create("div", "wm-group" + (open ? "" : " collapsed"), body);
         const gh = L.DomUtil.create("div", "wm-group-head", gEl);
         L.DomUtil.create("span", "wm-caret", gh);
-        const title = L.DomUtil.create("span", "wm-group-title", gh);
-        title.textContent = g.title;
-        const cnt = L.DomUtil.create("span", "wm-group-count", gh);
-        cnt.textContent = `${g.rows.length}`;
+        const t = L.DomUtil.create("span", "wm-group-title", gh); t.textContent = title;
+        const cnt = L.DomUtil.create("span", "wm-group-count", gh); cnt.textContent = "0";
         const acts = L.DomUtil.create("span", "wm-group-acts", gh);
         const allB = L.DomUtil.create("a", "wm-all", acts); allB.textContent = "all";
         const noneB = L.DomUtil.create("a", "wm-none", acts); noneB.textContent = "none";
         const rowsBox = L.DomUtil.create("div", "wm-group-rows", gEl);
+        const rec = { gEl, rowsBox, cnt, groupRows: [] };
         L.DomEvent.on(gh, "click", (e) => {
           if (e.target === allB || e.target === noneB) return; // those have their own action
           gEl.classList.toggle("collapsed");
         });
-        const groupRows = [];
-        for (const r of g.rows) {
-          const lab = L.DomUtil.create("label", "wm-row", rowsBox);
-          const cb = L.DomUtil.create("input", "", lab); cb.type = "checkbox"; cb.checked = !!r.on;
-          const main = L.DomUtil.create("span", "wm-row-main", lab); main.innerHTML = r.html;
-          if (r.count != null) { const n = L.DomUtil.create("span", "wm-row-n", lab); n.textContent = `${r.count}`; }
-          L.DomEvent.on(cb, "change", () => r.toggle(cb.checked));
-          const rec = { el: lab, label: (r.label || "").toLowerCase(), cb, toggle: r.toggle };
-          allRows.push(rec); groupRows.push(rec);
-        }
-        const setAll = (on) => { for (const rr of groupRows) {
+        const setAll = (on) => { for (const rr of rec.groupRows) {
           if (rr.el.style.display === "none" || rr.cb.checked === on) continue; // skip filtered/no-op
           rr.cb.checked = on; rr.toggle(on);
         } };
         L.DomEvent.on(allB, "click", (e) => { L.DomEvent.stop(e); setAll(true); });
         L.DomEvent.on(noneB, "click", (e) => { L.DomEvent.stop(e); setAll(false); });
+        groupRecs.set(title, rec);
+        return rec;
+      };
+      const addRowTo = (rec, r) => {
+        const lab = L.DomUtil.create("label", "wm-row", rec.rowsBox);
+        const cb = L.DomUtil.create("input", "", lab); cb.type = "checkbox"; cb.checked = !!r.on;
+        const main = L.DomUtil.create("span", "wm-row-main", lab); main.innerHTML = r.html;
+        if (r.count != null) { const n = L.DomUtil.create("span", "wm-row-n", lab); n.textContent = `${r.count}`; }
+        L.DomEvent.on(cb, "change", () => r.toggle(cb.checked));
+        const rec2 = { el: lab, key: r.key, label: (r.label || "").toLowerCase(), cb, toggle: r.toggle };
+        allRows.push(rec2); rec.groupRows.push(rec2);
+        rec.cnt.textContent = `${rec.groupRows.length}`;
+        return rec2;
+      };
+
+      for (const g of groups) {
+        if (!g.rows || !g.rows.length) continue;
+        const rec = makeGroup(g.title, g.open);
+        for (const r of g.rows) addRowTo(rec, r);
       }
 
       // global search: hide rows whose label lacks the term, hide emptied groups, and
       // force-expand groups (via `.searching`) so matches in collapsed groups show.
-      const groupEls = [...body.querySelectorAll(".wm-group")];
-      L.DomEvent.on(search, "input", () => {
-        const q = search.value.trim().toLowerCase();
-        body.classList.toggle("searching", !!q);
-        for (const r of allRows) r.el.style.display = (!q || r.label.includes(q)) ? "" : "none";
-        for (const gEl of groupEls) {
-          const any = [...gEl.querySelectorAll(".wm-row")].some((e) => e.style.display !== "none");
-          gEl.style.display = any ? "" : "none";
-        }
-      });
+      L.DomEvent.on(search, "input", applySearch);
 
       L.DomEvent.on(hideBtn, "click", () => root.classList.add("wm-collapsed"));
       L.DomEvent.on(showBtn, "click", () => root.classList.remove("wm-collapsed"));
       L.DomEvent.disableClickPropagation(root);
       L.DomEvent.disableScrollPropagation(root);
+
+      // ---- dynamic-row API (used post-init; group created lazily / removed when empty) ----
+      this._addRow = (title, r, open = true) => {
+        this._removeRow(title, r.key); // replace a same-key row (re-toggle)
+        const rec = groupRecs.get(title) || makeGroup(title, open);
+        addRowTo(rec, r);
+        applySearch();
+      };
+      this._removeRow = (title, key) => {
+        const rec = groupRecs.get(title);
+        if (!rec) return;
+        const i = rec.groupRows.findIndex((rr) => rr.key === key);
+        if (i < 0) return;
+        const [row] = rec.groupRows.splice(i, 1);
+        L.DomUtil.remove(row.el);
+        const ai = allRows.indexOf(row);
+        if (ai >= 0) allRows.splice(ai, 1);
+        rec.cnt.textContent = `${rec.groupRows.length}`;
+        if (!rec.groupRows.length) { L.DomUtil.remove(rec.gEl); groupRecs.delete(title); }
+      };
       return root;
     },
+    addRow(title, r, open) { this._addRow && this._addRow(title, r, open); },
+    removeRow(title, key) { this._removeRow && this._removeRow(title, key); },
   });
   return new Ctl();
 }
@@ -327,7 +360,7 @@ function layerLegendHtml(spec) {
 //   markerLayers [spec,...] -> N categorized toggleable highlight layers (see buildMarkerLayer).
 //   route { points, start?, end?, color?, label? } -> an opt-in open-path circuit overlay.
 export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
-  const { focus = null, bosses = [], farm = null, markerLayers = null, route = null } = opts;
+  const { focus = null, bosses = [], farm = null, markerLayers = null, route = null, onToggle = null } = opts;
   // destroy the previous overlay first -> frees its WebGL context (browsers cap
   // these, so leaking one per zone navigation would eventually break the map).
   if (currentOverlay) { try { currentOverlay.destroy(); } catch (_) { /* gone */ } currentOverlay = null; }
@@ -404,13 +437,20 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
     if (!g) { g = { label, sprites: [] }; cats.set(key, g); }
     return g;
   };
-  // each category sprite is its atlas icon (no tint) -- real POI icons, not blobs.
-  const addDot = (key, label, ll, html, href, wpt) => {
+  // each category sprite is its atlas POI icon (no tint), UPGRADED to the yielded
+  // item's real CDN icon for gather nodes (`icon` = CDN basename or null). basePx
+  // lets the render loop keep every sprite a fixed screen size regardless of source
+  // texture resolution (32px POI cell vs 56px item icon).
+  const addDot = (key, label, ll, html, href, wpt, icon) => {
     const sp = new PIXI.Sprite(poiTexture(key));
     sp.anchor.set(0.5);
+    sp.basePx = POI_CELL;
     sp.ll = ll; sp.label = html; sp.href = href; sp.wpt = wpt; sp.visible = false;
     container.addChild(sp);
-    cat(key, label).sprites.push(sp);
+    if (icon) requestIcon(icon, sp);
+    const g = cat(key, label);
+    g.sprites.push(sp);
+    if (icon && !g.icon) g.icon = icon; // legend icon for this category
   };
 
   // npcByEntry/objByEntry power the per-row "show on map" toggles; built always
@@ -440,7 +480,7 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
   const objByEntry = new Map();
   for (const o of objects) {
     const ll = toLatLng(o.x, o.y);
-    if (!focus) addDot(objLabelCoarse(o), objLabelCoarse(o), ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y });
+    if (!focus) { const key = objLabel(o); addDot(key, key, ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y }, cdnIconOf(o)); }
     let e = objByEntry.get(o.entry);
     if (!e) { e = { name: o.name || `Object #${o.entry}`, lls: [], pts: [] }; objByEntry.set(o.entry, e); }
     e.lls.push(ll); e.pts.push({ x: o.x, y: o.y });
@@ -449,13 +489,14 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
   const ICON_PX = 20; // on-screen icon diameter, constant across zoom
   const overlay = L.pixiOverlay((utils) => {
     // the overlay scales the whole container by utils.getScale(zoom); counter it
-    // so icons stay a fixed screen size instead of growing as you zoom in.
-    const dotScale = (ICON_PX / POI_CELL) / utils.getScale(utils.getMap().getZoom());
+    // so icons stay a fixed screen size instead of growing as you zoom in. Divide
+    // by each sprite's basePx (32px POI cell vs an upgraded 56px item icon).
+    const scale = utils.getScale(utils.getMap().getZoom());
     for (const sp of container.children) {
       if (!sp.visible) continue;
       const p = utils.latLngToLayerPoint(sp.ll);
       sp.x = p.x; sp.y = p.y;
-      sp.scale.set(dotScale);
+      sp.scale.set((ICON_PX / (sp.basePx || POI_CELL)) / scale);
     }
     utils.getRenderer().render(container);
   }, container, { autoPreventDefault: false });
@@ -600,21 +641,29 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
     }
   }
 
+  // Gather nodes get a per-node toggle (Mining: Copper Vein, Herb: Peacebloom) with
+  // the yielded item's icon -- the same granular filtering as the world map -- split
+  // into their own Herbs / Mining Veins groups; the rest stay in Objects.
+  const PFX = /^(Mining: |Herb: |Obj: )/;
   const catRow = (key) => {
     const g = cats.get(key);
     if (!g || !g.sprites.length) return null;
     const layer = new DotLayer(g.sprites);
-    return { label: g.label, count: g.sprites.length, html: catLabel(key, esc(g.label.replace(/^Obj: /, ""))), on: false, toggle: toggleLayer(layer) };
+    return { label: g.label, count: g.sprites.length, html: catLabel(key, esc(g.label.replace(PFX, "")), g.icon), on: false, toggle: toggleLayer(layer) };
   };
   const npcKeys = [...NPC_CATS.map((c) => c[0]), "rare"];
-  const objKeys = [...cats.keys()].filter((k) => k.startsWith("Obj: "))
-    .sort((a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length);
+  const keysWith = (pfx, cmp) => [...cats.keys()].filter((k) => k.startsWith(pfx)).sort(cmp);
+  const byName = (a, b) => a.localeCompare(b);
+  const byCount = (a, b) => cats.get(b).sprites.length - cats.get(a).sprites.length;
   const groups = [
     highlights.length ? { title: "Highlights", open: true, rows: highlights } : null,
     { title: "NPCs", open: !highlights.length, rows: npcKeys.map(catRow).filter(Boolean) },
-    { title: "Objects", rows: objKeys.map(catRow).filter(Boolean) },
+    { title: "Herbs", rows: keysWith("Herb: ", byName).map(catRow).filter(Boolean) },
+    { title: "Mining Veins", rows: keysWith("Mining: ", byName).map(catRow).filter(Boolean) },
+    { title: "Objects", rows: keysWith("Obj: ", byCount).map(catRow).filter(Boolean) },
   ].filter(Boolean);
-  map.addControl(buildLayerPanel(map, { groups }));
+  const panel = buildLayerPanel(map, { groups });
+  map.addControl(panel);
   const fitTo = (focusBounds && focusBounds.isValid() && focusBounds) || (markerBounds && markerBounds.isValid() && markerBounds);
   if (fitTo) {
     // A tight spawn/node cluster would otherwise slam to maxZoom (object pages open
@@ -682,6 +731,12 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
     openMarkerMenu(e.originalEvent, sp.wpt, all, label);
   });
 
+  // A "show on map" pick (from the NPCs/Objects tab) lands its markers AND a matching
+  // toggle row in the panel's lazily-created "Selected" group. Unchecking that row
+  // re-invokes the toggle (off) -> markers + row gone; onToggle syncs the host's tab
+  // checkbox + state (so the tab box reflects a panel-driven removal, and vice-versa).
+  const SELECTED = "Selected";
+
   // ---- Objects-tab toggle: show/hide one object's icon markers (HTML) ----
   const objLayers = new Map();
   function toggleObject(entry, on, icon) {
@@ -694,7 +749,14 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
         objLayers.set(entry, rec);
       }
       rec.addTo(map);
-    } else if (rec) map.removeLayer(rec);
+      const e = objByEntry.get(entry);
+      if (e) panel.addRow(SELECTED, {
+        key: `o:${entry}`, label: e.name, count: e.lls.length,
+        html: catLabel("", esc(e.name), icon) , on: true,
+        toggle: (v) => { if (!v) toggleObject(entry, false, icon); },
+      });
+    } else if (rec) { map.removeLayer(rec); panel.removeRow(SELECTED, `o:${entry}`); }
+    if (onToggle) onToggle("obj", entry, on);
   }
 
   // ---- NPCs-tab toggle: show/hide one creature's spawn pins ----
@@ -713,7 +775,14 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
         npcLayers.set(entry, rec);
       }
       rec.addTo(map);
-    } else if (rec) map.removeLayer(rec);
+      const e = npcByEntry.get(entry);
+      if (e) panel.addRow(SELECTED, {
+        key: `n:${entry}`, label: e.name, count: e.lls.length,
+        html: `<span class="wm-legdot" style="background:${npcColor(entry)}"></span>${esc(e.name)}`, on: true,
+        toggle: (v) => { if (!v) toggleNpc(entry, false); },
+      });
+    } else if (rec) { map.removeLayer(rec); panel.removeRow(SELECTED, `n:${entry}`); }
+    if (onToggle) onToggle("npc", entry, on);
   }
 
   return { map, toggleObject, toggleNpc };

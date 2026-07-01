@@ -1353,6 +1353,45 @@ async function testZoneFarm(areaid) {
   console.log(`zone-farm ${areaid}: rows=${rows} headers=[${headers.join(",")}] goldRoute=${goldRoute}`);
   return rows > 5 && headers.includes("Total value") && goldRoute;
 }
+// Zone map gather nodes get GRANULAR per-node toggles (like the world map): a
+// "Mining Veins" / "Herbs" group with one row per ore/herb, not a single coarse
+// "Mining"/"Herbalism" bucket. Barrens (17) has Copper/Tin veins + several herbs.
+async function testZoneGatherGranular(areaid) {
+  await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector("#zonemap .wm-panel .wm-row", { timeout: 40000 });
+  const groups = await page.$$eval("#zonemap .wm-panel .wm-group", (gs) => gs.map((g) => ({
+    title: g.querySelector(".wm-group-title")?.textContent || "",
+    rows: [...g.querySelectorAll(".wm-row .wm-row-main")].map((r) => r.textContent.trim()),
+  })));
+  const mining = groups.find((g) => /Mining Veins/.test(g.title));
+  const herbs = groups.find((g) => /Herbs/.test(g.title));
+  const mN = mining ? mining.rows.length : 0, hN = herbs ? herbs.rows.length : 0;
+  console.log(`zone-gather ${areaid}: mining=${mN}[${(mining?.rows || []).slice(0, 3).join(", ")}] herbs=${hN}[${(herbs?.rows || []).slice(0, 3).join(", ")}]`);
+  return mN > 0 || hN > 0;
+}
+// "Show on map" (a tab mapchk checkbox) plots the spawns AND injects a toggle row
+// into the panel's "Selected" group; unchecking that panel row removes the markers
+// and re-unticks the tab checkbox (two-way sync). Elwynn (12) has NPC rows.
+async function testZoneSelectedLayer(areaid) {
+  await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector('.zone-page [data-pane="npcs"] input[data-mapnpc]', { timeout: 40000 });
+  await page.click('.zone-page [data-pane="npcs"] input[data-mapnpc]');
+  const selGroup = () => page.$$eval("#zonemap .wm-panel .wm-group", (gs) => {
+    const g = gs.find((x) => /Selected/.test(x.querySelector(".wm-group-title")?.textContent || ""));
+    return g ? g.querySelectorAll(".wm-row").length : 0;
+  });
+  await page.waitForFunction(() => [...document.querySelectorAll("#zonemap .wm-panel .wm-group-title")].some((t) => /Selected/.test(t.textContent)), { timeout: 5000 }).catch(() => {});
+  const selRows = await selGroup();
+  // uncheck via the panel row -> markers + row gone, and the tab checkbox unticks
+  await page.evaluate(() => {
+    const g = [...document.querySelectorAll("#zonemap .wm-panel .wm-group")].find((x) => /Selected/.test(x.querySelector(".wm-group-title")?.textContent || ""));
+    g?.querySelector(".wm-row input[type=checkbox]")?.click();
+  });
+  const afterRows = await selGroup();
+  const tabChecked = await page.$eval('.zone-page [data-pane="npcs"] input[data-mapnpc]', (e) => e.checked).catch(() => true);
+  console.log(`zone-selected ${areaid}: selRows=${selRows} afterRows=${afterRows} tabChecked=${tabChecked}`);
+  return selRows > 0 && afterRows === 0 && tabChecked === false;
+}
 // A multi-floor instance shows a floor switcher; the active floor renders a map,
 // and switching floors re-renders. Black Morass (?zone=5204) has 2 floors.
 async function testZoneFloors(areaid, minFloors) {
@@ -1484,6 +1523,8 @@ run(() => testZoneObjectLink(400));              // zone Objects tab links to ?o
 run(() => testZoneDotMenu(12));                  // right-click a Pixi category dot -> copy menu
 run(() => testFarmRoute(17, 2770));              // gather focus -> numbered farming-route circuit (Copper in Barrens)
 run(() => testZoneFarm(17));                     // zone Farming tab (best gold targets) + Gold route overlay
+run(() => testZoneGatherGranular(17));           // per-node Mining Veins / Herbs toggles (not coarse buckets)
+run(() => testZoneSelectedLayer(12));            // "show on map" -> Selected panel row, two-way sync
 run(() => testZone(5561, "Balor"));             // 1.18.1 zone, populated via migrations
 run(() => testZoneQuests(331, 20));             // Ashenvale quests tab (incl. sub-zones)
 run(() => testZoneFloors(5204, 2));             // Black Morass: multi-floor switcher

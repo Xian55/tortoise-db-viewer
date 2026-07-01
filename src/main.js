@@ -1592,12 +1592,21 @@ async function showZone(id, gatherItem = null) {
     const { initZoneMap } = await import("./zonemap.js");
     const base = ASSETS_BASE;
     let zmap = null;
+    // Keep the tab "show on map" checkbox + shown set in sync with the map/panel —
+    // fires both on a tab-checkbox change and when the panel's "Selected" row is
+    // unchecked (map -> tab), so the two controls never drift.
+    const syncSel = (kind, entry, on) => {
+      const set = kind === "npc" ? shownNpcs : shownObjects;
+      if (on) set.add(entry); else set.delete(entry);
+      const box = app.querySelector(`input[data-map${kind === "npc" ? "npc" : "obj"}="${entry}"]`);
+      if (box) box.checked = on;
+    };
     // (re)draw the map for a floor: its parchment + the spawns/bosses on it.
     const renderFloor = (fl) => {
       const fs = isInstance ? spawns.filter((s) => s.zone === fl.areaid) : spawns;
       const fo = isInstance ? objects.filter((o) => o.zone === fl.areaid) : objects;
       const fb = isInstance ? bosses.filter((b) => b.zone === fl.areaid) : bosses;
-      zmap = initZoneMap(el, { ...fl, imgUrl: `${base}maps/${fl.areaid}.webp` }, fs, fo, navigate, { focus: fl.areaid === z.areaid ? focus : null, bosses: fb, farm: isInstance ? null : farmPoints });
+      zmap = initZoneMap(el, { ...fl, imgUrl: `${base}maps/${fl.areaid}.webp` }, fs, fo, navigate, { focus: fl.areaid === z.areaid ? focus : null, bosses: fb, farm: isInstance ? null : farmPoints, onToggle: syncSel });
       app.querySelectorAll("#floorswitch button").forEach((b) => b.classList.toggle("active", Number(b.dataset.floor) === fl.areaid));
     };
     renderFloor(activeFloor);
@@ -1613,17 +1622,14 @@ async function showZone(id, gatherItem = null) {
       const cb = e.target.closest("[data-mapobj]");
       if (!cb || !zmap) return;
       const entry = Number(cb.dataset.mapobj);
-      zmap.toggleObject(entry, cb.checked, iconByEntry.get(entry));
-      if (cb.checked) shownObjects.add(entry); else shownObjects.delete(entry);
+      zmap.toggleObject(entry, cb.checked, iconByEntry.get(entry)); // syncSel updates shownObjects + the box
     });
     // NPCs tab checkboxes do the same for a creature's spawns.
     const npcPane = app.querySelector('[data-pane="npcs"]');
     if (npcPane) npcPane.addEventListener("change", (e) => {
       const cb = e.target.closest("[data-mapnpc]");
       if (!cb || !zmap) return;
-      const entry = Number(cb.dataset.mapnpc);
-      zmap.toggleNpc(entry, cb.checked);
-      if (cb.checked) shownNpcs.add(entry); else shownNpcs.delete(entry);
+      zmap.toggleNpc(Number(cb.dataset.mapnpc), cb.checked); // syncSel updates shownNpcs + the box
     });
   } catch (e) { el.innerHTML = errorBox(e); }
 }
