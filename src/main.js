@@ -1227,9 +1227,33 @@ async function showQuest(id) {
   const qvZoneIds = questMap.views.filter((v) => v.kind === "zone").map((v) => v.areaid);
   const qvZones = qvZoneIds.length ? await query(Q.qZonesByIds(qvZoneIds.length), qvZoneIds) : [];
   const qvZoneById = new Map(qvZones.map((z) => [z.areaid, z]));
+  // Drop parchment markers whose in-game coordinate falls outside 0-100: a spawn's
+  // ADT-assigned zone can differ from the zone whose WorldMapArea rectangle actually
+  // contains it, so its world (x,y) projects off that zone's parchment (e.g. quest
+  // 60145's kill target sits in "Northwind" but plots at Y=103 on its map). The
+  // continent world view keeps them -- its projection is valid there. A zone view
+  // left with no in-bounds markers is discarded entirely. (M = small edge tolerance
+  // for WMA-rectangle rounding at zone borders.)
+  const inZoneBounds = (z, p) => {
+    const dx = z.loctop - z.locbottom, dy = z.locleft - z.locright, M = 2;
+    const X = dy ? (100 * (z.locleft - p.y)) / dy : 0;
+    const Y = dx ? (100 * (z.loctop - p.x)) / dx : 0;
+    return X >= -M && X <= 100 + M && Y >= -M && Y <= 100 + M;
+  };
+  for (const v of questMap.views) {
+    if (v.kind !== "zone") continue;
+    const z = qvZoneById.get(v.areaid);
+    if (!z) continue;
+    for (const l of v.markerLayers || []) l.points = l.points.filter((p) => inZoneBounds(z, p));
+    v.markerLayers = (v.markerLayers || []).filter((l) => l.points.length);
+    if (v.route && v.route.points) {
+      v.route.points = v.route.points.filter((p) => inZoneBounds(z, p));
+      if (v.route.points.length < 3) v.route = null;
+    }
+  }
   const mapViews = questMap.views.filter((v) => v.kind === "world"
     ? !!(minimapManifest.maps || {})[String(v.mapId)]
-    : qvZoneById.has(v.areaid));
+    : (qvZoneById.has(v.areaid) && (v.markerLayers || []).length > 0));
   const viewLabel = (v) => (v.kind === "world" ? "World map" : (qvZoneById.get(v.areaid)?.name || `Zone ${v.areaid}`));
   const mapSwitch = mapViews.length > 1
     ? `<div id="questmapswitch" class="floor-switch">${mapViews.map((v, i) =>

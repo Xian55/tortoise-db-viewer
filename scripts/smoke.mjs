@@ -912,6 +912,19 @@ async function testQuestBranch(id, want = ".qc-branch") {
   return ok;
 }
 
+// Out-of-bounds parchment pruning: a spawn's ADT-assigned zone can differ from the
+// zone whose WorldMapArea actually contains it, so it projects off that parchment.
+// Quest 60145's kill target sits in "Northwind" but plots at Y~103 -> the Northwind
+// zone view must be dropped, leaving only Elwynn Forest + the World map.
+async function testQuestMapBounds(id) {
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 60000 });
+  await page.waitForSelector("#questmapswitch button", { timeout: 40000 }).catch(() => {});
+  const btns = await page.$$eval("#questmapswitch button", (e) => e.map((b) => b.textContent.trim())).catch(() => []);
+  const ok = btns.includes("Elwynn Forest") && btns.some((b) => /world map/i.test(b)) && !btns.some((b) => /northwind/i.test(b));
+  console.log(`quest-map-bounds ${id}: zones=[${btns.join(", ")}] ok=${ok}`);
+  return ok;
+}
+
 // A sub-zone quest resolves the full hierarchy continent > zone > sub-zone, with
 // the parent zone linked. Quest 783 -> Eastern Kingdoms > Elwynn Forest > Northshire Valley.
 async function testQuestZoneChain(id) {
@@ -1518,6 +1531,7 @@ run(() => testQuestNoProvided(179));     // ReqSourceId==ReqItemId not shown as 
 run(() => testQuestRequiredDrops(179));  // objective item collapses to its drop sources + zones
 run(() => testQuestKillLocation(41189)); // Kill / Use targets show their zone
 run(() => testQuestMap(12, 52));         // quest map: single-zone parchment (+route) + cross-zone world map, categorized markers
+run(() => testQuestMapBounds(60145));    // out-of-bounds parchment (Northwind) pruned; Elwynn + World map kept
 run(() => testItemDropLocation(750));    // dropped-by NPC locations resolved
 run(() => testSearchTabs("defias"));
 run(() => testSearchZone("Tanaris"));
