@@ -1,8 +1,9 @@
 // Quest map resolver -- the data-side foundation that turns a quest's relation rows
-// (giver / turn-in / kill-use / collect sources) into a plottable "map plan":
-// categorized marker layers + a surface decision (single-zone parchment vs the
-// seamless world map) + an opt-in open-path route. Pure data; the caller (main.js)
-// renders the chosen surface. Reusable by any future "plot these entities" feature.
+// (giver / turn-in / kill-use / collect sources) into a plottable "map plan": one
+// VIEW per zone the quest touches (its own categorized marker layers + opt-in route),
+// plus a seamless world-map overview of the busiest continent when it spans >1 zone.
+// Pure data; the caller (main.js) renders a switcher over the views. Reusable by any
+// future "plot these entities" feature.
 import { query } from "./db.js";
 import * as Q from "./queries.js";
 
@@ -22,7 +23,8 @@ function makeHue() {
 // the nearer one -- you don't get dragged across the zone when a closer spot works.
 // Without an anchor, falls back to the densest cell.
 function routeWaypoint(pts, anchor) {
-  if (pts.length <= 1) return { x: pts[0].x, y: pts[0].y };
+  if (!pts.length) return null;
+  if (pts.length === 1) return { x: pts[0].x, y: pts[0].y };
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
   const gx = (x1 - x0) / 6 || 1, gy = (y1 - y0) / 6 || 1;
@@ -33,13 +35,16 @@ function routeWaypoint(pts, anchor) {
   }
   const list = [...cells.values()].map((c) => ({ n: c.n, x: c.sx / c.n, y: c.sy / c.n }));
   const maxN = Math.max(...list.map((c) => c.n));
+  // substantial cells; if none clear the threshold (every point in its own cell -- a
+  // scattered objective), fall back to all cells so we still return a waypoint.
   const cand = list.filter((c) => c.n >= Math.max(2, 0.4 * maxN));
+  const pool = cand.length ? cand : list;
   if (anchor) {
     let best = null;
-    for (const c of cand) { const d = (c.x - anchor.x) ** 2 + (c.y - anchor.y) ** 2; if (!best || d < best.d) best = { c, d }; }
+    for (const c of pool) { const d = (c.x - anchor.x) ** 2 + (c.y - anchor.y) ** 2; if (!best || d < best.d) best = { c, d }; }
     return { x: best.c.x, y: best.c.y };
   }
-  let best = null; for (const c of cand) if (!best || c.n > best.n) best = c;
+  let best = null; for (const c of pool) if (!best || c.n > best.n) best = c;
   return { x: best.x, y: best.y };
 }
 
@@ -77,81 +82,96 @@ export async function buildQuestMap(sources) {
   }
 
   const all = tagged.flatMap((t) => t.points);
-  if (!all.length) return { markerLayers: [], surface: null };
+  if (!all.length) return { views: [] };
 
-  // pick the continent the map shows by a WEIGHTED score: the actual quest work
-  // (kill/collect objectives) outweighs giver/turn-in, so a quest you pick up on one
-  // continent but complete on another shows where the work is (e.g. quest 272).
-  const zoneSet = new Set(all.map((p) => p.zone));
-  const mapScore = new Map();
-  const W = { giver: 1, ender: 1, kill: 3, collect: 3 };
-  for (const t of tagged) for (const p of t.points) mapScore.set(p.map, (mapScore.get(p.map) || 0) + (W[t.role] || 1));
-  let domMap = null, best = -1;
-  for (const [m, s] of mapScore) if (s > best) { best = s; domMap = m; }
-  // dominant zone = most-marked zone ON the chosen continent (parchment + fallback)
-  const zOnDom = new Map();
-  for (const p of all) if (p.map === domMap) zOnDom.set(p.zone, (zOnDom.get(p.zone) || 0) + 1);
-  let domZone = null, bz = -1;
-  for (const [z, n] of zOnDom) if (n > bz) { bz = n; domZone = z; }
-  // roles stranded on other continents -> a note (can't plot them on this surface)
-  const offRoles = new Set();
-  for (const t of tagged) for (const p of t.points) if (p.map !== domMap) offRoles.add(t.role);
-  const surface = (mapScore.size === 1 && zoneSet.size === 1)
-    ? { kind: "zone", areaid: domZone, mapId: domMap, zones: 1, off: [] }
-    : { kind: "world", mapId: domMap, areaid: domZone, zones: zoneSet.size, off: [...offRoles] };
-  const inSurface = (p) => (surface.kind === "zone" ? p.zone === surface.areaid : p.map === surface.mapId);
-
-  const ptsOf = (role) => tagged.filter((t) => t.role === role).flatMap((t) => t.points).filter(inSurface);
-  const giverP = ptsOf("giver"), enderP = ptsOf("ender");
-
-  const markerLayers = [];
+  // Stable colour per objective (kill target / collected item) so the same objective
+  // reads the same across every zone view AND the world overview. giver/turn-in keep
+  // the fixed green/gold.
   const nextHue = makeHue();
-  // giver/ender: a coloured dot legend (green/gold); object givers/enders still render
-  // the default "Quest Giver" POI marker (buildMarkerLayer's fallback for kind 'o').
+  const killColor = new Map();
+  for (const t of tagged) if (t.role === "kill" && !killColor.has(t.entry)) killColor.set(t.entry, nextHue());
+  const collectColor = new Map();
+  for (const t of tagged) if (t.role === "collect" && !collectColor.has(t.group)) collectColor.set(t.group, nextHue());
+
   // When the same NPC(s) both START and END the quest, one combined marker -- two
   // overlapping pins on the same spot are redundant.
   const giverIds = new Set([...giversN, ...giversG].map((x) => x.entry));
   const enderIds = new Set([...endersN, ...endersG].map((x) => x.entry));
   const sameNpc = giverIds.size > 0 && giverIds.size === enderIds.size && [...giverIds].every((id) => enderIds.has(id));
-  if (sameNpc) {
-    if (giverP.length) markerLayers.push({ key: "giver", label: "Quest giver & turn-in", color: COLOR.giver, points: giverP, on: true });
-  } else {
-    if (giverP.length) markerLayers.push({ key: "giver", label: "Quest giver", color: COLOR.giver, points: giverP, on: true });
-    if (enderP.length) markerLayers.push({ key: "ender", label: "Turn in", color: COLOR.ender, points: enderP, on: true });
+
+  // Build the categorised marker layers + suggested route for the subset of points
+  // passing `inView` (one zone's parchment, or a whole continent for the world view).
+  const layersFor = (inView) => {
+    const giverP = tagged.filter((t) => t.role === "giver").flatMap((t) => t.points).filter(inView);
+    const enderP = tagged.filter((t) => t.role === "ender").flatMap((t) => t.points).filter(inView);
+    const markerLayers = [];
+    if (sameNpc) {
+      if (giverP.length) markerLayers.push({ key: "giver", label: "Quest giver & turn-in", color: COLOR.giver, points: giverP, on: true });
+    } else {
+      if (giverP.length) markerLayers.push({ key: "giver", label: "Quest giver", color: COLOR.giver, points: giverP, on: true });
+      if (enderP.length) markerLayers.push({ key: "ender", label: "Turn in", color: COLOR.ender, points: enderP, on: true });
+    }
+    // one layer PER kill/use objective target (each its own stable colour + toggle)
+    for (const t of tagged.filter((x) => x.role === "kill")) {
+      const pts = t.points.filter(inView);
+      if (!pts.length) continue;
+      markerLayers.push({ key: `kill-${t.entry}`, label: t.count > 1 ? `${t.name} ×${t.count}` : t.name, color: killColor.get(t.entry), poi: t.kind === "o" ? "Chest" : undefined, points: pts, on: true });
+    }
+    // one layer PER collected item (sources grouped by `group`)
+    const byGroup = new Map();
+    for (const t of tagged.filter((x) => x.role === "collect")) {
+      const g = byGroup.get(t.group) || { name: t.groupName, icon: t.icon, pts: [] };
+      for (const p of t.points) if (inView(p)) g.pts.push(p);
+      byGroup.set(t.group, g);
+    }
+    for (const [gid, g] of byGroup) {
+      let pts = g.pts;
+      if (!pts.length) continue;
+      if (pts.length > COLLECT_CAP) pts = pts.slice(0, COLLECT_CAP);
+      markerLayers.push({ key: `collect-${gid}`, label: `Collect: ${g.name}`, color: collectColor.get(gid), icon: g.icon, points: pts, on: true });
+    }
+
+    // opt-in open-path route: giver -> ONE waypoint per objective (its densest spot) ->
+    // turn-in. Using a representative per objective (not every spawn) keeps the path from
+    // zig-zagging out to stray far-end spawns when a dense cluster has everything.
+    const objLayers = markerLayers.filter((l) => /^(kill|collect)-/.test(l.key));
+    const startWp = giverP.length ? routeWaypoint(giverP) : null;
+    const endWp = enderP.length ? routeWaypoint(enderP) : null;
+    const anchor = startWp && endWp ? { x: (startWp.x + endWp.x) / 2, y: (startWp.y + endWp.y) / 2 } : (startWp || endWp || null);
+    const objWps = objLayers.map((l) => routeWaypoint(l.points, anchor)).filter(Boolean);
+    const routePts = [...(startWp ? [startWp] : []), ...objWps, ...(!sameNpc && endWp ? [endWp] : [])];
+    const route = (routePts.length >= 3)
+      ? { points: routePts, start: startWp || undefined, end: (!sameNpc && endWp) || undefined, label: "Suggested route", mergeFrac: 0 }
+      : null;
+    return { markerLayers, route };
+  };
+
+  // One view per zone that has markers (busiest first, weighting the actual quest work
+  // -- kill/collect -- over the giver/turn-in), plus a seamless world-map overview of
+  // the busiest continent when that continent spans more than one zone.
+  const W = { giver: 1, ender: 1, kill: 3, collect: 3 };
+  const zoneMapId = new Map(); // zone -> its continent map id
+  const zoneWeight = new Map();
+  for (const t of tagged) for (const p of t.points) {
+    zoneMapId.set(p.zone, p.map);
+    zoneWeight.set(p.zone, (zoneWeight.get(p.zone) || 0) + (W[t.role] || 1));
   }
-  // one layer PER kill/use objective target (each its own colour + toggle)
-  for (const t of tagged.filter((x) => x.role === "kill")) {
-    const pts = t.points.filter(inSurface);
-    if (!pts.length) continue;
-    markerLayers.push({ key: `kill-${t.entry}`, label: t.count > 1 ? `${t.name} ×${t.count}` : t.name, color: nextHue(), poi: t.kind === "o" ? "Chest" : undefined, points: pts, on: true });
+  const views = [...zoneWeight.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([areaid, weight]) => ({ key: `z-${areaid}`, kind: "zone", areaid, mapId: zoneMapId.get(areaid), weight, ...layersFor((p) => p.zone === areaid) }));
+
+  const mapWeight = new Map(), zonesPerMap = new Map();
+  for (const [z, w] of zoneWeight) {
+    const m = zoneMapId.get(z);
+    mapWeight.set(m, (mapWeight.get(m) || 0) + w);
+    if (!zonesPerMap.has(m)) zonesPerMap.set(m, new Set());
+    zonesPerMap.get(m).add(z);
   }
-  // one layer PER collected item (sources grouped by `group`)
-  const byGroup = new Map();
-  for (const t of tagged.filter((x) => x.role === "collect")) {
-    const g = byGroup.get(t.group) || { name: t.groupName, icon: t.icon, pts: [] };
-    for (const p of t.points) g.pts.push(p);
-    byGroup.set(t.group, g);
-  }
-  for (const [gid, g] of byGroup) {
-    let pts = g.pts.filter(inSurface);
-    if (!pts.length) continue;
-    if (pts.length > COLLECT_CAP) pts = pts.slice(0, COLLECT_CAP);
-    markerLayers.push({ key: `collect-${gid}`, label: `Collect: ${g.name}`, color: nextHue(), icon: g.icon, points: pts, on: true });
+  let domMap = null, bestW = -1;
+  for (const [m, w] of mapWeight) if (w > bestW) { bestW = w; domMap = m; }
+  if (domMap != null && zonesPerMap.get(domMap).size > 1) {
+    views.push({ key: `world-${domMap}`, kind: "world", mapId: domMap, zones: zonesPerMap.get(domMap).size, ...layersFor((p) => p.map === domMap) });
   }
 
-  // opt-in open-path route: giver -> ONE waypoint per objective (its densest spot) ->
-  // turn-in. Using a representative per objective (not every spawn) keeps the path from
-  // zig-zagging out to stray far-end spawns when a dense cluster has everything.
-  const objLayers = markerLayers.filter((l) => /^(kill|collect)-/.test(l.key));
-  const startWp = giverP.length ? routeWaypoint(giverP) : null;
-  const endWp = enderP.length ? routeWaypoint(enderP) : null;
-  // anchor objective waypoints to the giver/turn-in so nearer clusters win over far dense ones
-  const anchor = startWp && endWp ? { x: (startWp.x + endWp.x) / 2, y: (startWp.y + endWp.y) / 2 } : (startWp || endWp || null);
-  const objWps = objLayers.map((l) => routeWaypoint(l.points, anchor));
-  const routePts = [...(startWp ? [startWp] : []), ...objWps, ...(!sameNpc && endWp ? [endWp] : [])];
-  const route = (routePts.length >= 3)
-    ? { points: routePts, start: startWp || undefined, end: (!sameNpc && endWp) || undefined, label: "Suggested route", mergeFrac: 0 }
-    : null;
-
-  return { markerLayers, surface, route };
+  return { views };
 }

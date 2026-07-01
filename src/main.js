@@ -1204,9 +1204,9 @@ async function showQuest(id) {
   ]);
   const killLoc = (o) => (o.is_go ? killObjLoc : killNpcLoc).get(o.target) || {};
 
-  // ---- quest map plan: giver / turn-in / kill-use / collect markers + opt-in route,
-  // on the single zone's parchment or (cross-zone) the seamless world map ----
-  let questMap = { markerLayers: [], surface: null, route: null };
+  // ---- quest map plan: one view per zone the quest touches, plus a world-map overview
+  // of the busiest continent; a switcher (like the object/dungeon-floor one) flips them ----
+  let questMap = { views: [] };
   try {
     questMap = await buildQuestMap({
       giversN, endersN, giversG, endersG,
@@ -1214,12 +1214,21 @@ async function showQuest(id) {
       collects: collectSources,
     });
   } catch (_) { /* no map */ }
-  const off = questMap.surface && questMap.surface.off || [];
-  const offLabel = { giver: "quest giver", ender: "turn-in", kill: "kill targets", collect: "collect spots" };
-  const mapNote = questMap.surface && questMap.surface.kind === "world"
-    ? ` <span class="dim">— spans ${questMap.surface.zones} zones, shown on the world map${off.length ? `; ${off.map((r) => offLabel[r] || r).join(" / ")} on another continent` : ""}</span>` : "";
-  const mapHtml = questMap.surface
-    ? `<div class="panel quest-map"><h3 class="quest-map-h">Map${mapNote}</h3><div id="zonemap"></div></div>` : "";
+  // resolve parchment bounds/names for the zone views; keep only drawable views (zone
+  // with a parchment row, world continent with a minimap pyramid).
+  const qvZoneIds = questMap.views.filter((v) => v.kind === "zone").map((v) => v.areaid);
+  const qvZones = qvZoneIds.length ? await query(Q.qZonesByIds(qvZoneIds.length), qvZoneIds) : [];
+  const qvZoneById = new Map(qvZones.map((z) => [z.areaid, z]));
+  const mapViews = questMap.views.filter((v) => v.kind === "world"
+    ? !!(minimapManifest.maps || {})[String(v.mapId)]
+    : qvZoneById.has(v.areaid));
+  const viewLabel = (v) => (v.kind === "world" ? "World map" : (qvZoneById.get(v.areaid)?.name || `Zone ${v.areaid}`));
+  const mapSwitch = mapViews.length > 1
+    ? `<div id="questmapswitch" class="floor-switch">${mapViews.map((v, i) =>
+        `<button data-vk="${esc(v.key)}"${i === 0 ? ' class="active"' : ""}>${esc(viewLabel(v))}</button>`).join("")}</div>`
+    : "";
+  const mapHtml = mapViews.length
+    ? `<div class="panel quest-map"><h3 class="quest-map-h">Map</h3>${mapSwitch}<div id="zonemap"></div></div>` : "";
 
   // ---- reward summary ----
   const rewBits = [];
@@ -1306,37 +1315,32 @@ async function showQuest(id) {
   mountTables();
   wireTabs();
 
-  // lazy-init the quest map (the heavy Leaflet/Pixi chunk) onto the chosen surface.
-  if (questMap.surface) {
+  // lazy-init the quest map (heavy Leaflet/Pixi chunk); the switcher redraws it per view.
+  if (mapViews.length) {
     const el = document.getElementById("zonemap");
-    const s = questMap.surface;
-    const mapOpts = { markerLayers: questMap.markerLayers, route: questMap.route };
     try {
       const { initZoneMap, initWorldMap } = await import("./zonemap.js");
-      if (s.kind === "zone") {
-        const [zone] = await query(Q.qZonesByIds(1), [s.areaid]);
-        if (zone) initZoneMap(el, { ...zone, imgUrl: `${ASSETS_BASE}maps/${zone.areaid}.webp` }, [], [], navigate, mapOpts);
-        else el.closest(".quest-map")?.remove();
-      } else {
-        const m = (minimapManifest.maps || {})[String(s.mapId)];
-        if (m) initWorldMap(el, {
-          mapId: s.mapId, name: m.name, bbox: m.bbox,
-          tile: minimapManifest.tile, adt: minimapManifest.adt, grid: minimapManifest.grid,
-          maxNativeZoom: minimapManifest.maxNativeZoom, tilesBase: `${ASSETS_BASE}minimap/`,
-        }, [], [], navigate, mapOpts);
-        else {
-          // that continent ships no minimap pyramid (e.g. an instance map) -> fall back
-          // to the dominant zone's parchment with the markers/route filtered to it.
-          const [zone] = s.areaid ? await query(Q.qZonesByIds(1), [s.areaid]) : [];
-          const f = (pts) => pts.filter((p) => p.zone === s.areaid);
-          const fLayers = questMap.markerLayers.map((l) => ({ ...l, points: f(l.points) })).filter((l) => l.points.length);
-          const fRoute = questMap.route ? { ...questMap.route, points: f(questMap.route.points) } : null;
-          if (zone && fLayers.length) initZoneMap(el, { ...zone, imgUrl: `${ASSETS_BASE}maps/${zone.areaid}.webp` }, [], [], navigate,
-            { markerLayers: fLayers, route: fRoute && fRoute.points.length >= 3 ? fRoute : null });
-          else el.closest(".quest-map")?.remove();
+      const renderView = (v) => {
+        const opts = { markerLayers: v.markerLayers, route: v.route };
+        if (v.kind === "zone") {
+          const zone = qvZoneById.get(v.areaid);
+          initZoneMap(el, { ...zone, imgUrl: `${ASSETS_BASE}maps/${zone.areaid}.webp` }, [], [], navigate, opts);
+        } else {
+          const m = (minimapManifest.maps || {})[String(v.mapId)];
+          initWorldMap(el, {
+            mapId: v.mapId, name: m.name, bbox: m.bbox,
+            tile: minimapManifest.tile, adt: minimapManifest.adt, grid: minimapManifest.grid,
+            maxNativeZoom: minimapManifest.maxNativeZoom, tilesBase: `${ASSETS_BASE}minimap/`,
+          }, [], [], navigate, opts);
         }
-      }
-    } catch (e) { el.closest(".quest-map")?.remove(); }
+        app.querySelectorAll("#questmapswitch button").forEach((b) => b.classList.toggle("active", b.dataset.vk === v.key));
+      };
+      renderView(mapViews[0]);
+      app.querySelectorAll("#questmapswitch button").forEach((b) => b.addEventListener("click", () => {
+        const v = mapViews.find((x) => x.key === b.dataset.vk);
+        if (v) renderView(v);
+      }));
+    } catch (e) { document.getElementById("zonemap")?.closest(".quest-map")?.remove(); }
   }
 }
 

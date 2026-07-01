@@ -93,9 +93,11 @@ async function testQuestKillLocation(id) {
   return li >= 0 && locs.length > 0;
 }
 
-// Quest map: a single-zone quest embeds the zone parchment with categorized highlight
-// rows (Quest giver / Turn in / Kill / use) + an opt-in Suggested route toggle; a
-// cross-zone quest embeds the seamless world map (tile pyramid) with the same rows.
+// Quest map: a single-zone quest embeds the zone parchment (no switcher) with
+// categorized highlight rows (Quest giver / Turn in / Kill / use) + an opt-in Suggested
+// route toggle. A multi-zone quest gets a switcher: one button per zone parchment
+// (busiest first, shown by default) plus a "World map" button that swaps in the seamless
+// tile pyramid overview.
 async function testQuestMap(single, multi) {
   await page.goto(`${BASE}?quest=${single}`, { waitUntil: WAIT, timeout: 60000 });
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 }).catch(() => {});
@@ -107,12 +109,23 @@ async function testQuestMap(single, multi) {
   // objectives are per-target layers now (named after the kill/collect target) -> any
   // marker row that isn't giver/turn-in/route counts as an objective layer.
   const objective = rows.some((r) => !/quest giver|turn[- ]?in|Suggested route/i.test(r));
+  const singleNoSwitch = (await page.$$("#questmapswitch button")).length === 0;
+
   await page.goto(`${BASE}?quest=${multi}`, { waitUntil: WAIT, timeout: 60000 });
-  const worldTiles = await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 }).then(() => true).catch(() => false);
-  const mrows = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
-  const worldGiver = mrows.some((r) => /quest giver/i.test(r));
-  console.log(`quest-map single=${single}: giver=${giver} turnin=${turnin} objective=${objective} route=${route} | multi=${multi}: worldTiles=${worldTiles} giver=${worldGiver}`);
-  return giver && turnin && objective && route && worldTiles && worldGiver;
+  await page.waitForSelector("#questmapswitch button", { timeout: 40000 }).catch(() => {});
+  const btns = await page.$$eval("#questmapswitch button", (e) => e.map((b) => b.textContent.trim())).catch(() => []);
+  // defaults to the busiest zone's parchment (not the world map)
+  const defaultParchment = await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 }).then(() => true).catch(() => false);
+  const wIdx = btns.findIndex((b) => /world map/i.test(b));
+  let worldTiles = false, worldGiver = false;
+  if (wIdx >= 0) {
+    (await page.$$("#questmapswitch button"))[wIdx].click();
+    worldTiles = await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 }).then(() => true).catch(() => false);
+    const mrows = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
+    worldGiver = mrows.some((r) => /quest giver/i.test(r));
+  }
+  console.log(`quest-map single=${single}: giver=${giver} turnin=${turnin} objective=${objective} route=${route} noSwitch=${singleNoSwitch} | multi=${multi}: zones=[${btns.join(", ")}] default=${defaultParchment} worldTiles=${worldTiles} giver=${worldGiver}`);
+  return giver && turnin && objective && route && singleNoSwitch && btns.length > 1 && wIdx >= 0 && defaultParchment && worldTiles && worldGiver;
 }
 
 // A required item whose ReqSourceId duplicates it must NOT appear as "Provided items".
