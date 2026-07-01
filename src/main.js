@@ -1147,10 +1147,6 @@ async function showQuest(id) {
     const npc = (startByQuest.get(r.entry) || [])[0];
     r.startHtml = npc ? npcLink(npc.entry, npc.name) + (locHtml(npc.entry) ? ` <span class="dim">·</span> ${locHtml(npc.entry)}` : "") : "";
     r.startText = npc ? (locText(npc.entry) || npc.name) : "";
-    // "Follows" = the direct prerequisite quest(s); >1 prereq = a merge point.
-    const par = (r.parents || []).map((e) => chainById.get(e)).filter(Boolean);
-    r.followsHtml = par.map((p) => questLink(p.entry, p.title)).join(`<span class="dim">, </span>`);
-    r.followsText = par.map((p) => p.title).join(", ");
   });
 
   // ---- required (objective) items: per item, where it drops + the zone ----
@@ -1296,6 +1292,10 @@ async function showQuest(id) {
   // Quest chain: ordered first->last via a step "#" column (default no sort keeps
   // that order; click # to restore it). Current quest bolded; "Starts at" = the
   // step's giver NPC + its location.
+  // Badges convey chain structure so a plain prereq column (near-always just the
+  // row above, in topo order) isn't needed: ⑂ = opens several follow-up lines,
+  // ⇉ = several quests converge here (tooltip names them), ↗ = a self-rooted line
+  // that connects in. Ordinary linear steps carry no badge (prereq = the row above).
   const chainCols = [
     { label: "#", num: true, cls: "muted", cell: (r) => r.step, value: (r) => r.step },
     { label: "Quest", value: (r) => r.title, cell: (r) => {
@@ -1303,11 +1303,12 @@ async function showQuest(id) {
         const b = [];
         const kids = (r.children || []).length;
         if (kids > 1) b.push(`<span class="qc-branch" title="Opens ${kids} follow-up quest lines">⑂ ${kids}</span>`);
+        const par = (r.parents || []).map((e) => chainById.get(e)).filter(Boolean);
+        if (par.length > 1) b.push(`<span class="qc-branch qc-merge" title="${esc(`${par.length} quests lead here: ${par.map((p) => p.title).join(", ")}`)}">⇉ ${par.length}</span>`);
         if (r.prevquest === 0 && (r.parents || []).length) b.push(`<span class="qc-branch qc-join" title="Start of a separate quest line that connects into this chain">↗ separate chain</span>`);
         return nm + b.map((x) => ` ${x}`).join("");
       } },
     { label: "Level", num: true, cls: "muted", cell: (r) => (r.level > 0 ? r.level : ""), value: (r) => r.level || 0 },
-    { label: "Follows", cls: "muted", cell: (r) => r.followsHtml || "", value: (r) => r.followsText || "" },
     { label: "Starts at", cls: "muted", cell: (r) => r.startHtml, value: (r) => r.startText },
   ];
   // Required items grouped by item (one collapsible row per objective); each row =

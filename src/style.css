@@ -390,13 +390,15 @@ a.ilink.zone { color: #8fd18f; }
 .mapchk { display: inline-flex; align-items: center; cursor: pointer; }
 /* Quest chain tab: the current quest is bolded gold in the table */
 .qc-cur { color: var(--gold); }
-/* Branch markers: ⑂ N = a quest opening several follow-up lines; ↗ = a self-
-   rooted quest line that connects in (a separate chain off this one). */
+/* Chain-structure markers: ⑂ N = a quest opening several follow-up lines;
+   ⇉ N = several quests converge here (merge); ↗ = a self-rooted quest line
+   that connects in (a separate chain off this one). */
 .qc-branch {
   display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 3px;
   font-size: 11px; line-height: 16px; white-space: nowrap; vertical-align: middle;
   color: var(--muted); background: var(--panel2); border: 1px solid var(--border);
 }
+.qc-branch.qc-merge { color: var(--text); }
 .qc-branch.qc-join { color: var(--gold); }
 /* multi-floor instance map: floor switcher buttons above the map */
 .floor-switch { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
