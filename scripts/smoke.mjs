@@ -7,6 +7,11 @@ const BASE = process.env.SMOKE_BASE || "http://localhost:4317/tortoise-db-viewer
 // icon-CDN traffic) only added ~500ms of dead time per nav. domcontentloaded +
 // the existing waitForSelector is the real ready signal and ~2.5x faster.
 const WAIT = "domcontentloaded";
+// Per-test selector timeout. Healthy renders are sub-second to a few seconds, so a
+// failing test that waits the old 40s is pure dead time -- keep it short so red
+// runs fail fast (the one-time DB download is covered by the warmup below, which
+// uses its own long timeout). Override with SMOKE_TIMEOUT if a slow CI needs more.
+const T = +process.env.SMOKE_TIMEOUT || 12000;
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
@@ -39,9 +44,9 @@ page.on("response", (r) => { if (r.status() >= 400 && !BENIGN.test(r.url())) err
 
 async function testItem(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 30000 });
-  await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
+  await page.waitForSelector(".tooltip .tt-name", { timeout: T });
   const name = await page.$eval(".tooltip .tt-name", (el) => el.textContent);
-  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
   const tabList = await page.$$eval(".item-rel .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
   const sortableH = await page.$$eval(".item-rel .tabpane:not(.hidden) th.sortable", (e) => e.length);
   console.log(`item ${id}: name="${name}" tabs=[${tabList.join(", ")}] sortableHdrs=${sortableH}`);
@@ -51,10 +56,10 @@ async function testItem(id, expectName) {
 // The "Dropped by" tab carries a Location column resolved for each NPC (open-world
 // zone or dungeon), e.g. wolves dropping Tough Wolf Meat (item 750).
 async function testItemDropLocation(id) {
-  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".item-rel .tab")].find((t) => t.textContent.includes("Dropped by")); if (b) b.click(); });
-  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: T });
   const headers = await page.$$eval(".item-rel .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const li = headers.indexOf("Location");
   const locs = await page.$$eval(".item-rel .tabpane:not(.hidden) tbody tr", (rows, idx) => rows.map((r) => r.querySelectorAll("td")[idx]?.textContent.trim()).filter(Boolean), li);
@@ -65,10 +70,10 @@ async function testItemDropLocation(id) {
 // Required (objective) items are collapsible groups; expanding one reveals the
 // NPCs/objects that drop it + the zone. Quest 179 -> Tough Wolf Meat -> wolves.
 async function testQuestRequiredDrops(id) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".quest-page .tab")].find((t) => t.textContent.includes("Required items")); if (b) b.click(); });
-  await page.waitForSelector(".tabpane:not(.hidden) .grouprow", { timeout: 40000 });
+  await page.waitForSelector(".tabpane:not(.hidden) .grouprow", { timeout: T });
   const groups = await page.$$eval(".tabpane:not(.hidden) .grouprow", (e) => e.length);
   const collapsedInit = await page.$$eval(".tabpane:not(.hidden) .grouprow.collapsed", (e) => e.length);
   await page.click(".tabpane:not(.hidden) .grouprow");
@@ -82,10 +87,10 @@ async function testQuestRequiredDrops(id) {
 // The Kill / Use tab shows where each target NPC/object is (e.g. quest 41189 ->
 // targets in Thalassian Highlands).
 async function testQuestKillLocation(id) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".quest-page .tab")].find((t) => t.textContent.includes("Kill / Use")); if (b) b.click(); });
-  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: T });
   const headers = await page.$$eval(".tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const li = headers.indexOf("Location");
   const locs = await page.$$eval(".tabpane:not(.hidden) tbody tr", (rows, idx) => rows.map((r) => r.querySelectorAll("td")[idx]?.textContent.trim()).filter(Boolean), li);
@@ -100,7 +105,7 @@ async function testQuestKillLocation(id) {
 // tile pyramid overview.
 async function testQuestMap(single, multi) {
   await page.goto(`${BASE}?quest=${single}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T }).catch(() => {});
   await page.waitForSelector("#zonemap .wm-panel .wm-row", { timeout: 20000 }).catch(() => {});
   const rows = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
   const has = (re) => rows.some((r) => re.test(r));
@@ -112,15 +117,15 @@ async function testQuestMap(single, multi) {
   const singleNoSwitch = (await page.$$("#questmapswitch button")).length === 0;
 
   await page.goto(`${BASE}?quest=${multi}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector("#questmapswitch button", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector("#questmapswitch button", { timeout: T }).catch(() => {});
   const btns = await page.$$eval("#questmapswitch button", (e) => e.map((b) => b.textContent.trim())).catch(() => []);
   // defaults to the busiest zone's parchment (not the world map)
-  const defaultParchment = await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 }).then(() => true).catch(() => false);
+  const defaultParchment = await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T }).then(() => true).catch(() => false);
   const wIdx = btns.findIndex((b) => /world map/i.test(b));
   let worldTiles = false, worldGiver = false;
   if (wIdx >= 0) {
     (await page.$$("#questmapswitch button"))[wIdx].click();
-    worldTiles = await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 }).then(() => true).catch(() => false);
+    worldTiles = await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: T }).then(() => true).catch(() => false);
     const mrows = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim())).catch(() => []);
     worldGiver = mrows.some((r) => /quest giver/i.test(r));
   }
@@ -130,8 +135,8 @@ async function testQuestMap(single, multi) {
 
 // A required item whose ReqSourceId duplicates it must NOT appear as "Provided items".
 async function testQuestNoProvided(id) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-page .tab", { timeout: T });
   const tabList = await page.$$eval(".quest-page .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const hasProvided = tabList.some((t) => t.includes("Provided items"));
   console.log(`quest-no-provided ${id}: tabs=[${tabList.join(", ")}] hasProvided=${hasProvided}`);
@@ -141,8 +146,8 @@ async function testQuestNoProvided(id) {
 // A world-drop item is labelled and its low-chance droppers split into a separate
 // "World drop from" tab. Item 14555 (Alcor's Sunrazor) is a world drop.
 async function testItemWorldDrop(id) {
-  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
   const tabs = await page.$$eval(".item-rel .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const label = await page.$$eval(".item-meta .tagx", (e) => e.some((x) => x.textContent.includes("World Drop"))).catch(() => false);
   console.log(`item-wd ${id}: tabs=[${tabs.join(", ")}] label=${label}`);
@@ -153,16 +158,16 @@ async function testItemWorldDrop(id) {
 // the ?itemset= page lists the same. Item 22416 -> set 523 (Dreadnaught's Battlegear).
 async function testItemSet(itemId, setId) {
   // item page: set block inside the tooltip (members + bonus spell links)
-  await page.goto(`${BASE}?item=${itemId}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".tt-set", { timeout: 40000 });
+  await page.goto(`${BASE}?item=${itemId}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".tt-set", { timeout: T });
   const members = await page.$$eval(".tt-set .tt-set-member", (e) => e.length).catch(() => 0);
   const bonuses = await page.$$eval(".tt-set .tt-set-bonus", (e) => e.length).catch(() => 0);
   const bonusLink = (await page.$(".tt-set a.set-bonus-link[href*='spell=']")) !== null;
   const nameLink = (await page.$(`.tt-set .tt-set-name a[href*='itemset=${setId}']`)) !== null;
   const noRawToken = await page.$eval(".tt-set", (e) => !/\$\d/.test(e.textContent)).catch(() => true); // cross-spell vars resolved
   // ?itemset page: panel + stat summary table
-  await page.goto(`${BASE}?itemset=${setId}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".item-set-page .item-set", { timeout: 40000 });
+  await page.goto(`${BASE}?itemset=${setId}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-set-page .item-set", { timeout: T });
   const pageMembers = await page.$$eval(".item-set-page .set-member", (e) => e.length).catch(() => 0);
   const summary = (await page.$(".item-set-page .set-summary")) !== null;
   const summarySortable = await page.$$eval(".item-set-page .set-summary th.sortable", (e) => e.length).catch(() => 0);
@@ -173,10 +178,10 @@ async function testItemSet(itemId, setId) {
 // A single-profession trainer hides the redundant Profession column (every row
 // the same skill). NPC 5038 is an Enchanting trainer.
 async function testTrainerCols(id) {
-  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-page .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".npc-page .tab")].find((t) => t.textContent.includes("Teaches")); if (b) b.click(); });
-  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
   const headers = await page.$$eval(".npc-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const rows = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr", (r) => r.length).catch(() => 0);
   console.log(`trainer-cols ${id}: rows=${rows} headers=[${headers.join(",")}]`);
@@ -186,10 +191,10 @@ async function testTrainerCols(id) {
 // a faction-specific quest reward shows a Faction column on "Reward from quest".
 // Item 22113 has mirrored Alliance + Horde reward quests.
 async function testQuestRewardFaction(id) {
-  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".item-rel .tab")].find((t) => /Reward from quest/.test(t.textContent)); if (b) b.click(); });
-  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
   const facs = await page.$$eval(".item-rel .tabpane:not(.hidden) .tagx", (e) => e.map((x) => x.textContent.trim()));
   console.log(`reward-faction ${id}: tags=[${facs.join(",")}]`);
   return facs.includes("Alliance") && facs.includes("Horde");
@@ -198,8 +203,8 @@ async function testQuestRewardFaction(id) {
 // containers show their capacity on the item page: bags (class 1) and
 // quivers/ammo pouches (class 11). 42243 = 22 Slot Bag, 18714 = 18 Slot Quiver.
 async function testItemSlots(id, expect) {
-  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".item-main .tooltip", { timeout: 40000 });
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-main .tooltip", { timeout: T });
   const txt = await page.$eval(".item-main .tooltip", (e) => e.textContent);
   const has = txt.includes(expect);
   console.log(`item-slots ${id}: expect="${expect}" found=${has}`);
@@ -209,7 +214,7 @@ async function testItemSlots(id, expect) {
 // recipe/pattern/plans item shows a "Teaches" tab with the craft it unlocks
 async function testTeaches(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 30000 });
-  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
   const tabs = await page.$$eval(".item-rel .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const has = tabs.some((t) => /^Teaches\b/.test(t));
   console.log(`teaches ${id}: tabs=[${tabs.join(", ")}] hasTeaches=${has}`);
@@ -219,7 +224,7 @@ async function testTeaches(id, expectName) {
 // container/lockbox item shows a "Contains" tab listing what it yields
 async function testContainer(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 30000 });
-  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
   const tabs = await page.$$eval(".item-rel .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const has = tabs.some((t) => /^Contains\b/.test(t));
   console.log(`container ${id}: tabs=[${tabs.join(", ")}] hasContains=${has}`);
@@ -230,8 +235,8 @@ async function testContainer(id, expectName) {
 // <span class="icon-sprite"> backed by custom-atlas.webp. Item 9376 Jang'thraze
 // uses custom icon "gensword1h_4".
 async function testCustomIcon(id, expectName) {
-  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".tooltip .tt-name", { timeout: T });
   const name = await page.$eval(".tooltip .tt-name", (e) => e.textContent);
   const bg = await page.$eval(".tooltip .tt-head .icon-sprite", (e) => e.style.backgroundImage).catch(() => "");
   console.log(`custom icon ${id}: name="${name}" spriteBg="${bg}"`);
@@ -239,8 +244,8 @@ async function testCustomIcon(id, expectName) {
 }
 
 async function testSearch(term) {
-  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".results table tbody tr", { timeout: T });
   const count = await page.$$eval(".results table tbody tr", (r) => r.length);
   const first = await page.$eval(".results table tbody tr td a", (a) => a.textContent).catch(() => "?");
   console.log(`search "${term}": ${count} results, first="${first}"`);
@@ -251,8 +256,8 @@ async function testSearch(term) {
 // finds results -- e.g. "owfang" matches "Shadowfang ...". Proves the trigram
 // index, since the prefix FTS could never match a non-leading fragment.
 async function testSearchInfix(term, expectSub) {
-  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".results", { timeout: 40000 });
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".results", { timeout: T });
   await page.waitForSelector(".results a.ilink", { timeout: 20000 }).catch(() => {});
   const names = await page.$$eval(".results a.ilink", (a) => a.map((x) => x.textContent.toLowerCase()));
   const hit = names.some((n) => n.includes(expectSub));
@@ -261,8 +266,8 @@ async function testSearchInfix(term, expectSub) {
 }
 
 async function testNpc(id, expectName, expectTab) {
-  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-head h1", { timeout: T });
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   const tabsList = await page.$$eval(".tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
   const sortableH = await page.$$eval(".tabpane:not(.hidden) th.sortable", (e) => e.length);
@@ -276,8 +281,8 @@ async function testNpc(id, expectName, expectTab) {
 // path (DB already in memory; just queries + render). Catches query regressions
 // like an unindexed spawn_points scan. App must already be loaded (warm).
 async function testNpcLoad(id, maxMs) {
-  await page.goto(`${BASE}?item=2770`, { waitUntil: WAIT, timeout: 40000 }); // warm the DB
-  await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
+  await page.goto(`${BASE}?item=2770`, { waitUntil: WAIT, timeout: T }); // warm the DB
+  await page.waitForSelector(".tooltip .tt-name", { timeout: T });
   const ms = await page.evaluate((id) => {
     const t0 = performance.now();
     history.pushState({}, "", `?npc=${id}`);
@@ -292,8 +297,8 @@ async function testNpcLoad(id, maxMs) {
 }
 
 async function testBrowseSource(src) {
-  await page.goto(`${BASE}?browse=items&source=${src}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&source=${src}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const tags = await page.$$eval(".browse td.src-col .tagx", (e) => e.length);
@@ -306,16 +311,18 @@ async function testBrowseSource(src) {
 // filter returns only Alliance-locked rewards (incl. race-unrestricted items whose
 // quest is Alliance-only -- the item's own allowable_race can't express that).
 async function testQuestRewardFactionBrowse() {
-  await page.goto(`${BASE}?browse=items&source=quest&faction=a`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  // faction=a shows items obtainable by Alliance (neutral + Alliance-exclusive),
+  // never a Horde-exclusive tag; Faction column added via the chooser (cols=).
+  await page.goto(`${BASE}?browse=items&source=quest&faction=a&cols=faction`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const li = headers.indexOf("Faction");
   const facs = li < 0 ? [] : await page.$$eval(".browse table tbody tr",
     (rs, idx) => rs.map((r) => r.querySelectorAll("td")[idx]?.textContent.trim()).filter(Boolean), li);
-  const allAlliance = facs.length > 0 && facs.every((f) => f === "Alliance");
-  console.log(`browse quest-reward faction: rows=${rows} hasFactionCol=${li >= 0} tags=${facs.length} allAlliance=${allAlliance}`);
-  return rows > 0 && li >= 0 && allAlliance;
+  const noHorde = facs.every((f) => f !== "Horde");
+  console.log(`browse quest-reward faction: rows=${rows} hasFactionCol=${li >= 0} tags=${facs.length} noHorde=${noHorde}`);
+  return rows > 0 && li >= 0 && noHorde;
 }
 
 // Column chooser (cols=): user-toggled extra columns render + populate alongside
@@ -323,8 +330,8 @@ async function testQuestRewardFactionBrowse() {
 // Quest Lvl (min level to take the reward quest). source=quest guarantees quest
 // rewards so Quest Lvl is populated.
 async function testColumnChooser() {
-  await page.goto(`${BASE}?browse=items&source=quest&cols=faction,sta,questlvl`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&source=quest&cols=faction,sta,questlvl`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const colVals = async (label) => {
     const idx = headers.indexOf(label);
@@ -342,8 +349,8 @@ async function testColumnChooser() {
 // Spell browse: category + class filters (Class Skills / Mage). The Category
 // column + the two selects reflect the URL filter.
 async function testBrowseSpellCat() {
-  await page.goto(`${BASE}?browse=spells&cat=${encodeURIComponent("Class Skills")}&cls=64`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=spells&cat=${encodeURIComponent("Class Skills")}&cls=64`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const cat = await page.$eval('select[data-f="cat"]', (el) => el.value);
   const cls = await page.$eval('select[data-f="cls"]', (el) => el.value);
@@ -357,21 +364,21 @@ async function testBrowseSpellCat() {
 // Quest browse: the Origin=Turtle WoW filter shows only custom (entry>=10000)
 // quests, each tagged "TW"; and a custom quest's page header carries the badge.
 async function testQuestOrigin(customQuestId) {
-  await page.goto(`${BASE}?browse=quests&origin=tw`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=quests&origin=tw`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const origin = await page.$eval('select[data-f="origin"]', (el) => el.value);
   const twTags = await page.$$eval(".browse td .tagx.tw-tag", (e) => e.length);
-  await page.goto(`${BASE}?quest=${customQuestId}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-page .npc-head h1", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${customQuestId}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-page .npc-head h1", { timeout: T });
   const badge = await page.$eval(".quest-page .npc-head h1 .tagx.tw-tag", (e) => e.textContent.trim()).catch(() => "");
   console.log(`quest-origin: rows=${rows} origin="${origin}" twTags=${twTags} pageBadge="${badge}"`);
   return rows > 0 && origin === "tw" && twTags > 0 && badge === "Turtle WoW";
 }
 
 async function testItemSources(id, expectTag) {
-  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".item-sources .tagx", { timeout: 40000 });
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-sources .tagx", { timeout: T });
   const tags = await page.$$eval(".item-sources .tagx", (e) => e.map((t) => t.textContent.trim()));
   console.log(`item sources ${id}: [${tags.join(", ")}]`);
   return tags.length > 0 && (!expectTag || tags.includes(expectTag));
@@ -379,8 +386,8 @@ async function testItemSources(id, expectTag) {
 
 // new select filters: confirm the param yields rows and the select reflects it.
 async function testFilter(param, value) {
-  await page.goto(`${BASE}?browse=items&${param}=${value}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&${param}=${value}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const sel = await page.$eval(`.filters [data-f='${param}']`, (e) => e.value).catch(() => "?");
   console.log(`filter ${param}=${value}: rows=${rows} selected=${sel}`);
@@ -389,8 +396,8 @@ async function testFilter(param, value) {
 
 // crafted item shows its crafting profession in the "Created by" section.
 async function testCrafted(id, expectProf) {
-  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".item-rel", { timeout: 40000 });
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-rel", { timeout: T });
   const cells = await page.$$eval(".item-rel td", (tds) => tds.map((t) => t.textContent.trim()));
   const hit = cells.some((t) => t.includes(expectProf));
   // Created-by reagents must be clickable item links, not plain text
@@ -407,15 +414,15 @@ async function testCrafted(id, expectProf) {
 async function testCrafting() {
   // prof-filtered view: the redundant Profession column is hidden; skill-up
   // brackets render. (Grouping by the single profession is moot, so it ungroups.)
-  await page.goto(`${BASE}?browse=crafting&prof=171`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=crafting&prof=171`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const profSel = await page.$eval(".filters [data-f='prof']", (e) => e.value).catch(() => "?");
   const brackets = await page.$$eval(".browse tbody td span[style*='ff8040']", (e) => e.length);
   // grouping still works (group by source TYPE, header = Recipe/Trainer/Auto)
-  await page.goto(`${BASE}?browse=crafting&prof=171&groupby=source`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse .grouprow", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=crafting&prof=171&groupby=source`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse .grouprow", { timeout: T });
   const groupHeads = await page.$$eval(".browse .grouprow", (e) => e.map((g) => g.textContent.replace(/[▸▾\s]+/g, " ").trim()));
   const typeGroups = groupHeads.every((g) => /Recipe|Trainer|Auto|Other/.test(g));
   console.log(`crafting prof=171: rows=${rows} headers=[${headers.join(",")}] profSel=${profSel} brackets=${brackets} groups=[${groupHeads.join(",")}]`);
@@ -426,8 +433,8 @@ async function testCrafting() {
 // links the craft spell itself; assert these item-less rows render and resolve a
 // recipe Source (regression: the whole profession was missing from Crafting).
 async function testCraftEnchanting() {
-  await page.goto(`${BASE}?browse=crafting&prof=333`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=crafting&prof=333`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   // Name column links a craft spell (?spell=) for the item-less enchant rows
   const spellLinks = await page.$$eval('.browse tbody td a.ilink.spell[href*="spell="]', (a) => a.length);
@@ -438,8 +445,8 @@ async function testCraftEnchanting() {
 // "Obtainable only" checkbox (default on) hides crafts with no recipe/trainer/auto
 async function testCraftObtainable() {
   const count = async (qs) => {
-    await page.goto(`${BASE}?browse=crafting&prof=755${qs}`, { waitUntil: WAIT, timeout: 40000 });
-    await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+    await page.goto(`${BASE}?browse=crafting&prof=755${qs}`, { waitUntil: WAIT, timeout: T });
+    await page.waitForSelector(".browse table tbody tr", { timeout: T });
     return page.evaluate(() => ({
       rows: document.querySelectorAll(".browse table tbody tr").length,
       checked: document.querySelector('input[data-f="obtainable"]')?.checked,
@@ -455,8 +462,8 @@ async function testCraftObtainable() {
 
 // row selection: ID column gone, ops disabled until a row is picked, prefix copy.
 async function testSelection() {
-  await page.goto(`${BASE}?browse=items`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse tbody tr [data-selrow]", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse tbody tr [data-selrow]", { timeout: T });
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const noId = !headers.includes("ID");
   const disabled0 = await page.$eval('.selbar [data-op="ids"]', (b) => b.disabled);
@@ -473,13 +480,13 @@ async function testSelection() {
 
 // group selection: grouping by Slot, ticking a group header selects all its rows.
 async function testGroupSelection() {
-  await page.goto(`${BASE}?browse=items&class=4`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse [data-groupby]", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&class=4`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse [data-groupby]", { timeout: T });
   const val = await page.$$eval(".browse [data-groupby] option", (opts) => {
     const o = opts.find((x) => x.textContent.trim() === "Slot"); return o ? o.value : "";
   });
   await page.select(".browse [data-groupby]", val);
-  await page.waitForSelector(".browse [data-selgroup]", { timeout: 40000 });
+  await page.waitForSelector(".browse [data-selgroup]", { timeout: T });
   await page.click(".browse [data-selgroup]");
   const count = await page.$eval("[data-selcount]", (e) => e.textContent);
   const n = parseInt(count, 10) || 0;
@@ -491,13 +498,13 @@ async function testGroupSelection() {
 // item 5031 ("ZZZZZZZZ") is a known dev artifact.
 async function testUnobtainable() {
   const has = async (src) => {
-    await page.goto(`${BASE}?browse=items&source=${src}&q=ZZZZZZZZ`, { waitUntil: WAIT, timeout: 40000 });
-    await page.waitForSelector(".browse", { timeout: 40000 });
+    await page.goto(`${BASE}?browse=items&source=${src}&q=ZZZZZZZZ`, { waitUntil: WAIT, timeout: T });
+    await page.waitForSelector(".browse", { timeout: T });
     return page.$$eval(".browse table tbody tr", (r) => r.length).catch(() => 0);
   };
   // default (no source filter): the junk item must be hidden
-  await page.goto(`${BASE}?browse=items&q=ZZZZZZZZ`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&q=ZZZZZZZZ`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse", { timeout: T });
   const hiddenByDefault = await page.$$eval(".browse table tbody tr", (r) => r.length).catch(() => 0);
   const shownWhenOptedIn = await has("unobtainable");
   console.log(`unobtainable: defaultRows=${hiddenByDefault} (want 0) optedInRows=${shownWhenOptedIn} (want >0)`);
@@ -507,8 +514,8 @@ async function testUnobtainable() {
 // A spawning NPC's page renders its zone map with the parchment image + its
 // own spawn pins (focus layer).
 async function testNpcMap(id) {
-  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-head h1", { timeout: T });
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
   const hasMap = (await page.$("#zonemap .leaflet-image-layer")) !== null;
   const pins = await page.$$eval("#zonemap .leaflet-marker-icon", (e) => e.length).catch(() => 0);
@@ -520,7 +527,7 @@ async function testNpcMap(id) {
 // Copy All -> Coordinates, TomTom command). Torn Fin Oracle (2376) has many spawns
 // (so "Copy All" shows); the first item copies a "X.X, Y.Y" coordinate pair.
 async function testNpcMapMenu(id) {
-  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
   await page.waitForSelector("#zonemap .leaflet-marker-icon", { timeout: 30000 });
   await page.click("#zonemap .leaflet-marker-icon", { button: "right" });
   await page.waitForSelector(".map-ctx", { visible: true, timeout: 10000 }).catch(() => {});
@@ -541,7 +548,7 @@ async function testNpcMapMenu(id) {
 async function testZoneDotMenu(id) {
   await page.setViewport({ width: 1280, height: 900 });
   await page.goto(`${BASE}?zone=${id}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
   await new Promise((r) => setTimeout(r, 600));
   // the docked layer panel is open by default; tick the densest category row
   await page.evaluate(() => {
@@ -578,7 +585,7 @@ async function testZoneDotMenu(id) {
 // so overlapping WMA boxes no longer mis-assign: NPC 596 (Deadmines-entrance spawn)
 // resolves to its real terrain zone Westfall (40), not Stranglethorn.
 async function testNpcMapZone(id, areaid) {
-  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
   const src = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src")).catch(() => "");
   const pins = await page.$$eval("#zonemap .leaflet-marker-icon", (e) => e.length).catch(() => 0);
@@ -590,8 +597,8 @@ async function testNpcMapZone(id, areaid) {
 // The Location label links the NPC's exact home zone(s). NPC 80208 -> Thalassian
 // Highlands (5225) among its per-continent zone links.
 async function testNpcLocationLabel(id, areaid) {
-  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-head", { timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-head", { timeout: T });
   const hrefs = await page.$$eval(".npc-head .npc-meta a.ilink.zone", (e) => e.map((x) => x.getAttribute("href")));
   const match = hrefs.some((h) => h.includes(`zone=${areaid}`));
   console.log(`npc-loc-label ${id}: hrefs=${JSON.stringify(hrefs)} wantZone=${areaid} match=${match}`);
@@ -599,12 +606,12 @@ async function testNpcLocationLabel(id, areaid) {
 }
 
 async function testNpcTypeLink(id) {
-  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-meta a.nav[href*='browse=npcs']", { timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-meta a.nav[href*='browse=npcs']", { timeout: T });
   const href = await page.$eval(".npc-meta a.nav[href*='browse=npcs']", (e) => e.getAttribute("href"));
   const label = await page.$eval(".npc-meta a.nav[href*='browse=npcs']", (e) => e.textContent.trim());
   await page.click(".npc-meta a.nav[href*='browse=npcs']");
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const typeSel = await page.$eval(".filters [data-f='type']", (e) => e.value).catch(() => "?");
   const m = /type=(\d+)/.exec(href);
   const matchSel = m && m[1] === typeSel;
@@ -613,8 +620,8 @@ async function testNpcTypeLink(id) {
 }
 
 async function testBrowse(kind, query = "", expectHeader) {
-  await page.goto(`${BASE}?browse=${kind}${query}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=${kind}${query}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const filters = await page.$$eval(".filters [data-f]", (e) => e.length);
   const sortable = await page.$$eval(".browse th.sortable", (e) => e.length);
@@ -628,8 +635,8 @@ async function testBrowse(kind, query = "", expectHeader) {
 }
 
 async function testBrowsePersist() {
-  await page.goto(`${BASE}?browse=items&class=4&sort=ilvl&dir=d&groupby=slot`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&class=4&sort=ilvl&dir=d&groupby=slot`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const active = await page.$eval(".browse th.active", (e) => e.textContent.trim()).catch(() => "(none)");
   const groups = await page.$$eval(".browse .grouprow", (e) => e.length);
   const groupSel = await page.$eval(".browse [data-groupby]", (e) => e.value).catch(() => "?");
@@ -638,8 +645,8 @@ async function testBrowsePersist() {
 }
 
 async function testBrowseMulti() {
-  await page.goto(`${BASE}?browse=items&quality=3,4&slot=1,5`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&quality=3,4&slot=1,5`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const checked = await page.$$eval(".multi [data-mv]:checked", (e) => e.map((c) => `${c.dataset.mv}:${c.value}`));
   console.log(`browse multi: rows=${rows} checked=[${checked.join(",")}]`);
@@ -648,8 +655,8 @@ async function testBrowseMulti() {
 
 async function testBrowseCriteria() {
   const q = encodeURIComponent("agi,>=,10|sta,>=,10"); // multi-criteria, AND-combined
-  await page.goto(`${BASE}?browse=items&stats=${q}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&stats=${q}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const critRows = await page.$$eval(".crit-row", (e) => e.length);
@@ -663,13 +670,13 @@ async function testBrowseCriteria() {
 // continent switcher that swaps the map.
 async function testFlights() {
   await page.goto(`${BASE}?flights`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
   await new Promise((r) => setTimeout(r, 500));
   const nodes = await page.$$eval(".flight-node", (e) => e.length);
   const conts = await page.$$eval("#contswitch button", (b) => b.length).catch(() => 0);
   const src1 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src"));
   await page.evaluate(() => { const b = [...document.querySelectorAll("#contswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
-  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
   await new Promise((r) => setTimeout(r, 500));
   const src2 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src"));
   console.log(`flights: nodes=${nodes} continents=${conts} src1=${src1} src2=${src2} switched=${src1 !== src2}`);
@@ -681,7 +688,7 @@ async function testFlights() {
 async function testWorldMap() {
   await page.setViewport({ width: 1280, height: 900 });
   await page.goto(`${BASE}?worldmap`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 });
+  await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: T });
   await new Promise((r) => setTimeout(r, 500));
   const tiles = await page.$$eval("#zonemap img.leaflet-tile-loaded", (e) => e.length);
   const src1 = await page.$eval("#zonemap img.leaflet-tile", (e) => e.getAttribute("src")).catch(() => "");
@@ -709,7 +716,7 @@ async function testWorldMap() {
   })().catch(() => false);
   // switch continents -> tiles re-request from the other map's pyramid path
   await page.evaluate(() => { const b = [...document.querySelectorAll("#contswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
-  await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 });
+  await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: T });
   await new Promise((r) => setTimeout(r, 500));
   const src2 = await page.$eval("#zonemap img.leaflet-tile", (e) => e.getAttribute("src")).catch(() => "");
   const m1 = /minimap\/(\d+)\//.exec(src1)?.[1], m2 = /minimap\/(\d+)\//.exec(src2)?.[1];
@@ -723,7 +730,7 @@ async function testWorldMapState() {
   await page.setViewport({ width: 1280, height: 900 });
   const qp = async (k) => new URLSearchParams(new URL(await page.url()).search).get(k);
   await page.goto(`${BASE}?worldmap=0&cats=mob`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: 40000 });
+  await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: T });
   await page.waitForSelector("#zonemap .wm-filter .wm-zone", { timeout: 20000 });
   const zoneOpts = await page.$$eval("#zonemap .wm-filter .wm-zone option", (o) => o.length);
   const hasNameInput = (await page.$("#zonemap .wm-filter .wm-name")) !== null;
@@ -745,8 +752,8 @@ async function testWorldMapState() {
   return zoneOpts > 1 && hasNameInput && mobChecked && /(^|,)mob(,|$)/.test(catsUrl) && /vendor/.test(catsUrl) && focusUrl != null && qUrl === "wolf";
 }
 async function testDungeons() {
-  await page.goto(`${BASE}?dungeons`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".results table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?dungeons`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".results table tbody tr", { timeout: T });
   const rows = await page.$$eval(".results table tbody tr", (r) => r.length);
   const headers = await page.$$eval(".results th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   // a derived Level column with at least one populated "lo–hi" range
@@ -758,8 +765,8 @@ async function testDungeons() {
 // Objects browse: interactive gameobjects (harvest nodes/chests/quest objects),
 // name-grouped, with a Spawns column and links to the object detail page.
 async function testObjectsBrowse() {
-  await page.goto(`${BASE}?browse=objects`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=objects`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const objLink = (await page.$('.browse a.ilink.object[href*="object="]')) !== null;
@@ -772,8 +779,8 @@ async function testObjectsBrowse() {
 // ?object=ID&fz=<areaid> opens the object map on that zone (not the busiest) -- the
 // zone Farming tab links here so a node opens in the zone you're farming.
 async function testObjectFocusZone(id, areaid) {
-  await page.goto(`${BASE}?object=${id}&fz=${areaid}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await page.goto(`${BASE}?object=${id}&fz=${areaid}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
   await new Promise((r) => setTimeout(r, 300));
   const src = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src"));
   const active = await page.$eval("#objzoneswitch button.active", (e) => e.textContent.trim()).catch(() => "");
@@ -783,15 +790,15 @@ async function testObjectFocusZone(id, areaid) {
 // ?npc=ID&fz=<areaid>: a mob's map opens on the farmed zone (when it spawns there),
 // not its busiest one -- the zone Farming tab links mobs here too.
 async function testNpcFocusZone(id, areaid) {
-  await page.goto(`${BASE}?npc=${id}&fz=${areaid}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}&fz=${areaid}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
   const src = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src"));
   console.log(`npc-focus-zone ${id}&fz=${areaid}: map=${src}`);
   return src.includes(`/${areaid}.webp`);
 }
 async function testObject(id, expectName, expectItem) {
-  await page.goto(`${BASE}?object=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  await page.goto(`${BASE}?object=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-head h1", { timeout: T });
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
@@ -812,8 +819,8 @@ async function testObject(id, expectName, expectItem) {
 // `buyable`); a drop/quest item with no vendor shows Sell but not Buy.
 async function testItemBuyPrice(buyableId, dropId) {
   const buyLine = async (id) => {
-    await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
-    await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
+    await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+    await page.waitForSelector(".tooltip .tt-name", { timeout: T });
     const buy = (await page.$(".tooltip .tt-buy")) !== null;
     const sell = (await page.$(".tooltip .tt-sell")) !== null;
     return { buy, sell };
@@ -825,10 +832,10 @@ async function testItemBuyPrice(buyableId, dropId) {
 // Item "Found in object" tab (merged gather + object source): the node links to
 // ?object= and the row carries spawn count + drop chance.
 async function testItemGatherLink(id) {
-  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".item-rel .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
   await page.evaluate(() => { const t = [...document.querySelectorAll(".item-rel .tab")].find((x) => /Found in object/.test(x.textContent)); if (t) t.click(); });
-  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
   const objLink = (await page.$(".item-rel .tabpane:not(.hidden) a.ilink.object[href*='object=']")) !== null;
   const headers = await page.$$eval(".item-rel .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   console.log(`item-found-in-object ${id}: objLink=${objLink} headers=[${headers.join(",")}]`);
@@ -837,8 +844,8 @@ async function testItemGatherLink(id) {
 // Icons index: searchable grid; filter + page live in the URL (?icons=term&page=n),
 // non-renderable junk icons (BTN* etc.) are filtered out, and a deep-link pre-fills.
 async function testIcons() {
-  await page.goto(`${BASE}?icons`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".icon-grid .icon-tile", { timeout: 40000 });
+  await page.goto(`${BASE}?icons`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".icon-grid .icon-tile", { timeout: T });
   const full = await page.$$eval(".icon-grid .icon-tile", (t) => t.length);
   // no junk: searching the WC3 button prefix should yield zero tiles (filtered out)
   await page.type(".icon-search", "btnbrown");
@@ -846,8 +853,8 @@ async function testIcons() {
   const junk = await page.$$eval(".icon-grid .icon-tile", (t) => t.length);
   const junkUrl = await page.evaluate(() => location.search); // URL reflects the filter
   // deep-link: ?icons=copper pre-fills the box, filters, and a page param paginates
-  await page.goto(`${BASE}?icons=copper`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".icon-grid .icon-tile", { timeout: 40000 });
+  await page.goto(`${BASE}?icons=copper`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".icon-grid .icon-tile", { timeout: T });
   const prefilled = await page.$eval(".icon-search", (e) => e.value);
   const filtered = await page.$$eval(".icon-grid .icon-tile", (t) => t.length);
   const noText = (await page.$$eval(".icons-page p", (ps) => ps.map((p) => p.textContent).join(""))).includes("click one to see") === false;
@@ -857,8 +864,8 @@ async function testIcons() {
 }
 // Icon detail: the items (and/or spells) that use a given icon basename.
 async function testIcon(name, expectItem) {
-  await page.goto(`${BASE}?icon=${encodeURIComponent(name)}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".icon-page .icon-head h1", { timeout: 40000 });
+  await page.goto(`${BASE}?icon=${encodeURIComponent(name)}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".icon-page .icon-head h1", { timeout: T });
   const title = await page.$eval(".icon-page .icon-head h1", (e) => e.textContent);
   await page.waitForSelector(".icon-page .tabpane:not(.hidden) td a.ilink", { timeout: 20000 }).catch(() => {});
   const items = await page.$$eval(".icon-page .tabpane:not(.hidden) td a.ilink", (a) => a.map((x) => x.textContent.trim()));
@@ -866,8 +873,8 @@ async function testIcon(name, expectItem) {
   return title === name && items.some((t) => t.includes(expectItem));
 }
 async function testDungeon(id, expectName) {
-  await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-head h1", { timeout: T });
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 30000 }).catch(() => {});
   const hasMap = (await page.$("#zonemap .leaflet-image-layer")) !== null;
@@ -892,8 +899,8 @@ async function testDungeon(id, expectName) {
 // The zone route auto-detects an instance map: ?zone=<areaid of a dungeon> shows
 // the Boss Loot tab, the parchment, and skull boss markers.
 async function testInstanceZone(areaid, expectName) {
-  await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-head h1", { timeout: T });
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   await page.waitForSelector("#zonemap .map-boss", { timeout: 30000 }).catch(() => {});
   const bossPins = await page.$$eval("#zonemap .map-boss", (e) => e.length).catch(() => 0);
@@ -906,8 +913,8 @@ async function testInstanceZone(areaid, expectName) {
 // A map-less instance (no WorldMap parchment, e.g. Lower Karazhan Halls) still
 // renders via the ?dungeon= fallback: Boss Loot tab, no zone map.
 async function testDungeonNoMap(id, expectName) {
-  await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-head h1", { timeout: 40000 });
+  await page.goto(`${BASE}?dungeon=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-head h1", { timeout: T });
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   const tabList = await page.$$eval(".tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const mapDiv = (await page.$("#zonemap")) !== null;
@@ -918,10 +925,10 @@ async function testDungeonNoMap(id, expectName) {
 // Quest page shows the full chain (both directions, as a table) with the current
 // quest marked, plus each step's start NPC + location.
 async function testQuestChain(id, minLen) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".tab")].find((t) => t.textContent.includes("Quest Chain")); if (b) b.click(); });
-  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: T });
   const rows = await page.$$eval(".tabpane:not(.hidden) tbody tr", (r) => r.length);
   const cur = await page.$$eval(".tabpane:not(.hidden) .qc-cur", (e) => e.length);
   const nums = await page.$$eval(".tabpane:not(.hidden) a.ilink", (a) =>
@@ -939,10 +946,10 @@ async function testQuestChain(id, minLen) {
 // connects in. `want` selects which badge class must be present (.qc-branch any,
 // .qc-merge convergence). 783 forks; 5862 (Redemption) has a 3-quest merge.
 async function testQuestBranch(id, want = ".qc-branch") {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".tab")].find((t) => t.textContent.includes("Quest Chain")); if (b) b.click(); });
-  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: T });
   const badges = await page.$$eval(`.tabpane:not(.hidden) ${want}`, (e) => e.map((x) => x.textContent.trim()));
   const ok = badges.length > 0;
   console.log(`quest-branch ${id}: want=${want} badges=${JSON.stringify(badges)} ok=${ok}`);
@@ -955,7 +962,7 @@ async function testQuestBranch(id, want = ".qc-branch") {
 // zone view must be dropped, leaving only Elwynn Forest + the World map.
 async function testQuestMapBounds(id) {
   await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector("#questmapswitch button", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector("#questmapswitch button", { timeout: T }).catch(() => {});
   const btns = await page.$$eval("#questmapswitch button", (e) => e.map((b) => b.textContent.trim())).catch(() => []);
   const ok = btns.includes("Elwynn Forest") && btns.some((b) => /world map/i.test(b)) && !btns.some((b) => /northwind/i.test(b));
   console.log(`quest-map-bounds ${id}: zones=[${btns.join(", ")}] ok=${ok}`);
@@ -965,8 +972,8 @@ async function testQuestMapBounds(id) {
 // A sub-zone quest resolves the full hierarchy continent > zone > sub-zone, with
 // the parent zone linked. Quest 783 -> Eastern Kingdoms > Elwynn Forest > Northshire Valley.
 async function testQuestZoneChain(id) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-page .npc-head", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-page .npc-head", { timeout: T });
   const meta = await page.$eval(".quest-page .npc-head", (e) => e.textContent.replace(/\s+/g, " ").trim());
   const zoneHrefs = await page.$$eval(".quest-page .npc-head a.ilink.zone", (a) => a.map((x) => x.getAttribute("href")));
   const ok = meta.includes("Eastern Kingdoms") && meta.includes("Elwynn Forest") && meta.includes("Northshire Valley") && zoneHrefs.some((h) => h.includes("zone=12"));
@@ -976,8 +983,8 @@ async function testQuestZoneChain(id) {
 
 // Browse quests links zone names that have a map page (e.g. Stormwind/Elwynn).
 async function testBrowseQuestZoneLink() {
-  await page.goto(`${BASE}?browse=quests&minlvl=1&maxlvl=12`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=quests&minlvl=1&maxlvl=12`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const zlinks = await page.$$eval(".browse td a.ilink.zone", (a) => a.length);
   console.log(`browse-quest-zonelink: zoneLinks=${zlinks}`);
   return zlinks > 0;
@@ -985,10 +992,10 @@ async function testBrowseQuestZoneLink() {
 
 // Starts/Ends (NPC) tabs carry a Location column with where the NPC is.
 async function testQuestNpcLocation(id) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-page .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".tab")].find((t) => t.textContent.includes("Starts (NPC)")); if (b) b.click(); });
-  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: T });
   const headers = await page.$$eval(".tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const locs = await page.$$eval(".tabpane:not(.hidden) tbody tr td:last-child", (t) => t.map((x) => x.textContent.trim()).filter(Boolean));
   console.log(`quest-npc-loc ${id}: headers=[${headers.join(",")}] locs=${JSON.stringify(locs.slice(0, 3))}`);
@@ -996,8 +1003,8 @@ async function testQuestNpcLocation(id) {
 }
 
 async function testHover() {
-  await page.goto(`${BASE}?search=copper`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".results table tbody tr td a.ilink", { timeout: 40000 });
+  await page.goto(`${BASE}?search=copper`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".results table tbody tr td a.ilink", { timeout: T });
   await page.hover(".results table tbody tr td a.ilink");
   await page.waitForSelector(".hovercard .tt-name", { timeout: 10000 }).catch(() => {});
   const name = await page.$eval(".hovercard .tt-name", (e) => e.textContent).catch(() => "(none)");
@@ -1009,8 +1016,8 @@ async function testHover() {
 // ("You will receive:" item + icon) inline, like the in-game log. Quest 60141 ->
 // collect Rockhide Boar Meat, receive Linen Bag.
 async function testQuestObjectivesEmbed(id) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-desc", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-desc", { timeout: T });
   const goalItems = await page.$$eval(".quest-goals li a.ilink", (e) => e.length).catch(() => 0);
   const goalIcons = await page.$$eval(".quest-goals li a.ilink .il-icon", (e) => e.length).catch(() => 0);
   const rewLbls = await page.$$eval(".quest-desc .q-rew-lbl", (e) => e.map((x) => x.textContent.trim()));
@@ -1022,8 +1029,8 @@ async function testQuestObjectivesEmbed(id) {
 
 // quest detail: header + tabs (givers/objectives/rewards) + sortable pane + desc.
 async function testQuest(id, expectName) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-page .npc-head h1", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-page .npc-head h1", { timeout: T });
   const name = await page.$eval(".quest-page .npc-head h1", (e) => e.textContent);
   const tabList = await page.$$eval(".quest-page .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
   const sortableH = await page.$$eval(".quest-page .tabpane:not(.hidden) th.sortable", (e) => e.length);
@@ -1035,8 +1042,8 @@ async function testQuest(id, expectName) {
 // Detail pages carry a "Share" button that copies the prerendered /<prefix>/<id>
 // link (the one that unfurls in Discord, vs the non-unfurling ?param= URL).
 async function testShareButton(param, id, prefix) {
-  await page.goto(`${BASE}?${param}=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".share-btn", { timeout: 40000 });
+  await page.goto(`${BASE}?${param}=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".share-btn", { timeout: T });
   await page.click(".share-btn");
   const copied = await page.evaluate(() => window.__copied);
   const ok = typeof copied === "string" && copied.endsWith(`/${prefix}/${id}`);
@@ -1047,8 +1054,8 @@ async function testShareButton(param, id, prefix) {
 // Quest page carries a "Watch walkthrough" link: a channel-scoped YouTube search
 // for the quest title (opens in a new tab).
 async function testQuestVideoLink(id) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-page .yt-link", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-page .yt-link", { timeout: T });
   const href = await page.$eval(".quest-page .yt-link", (e) => e.getAttribute("href"));
   const target = await page.$eval(".quest-page .yt-link", (e) => e.getAttribute("target"));
   const title = await page.$eval(".quest-page .npc-head h1", (e) => e.textContent.trim());
@@ -1061,8 +1068,8 @@ async function testQuestVideoLink(id) {
 // spell detail: header name + relation tabs + sortable pane (+ Learned-from link
 // when craft-taught -- the recipe item links back from the spell page).
 async function testSpell(id, expectName) {
-  await page.goto(`${BASE}?spell=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".spell-page .spell-card", { timeout: 40000 });
+  await page.goto(`${BASE}?spell=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".spell-page .spell-card", { timeout: T });
   const name = await page.$eval(".spell-page .spell-card .tt-name", (e) => e.textContent);
   const cards = await page.$$eval(".spell-page .spell-card", (e) => e.length);
   const tabList = await page.$$eval(".spell-page .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
@@ -1076,8 +1083,8 @@ async function testSpell(id, expectName) {
 // no duplicate tooltip card and the Spell # sits in Quick Facts. Spell 23161
 // (Summon Dreadsteed) <- quest 7631.
 async function testSpellQuestReward(id) {
-  await page.goto(`${BASE}?spell=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".spell-page .spell-card", { timeout: 40000 });
+  await page.goto(`${BASE}?spell=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".spell-page .spell-card", { timeout: T });
   const tabList = await page.$$eval(".spell-page .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const names = await page.$$eval(".spell-page .tt-name", (e) => e.length).catch(() => 0); // exactly 1 -> no dup
   const noData = await page.$eval(".spell-page", (el) => el.textContent.includes("No data.")).catch(() => true);
@@ -1091,8 +1098,8 @@ async function testSpellQuestReward(id) {
 // detailed spell page: "Details on spell" grid + per-effect breakdown resolved
 // from the client DBC lookups (e.g. spell 10 Blizzard -> Frost, effect rows).
 async function testSpellDetail(id, expectText) {
-  await page.goto(`${BASE}?spell=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".spell-page .kv-grid", { timeout: 40000 });
+  await page.goto(`${BASE}?spell=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".spell-page .kv-grid", { timeout: T });
   const keys = await page.$$eval(".spell-page .kv-grid .kv-k", (e) => e.length);
   const effects = await page.$$eval(".spell-page .spell-effect", (e) => e.length);
   const text = await page.$eval(".spell-page .spell-details", (e) => e.textContent.replace(/\s+/g, " "));
@@ -1105,8 +1112,8 @@ async function testSpellDetail(id, expectText) {
 
 // item tooltip green spell lines are now spell links (item -> ?spell=).
 async function testItemSpellLink(id) {
-  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".item-main .tooltip", { timeout: 40000 });
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-main .tooltip", { timeout: T });
   const links = await page.$$eval(".item-main .tt-spell a.ilink.spell", (e) => e.length);
   console.log(`item ${id} spell links: ${links}`);
   return links > 0;
@@ -1114,8 +1121,8 @@ async function testItemSpellLink(id) {
 
 // search includes spells: a craft term yields a Spells tab.
 async function testSearchSpells(term) {
-  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".results .tabbar .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".results .tabbar .tab", { timeout: T });
   const tabs = await page.$$eval(".results .tabbar .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const spellRows = await page.$$eval('.results [data-pane="spells"] tbody tr', (r) => r.length).catch(() => 0);
   const has = tabs.some((t) => /^Spells\b/.test(t));
@@ -1125,8 +1132,8 @@ async function testSearchSpells(term) {
 
 // unified search renders a tabbed results page spanning multiple entity types.
 async function testSearchTabs(term) {
-  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".results .tabbar .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".results .tabbar .tab", { timeout: T });
   const tabList = await page.$$eval(".results .tabbar .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
   const rows = await page.$$eval(".results .tabpane:not(.hidden) table tbody tr", (r) => r.length);
   console.log(`search tabs "${term}": [${tabList.join(", ")}] firstPaneRows=${rows}`);
@@ -1135,10 +1142,10 @@ async function testSearchTabs(term) {
 
 // search includes factions: a faction name yields a Factions tab with a link.
 async function testSearchFaction(term) {
-  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".results .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".results .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".results .tab")].find((t) => t.textContent.includes("Factions")); if (b) b.click(); });
-  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
   const hasFactionLink = (await page.$(".results .tabpane:not(.hidden) a.ilink[href*='faction=']")) !== null;
   console.log(`search-faction "${term}": factionLink=${hasFactionLink}`);
   return hasFactionLink;
@@ -1147,8 +1154,8 @@ async function testSearchFaction(term) {
 // Top-bar mega-menu: nested flyouts render; a deep weapon leaf links to the
 // class+subclass browse, and the One-Handed group carries the multi-subclass link.
 async function testMegaMenu() {
-  await page.goto(`${BASE}?`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".menubar .submenu", { timeout: 40000 });
+  await page.goto(`${BASE}?`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".menubar .submenu", { timeout: T });
   const subs = await page.$$eval(".menubar .submenu", (e) => e.length);
   const weaponLeaf = (await page.$('.menubar a.nav[href*="class=2&subclass=0"]')) !== null;
   const oneHanded = (await page.$('.menubar a.nav[href*="class=2&subclass=0,4,7,13,15"]')) !== null;
@@ -1160,8 +1167,8 @@ async function testMegaMenu() {
 // The Subtype filter is multi-select and reflects a multi-subclass URL, so the
 // nav "One-Handed" state (class=2&subclass=0,4,7,13,15) is reproducible.
 async function testSubclassMulti() {
-  await page.goto(`${BASE}?browse=items&class=2&subclass=0,4,7,13,15`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&class=2&subclass=0,4,7,13,15`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const checked = await page.$$eval('[data-multi="subclass"] [data-mv]:checked', (e) => e.map((c) => c.value).sort());
   console.log(`subclass-multi: checked=[${checked.join(",")}]`);
   return checked.length === 5 && ["0", "4", "7", "13", "15"].every((v) => checked.includes(v));
@@ -1170,8 +1177,8 @@ async function testSubclassMulti() {
 // Fishing poles (class=2 subclass=20) swap the weapon DPS/Speed columns for a
 // "+N Fishing" column; Big Iron Fishing Pole (6367) carries +20.
 async function testFishingPoleCols() {
-  await page.goto(`${BASE}?browse=items&class=2&subclass=20`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&class=2&subclass=20`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const bigIron = await page.$$eval(".browse table tbody tr", (rows) => {
     const tr = rows.find((r) => /Big Iron Fishing Pole/.test(r.textContent));
@@ -1186,8 +1193,8 @@ async function testFishingPoleCols() {
 // Read the cost cell directly (.spell-card .tt-l) -- the page's full textContent
 // runs "Rank 2" into "15 Rage" with no separator.
 async function testRageCost(id) {
-  await page.goto(`${BASE}?spell=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".spell-page .spell-card", { timeout: 40000 });
+  await page.goto(`${BASE}?spell=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".spell-page .spell-card", { timeout: T });
   const cost = await page.$eval(".spell-page .spell-card .tt-l", (e) => e.textContent.trim()).catch(() => "");
   console.log(`rage-cost ${id}: cost="${cost}"`);
   return cost === "15 Rage";
@@ -1195,8 +1202,8 @@ async function testRageCost(id) {
 
 // Reagents all have required_level 0, so the Req column (hideEmpty) drops out.
 async function testReagentNoReq() {
-  await page.goto(`${BASE}?browse=items&class=5`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=items&class=5`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   console.log(`reagent-cols: headers=[${headers.join(",")}]`);
   return headers.length > 0 && !headers.includes("Req");
@@ -1205,8 +1212,8 @@ async function testReagentNoReq() {
 // NPCs with no recorded spawn (script/pool/event-placed, e.g. 80101) show an
 // explanatory note instead of a blank where the map would be.
 async function testNpcNoSpawn(id) {
-  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-page", { timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-page", { timeout: T });
   const note = (await page.$(".npc-page .zone-empty")) !== null;
   const noMap = (await page.$("#zonemap")) === null;
   console.log(`npc-nospawn ${id}: note=${note} noMap=${noMap}`);
@@ -1216,8 +1223,8 @@ async function testNpcNoSpawn(id) {
 // Site footer: shows the page load time always, and an "Updated <date>" stamp
 // when version.json carries builtAt (CI build writes it).
 async function testFooter() {
-  await page.goto(`${BASE}?item=2770`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".tooltip .tt-name", { timeout: 40000 });
+  await page.goto(`${BASE}?item=2770`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".tooltip .tt-name", { timeout: T });
   await page.waitForFunction(() => { const e = document.getElementById("footLoad"); return e && /\d/.test(e.textContent); }, { timeout: 15000 }).catch(() => {});
   const load = await page.$eval("#footLoad", (e) => e.textContent.trim()).catch(() => "");
   const updated = await page.$eval("#footUpdated", (e) => e.textContent.trim()).catch(() => "");
@@ -1231,8 +1238,8 @@ async function testFooter() {
 // Mobile: the top nav collapses behind a hamburger that toggles it open.
 async function testMobileNav() {
   await page.setViewport({ width: 390, height: 800 });
-  await page.goto(`${BASE}?`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector("#navToggle", { timeout: 40000 });
+  await page.goto(`${BASE}?`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector("#navToggle", { timeout: T });
   const toggleVisible = await page.$eval("#navToggle", (el) => getComputedStyle(el).display !== "none");
   const hiddenBefore = await page.$eval(".topnav", (el) => getComputedStyle(el).display === "none");
   await page.click("#navToggle");
@@ -1244,30 +1251,30 @@ async function testMobileNav() {
 
 // Item sets are searchable: the results page has an "Item Sets" tab with links.
 async function testSearchItemSet(term) {
-  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".results .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".results .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".results .tab")].find((t) => t.textContent.includes("Item Sets")); if (b) b.click(); });
-  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
   const hasSetLink = (await page.$(".results .tabpane:not(.hidden) a.ilink[href*='itemset=']")) !== null;
   console.log(`search-itemset "${term}": setLink=${hasSetLink}`);
   return hasSetLink;
 }
 // unified search includes interactive objects (gameobjects) on an Objects tab.
 async function testSearchObjects(term) {
-  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".results .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".results .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".results .tab")].find((t) => t.textContent.includes("Objects")); if (b) b.click(); });
-  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
   const hasObjLink = (await page.$(".results .tabpane:not(.hidden) a.ilink.object[href*='object=']")) !== null;
   console.log(`search-objects "${term}": objLink=${hasObjLink}`);
   return hasObjLink;
 }
 // quest required-item object sources link to the object page (Relic of Elunaris).
 async function testQuestObjectLink(id) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".tab", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".tab")].find((t) => /Required items/.test(t.textContent)); if (b) b.click(); });
-  await page.waitForSelector(".tabpane:not(.hidden) .grouprow", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector(".tabpane:not(.hidden) .grouprow", { timeout: T }).catch(() => {});
   await page.evaluate(() => { const g = document.querySelector(".tabpane:not(.hidden) .grouprow"); if (g) g.click(); }); // expand
   await new Promise((r) => setTimeout(r, 200));
   const objLink = (await page.$(".tabpane:not(.hidden) a.ilink.object[href*='object=']")) !== null;
@@ -1278,10 +1285,10 @@ async function testQuestObjectLink(id) {
 // A template-vendor NPC (creature_template.vendor_id -> npc_vendor_template) lists
 // its stock on the Sells tab. NPC 1249 (Quartermaster Hudson) sells via vendor_id.
 async function testNpcSells(id, minItems) {
-  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-page .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".npc-page .tab")].find((t) => t.textContent.includes("Sells")); if (b) b.click(); });
-  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
   const rows = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr", (r) => r.length).catch(() => 0);
   console.log(`npc-sells ${id}: rows=${rows}`);
   return rows >= minItems;
@@ -1289,8 +1296,8 @@ async function testNpcSells(id, minItems) {
 
 // browse NPCs shows Faction + Location (not ID), searches title, and filters by faction.
 async function testBrowseNpcCols() {
-  await page.goto(`${BASE}?browse=npcs&q=quartermaster`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  await page.goto(`${BASE}?browse=npcs&q=quartermaster`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const factionFilter = (await page.$(".filters [data-f='faction']")) !== null;
@@ -1300,8 +1307,8 @@ async function testBrowseNpcCols() {
 
 // search includes zones: "Tanaris" yields a Zones tab with >=1 row
 async function testSearchZone(term) {
-  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".results .tabbar .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".results .tabbar .tab", { timeout: T });
   const tabs = await page.$$eval(".results .tabbar .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const zoneRows = await page.$$eval('.results [data-table="zones"] tbody tr, .results [data-pane="zones"] tbody tr', (r) => r.length).catch(() => 0);
   const has = tabs.some((t) => /^Zones\b/.test(t));
@@ -1311,8 +1318,8 @@ async function testSearchZone(term) {
 
 // live dropdown: typing yields rows; ArrowDown+Enter navigates to a detail page.
 async function testSearchDropdown(term) {
-  await page.goto(`${BASE}?`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector("#search", { timeout: 40000 });
+  await page.goto(`${BASE}?`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector("#search", { timeout: T });
   await page.click("#search");
   await page.type("#search", term, { delay: 30 });
   await page.waitForSelector(".search-dropdown .sd-row", { timeout: 10000 });
@@ -1327,8 +1334,8 @@ async function testSearchDropdown(term) {
 
 // faction detail: header + tabs, items grouped by standing, sortable pane.
 async function testFaction(id, expectName) {
-  await page.goto(`${BASE}?faction=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-page .npc-head h1", { timeout: 40000 });
+  await page.goto(`${BASE}?faction=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-page .npc-head h1", { timeout: T });
   const name = await page.$eval(".npc-page .npc-head h1", (e) => e.textContent);
   const tabList = await page.$$eval(".npc-page .tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
   const groupRows = await page.$$eval(".npc-page .tabpane:not(.hidden) .grouprow", (e) => e.length);
@@ -1339,10 +1346,10 @@ async function testFaction(id, expectName) {
 
 // A faction page lists its member NPCs (name / level / location).
 async function testFactionMembers(id, minMembers) {
-  await page.goto(`${BASE}?faction=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-page .tab", { timeout: 40000 });
+  await page.goto(`${BASE}?faction=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".npc-page .tab")].find((t) => t.textContent.trim().startsWith("Members")); if (b) b.click(); });
-  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: T });
   const rows = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr", (r) => r.length);
   const headers = await page.$$eval(".npc-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const locs = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr td:last-child", (t) => t.map((x) => x.textContent.trim()).filter(Boolean));
@@ -1353,8 +1360,8 @@ async function testFactionMembers(id, minMembers) {
 
 // An NPC that belongs to a faction shows it (linked when the faction has a page).
 async function testNpcFaction(id, factionId) {
-  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".npc-head", { timeout: 40000 });
+  await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-head", { timeout: T });
   const has = (await page.$(`.npc-head .npc-meta a.ilink[href*='faction=${factionId}']`)) !== null;
   console.log(`npc-faction ${id}: factionLink(${factionId})=${has}`);
   return has;
@@ -1362,8 +1369,8 @@ async function testNpcFaction(id, factionId) {
 
 // a quest that grants reputation renders its faction as a link.
 async function testQuestRepLink(id) {
-  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: 40000 });
-  await page.waitForSelector(".quest-desc", { timeout: 40000 });
+  await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".quest-desc", { timeout: T });
   const links = await page.$$eval(".quest-desc a.ilink.faction", (e) => e.length);
   console.log(`quest ${id} rep faction links: ${links}`);
   return links > 0;
@@ -1373,9 +1380,9 @@ async function testQuestRepLink(id) {
 // (markers use a canvas renderer, so assert the image layer + layer control.)
 async function testZone(id, expectName) {
   await page.goto(`${BASE}?zone=${id}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector(".zone-page .npc-head h1", { timeout: 40000 });
+  await page.waitForSelector(".zone-page .npc-head h1", { timeout: T });
   const name = await page.$eval(".zone-page .npc-head h1", (e) => e.textContent);
-  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
   const cats = await page.$$eval("#zonemap .wm-panel .wm-row", (e) => e.length);
   const tabList = await page.$$eval(".zone-page .tabbar .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
   const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) table tbody tr", (r) => r.length);
@@ -1386,9 +1393,9 @@ async function testZone(id, expectName) {
 // Zone Objects tab: gameobject names link to ?object= (not plain text).
 async function testZoneObjectLink(id) {
   await page.goto(`${BASE}?zone=${id}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector(".zone-page .tabbar .tab", { timeout: 40000 });
+  await page.waitForSelector(".zone-page .tabbar .tab", { timeout: T });
   await page.evaluate(() => { const t = [...document.querySelectorAll(".zone-page .tabbar .tab")].find((x) => /Objects/.test(x.textContent)); if (t) t.click(); });
-  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
   const objLink = (await page.$(".zone-page .tabpane:not(.hidden) a.ilink.object[href*='object=']")) !== null;
   console.log(`zone-object-link ${id}: objLink=${objLink}`);
   return objLink;
@@ -1397,7 +1404,7 @@ async function testZoneObjectLink(id) {
 // numbered waypoint circuit (cluster -> nearest-neighbour), default-on + toggleable.
 async function testFarmRoute(areaid, item) {
   await page.goto(`${BASE}?zone=${areaid}&gather=${item}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
   await new Promise((r) => setTimeout(r, 700));
   const overlays = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim()));
   const stops = await page.$$eval(".route-stop", (e) => e.length);
@@ -1409,9 +1416,9 @@ async function testFarmRoute(areaid, item) {
 // map overlay (value-weighted waypoint circuit).
 async function testZoneFarm(areaid) {
   await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector(".zone-page .tabbar .tab", { timeout: 40000 });
+  await page.waitForSelector(".zone-page .tabbar .tab", { timeout: T });
   await page.evaluate(() => { const t = [...document.querySelectorAll(".zone-page .tabbar .tab")].find((x) => /Farming/.test(x.textContent)); if (t) t.click(); });
-  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 }).catch(() => {});
+  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
   const headers = await page.$$eval(".zone-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) table tbody tr", (r) => r.length);
   const goldRoute = (await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent))).some((o) => /Gold route/.test(o));
@@ -1423,7 +1430,7 @@ async function testZoneFarm(areaid) {
 // "Mining"/"Herbalism" bucket. Barrens (17) has Copper/Tin veins + several herbs.
 async function testZoneGatherGranular(areaid) {
   await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector("#zonemap .wm-panel .wm-row", { timeout: 40000 });
+  await page.waitForSelector("#zonemap .wm-panel .wm-row", { timeout: T });
   const groups = await page.$$eval("#zonemap .wm-panel .wm-group", (gs) => gs.map((g) => ({
     title: g.querySelector(".wm-group-title")?.textContent || "",
     rows: [...g.querySelectorAll(".wm-row .wm-row-main")].map((r) => r.textContent.trim()),
@@ -1439,7 +1446,7 @@ async function testZoneGatherGranular(areaid) {
 // and re-unticks the tab checkbox (two-way sync). Elwynn (12) has NPC rows.
 async function testZoneSelectedLayer(areaid) {
   await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector('.zone-page [data-pane="npcs"] input[data-mapnpc]', { timeout: 40000 });
+  await page.waitForSelector('.zone-page [data-pane="npcs"] input[data-mapnpc]', { timeout: T });
   await page.click('.zone-page [data-pane="npcs"] input[data-mapnpc]');
   const selGroup = () => page.$$eval("#zonemap .wm-panel .wm-group", (gs) => {
     const g = gs.find((x) => /Selected/.test(x.querySelector(".wm-group-title")?.textContent || ""));
@@ -1461,7 +1468,7 @@ async function testZoneSelectedLayer(areaid) {
 // and switching floors re-renders. Black Morass (?zone=5204) has 2 floors.
 async function testZoneFloors(areaid, minFloors) {
   await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
   const floors = await page.$$eval("#floorswitch button", (b) => b.length).catch(() => 0);
   const active = await page.$$eval("#floorswitch button.active", (b) => b.length).catch(() => 0);
   const src1 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src")).catch(() => "");
@@ -1476,9 +1483,9 @@ async function testZoneFloors(areaid, minFloors) {
 // A zone lists the quests bound to it (directly or in a sub-zone) as a tab.
 async function testZoneQuests(id, minQuests) {
   await page.goto(`${BASE}?zone=${id}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector(".zone-page .tab", { timeout: 40000 });
+  await page.waitForSelector(".zone-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".zone-page .tab")].find((t) => t.textContent.trim().startsWith("Quests")); if (b) b.click(); });
-  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: T });
   const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) tbody tr", (r) => r.length);
   const headers = await page.$$eval(".zone-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const hasQuestLink = (await page.$(".zone-page .tabpane:not(.hidden) a.ilink[href*='quest=']")) !== null;
@@ -1493,9 +1500,9 @@ async function testZoneQuests(id, minQuests) {
 // zone, so this exercises the WorldMap-area <-> gameplay-zone bridge.
 async function testDungeonQuests(areaid, minQuests) {
   await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector(".zone-page .tab", { timeout: 40000 });
+  await page.waitForSelector(".zone-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".zone-page .tab")].find((t) => t.textContent.trim().startsWith("Quests")); if (b) b.click(); });
-  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: 40000 });
+  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: T });
   const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) tbody tr", (r) => r.length);
   const hasQuestLink = (await page.$(".zone-page .tabpane:not(.hidden) a.ilink[href*='quest=']")) !== null;
   const headers = await page.$$eval(".zone-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
@@ -1510,9 +1517,9 @@ async function testDungeonQuests(areaid, minQuests) {
 // parchment map + an explanatory note instead of three blank tabs.
 async function testEmptyZone(id, expectName) {
   await page.goto(`${BASE}?zone=${id}`, { waitUntil: WAIT, timeout: 60000 });
-  await page.waitForSelector(".zone-page .npc-head h1", { timeout: 40000 });
+  await page.waitForSelector(".zone-page .npc-head h1", { timeout: T });
   const name = await page.$eval(".zone-page .npc-head h1", (e) => e.textContent);
-  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: 40000 });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
   const hasNote = (await page.$(".zone-page .zone-empty")) !== null;
   const hasTabs = (await page.$(".zone-page .tabbar")) !== null;
   console.log(`empty zone ${id}: name="${name}" mapImg=yes note=${hasNote} tabs=${hasTabs}`);
@@ -1522,7 +1529,7 @@ async function testEmptyZone(id, expectName) {
 // ---- leveling guides (?guides index + ?guide=<id> auto-generated step guide) ----
 async function testLevelingIndex() {
   await page.goto(`${BASE}?guides`, { waitUntil: WAIT, timeout: 30000 });
-  await page.waitForSelector(".guide-index .guide-card", { timeout: 40000 });
+  await page.waitForSelector(".guide-index .guide-card", { timeout: T });
   const cards = await page.$$eval(".guide-index .guide-card", (e) => e.map((c) => c.getAttribute("href")));
   console.log(`leveling-index: cards=${cards.length} links=${JSON.stringify(cards)}`);
   return cards.length >= 2 && cards.every((h) => /guide=/.test(h));
@@ -1727,6 +1734,12 @@ run(() => testFishingPoleCols());                           // fishing poles: +N
 run(() => testBrowse("zones", "&cont=0", "Zone"));          // Zones continent filter
 run(() => testFooter());      // site footer: load time + "Updated" stamp + source link
 run(() => testMobileNav());   // responsive top bar (run last; resets viewport)
+
+// Warm up once with a generous timeout: the first navigation downloads the
+// ~34 MB DB into OPFS (slow, esp. on a cold CI). Doing it here lets every test's
+// per-selector timeout (T) stay short for fail-fast without risking the DB load.
+await page.goto(`${BASE}?item=2770`, { waitUntil: WAIT, timeout: 90000 });
+await page.waitForSelector(".tooltip .tt-name", { timeout: 90000 });
 
 // Execute the (optionally filtered) queue serially on the single page.
 for (const { label, thunk } of TESTS) {

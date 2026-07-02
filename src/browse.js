@@ -20,7 +20,9 @@ const dpsVal = (r) => (r.delay > 0 && (r.dmg_min1 || r.dmg_max1) ? ((r.dmg_min1 
 // quest reward with a lower/zero required_level -- the min level to take the
 // reward quest (quest_min_level, 0 on non-rewards). So the Req column sorts by
 // when you can actually obtain+use the item, not just equip it.
-const effReq = (r) => Math.max(r.required_level || 0, r.quest_min_level || 0);
+// only equippable gear (inventory_type > 0) inherits the quest gate -- a
+// quest-reward reagent/consumable has no meaningful "available to equip" level.
+const effReq = (r) => Math.max(r.required_level || 0, r.inventory_type ? (r.quest_min_level || 0) : 0);
 // Rage is stored x10 (max rage 100 = 1000 units); divide it for display.
 const spellCostVal = (r) => (r.power_type === 1 ? (r.mana_cost || 0) / 10 : (r.mana_cost || 0));
 
@@ -57,53 +59,70 @@ function factionSide(r) {
 }
 const factionTag = (s) => s === 1 ? '<span class="tagx fac-alliance">Alliance</span>'
   : s === 2 ? '<span class="tagx fac-horde">Horde</span>' : "";
+// armor subtype (Cloth/Leather/Mail/Plate) or weapon type (Sword/Axe/...) label.
+const itemSubtype = (r) => (r.class === 2 ? WEAPON_SUBCLASS[r.subclass] : r.class === 4 ? ARMOR_SUBCLASS[r.subclass] : "") || "";
+// short bind tag for the column (full text via title); mirrors BONDING keys.
+const BIND_SHORT = { 1: "BoP", 2: "BoE", 3: "BoU", 4: "Quest" };
 
-// Optional (user-toggled) info columns, keyed by the `cols` URL param. Stats are
-// handled separately via the item_stats join machinery (see browseItems). Reuse
-// the COL entries for re-addable class defaults so a class can show a column it
-// doesn't carry by default (e.g. iLvl on recipes).
-const OPT_COL = {
+// Full item-column registry, keyed by the `cols=` chooser value. The item
+// browser is column-driven: the class-adaptive DEFAULTS (defaultColKeys) are just
+// the pre-selected set when no cols= param is present; otherwise the chooser is
+// the source of truth for which columns show. Stat columns (Stamina, Spell Power,
+// ...) are NOT here -- they're built on the fly from the item_stats join.
+const ALLCOL = {
+  ...COL,
+  id: { key: "id", label: "Id", num: true, cls: "muted", cell: (r) => r.entry, value: (r) => r.entry },
   faction: { key: "faction", label: "Faction", cls: "muted", cell: (r) => factionTag(factionSide(r)), value: (r) => factionSide(r) },
   questlvl: { key: "questlvl", label: "Quest Lvl", num: true, cls: "muted", cell: (r) => r.quest_min_level || "", value: (r) => r.quest_min_level || 0 },
   sell: { key: "sell", label: "Sell", num: true, cls: "muted", cell: (r) => (r.sell_price ? moneyHtml(r.sell_price) : ""), value: (r) => r.sell_price || 0 },
-  ilvl: COL.ilvl, req: COL.req, slot: COL.slot, slots: COL.slots,
+  bind: { key: "bind", label: "Bind", cls: "muted", cell: (r) => (BIND_SHORT[r.bonding] ? `<span title="${esc(BONDING[r.bonding])}">${BIND_SHORT[r.bonding]}</span>` : ""), value: (r) => r.bonding || 0 },
+  type: { key: "type", label: "Type", cls: "muted", cell: (r) => esc(itemSubtype(r)), value: (r) => itemSubtype(r) },
+  quality: { key: "quality", label: "Quality", cls: "muted", cell: (r) => esc((QUALITY[r.quality] || {}).name || ""), value: (r) => r.quality || 0 },
+  stack: { key: "stack", label: "Stack", num: true, cls: "muted", cell: (r) => (r.stackable > 1 ? r.stackable : ""), value: (r) => r.stackable || 0 },
 };
-// Column-chooser groups: Info (OPT_COL keys) + every gear stat (Stamina, Spell
-// Power, resistances, ...) reusing GEAR_CRITERIA so they match item_stats keys.
-const COL_GROUPS = [
-  { group: "Info", options: [["faction", "Faction"], ["questlvl", "Quest Lvl"], ["sell", "Sell price"], ["ilvl", "iLvl"], ["req", "Req level"], ["slot", "Slot"], ["slots", "Bag slots"]] },
-  ...GEAR_CRITERIA,
-];
 
-// columns adapt to the class filter: weapons show DPS/Speed, armor shows Armor.
-// the default set carries Slots (auto-hidden unless a row has container_slots --
-// bags/quivers) and Slot (auto-hidden when every row is the same slot, e.g. a
-// Bag-slot or container filter). when stat criteria are active, a sortable column
-// per criterion stat is inserted (right after Name). Fishing poles (the sole
-// weapon subtype filtered = 20) swap DPS/Speed for the "+N Fishing" column --
-// neither is meaningful on a pole. optCols are user-chosen extra info columns,
-// appended after the defaults (deduped by key so a default is never doubled).
-function buildItemCols(cls, statCols, subclass, hideProf, optCols = []) {
-  let base = cls === "2" && subclass === "20" ? [COL.name, COL.fishing, COL.ilvl, COL.req, COL.source]
-    : cls === "2" ? [COL.name, COL.dps, COL.speed, COL.ilvl, COL.req, COL.source]
-      : cls === "4" ? [COL.name, COL.armor, COL.ilvl, COL.req, COL.slot, COL.source]
-        : cls === "6" ? [COL.name, COL.ammo, COL.ilvl, COL.req, COL.source]
-          // recipes: show the profession the recipe teaches (drop slot/slots — N/A)
-          : cls === "9" ? [COL.name, COL.prof, COL.req, COL.source]
-            : [COL.name, COL.slots, COL.ilvl, COL.req, COL.slot, COL.source];
-  // a single-profession filter makes the column uniform -> drop it
-  if (hideProf) base = base.filter((c) => c !== COL.prof);
-  const withStats = statCols.length ? [base[0], ...statCols, ...base.slice(1)] : base;
-  const have = new Set(withStats.map((c) => c.key));
-  const extra = [];
-  for (const c of optCols) if (c && !have.has(c.key)) { have.add(c.key); extra.push(c); }
-  return [...withStats, ...extra];
+// class-adaptive default column keys (Name is always shown first, separately).
+// These are the pre-checked chooser state when no cols= param is present.
+function defaultColKeys(cls, subclass) {
+  if (cls === "2" && subclass === "20") return ["fishing", "ilvl", "req", "source"];
+  if (cls === "2") return ["dps", "speed", "ilvl", "req", "source"];
+  if (cls === "4") return ["armor", "ilvl", "req", "slot", "source"];
+  if (cls === "6") return ["ammo", "ilvl", "req", "source"];
+  if (cls === "9") return ["prof", "req", "source"];
+  return ["slots", "ilvl", "req", "slot", "source"];
 }
 
-// Column chooser: grouped multi-select (Info / stat groups). Renders the same
-// .multi wrapper as multiField so collect() (data-mv) + open/close handlers work.
-function colsField(csv) {
-  const sel = new Set((csv || "").split(",").filter(Boolean));
+// fixed render order for the selected non-stat columns; stat columns slot in
+// right after Name, before these. Selection order doesn't affect layout.
+const CANON_ORDER = ["dps", "speed", "armor", "ammo", "fishing", "slots", "prof",
+  "ilvl", "req", "slot", "type", "quality", "bind", "stack", "faction", "questlvl", "sell", "id", "source"];
+
+// keys that resolve to a real column (so the chooser's stat groups drop their
+// duplicates -- Armor / Weapon DPS are value columns here, not item_stats reads).
+const VALUE_COL_KEYS = new Set(Object.keys(ALLCOL));
+
+// Column-chooser groups: the core columns, extra Info columns, then every gear
+// stat (minus the ones already offered above as value columns) from GEAR_CRITERIA.
+const COL_GROUPS = [
+  { group: "Columns", options: [["dps", "DPS"], ["speed", "Speed"], ["armor", "Armor"], ["ammo", "Damage"], ["fishing", "Fishing"], ["prof", "Profession"], ["slots", "Bag slots"], ["ilvl", "iLvl"], ["req", "Req level"], ["slot", "Slot"], ["source", "Source"]] },
+  { group: "Info", options: [["id", "Id"], ["faction", "Faction"], ["questlvl", "Quest Lvl"], ["bind", "Bind"], ["type", "Type"], ["quality", "Quality"], ["stack", "Stack"], ["sell", "Sell price"]] },
+  ...GEAR_CRITERIA.map((g) => ({ group: g.group, options: g.options.filter(([k]) => !VALUE_COL_KEYS.has(k)) })).filter((g) => g.options.length),
+];
+
+// Build the item columns from the selected keys: Name always first, the stat
+// columns (statCols) right after it, then the rest in CANON_ORDER. hideProf drops
+// the Profession column when a single-profession filter makes it uniform.
+function buildItemCols(selectedKeys, statCols, hideProf) {
+  const keys = hideProf ? selectedKeys.filter((k) => k !== "prof") : selectedKeys;
+  const ordered = CANON_ORDER.filter((k) => keys.includes(k) && ALLCOL[k]).map((k) => ALLCOL[k]);
+  return [ALLCOL.name, ...statCols, ...ordered];
+}
+
+// Column chooser: grouped multi-select pre-checked with the effective selection
+// (class defaults, or the explicit cols= set). Same .multi wrapper as multiField
+// so collect() (data-mv) + open/close handlers work.
+function colsField(selectedKeys) {
+  const sel = new Set(selectedKeys);
   const summary = sel.size ? `${sel.size} shown` : "Default";
   const body = COL_GROUPS.map((g) =>
     `<div class="multi-grp">${esc(g.group)}</div>` + g.options.map(([v, l]) =>
@@ -233,10 +252,11 @@ async function browseItems(p) {
     unique: p.get("unique") || "", prof: p.get("prof") || "",
   };
   const criteria = parseCriteria(p.get("stats"));
-  // user-chosen extra columns (cols=): stat keys flow through the item_stats join
-  // machinery below; the rest (faction/questlvl/sell/...) are info columns.
+  // Columns are chooser-driven: an explicit cols= set, else the class defaults.
+  // Name is always shown; stat keys resolve via the item_stats join, the rest via
+  // ALLCOL. defaultColKeys keeps the smart per-class layout as the pre-checked set.
   const chosen = (p.get("cols") || "").split(",").filter(Boolean);
-  const chosenStats = chosen.filter((k) => GEAR_STAT_LABEL[k]);
+  const selectedKeys = chosen.length ? chosen : defaultColKeys(f.class, f.subclass);
   const where = ["i.hidden = 0"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
   const addIn = (col, csv) => {
@@ -265,46 +285,42 @@ async function browseItems(p) {
   if (f.bind !== "") add("i.bonding = ?", +f.bind);
   // usable by class: unrestricted (-1) or the class bit is set in allowable_class.
   if (f.uclass !== "") { where.push("(i.allowable_class = -1 OR (i.allowable_class & ?) <> 0)"); binds.push(+f.uclass); }
-  // faction: match items effectively locked to one side -- a hard race
-  // restriction (allowable_race set, no cross-faction bit) OR a single-faction
-  // quest lock (i.quest_faction). Mirrors the Faction column (factionSide) so the
-  // filter and the column always agree, regardless of the Source selection.
-  const questSrc = srcVals.includes("quest");
-  const factionCond = "(i.allowable_race <> -1 AND (i.allowable_race & ?) <> 0 AND (i.allowable_race & ?) = 0)";
-  const facCond = (qf) => `(${factionCond} OR i.quest_faction = ${qf})`;
-  if (f.faction === "a") { where.push(facCond(1)); binds.push(RACE_ALLIANCE, RACE_HORDE); }
-  else if (f.faction === "h") { where.push(facCond(2)); binds.push(RACE_HORDE, RACE_ALLIANCE); }
+  // faction: show items OBTAINABLE by that side -- neutral + that side's
+  // exclusives, EXCLUDING the other side's exclusives (a hard race lock to the
+  // other side, or a single-faction quest lock i.quest_faction). "What can my
+  // faction get", not "exclusive to my faction" -- so neutral gear stays visible.
+  const exclusiveTo = "((i.allowable_race <> -1 AND (i.allowable_race & ?) <> 0 AND (i.allowable_race & ?) = 0) OR i.quest_faction = ?)";
+  if (f.faction === "a") { where.push(`NOT ${exclusiveTo}`); binds.push(RACE_HORDE, RACE_ALLIANCE, 2); }
+  else if (f.faction === "h") { where.push(`NOT ${exclusiveTo}`); binds.push(RACE_ALLIANCE, RACE_HORDE, 1); }
   if (f.unique === "1") where.push("i.max_count = 1");
   if (f.prof !== "") add("i.required_skill = ?", +f.prof);
   // each criterion -> presence-aware match against item_stats (op is whitelisted).
   for (const c of criteria) add(`i.entry IN (SELECT item FROM item_stats WHERE stat='${c.key}' AND value ${c.op} ?)`, +c.val);
 
-  // one LEFT JOIN per distinct stat (filter criteria + user-chosen stat columns)
-  // so its value can be shown + sorted.
-  const critKeys = [...new Set([...criteria.map((c) => c.key), ...chosenStats])];
-  const joins = critKeys.map((key, n) => `LEFT JOIN item_stats s${n} ON s${n}.item=i.entry AND s${n}.stat='${key}'`).join(" ");
-  const statSel2 = critKeys.map((key, n) => `, s${n}.value AS stat_${key}`).join("");
-  // fishing-pole column: pull the +N Fishing equip bonus only when that subtype
-  // is the sole filter (a per-row correlated subquery, so skip it otherwise).
-  const fishingOnly = f.class === "2" && f.subclass === "20";
-  const fishingSel = fishingOnly ? ", (SELECT value FROM item_stats WHERE item = i.entry AND stat = 'fishing') AS fishing" : "";
+  // stat columns to SHOW: selected stats not already covered by a value column,
+  // plus any active filter criterion (so filtering by a stat also surfaces it).
+  // Each needs a LEFT JOIN on item_stats for its value.
+  const statSelKeys = selectedKeys.filter((k) => !VALUE_COL_KEYS.has(k) && GEAR_STAT_LABEL[k]);
+  const critColKeys = criteria.filter((c) => !VALUE_COL_KEYS.has(c.key)).map((c) => c.key);
+  const columnStatKeys = [...new Set([...critColKeys, ...statSelKeys])];
+  const joins = columnStatKeys.map((key, n) => `LEFT JOIN item_stats s${n} ON s${n}.item=i.entry AND s${n}.stat='${key}'`).join(" ");
+  const statSel2 = columnStatKeys.map((key, n) => `, s${n}.value AS stat_${key}`).join("");
+  // the Fishing value column reads a correlated subquery (fishing isn't a GEAR stat).
+  const fishingSel = selectedKeys.includes("fishing") ? ", (SELECT value FROM item_stats WHERE item = i.entry AND stat = 'fishing') AS fishing" : "";
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
   const rows = await query(
-    `SELECT i.entry, i.name, i.quality, i.inventory_type, i.item_level, i.required_level, i.display_id,
-            i.required_skill, i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots,
+    `SELECT i.entry, i.name, i.quality, i.class, i.subclass, i.inventory_type, i.item_level, i.required_level, i.display_id,
+            i.required_skill, i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, i.bonding, i.stackable,
             i.quest_faction, i.quest_min_level, i.allowable_race, i.sell_price, di.icon${statSel2}${fishingSel},
             (SELECT GROUP_CONCAT(source,',') FROM item_sources s WHERE s.item = i.entry) AS sources
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
 
-  // skip a criterion column when the class column already shows it (weapon DPS, armor Armor)
-  const statCols = critKeys
-    .filter((key) => !(key === "dps" && f.class === "2") && !(key === "armor" && f.class === "4"))
-    .map((key) => ({
-      key: `s_${key}`, label: statLabel(key), num: true,
-      cell: (r) => { const v = r[`stat_${key}`]; return v == null ? "" : (key === "dps" ? Number(v).toFixed(1) : v); },
-      value: (r) => r[`stat_${key}`] ?? 0,
-    }));
+  const statCols = columnStatKeys.map((key) => ({
+    key: `s_${key}`, label: statLabel(key), num: true,
+    cell: (r) => { const v = r[`stat_${key}`]; return v == null ? "" : v; },
+    value: (r) => r[`stat_${key}`] ?? 0,
+  }));
 
   const subMap = f.class === "2" ? WEAPON_SUBCLASS : f.class === "4" ? ARMOR_SUBCLASS : null;
   const critRows = criteria.length ? criteria.map(critRow).join("") : critRow(null);
@@ -322,7 +338,7 @@ async function browseItems(p) {
     <div class="break"></div>
     ${numField("minrl", "Req lvl ≥", f.minrl)} ${numField("maxrl", "Req lvl ≤", f.maxrl)}
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
-    ${colsField(p.get("cols"))}
+    ${colsField(selectedKeys)}
     <div class="break"></div>
     ${selectField("bind", "Bind", options(Object.entries(BONDING), f.bind, "Any"))}
     ${selectField("uclass", "Usable by", options(CLASS_MASK, f.uclass, "Any class"))}
@@ -332,12 +348,7 @@ async function browseItems(p) {
     ${critBlock}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  // user-chosen info columns (non-stat; stats flow through statCols above)
-  const optCols = chosen.filter((k) => OPT_COL[k] && !GEAR_STAT_LABEL[k]).map((k) => OPT_COL[k]);
-  // back-compat: the quest-reward view auto-shows the Faction column unless the
-  // user already picked it via the column chooser.
-  if (questSrc && !chosen.includes("faction")) optCols.push(OPT_COL.faction);
-  const cols = buildItemCols(f.class, statCols, f.subclass, f.prof !== "", optCols);
+  const cols = buildItemCols(selectedKeys, statCols, f.prof !== "");
   return { rows, cols, filters, noun: "items" };
 }
 
@@ -690,6 +701,13 @@ export async function showBrowse(kind, navigate) {
     const multi = {};
     app.querySelectorAll("[data-mv]:checked").forEach((cb) => { (multi[cb.dataset.mv] ??= []).push(cb.value); });
     for (const k in multi) np.set(k, multi[k].join(","));
+    // Columns: drop cols= when it matches the class defaults, so the view stays
+    // adaptive (a bare URL re-derives defaults) and shared URLs aren't cluttered.
+    if (isItems) {
+      const defs = defaultColKeys(np.get("class") || "", np.get("subclass") || "");
+      const cur = multi.cols || [];
+      if (cur.length === defs.length && cur.every((k) => defs.includes(k))) np.delete("cols");
+    }
     const crits = [];
     app.querySelectorAll("[data-crow]").forEach((row) => {
       const key = row.querySelector("[data-cstat]").value;
@@ -716,7 +734,9 @@ export async function showBrowse(kind, navigate) {
   app.querySelectorAll("[data-f]").forEach((el) =>
     el.addEventListener("change", () => {
       const np = collect();
-      if (el.dataset.f === "class") np.delete("subclass");
+      // class change resets subtype AND columns -> the new class re-derives its
+      // adaptive default columns (a weapon's DPS/Speed shouldn't linger on armor).
+      if (el.dataset.f === "class") { np.delete("subclass"); np.delete("cols"); }
       navigate(`?${np.toString()}`);
     }));
   // multi-select dropdowns
