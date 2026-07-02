@@ -318,6 +318,27 @@ async function testQuestRewardFactionBrowse() {
   return rows > 0 && li >= 0 && allAlliance;
 }
 
+// Column chooser (cols=): user-toggled extra columns render + populate alongside
+// the class defaults -- Faction (race/quest lock), a stat column (Stamina), and
+// Quest Lvl (min level to take the reward quest). source=quest guarantees quest
+// rewards so Quest Lvl is populated.
+async function testColumnChooser() {
+  await page.goto(`${BASE}?browse=items&source=quest&cols=faction,sta,questlvl`, { waitUntil: WAIT, timeout: 40000 });
+  await page.waitForSelector(".browse table tbody tr", { timeout: 40000 });
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const colVals = async (label) => {
+    const idx = headers.indexOf(label);
+    if (idx < 0) return [];
+    return page.$$eval(".browse table tbody tr",
+      (rs, i) => rs.map((r) => r.querySelectorAll("td")[i]?.textContent.trim()).filter(Boolean), idx);
+  };
+  const qlvl = await colVals("Quest Lvl");
+  const summary = await page.$eval('[data-multi="cols"] .multi-btn', (el) => el.textContent.trim()).catch(() => "");
+  const has = (h) => headers.includes(h);
+  console.log(`column-chooser: headers=[${headers.join(",")}] questLvlVals=${qlvl.length} summary="${summary}"`);
+  return has("Faction") && has("Stamina") && has("Quest Lvl") && qlvl.length > 0 && summary.startsWith("3");
+}
+
 // Spell browse: category + class filters (Class Skills / Mage). The Category
 // column + the two selects reflect the URL filter.
 async function testBrowseSpellCat() {
@@ -1681,6 +1702,7 @@ run(() => testReagentNoReq());                         // reagents hide the empt
 run(() => testBrowseSource("vendor"));
 run(() => testBrowseSource("worlddrop"));  // new World Drop source filter
 run(() => testQuestRewardFactionBrowse());  // quest-reward Faction column + faction filter
+run(() => testColumnChooser());            // cols= chooser: Faction + Stamina + Quest Lvl columns
 run(() => testBrowseSpellCat());           // spell category + class filters
 run(() => testQuestOrigin(41189));         // quest Origin=Turtle WoW filter + TW badge
 run(() => testItemSources(2770));

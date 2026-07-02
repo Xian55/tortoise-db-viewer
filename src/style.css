@@ -588,6 +588,8 @@ h1 .tagx.tw-tag { font-size: 13px; vertical-align: middle; }
 .multi-panel.open { display: block; }
 .multi-opt { display: flex; gap: 8px; align-items: center; padding: 4px 6px; white-space: nowrap; cursor: pointer; }
 .multi-opt:hover { background: var(--panel2); }
+.multi-grp { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 7px 6px 2px; }
+.multi-grp:first-child { padding-top: 2px; }
 .filters .reset { padding: 7px 12px; cursor: pointer; }
 /* multi-criteria gear filter: stacked stat/operator/value rows on their own line */
 .fld.crit { flex-basis: 100%; }

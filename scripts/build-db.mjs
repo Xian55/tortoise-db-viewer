@@ -1291,27 +1291,33 @@ console.log(`  buyable items: ${db.prepare("SELECT COUNT(*) n FROM items WHERE b
 // the item itself is race-unrestricted (allowable_race = -1). Mirrors
 // questFaction() in src/constants.js: RACE_ALLIANCE_ALL = 589 (77 | High Elf 512),
 // RACE_HORDE_ALL = 434 (178 | Goblin 256); the two masks are bit-disjoint.
+// quest_min_level = lowest MinLevel to accept a quest that rewards/offers the
+// item (0 = none/available from level 1), so the browse can show the *effective*
+// level to obtain a reward -- the item's own required_level is often 0 on rewards.
 db.exec(`ALTER TABLE items ADD COLUMN quest_faction INTEGER NOT NULL DEFAULT 0`);
+db.exec(`ALTER TABLE items ADD COLUMN quest_min_level INTEGER NOT NULL DEFAULT 0`);
 {
   const A = 589, H = 434;
-  const acc = new Map(); // item -> { a, h, n }
-  for (const { item, rr } of db.prepare(
-    `SELECT qi.item AS item, q.reqraces AS rr FROM quest_item qi
+  const acc = new Map(); // item -> { a, h, n, min }
+  for (const { item, rr, ml } of db.prepare(
+    `SELECT qi.item AS item, q.reqraces AS rr, q.minlevel AS ml FROM quest_item qi
      JOIN quests q ON q.entry = qi.quest
      WHERE qi.role IN ('reward','choice') AND q.hidden = 0`).all()) {
     const ally = (rr & A) !== 0 && (rr & H) === 0;
     const horde = (rr & H) !== 0 && (rr & A) === 0;
-    const e = acc.get(item) || { a: 0, h: 0, n: 0 };
+    const e = acc.get(item) || { a: 0, h: 0, n: 0, min: Infinity };
     if (ally) e.a++; else if (horde) e.h++; else e.n++; // neutral = both/no restriction
+    if (ml < e.min) e.min = ml;
     acc.set(item, e);
   }
-  const upd = db.prepare(`UPDATE items SET quest_faction = ? WHERE entry = ?`);
+  const upd = db.prepare(`UPDATE items SET quest_faction = ?, quest_min_level = ? WHERE entry = ?`);
   let na = 0, nh = 0;
   db.transaction(() => {
     for (const [item, e] of acc) {
-      if (e.n) continue;                          // any neutral quest -> obtainable by both
-      if (e.a && !e.h) { upd.run(1, item); na++; }
-      else if (e.h && !e.a) { upd.run(2, item); nh++; } // mixed A+H -> stays 0
+      // faction: 0 if any neutral quest or a mix of A+H; else the exclusive side.
+      const qf = e.n ? 0 : (e.a && !e.h) ? 1 : (e.h && !e.a) ? 2 : 0;
+      if (qf === 1) na++; else if (qf === 2) nh++;
+      upd.run(qf, Number.isFinite(e.min) ? e.min : 0, item);
     }
   })();
   console.log(`  quest-reward faction lock: ${na} Alliance, ${nh} Horde`);

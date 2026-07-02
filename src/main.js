@@ -359,6 +359,7 @@ async function showItem(id) {
   const questCols = (showQty, showChoice) => [
     { label: "Quest", cell: (q) => questLink(q.entry, q.title) + (showChoice && q.role === "choice" ? ' <span class="muted">(choice)</span>' : ""), value: (q) => q.title },
     { label: "Level", num: true, cls: "muted", cell: (q) => q.level || "", value: (q) => q.level || 0 },
+    { label: "Req Lvl", num: true, cls: "muted", cell: (q) => q.minlevel || "", value: (q) => q.minlevel || 0 },
     { label: "Faction", cell: (q) => { const f = questFaction(q.reqraces); return `<span class="tagx fac-${f.toLowerCase()}">${f}</span>`; }, value: (q) => questFaction(q.reqraces) },
     ...(showQty ? [{ label: "Qty", num: true, cls: "muted", cell: (q) => q.count, value: (q) => q.count || 0 }] : []),
   ];
