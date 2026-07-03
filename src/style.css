@@ -198,6 +198,64 @@ tbody tr:hover { background: var(--panel2); }
   color: var(--text); background: var(--panel2); border: 1px solid var(--border);
   border-radius: 6px; }
 .share-btn:hover { border-color: var(--gold); color: var(--gold); }
+/* "Compare" toggle on the item meta line + the floating cross-page compare tray */
+.cmp-add { margin-left: 10px; padding: 2px 9px; font-size: 12px; font-weight: 600; cursor: pointer;
+  color: var(--text); background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; }
+.cmp-add:hover { border-color: var(--gold); color: var(--gold); }
+.cmp-add.on { border-color: var(--gold); color: var(--gold); background: rgba(255, 209, 0, .1); }
+.cmp-tray { position: fixed; right: 16px; bottom: 16px; z-index: 40; display: inline-flex; align-items: stretch;
+  background: var(--panel); border: 1px solid var(--gold); border-radius: 8px; overflow: hidden;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .5); }
+.cmp-tray-open { padding: 9px 14px; font-weight: 700; color: var(--gold); }
+.cmp-tray-clear { padding: 0 12px; cursor: pointer; color: var(--muted); background: var(--panel2);
+  border: none; border-left: 1px solid var(--border); font-size: 16px; }
+.cmp-tray-clear:hover { color: var(--text); }
+/* item comparison page: side-by-side tooltip cards + a stat-delta table */
+.compare-view h2 { margin: 22px 0 10px; font-size: 15px; }
+.cmp-cards { display: flex; flex-wrap: wrap; gap: 18px; align-items: start; }
+.cmp-col { width: 300px; max-width: 100%; }
+.cmp-card { display: flex; }
+.cmp-links { margin-top: 6px; font-size: 12px; }
+.cmp-table { max-width: 900px; }
+.cmp-table th:first-child { color: var(--muted); font-weight: 500; text-transform: none; letter-spacing: 0; }
+.cmp-table td { font-variant-numeric: tabular-nums; }
+.cmp-table td.cmp-best { color: #1eff00; font-weight: 700; }
+/* reputation grind calculator on the faction page */
+.rep-calc { margin: 4px 0 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.rep-calc > summary { padding: 10px 14px; cursor: pointer; font-weight: 600; color: var(--gold); }
+.rep-calc-body { display: flex; flex-wrap: wrap; gap: 18px 28px; padding: 4px 14px 14px; align-items: start; }
+.rep-tiers { width: auto; }
+.rep-tiers th, .rep-tiers td { padding: 4px 16px 4px 0; border: none; }
+.rep-tiers .num { text-align: right; font-variant-numeric: tabular-nums; }
+.rep-notes { margin: 0; padding-left: 18px; line-height: 1.7; flex: 1 1 320px; }
+/* talent calculator */
+.talent-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; margin-bottom: 6px; }
+.talent-status { font-size: 14px; }
+.talent-reset { padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; color: var(--text); background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; }
+.talent-reset:hover { border-color: var(--gold); color: var(--gold); }
+.talent-note { font-size: 12px; margin: 2px 0 14px; }
+.talent-classlist { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+.talent-cls { display: flex; flex-direction: column; align-items: center; gap: 7px; width: 92px;
+  padding: 12px 8px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-weight: 600; }
+.talent-cls:hover { border-color: var(--gold); color: var(--gold); text-decoration: none; }
+.talent-cls-icon { width: 48px; height: 48px; border-radius: 8px; border: 1px solid #000;
+  background: #000; }
+.talent-trees { display: flex; flex-wrap: wrap; gap: 22px; align-items: start; }
+.talent-tree { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.talent-tree-head { margin-bottom: 10px; }
+.talent-grid { display: grid; gap: 8px; }
+.talent-cell { position: relative; display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 6px; border: 2px solid #3a3f4b; background: #0b0d13;
+  user-select: none; cursor: pointer; }
+.talent-cell .il-icon, .talent-cell img { width: 36px; height: 36px; border-radius: 4px; }
+.talent-cell.locked { filter: grayscale(1) brightness(.5); cursor: not-allowed; }
+.talent-cell.open { border-color: #4a5160; }
+.talent-cell.on { border-color: #1eff00; box-shadow: 0 0 6px rgba(30,255,0,.35); }
+.talent-cell.maxed { border-color: var(--gold); box-shadow: 0 0 7px rgba(255,209,0,.5); }
+.talent-rank { position: absolute; right: -4px; bottom: -6px; font-size: 11px; font-weight: 700;
+  line-height: 1; padding: 1px 4px; border-radius: 5px; background: #000; color: var(--gold); border: 1px solid var(--border); }
+.talent-cell.maxed .talent-rank { color: var(--gold); }
 /* site footer: build date + page load time + source link */
 .sitefoot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px;
   justify-content: center; padding: 16px 12px 22px; margin-top: 24px;
@@ -604,6 +662,14 @@ h1 .tagx.tw-tag { font-size: 13px; vertical-align: middle; }
 .crit-add { align-self: flex-start; margin-top: 8px; padding: 6px 11px; background: var(--panel2);
   border: 1px dashed var(--border); border-radius: 6px; color: var(--text); cursor: pointer; font: inherit; }
 .crit-add:hover { border-color: var(--text); }
+.crit-match { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; padding: 2px 4px; }
+/* gear-score weight builder: preset dropdown + stat×multiplier rows */
+.wt-preset { margin-bottom: 8px; }
+.wt-preset select { min-width: 190px; }
+.wt-row { display: flex; gap: 8px; align-items: center; }
+.wt-row select[data-wstat] { min-width: 170px; }
+.wt-row input[data-wval] { width: 70px; }
+.wt-x { color: var(--muted); }
 .browse-count { color: var(--muted); margin: 0 0 10px; }
 /* row-selection column + operations bar */
 .selcol { width: 28px; text-align: center; padding-right: 0; }

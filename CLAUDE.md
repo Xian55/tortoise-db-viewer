@@ -53,9 +53,16 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
   that hash and wipes old copies, so a new deploy auto-refreshes clients.
 - **Routing** is query-param based (SPA, no server rewrites): `?item=`, `?npc=`,
   `?quest=`, `?faction=`, `?zone=`, `?dungeon=`, `?dungeons`,
-  `?browse=items|npcs|quests|factions|zones|crafting`, `?search=`. `route()`
-  checks `?browse=` **before** the singular entity params (browse URLs carry
-  filter params like `faction=a` that collide otherwise). See `src/main.js`.
+  `?browse=items|npcs|quests|factions|zones|crafting`, `?search=`, `?compare=a:b:c`
+  (item comparison), `?talents=<class>` (talent calculator), `?random`. `route()`
+  checks `?browse=` (and `?compare=`) **before** the singular entity params (browse
+  URLs carry filter params like `faction=a` that collide otherwise). See `src/main.js`.
+- **Item browse gear features** (`src/browse.js`): the multi-criteria stat filter
+  (`stats=key,op,val|…`, `match=all|any` for AND/OR) and **stat-weight ranking**
+  (`weights=key:w|…` + `STAT_WEIGHT_PRESETS`) add a computed, sortable **Score**
+  column — both resolve stats through the derived `item_stats` table. Selecting rows
+  → **Compare** builds a `?compare=` URL; a localStorage compare tray (main.js
+  `renderCompareTray`) collects items across pages.
 - **Zone maps use Leaflet + a Pixi GPU overlay** (`L.CRS.Simple`,
   `leaflet-pixi-overlay` + `pixi.js`, all npm, lazy-loaded as one chunk via
   `src/zonemap.js`). A zone page renders the in-game parchment image
@@ -106,6 +113,9 @@ python scripts/extract-item-sets.py   # LOCAL: client ItemSet.dbc -> scripts/dat
 python scripts/extract-skill-lines.py # LOCAL: client SkillLine.dbc -> scripts/data/skill-lines.json (skill categories)
 python scripts/extract-locks.py       # LOCAL: client Lock.dbc -> scripts/data/locks.json (lockId -> mining/herbalism; splits gather nodes)
 python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/minimap/<map>/{z}/{x}/{y}.webp tile pyramid + scripts/data/minimap.json
+python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc -> scripts/data/talents.json (talent-tree structure)
+python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
+bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
 ```
 
 `SQL_DIR` defaults to `../tortoise-wow/sql/base`; `UPDATES_DIR` defaults to its
@@ -194,8 +204,10 @@ Re-run `extract-minimap.py` + commit on client map changes.
   drop chances** into a `drops` table (mangos loot groups + references) and
   **drop the raw loot tables**; build `maps`/`spawns` (location), the `quests`
   table + `quest_item`/`quest_creature_objective`/`quest_reward_rep` links +
-  `areas`/`faction_names` lookups, the derived `factions` summary (rep-gated item
-  + rep-quest counts per faction), `spell_creates`/`spell_reagent` link tables, the
+  `areas`/`faction_names` lookups, the `creature_rep` table (rep-per-kill, flattened
+  from `creature_onkill_reputation` — powers the faction rep-grind calculator), the
+  derived `factions` summary (rep-gated item + rep-quest + rep-mob counts per
+  faction), `spell_creates`/`spell_reagent` link tables, the
   `spells` table (incl. `icon` from `spell-icon-map.json`, `skill` profession, and
   detailed combat columns resolved via `spell-lookups.json`), the spell teach
   sources (`spell_trainer` NPCs + `spell_taught_item` books, plus `spells.learnable`),
@@ -247,6 +259,19 @@ Re-run `extract-minimap.py` + commit on client map changes.
   transform manifest `scripts/data/minimap.json`. See "Seamless world map (?worldmap=)".
   Per-map runs MERGE the manifest. Standalone reference C# tooling:
   `X:\Programming\WoWTools.Minimaps` (not used by the build).
+- `scripts/extract-talents.py` — LOCAL: reads the client `Talent.dbc` +
+  `TalentTab.dbc` → committed `scripts/data/talents.json` (talent-tree STRUCTURE:
+  per class → tab → talent row/col/rank-spell-ids/prereq). Names/icons/tooltips are
+  NOT stored — `src/talents.js` resolves them from the rank spell ids against the
+  shipped `spells` table. CI has no client, so the JSON is committed source (real
+  all-class data, 9 classes / 476 talents, extracted from the Turtle client). DBC
+  offsets are verified in the script header; re-run + commit on client changes. See
+  the talent calculator route `?talents=<class>`.
+- `scripts/build-tooltips.mjs` — dumps compact per-entity JSON
+  (`dist/tt/<prefix>/<id>.json`, prefixes i/n/q/s) for the embeddable powered-tooltip
+  widget `public/embed/tw-power.js`. Content-hashed like the OG stubs (HASH_ONLY=1);
+  run AFTER `vite build` (it writes into `dist`, which vite wipes). deploy.yml
+  regenerates + merges it (cache-gated). `public/embed/demo.html` is a demo/test page.
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
 - `scripts/lib/sqlite.mjs` — Bun/Node SQLite wrapper.
@@ -269,7 +294,11 @@ Re-run `extract-minimap.py` + commit on client map changes.
 - `src/constants.js` — WoW 1.12 enum maps (quality, class/slot/stat, creature
   type/rank, quest type/sort, etc.) + `questZoneLabel`/`classRestrictions`/
   `raceRestrictions` helpers.
-- `src/main.js` — routing + the item/NPC/quest/faction/dungeon/search views.
+- `src/talents.js` — talent calculator (`?talents=<class>`): renders the trees from
+  `scripts/data/talents.json`, resolves names/icons/tooltips from rank spell ids,
+  enforces the 51-point / 5-per-row / prereq rules, persists the build in the URL.
+- `src/main.js` — routing + the item/NPC/quest/faction/dungeon/search views, the
+  `?compare=` item-comparison view, the `?random` roll, and the compare tray.
 
 ## Conventions
 
@@ -320,7 +349,13 @@ Re-run `extract-minimap.py` + commit on client map changes.
   and the seamless-world-map transform
   manifest (`scripts/data/minimap.json` via `extract-minimap.py`) + the world-map
   **tile pyramid** itself (`public/minimap/`, ~2400 webp — committed like
-  `public/maps`; CI can't rebuild it, deploy.yml syncs it to R2). See "Custom
+  `public/maps`; CI can't rebuild it, deploy.yml syncs it to R2). Plus talent-tree
+  structure (`scripts/data/talents.json` via `extract-talents.py`, from the client
+  `Talent.dbc`/`TalentTab.dbc`; real all-class Turtle trees, re-run on client
+  changes) + the class-picker emblems (`public/icons/class/<slug>.webp` via
+  `extract-class-icons.py`, cropped from the client character-create sheet; served
+  from `${ASSETS_BASE}icons/class/`, synced to R2 by deploy.yml's `public/icons`
+  sync). See "Custom
   icons" / `scripts/extract-maps.py` / "Seamless world map". Plus scripted-transform
   spawn links (`scripts/data/scripted-spawn-links.json`): creatures with no static
   `creature` row that a server **C++** script swaps in at another NPC's location (the

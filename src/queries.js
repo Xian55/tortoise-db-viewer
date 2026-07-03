@@ -16,6 +16,23 @@ export const Q_ITEM = `
   LEFT JOIN faction_names rf ON rf.id = i.required_reputation_faction
   WHERE i.entry = ?1`;
 
+// Other items sharing this one's display_id (same in-game model/appearance).
+// ?1 = display_id, ?2 = this item's entry (excluded). LIMIT bounds generic models
+// (a few display_ids are placeholders shared by 300+ items).
+export const Q_SAME_MODEL = `
+  SELECT i.entry, i.name, i.quality, di.icon, i.item_level, i.required_level, i.inventory_type
+  FROM items i JOIN item_display_info di ON di.ID = i.display_id
+  WHERE i.display_id = ?1 AND i.entry <> ?2 AND i.hidden = 0
+  ORDER BY i.quality DESC, i.item_level DESC, i.name LIMIT 250`;
+
+// all derived gear stats for one item (compare view stat-delta table).
+export const Q_ITEM_STATS = `SELECT stat, value FROM item_stats WHERE item = ?1`;
+
+// ---- random page (surprise-me button) ----
+export const Q_RANDOM_ITEM = `SELECT entry FROM items WHERE hidden = 0 AND quality >= 2 AND name <> '' ORDER BY RANDOM() LIMIT 1`;
+export const Q_RANDOM_NPC = `SELECT entry FROM creatures WHERE name <> '' AND COALESCE(hidden,0) = 0 ORDER BY RANDOM() LIMIT 1`;
+export const Q_RANDOM_QUEST = `SELECT entry FROM quests WHERE title <> '' AND hidden = 0 ORDER BY RANDOM() LIMIT 1`;
+
 // ---- item sets (name + members + set-bonus spells) ----
 export const Q_ITEM_SET = `SELECT id, name FROM item_sets WHERE id = ?1`;
 // browse: every set with a current member, + piece count and required-level span.
@@ -613,7 +630,16 @@ export const qGuideItems = (n) => `
 
 // ---- factions / reputation ----
 export const Q_FACTIONS = `SELECT id, name, items, repquests FROM factions ORDER BY name`;
-export const Q_FACTION = `SELECT id, name, listid, items, repquests FROM factions WHERE id = ?1`;
+export const Q_FACTION = `SELECT id, name, listid, items, repquests, repmobs FROM factions WHERE id = ?1`;
+
+// Creatures that grant reputation with this faction on kill (rep grind calculator).
+// value = rep per kill; maxstanding = the standing (index) kills cap out at.
+export const Q_FACTION_MOBS = `
+  SELECT cr.creature AS entry, cr.value, cr.maxstanding,
+         c.name, c.level_min, c.level_max, c.rank
+  FROM creature_rep cr JOIN creatures c ON c.entry = cr.creature
+  WHERE cr.faction = ?1 AND cr.value > 0
+  ORDER BY cr.value DESC, c.level_max DESC LIMIT 1000`;
 
 // Items unlocked at each standing with this faction (grouped by rank in the view).
 export const Q_FACTION_ITEMS = `

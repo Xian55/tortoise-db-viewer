@@ -116,6 +116,19 @@ export const IMPORTS = [
     indexes: ["faction_id"],
   },
   {
+    // Reputation gained per kill (for the reputation grind calculator). Each
+    // creature has up to two faction/value slots; MaxStanding caps how far kills
+    // can raise you. RewOnKillRepFaction{1,2} are Faction ids (= faction_names.id).
+    file: "tw_world_creature_onkill_reputation.sql",
+    table: "creature_onkill_reputation",
+    target: "creature_onkill_rep",
+    columns: ["creature_id", "RewOnKillRepFaction1", "RewOnKillRepValue1", "MaxStanding1",
+      "RewOnKillRepFaction2", "RewOnKillRepValue2", "MaxStanding2"],
+    text: [],
+    pk: "creature_id",
+    indexes: [],
+  },
+  {
     // GameObjects that start a quest (e.g. a book/altar).
     file: "tw_world_gameobject_questrelation.sql",
     table: "gameobject_questrelation",

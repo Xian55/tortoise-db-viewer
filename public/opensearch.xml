@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+  <ShortName>Tortoise-WoW DB</ShortName>
+  <Description>Search items, NPCs, quests, zones and factions in the Tortoise-WoW database.</Description>
+  <InputEncoding>UTF-8</InputEncoding>
+  <Image width="16" height="16" type="image/svg+xml">data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A2%3C/text%3E%3C/svg%3E</Image>
+  <Url type="text/html" method="get" template="https://xian55.github.io/tortoise-db-viewer/?search={searchTerms}"/>
+  <moz:SearchForm xmlns:moz="http://www.mozilla.org/2006/browser/search/">https://xian55.github.io/tortoise-db-viewer/</moz:SearchForm>
+</OpenSearchDescription>

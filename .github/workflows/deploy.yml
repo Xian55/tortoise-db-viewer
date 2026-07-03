@@ -135,6 +135,27 @@ jobs:
       - name: Merge OG stubs into the site
         run: cp -r og-stubs/. dist/
 
+      # Compact per-entity JSON for the embeddable powered-tooltip widget
+      # (public/embed/tw-power.js). Same content-hash cache gate as the OG stubs:
+      # a code-only deploy (DB unchanged) restores them instead of regenerating.
+      - name: Tooltip JSON content hash
+        id: tthash
+        run: echo "hash=$(HASH_ONLY=1 bun scripts/build-tooltips.mjs)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore tooltip JSON
+        id: ttcache
+        uses: actions/cache@v4
+        with:
+          path: tt-json
+          key: tt-${{ steps.tthash.outputs.hash }}
+
+      - name: Build tooltip JSON (cache miss only)
+        if: steps.ttcache.outputs.cache-hit != 'true'
+        run: OUT_DIR=tt-json bun scripts/build-tooltips.mjs
+
+      - name: Merge tooltip JSON into the site
+        run: cp -r tt-json/tt dist/
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

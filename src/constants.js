@@ -100,6 +100,23 @@ export const GEAR_CRITERIA = [
 // flat key -> label (column headers + valid-key whitelist for the stats= URL param)
 export const GEAR_STAT_LABEL = Object.fromEntries(GEAR_CRITERIA.flatMap((g) => g.options));
 
+// Stat-weight presets for the gear-ranking Score column (aowow-style "best gear
+// for spec"). Weights are relative multipliers on the item_stats values; % stats
+// (crit/hit) carry higher weights than raw stats since their values are small, and
+// armor a tiny one since its values are large. Rough starting points -- users tune
+// them freely in the UI. Keys MUST be GEAR_STAT_LABEL keys.
+export const STAT_WEIGHT_PRESETS = [
+  { id: "warrior-dps", label: "Warrior · DPS", weights: { str: 2, ap: 1, crit: 14, hit: 12, dps: 3, agi: 1 } },
+  { id: "warrior-tank", label: "Warrior · Tank", weights: { sta: 2, def: 12, dodge: 10, parry: 10, block: 6, armor: 0.05 } },
+  { id: "rogue-dps", label: "Rogue · DPS", weights: { agi: 2, ap: 1, crit: 14, hit: 12, dps: 3 } },
+  { id: "hunter-dps", label: "Hunter · DPS", weights: { agi: 2, ap: 1, crit: 12, hit: 12, dps: 2, int: 0.5 } },
+  { id: "feral-dps", label: "Druid · Feral", weights: { agi: 2, str: 1.5, ap: 1, crit: 12, hit: 10 } },
+  { id: "caster-dps", label: "Caster · DPS", weights: { sp: 1, spCrit: 14, spHit: 10, int: 0.3, mp5: 0.4 } },
+  { id: "healer", label: "Healer", weights: { heal: 1, mp5: 0.6, sp: 0.5, int: 0.3, spi: 0.2 } },
+  { id: "tank-avoid", label: "Tank · Avoidance", weights: { def: 12, dodge: 10, parry: 10, sta: 1.5, armor: 0.05, block: 5 } },
+];
+export const STAT_WEIGHT_PRESET_MAP = Object.fromEntries(STAT_WEIGHT_PRESETS.map((p) => [p.id, p]));
+
 // item acquisition sources (key/label, in display order) — powers the browse
 // Source filter + tag column and the item-detail header tags. Derived at build
 // time into the item_sources table (see scripts/build-db.mjs).
@@ -187,6 +204,16 @@ export const REP_STANDING = {
   0: "Hated", 1: "Hostile", 2: "Unfriendly", 3: "Neutral",
   4: "Friendly", 5: "Honored", 6: "Revered", 7: "Exalted",
 };
+// Cumulative reputation (from the start of Neutral) needed to REACH each standing.
+// Classic spans: Neutral 3000, Friendly 6000, Honored 12000, Revered 21000.
+export const REP_TO_STANDING = { 4: 3000, 5: 9000, 6: 21000, 7: 42000 };
+export const REP_EXALTED = 42000;
+// highest standing index a cumulative rep total reaches (from Neutral).
+export function repStandingReached(rep) {
+  let st = 3;
+  for (const s of [4, 5, 6, 7]) if (rep >= REP_TO_STANDING[s]) st = s;
+  return st;
+}
 
 // Negative ZoneOrSort -> category, from the client QuestSort.dbc (positive
 // ZoneOrSort is an areas.entry zone name instead). Authoritative, extracted once.

@@ -53,6 +53,137 @@ async function testItem(id, expectName) {
   return name.includes(expectName) && tabList.length > 0 && sortableH > 0;
 }
 
+// "Same model" tab lists other items sharing this one's display_id (appearance).
+// Item 33292 (Elberetha's Scepter) shares display 68751 with 2 other wands.
+async function testSameModel(id, minRows) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
+  const clicked = await page.evaluate(() => { const b = [...document.querySelectorAll(".item-rel .tab")].find((t) => t.textContent.includes("Same model")); if (b) { b.click(); return true; } return false; });
+  if (!clicked) { console.log(`same-model ${id}: no tab`); return false; }
+  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: T });
+  const rows = await page.$$eval(".item-rel .tabpane:not(.hidden) tbody tr", (e) => e.length);
+  const headers = await page.$$eval(".item-rel .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  console.log(`same-model ${id}: rows=${rows} headers=[${headers.join(",")}]`);
+  return rows >= minRows && headers.includes("Slot");
+}
+
+// Talent calculator: allocating ranks updates the point counter + URL, and obeys
+// the rank cap (clicking a 3-rank talent 4× stops at 3/3).
+async function testTalents() {
+  // class picker: one icon per class (9)
+  await page.goto(`${BASE}?talents`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".talent-classlist .talent-cls-icon", { timeout: T });
+  const icons = await page.$$eval(".talent-classlist .talent-cls-icon", (e) => e.length);
+  const iconOk = await page.$eval(".talent-classlist .talent-cls-icon", (e) => e.complete && e.naturalWidth > 0);
+  console.log(`talent-picker: classIcons=${icons} firstLoaded=${iconOk}`);
+  await page.goto(`${BASE}?talents=warrior`, { waitUntil: WAIT, timeout: T });
+  const sel = "a.talent-cell:not(.locked)"; // a row-0 talent, unlocked at load
+  await page.waitForSelector(sel, { timeout: T });
+  const tabs = await page.$$eval(".talent-tree-head", (e) => e.map((h) => h.textContent.trim()));
+  const max = (await page.$eval(sel + " .talent-rank", (e) => e.textContent)).split("/")[1];
+  for (let i = 0; i < +max + 2; i++) await page.click(sel); // over-click: must cap at max
+  const rank = await page.$eval(sel + " .talent-rank", (e) => e.textContent);
+  const spent = await page.$eval(".talent-status b", (e) => e.textContent);
+  const url = await page.evaluate(() => location.search);
+  console.log(`talents: tabs=[${tabs.join("|")}] rank=${rank} spent=${spent} url=${url}`);
+  return icons === 9 && iconOk && tabs.length === 3 && rank === `${max}/${max}` && spent === max && /[?&]t=/.test(url);
+}
+
+// Embeddable powered tooltip: the demo page loads embed/tw-power.js which, on hover
+// over a DB link, fetches tt/<p>/<id>.json and renders a floating tooltip.
+async function testEmbedTooltip() {
+  await page.goto(`${BASE}embed/demo.html`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector('a[href="../?item=2770"]', { timeout: T });
+  await (await page.$('a[href="../?item=2770"]')).hover();
+  await page.waitForSelector(".twp-tip.on", { timeout: T });
+  const txt = await page.$eval(".twp-tip", (e) => e.textContent);
+  const iconSrc = await page.$eval(".twp-tip .twp-icon", (e) => e.getAttribute("src")).catch(() => null);
+  // also prove a different entity kind (spell) tooltips + the stub-link form
+  await (await page.$('a[href="../?spell=133"]')).hover();
+  await page.waitForFunction(() => /Fireball/.test((document.querySelector(".twp-tip.on") || {}).textContent || ""), { timeout: T });
+  const spellTxt = await page.$eval(".twp-tip", (e) => e.textContent);
+  console.log(`embed-tooltip: item="${txt.slice(0, 30)}" icon=${iconSrc ? iconSrc.split("/").pop() : "none"} spell="${spellTxt.slice(0, 20)}"`);
+  return /Copper Ore/.test(txt) && !!iconSrc && /inv_ore_copper_01/i.test(iconSrc) && /Fireball/.test(spellTxt);
+}
+
+// Faction rep calculator: the panel (tier table + notes) + a "Rep from kills" tab
+// listing mobs with rep/kill and kills-to-Exalted. Argent Dawn (529) has both.
+async function testFactionRepCalc(id) {
+  await page.goto(`${BASE}?faction=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-page .rep-calc", { timeout: T });
+  const notes = await page.$$eval(".rep-calc .rep-notes li", (e) => e.length);
+  const clicked = await page.evaluate(() => { const b = [...document.querySelectorAll(".tab")].find((t) => t.textContent.includes("Rep from kills")); if (b) { b.click(); return true; } return false; });
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: T });
+  const headers = await page.$$eval(".tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const rows = await page.$$eval(".tabpane:not(.hidden) tbody tr", (e) => e.length);
+  const strat = await page.$eval(".rep-calc .rep-notes", (e) => e.textContent);
+  console.log(`faction-repcalc ${id}: notes=${notes} killsTab=${clicked} rows=${rows} grindFirst=${/Grind first/.test(strat)}`);
+  return notes > 0 && /Grind first/.test(strat) && clicked && rows > 0 && headers.includes("Rep / kill");
+}
+
+// Home page advertises the embeddable tooltip widget (link to the demo page).
+async function testHomeEmbed() {
+  await page.goto(`${BASE}?`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".home", { timeout: T });
+  const demo = await page.$$eval('.home a[href*="embed/demo.html"]', (e) => e.length);
+  const talents = await page.$$eval('.home a[href="?talents"]', (e) => e.length);
+  console.log(`home-embed: demoLink=${demo} talentsLink=${talents}`);
+  return demo > 0 && talents > 0;
+}
+
+// ?random rolls a random entity and replaces the URL with its detail page.
+async function testRandom() {
+  await page.goto(`${BASE}?random`, { waitUntil: WAIT, timeout: T });
+  await page.waitForFunction(() => /[?&](item|npc|quest)=\d+/.test(location.search), { timeout: T });
+  await page.waitForSelector("#app h1, #app .tooltip .tt-name", { timeout: T });
+  const search = await page.evaluate(() => location.search);
+  console.log(`random -> ${search}`);
+  return /[?&](item|npc|quest)=\d+/.test(search);
+}
+
+// Multi-criteria OR: match=any OR-combines the stat criteria, so it must return
+// at least as many items as the default AND (agi≥20 OR int≥20 ⊇ agi≥20 AND int≥20).
+async function testCriteriaOr() {
+  const stats = encodeURIComponent("agi,>=,20|int,>=,20");
+  const readCount = async (m) => {
+    await page.goto(`${BASE}?browse=items&stats=${stats}${m}`, { waitUntil: WAIT, timeout: T });
+    await page.waitForSelector(".browse-count", { timeout: T });
+    const txt = await page.$eval(".browse-count", (e) => e.textContent);
+    return parseInt(txt.replace(/[^0-9]/g, ""), 10) || 0;
+  };
+  const all = await readCount("");
+  const any = await readCount("&match=any");
+  console.log(`criteria-or: all=${all} any=${any}`);
+  return any > all;
+}
+
+// Stat-weight gear ranking: weights= adds a computed Score column and sorts the
+// finder score-desc (best gear for the spec on top).
+async function testGearScore() {
+  const w = encodeURIComponent("dps:3|crit:14|hit:12");
+  await page.goto(`${BASE}?browse=items&class=2&weights=${w}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const idx = headers.indexOf("Score");
+  const scores = idx < 0 ? [] : await page.$$eval(".browse tbody tr", (rows, i) => rows.map((r) => parseFloat(r.querySelectorAll("td")[i]?.textContent) || 0), idx);
+  const nonzero = scores.filter((v) => v > 0);
+  const desc = nonzero.length < 2 || nonzero[0] >= nonzero[nonzero.length - 1];
+  console.log(`gear-score: hasScore=${idx >= 0} rows=${nonzero.length} top=${scores[0]} desc=${desc}`);
+  return idx >= 0 && nonzero.length > 0 && desc;
+}
+
+// ?compare=a:b renders side-by-side tooltip cards + a stat-delta table with the
+// best value per row highlighted.
+async function testCompare(a, b) {
+  await page.goto(`${BASE}?compare=${a}:${b}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".compare-view .cmp-card .tooltip .tt-name", { timeout: T });
+  const cards = await page.$$eval(".compare-view .cmp-card", (e) => e.length);
+  const rows = await page.$$eval(".cmp-table tbody tr", (e) => e.length);
+  const best = await page.$$eval(".cmp-table td.cmp-best", (e) => e.length);
+  console.log(`compare ${a}:${b}: cards=${cards} statRows=${rows} bestCells=${best}`);
+  return cards === 2 && rows >= 2 && best > 0;
+}
+
 // The "Dropped by" tab carries a Location column resolved for each NPC (open-world
 // zone or dungeon), e.g. wolves dropping Tough Wolf Meat (item 750).
 async function testItemDropLocation(id) {
@@ -1598,6 +1729,11 @@ run(() => testItemSlots(18042, "Adds 17.5 damage per second"));  // ammo damage 
 run(() => testItem(2770, "Copper Ore"));
 run(() => testItem(55356, "Netherwrought"));
 run(() => testItem(647, "Destiny"));
+run(() => testSameModel(33292, 2));  // items sharing a display_id (Same model tab)
+run(() => testCompare(47185, 47191));  // ?compare= side-by-side tooltips + stat deltas
+run(() => testGearScore());            // stat-weight Score column + score-desc sort
+run(() => testCriteriaOr());           // multi-criteria match=any (OR) vs default AND
+run(() => testRandom());               // ?random redirects to a random entity page
 run(() => testContainer(16882, "Junkbox"));  // lockbox -> Contains tab
 run(() => testTeaches(70204, "Shadowforged"));  // recipe -> Teaches tab
 run(() => testCustomIcon(9376, "Jang"));
@@ -1633,6 +1769,10 @@ run(() => testSearchSpells("Shadowforged"));       // search yields a Spells tab
 run(() => testBrowse("spells", "", "Profession")); // ?browse=spells finder
 run(() => testBrowse("quests", "&minlvl=1&maxlvl=12", "Zone"));
 run(() => testFaction(509, "League of Arathor"));
+run(() => testFactionRepCalc(529));      // rep grind calculator + Rep-from-kills tab (Argent Dawn)
+run(() => testHomeEmbed());              // home page links the embed demo + talent calc
+run(() => testEmbedTooltip());           // embeddable powered-tooltip widget (embed/demo.html)
+run(() => testTalents());                // talent calculator: rank allocation + point counter + URL
 run(() => testFactionMembers(69, 20));  // Darnassus member NPCs + title + location
 run(() => testNpcFaction(80959, 69));   // NPC shows its faction (Darnassus Quartermaster)
 run(() => testQuestRepLink(14));

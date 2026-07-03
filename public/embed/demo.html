@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embeddable tooltips — Tortoise-WoW DB</title>
+  <style>
+    body { font: 15px/1.6 system-ui, Segoe UI, Arial, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; background: #12141a; color: #e6e6e6; }
+    a { color: #4ea3ff; text-decoration: none; } a:hover { text-decoration: underline; }
+    code, pre { background: #1c1f28; border-radius: 6px; }
+    code { padding: 1px 5px; } pre { padding: 12px 14px; overflow-x: auto; }
+    h1 { font-size: 22px; } h2 { font-size: 15px; margin: 26px 0 6px; color: #ffd100; }
+    .ex { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+    .muted { color: #9aa0ad; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>🐢 Embeddable powered tooltips</h1>
+  <p>Include one script on any page and links to the Tortoise-WoW database gain
+     Wowhead-style hover tooltips — no backend, no iframe. Add before
+     <code>&lt;/body&gt;</code>:</p>
+  <pre>&lt;script src="https://xian55.github.io/tortoise-db-viewer/embed/tw-power.js" defer&gt;&lt;/script&gt;</pre>
+  <p class="muted">Hover any link below. Two link styles are supported: SPA query links
+     (<code>?item=123</code>) and Open Graph stub links (<code>/i/123</code>).</p>
+
+  <h2>Items</h2>
+  <ul class="ex" data-twp>
+    <li><a href="../?item=2770">Copper Ore</a></li>
+    <li><a href="../?item=7909">Aquamarine</a></li>
+    <li><a href="../?item=12360">Arcanite Bar</a></li>
+    <li><a href="../?item=13444">Major Mana Potion</a></li>
+    <li><a href="../?item=19019">Thunderfury, Blessed Blade of the Windseeker</a></li>
+  </ul>
+
+  <h2>NPCs</h2>
+  <ul class="ex" data-twp>
+    <li><a href="../?npc=448">Hogger</a></li>
+    <li><a href="../?npc=639">Edwin VanCleef</a></li>
+    <li><a href="../?npc=2376">Torn Fin Oracle</a></li>
+    <li><a href="../?npc=11502">Ragnaros</a></li>
+    <li><a href="../?npc=10184">Onyxia</a></li>
+  </ul>
+
+  <h2>Quests</h2>
+  <ul class="ex" data-twp>
+    <li><a href="../?quest=14">The People's Militia</a></li>
+    <li><a href="../?quest=60">Kobold Candles</a></li>
+    <li><a href="../?quest=788">Cutting Teeth</a></li>
+  </ul>
+
+  <h2>Spells</h2>
+  <ul class="ex" data-twp>
+    <li><a href="../?spell=133">Fireball</a></li>
+    <li><a href="../?spell=116">Frostbolt</a></li>
+    <li><a href="../?spell=78">Heroic Strike</a></li>
+    <li><a href="../?spell=589">Shadow Word: Pain</a></li>
+  </ul>
+
+  <h2>Open Graph stub links (<code>/i/</code>, <code>/n/</code>, <code>/q/</code>, <code>/s/</code>)</h2>
+  <ul class="ex" data-twp>
+    <li><a href="../i/19019">/i/19019</a></li>
+    <li><a href="../n/11502">/n/11502</a></li>
+    <li><a href="../q/14">/q/14</a></li>
+    <li><a href="../s/133">/s/133</a></li>
+  </ul>
+
+  <script src="tw-power.js" defer></script>
+</body>
+</html>
