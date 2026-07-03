@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://xian55.github.io/tortoise-db-viewer/sitemap.xml
