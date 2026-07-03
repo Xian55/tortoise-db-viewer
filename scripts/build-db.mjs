@@ -55,7 +55,7 @@ const STAGE_PK = {
   creature: "guid", gameobject: "guid", creature_template: "entry",
   gameobject_template: "entry", item_template: "entry", quest_template: "entry",
   map_template: "entry", item_display_info: "ID", faction: "entry",
-  area_template: "entry", spell_template: "entry",
+  area_template: "entry", spell_template: "entry", creature_onkill_reputation: "creature_id",
 };
 const STAGE_SPECS = (() => {
   const seen = new Set(), specs = [];
@@ -937,20 +937,41 @@ console.log("Importing item sets...");
   }
 }
 
+// ---- Reputation per kill (grind calculator) ----
+// Flatten the two-slot creature_onkill_rep into one row per (creature, faction):
+// value = rep gained on kill, maxstanding = the standing index kills cap out at.
+console.log("Deriving creature reputation (per-kill)...");
+{
+  db.exec(`CREATE TABLE creature_rep (creature INTEGER, faction INTEGER, value INTEGER, maxstanding INTEGER)`);
+  db.exec(`INSERT INTO creature_rep (creature, faction, value, maxstanding)
+    SELECT creature_id, RewOnKillRepFaction1, RewOnKillRepValue1, MaxStanding1
+      FROM creature_onkill_rep WHERE RewOnKillRepFaction1 <> 0 AND RewOnKillRepValue1 <> 0
+    UNION ALL
+    SELECT creature_id, RewOnKillRepFaction2, RewOnKillRepValue2, MaxStanding2
+      FROM creature_onkill_rep WHERE RewOnKillRepFaction2 <> 0 AND RewOnKillRepValue2 <> 0`);
+  db.exec(`CREATE INDEX idx_creature_rep_faction ON creature_rep(faction)`);
+  db.exec(`CREATE INDEX idx_creature_rep_creature ON creature_rep(creature)`);
+  db.exec(`DROP TABLE creature_onkill_rep`); // raw slots consumed
+  const n = db.prepare(`SELECT COUNT(*) c FROM creature_rep`).get().c;
+  console.log(`  creature_rep: ${n} rows`);
+}
+
 // ---- Factions summary (reputation feature) ----
-// One row per faction that gates >=1 item (items.required_reputation_faction) OR
-// grants reputation via a quest (quest_reward_rep). Counts power the browse list
-// + detail header without runtime aggregation.
+// One row per faction that gates >=1 item (items.required_reputation_faction),
+// grants reputation via a quest (quest_reward_rep), OR via a mob kill
+// (creature_rep). Counts power the browse list + detail header + rep calculator.
 console.log("Deriving factions...");
 {
-  db.exec(`CREATE TABLE factions (id INTEGER PRIMARY KEY, name TEXT, listid INTEGER, items INTEGER, repquests INTEGER)`);
-  db.exec(`INSERT INTO factions (id, name, listid, items, repquests)
+  db.exec(`CREATE TABLE factions (id INTEGER PRIMARY KEY, name TEXT, listid INTEGER, items INTEGER, repquests INTEGER, repmobs INTEGER)`);
+  db.exec(`INSERT INTO factions (id, name, listid, items, repquests, repmobs)
     SELECT fn.id, fn.name1, fn.reputation_list_id,
            (SELECT COUNT(*) FROM items i WHERE i.required_reputation_faction = fn.id) AS items,
-           (SELECT COUNT(DISTINCT r.quest) FROM quest_reward_rep r WHERE r.faction = fn.id) AS repquests
+           (SELECT COUNT(DISTINCT r.quest) FROM quest_reward_rep r WHERE r.faction = fn.id) AS repquests,
+           (SELECT COUNT(DISTINCT cr.creature) FROM creature_rep cr WHERE cr.faction = fn.id AND cr.value > 0) AS repmobs
     FROM faction_names fn
     WHERE EXISTS (SELECT 1 FROM items i WHERE i.required_reputation_faction = fn.id)
-       OR EXISTS (SELECT 1 FROM quest_reward_rep r WHERE r.faction = fn.id)`);
+       OR EXISTS (SELECT 1 FROM quest_reward_rep r WHERE r.faction = fn.id)
+       OR EXISTS (SELECT 1 FROM creature_rep cr WHERE cr.faction = fn.id AND cr.value > 0)`);
   const n = db.prepare(`SELECT COUNT(*) c FROM factions`).get().c;
   console.log(`  factions: ${n} rows`);
 }
