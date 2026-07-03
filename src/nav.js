@@ -114,9 +114,11 @@ export const MENU = [
   { label: "World Map", href: "?worldmap" },
   { label: "Dungeons", href: "?dungeons" },
   { label: "Guides", href: "?guides" },
+  { label: "Talents", href: "?talents" },
   { label: "Objects", href: "?browse=objects" },
   { label: "Flights", href: "?flights" },
   { label: "Icons", href: "?icons" },
+  { label: "Random", href: "?random" },
 ];
 
 function renderLi(node) {

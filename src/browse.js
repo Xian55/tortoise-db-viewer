@@ -10,6 +10,7 @@ import {
   CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
   BONDING, CLASS_MASK, PROFESSION, PROFESSION_LABEL, RACE_ALLIANCE, RACE_HORDE,
   QUEST_TYPE, CONTINENT, SPELL_SCHOOL, SPELL_CATEGORIES, GAMEOBJECT_TYPE, questZoneLabel,
+  STAT_WEIGHT_PRESETS, STAT_WEIGHT_PRESET_MAP,
 } from "./constants.js";
 
 const PAGE = 100;
@@ -162,6 +163,28 @@ function critRow(c) {
     <button type="button" class="crit-rm" data-crm title="Remove criterion">✕</button>
   </div>`;
 }
+
+// ---- gear-score weights (aowow-style "best gear for spec") ----
+// Parse the `weights` URL param ("key:w|key:w"); keep valid stat keys + finite,
+// non-zero weights.
+function parseWeights(raw) {
+  if (!raw) return [];
+  return raw.split("|").map((s) => {
+    const [key, w] = s.split(":");
+    return { key, w: +w };
+  }).filter((x) => GEAR_STAT_LABEL[x.key] && Number.isFinite(x.w) && x.w !== 0);
+}
+// one weight row (stat + multiplier + remove). w may be null (blank row).
+function weightRow(w) {
+  const key = w ? w.key : "", val = w ? w.w : "";
+  return `<div class="wt-row" data-wrow>
+    <select data-wstat><option value=""${key ? "" : " selected"}>Stat…</option>${critStatOptions(key)}</select>
+    <span class="wt-x">×</span>
+    <input type="number" data-wval value="${esc(String(val))}" step="0.5" placeholder="1">
+    <button type="button" class="crit-rm" data-wrm title="Remove weight">✕</button>
+  </div>`;
+}
+
 const NPC_COLS = [
   { key: "name", label: "Name", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
   { key: "level", label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
@@ -213,7 +236,7 @@ function multiField(name, label, entries, csv) {
 // selection operations bar for the item browse: clipboard exports + open on
 // Wowhead (classic). Reads the live selection from the table API on each click.
 const WOWHEAD = "https://www.wowhead.com/classic/item=";
-function wireSelbar(bar, api) {
+function wireSelbar(bar, api, navigate) {
   const status = bar.querySelector("[data-opstatus]");
   let timer = null;
   const flash = (msg) => {
@@ -237,6 +260,9 @@ function wireSelbar(bar, api) {
     } else if (btn.dataset.op === "wh") {
       if (ids.length > 15 && !confirm(`Open ${ids.length} Wowhead tabs?`)) return;
       ids.forEach((id) => window.open(WOWHEAD + id, "_blank", "noopener"));
+    } else if (btn.dataset.op === "compare") {
+      if (ids.length < 2) { flash("Select 2+ items to compare"); return; }
+      navigate(`?compare=${ids.slice(0, 8).join(":")}`);
     } else if (btn.dataset.op === "clear") api.clearSelection();
   });
 }
@@ -252,6 +278,8 @@ async function browseItems(p) {
     unique: p.get("unique") || "", prof: p.get("prof") || "",
   };
   const criteria = parseCriteria(p.get("stats"));
+  const weights = parseWeights(p.get("weights"));
+  const presetId = p.get("preset") || "";
   // Columns are chooser-driven: an explicit cols= set, else the class defaults.
   // Name is always shown; stat keys resolve via the item_stats join, the rest via
   // ALLCOL. defaultColKeys keeps the smart per-class layout as the pre-checked set.
@@ -295,7 +323,13 @@ async function browseItems(p) {
   if (f.unique === "1") where.push("i.max_count = 1");
   if (f.prof !== "") add("i.required_skill = ?", +f.prof);
   // each criterion -> presence-aware match against item_stats (op is whitelisted).
-  for (const c of criteria) add(`i.entry IN (SELECT item FROM item_stats WHERE stat='${c.key}' AND value ${c.op} ?)`, +c.val);
+  // match=any OR-combines them ("crit≥1 OR agi≥20"); default match=all AND-combines.
+  const critMatch = p.get("match") === "any" ? "any" : "all";
+  if (criteria.length) {
+    const clauses = criteria.map((c) => `i.entry IN (SELECT item FROM item_stats WHERE stat='${c.key}' AND value ${c.op} ?)`);
+    where.push(critMatch === "any" && clauses.length > 1 ? `(${clauses.join(" OR ")})` : clauses.join(" AND "));
+    for (const c of criteria) binds.push(+c.val);
+  }
 
   // stat columns to SHOW: selected stats not already covered by a value column,
   // plus any active filter criterion (so filtering by a stat also surfaces it).
@@ -303,8 +337,10 @@ async function browseItems(p) {
   const statSelKeys = selectedKeys.filter((k) => !VALUE_COL_KEYS.has(k) && GEAR_STAT_LABEL[k]);
   const critColKeys = criteria.filter((c) => !VALUE_COL_KEYS.has(c.key)).map((c) => c.key);
   const columnStatKeys = [...new Set([...critColKeys, ...statSelKeys])];
-  const joins = columnStatKeys.map((key, n) => `LEFT JOIN item_stats s${n} ON s${n}.item=i.entry AND s${n}.stat='${key}'`).join(" ");
-  const statSel2 = columnStatKeys.map((key, n) => `, s${n}.value AS stat_${key}`).join("");
+  // weighted stat keys are joined too (for the Score column) even when not shown.
+  const joinKeys = [...new Set([...columnStatKeys, ...weights.map((w) => w.key)])];
+  const joins = joinKeys.map((key, n) => `LEFT JOIN item_stats s${n} ON s${n}.item=i.entry AND s${n}.stat='${key}'`).join(" ");
+  const statSel2 = joinKeys.map((key, n) => `, s${n}.value AS stat_${key}`).join("");
   // the Fishing value column reads a correlated subquery (fishing isn't a GEAR stat).
   const fishingSel = selectedKeys.includes("fishing") ? ", (SELECT value FROM item_stats WHERE item = i.entry AND stat = 'fishing') AS fishing" : "";
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
@@ -316,6 +352,20 @@ async function browseItems(p) {
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
 
+  // gear score: Σ weight·stat over the weighted keys. Compute per row, then sort
+  // score-desc so the "best gear for spec" floats to the top by default.
+  let scoreCol = null;
+  if (weights.length) {
+    for (const r of rows) {
+      let sc = 0;
+      for (const { key, w } of weights) sc += w * (r[`stat_${key}`] || 0);
+      r.__score = Math.round(sc * 10) / 10;
+    }
+    rows.sort((a, b) => b.__score - a.__score);
+    scoreCol = { key: "score", label: "Score", num: true,
+      cell: (r) => (r.__score ? `<b>${r.__score}</b>` : ""), value: (r) => r.__score ?? 0 };
+  }
+
   const statCols = columnStatKeys.map((key) => ({
     key: `s_${key}`, label: statLabel(key), num: true,
     cell: (r) => { const v = r[`stat_${key}`]; return v == null ? "" : v; },
@@ -324,9 +374,20 @@ async function browseItems(p) {
 
   const subMap = f.class === "2" ? WEAPON_SUBCLASS : f.class === "4" ? ARMOR_SUBCLASS : null;
   const critRows = criteria.length ? criteria.map(critRow).join("") : critRow(null);
-  const critBlock = `<div class="fld crit" data-criteria><label>Stats</label>
+  const matchSel = `<select data-f="match" class="crit-match" title="How to combine the criteria below">
+    <option value="all"${critMatch === "all" ? " selected" : ""}>Match all</option>
+    <option value="any"${critMatch === "any" ? " selected" : ""}>Match any</option></select>`;
+  const critBlock = `<div class="fld crit" data-criteria><label>Stats ${matchSel}</label>
     <div class="crit-rows">${critRows}</div>
     <button type="button" class="crit-add" data-cadd>+ Add criterion</button>
+  </div>`;
+  // gear-score weight builder: preset dropdown + per-stat multiplier rows
+  const presetSel = `<select data-wpreset><option value="">Preset…</option>${STAT_WEIGHT_PRESETS.map((pr) => `<option value="${pr.id}"${pr.id === presetId ? " selected" : ""}>${esc(pr.label)}</option>`).join("")}</select>`;
+  const wtRows = weights.length ? weights.map(weightRow).join("") : weightRow(null);
+  const weightBlock = `<div class="fld crit wt" data-weights><label>Gear score</label>
+    <div class="wt-preset">${presetSel}</div>
+    <div class="crit-rows wt-rows">${wtRows}</div>
+    <button type="button" class="crit-add" data-wadd>+ Add stat</button>
   </div>`;
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
@@ -346,9 +407,11 @@ async function browseItems(p) {
     ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any"))}
     ${selectField("unique", "Unique", options([["1", "Unique only"]], f.unique, "Any"))}
     ${critBlock}
+    ${weightBlock}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
   const cols = buildItemCols(selectedKeys, statCols, f.prof !== "");
+  if (scoreCol) cols.splice(1, 0, scoreCol); // Score sits right after Name
   return { rows, cols, filters, noun: "items" };
 }
 
@@ -655,6 +718,7 @@ export async function showBrowse(kind, navigate) {
     <button type="button" data-op="ids" disabled>Copy IDs</button>
     <span class="op-prefix"><input type="text" data-prefix value=".additem " aria-label="line prefix">
       <button type="button" data-op="prefix" disabled>Copy w/ prefix</button></span>
+    <button type="button" data-op="compare" disabled>Compare</button>
     <button type="button" data-op="wh" disabled>Open on Wowhead</button>
     <button type="button" data-op="clear" disabled>Clear</button>
     <span class="op-status" data-opstatus></span>
@@ -688,7 +752,7 @@ export async function showBrowse(kind, navigate) {
     });
   } else if (bar) { bar.remove(); tableEl.innerHTML = `<p class="muted">No matches.</p>`; }
   else tableEl.innerHTML = `<p class="muted">No matches.</p>`;
-  if (bar && tableApi) wireSelbar(bar, tableApi);
+  if (bar && tableApi) wireSelbar(bar, tableApi, navigate);
 
   const collect = () => {
     const np = new URLSearchParams();
@@ -696,6 +760,7 @@ export async function showBrowse(kind, navigate) {
     app.querySelectorAll("[data-f]").forEach((el) => {
       // default-on checkbox: omit when checked (the default), emit =0 when off
       if (el.type === "checkbox") { if (!el.checked) np.set(el.dataset.f, "0"); return; }
+      if (el.dataset.f === "match" && el.value === "all") return; // AND is the default
       if (el.value !== "") np.set(el.dataset.f, el.value);
     });
     const multi = {};
@@ -716,15 +781,25 @@ export async function showBrowse(kind, navigate) {
       if (key && op && val !== "") crits.push(`${key},${op},${val}`);
     });
     if (crits.length) np.set("stats", crits.join("|"));
+    // gear-score weights ("key:w|key:w"); the item finder recomputes the Score
+    // column + score-desc default sort from these.
+    const wts = [];
+    app.querySelectorAll("[data-wrow]").forEach((row) => {
+      const key = row.querySelector("[data-wstat]").value;
+      const w = row.querySelector("[data-wval]").value;
+      if (key && w !== "" && +w !== 0) wts.push(`${key}:${w}`);
+    });
+    if (wts.length) np.set("weights", wts.join("|"));
     // preserve active sort/group across filter changes, but drop a sort that
-    // points at a criterion column (s_*) which no longer exists.
+    // points at a criterion column (s_*) or the Score column once it's gone.
     const cur = new URLSearchParams(location.search);
     const liveStatCols = new Set([
       ...crits.map((c) => "s_" + c.split(",")[0]),
       ...(multi.cols || []).filter((k) => GEAR_STAT_LABEL[k]).map((k) => "s_" + k),
     ]);
     const sort = cur.get("sort");
-    if (sort && (!sort.startsWith("s_") || liveStatCols.has(sort))) {
+    const keepSort = sort && (sort === "score" ? wts.length > 0 : (!sort.startsWith("s_") || liveStatCols.has(sort)));
+    if (keepSort) {
       np.set("sort", sort);
       const dir = cur.get("dir"); if (dir) np.set("dir", dir);
     }
@@ -781,6 +856,38 @@ export async function showBrowse(kind, navigate) {
         else { row.querySelector("[data-cstat]").value = ""; row.querySelector("[data-cval]").value = ""; }
         // always re-navigate: guarantees the table + columns rebuild from the
         // remaining criteria (a removed column must never linger).
+        navigate(`?${collect().toString()}`);
+      }
+    });
+  }
+  // gear-score weights: preset dropdown fills the rows; rows add/remove/edit like criteria
+  const wtWrap = app.querySelector("[data-weights]");
+  if (wtWrap) {
+    const preset = wtWrap.querySelector("[data-wpreset]");
+    if (preset) preset.addEventListener("change", () => {
+      const pr = STAT_WEIGHT_PRESET_MAP[preset.value];
+      if (!pr) return;
+      const np = collect();
+      np.set("weights", Object.entries(pr.weights).map(([k, w]) => `${k}:${w}`).join("|"));
+      np.set("sort", "score"); np.set("dir", "d"); // preset -> rank by score desc
+      navigate(`?${np.toString()}`);
+    });
+    wtWrap.addEventListener("change", (e) => {
+      const row = e.target.closest("[data-wrow]");
+      if (!row) return;
+      const key = row.querySelector("[data-wstat]").value;
+      const val = row.querySelector("[data-wval]").value;
+      if ((key && val !== "") || (e.target.matches("[data-wstat]") && !key)) navigate(`?${collect().toString()}`);
+    });
+    wtWrap.addEventListener("click", (e) => {
+      if (e.target.closest("[data-wadd]")) {
+        e.preventDefault();
+        wtWrap.querySelector(".wt-rows").insertAdjacentHTML("beforeend", weightRow(null));
+      } else if (e.target.closest("[data-wrm]")) {
+        e.preventDefault();
+        const row = e.target.closest("[data-wrow]");
+        if (wtWrap.querySelectorAll("[data-wrow]").length > 1) row.remove();
+        else { row.querySelector("[data-wstat]").value = ""; row.querySelector("[data-wval]").value = ""; }
         navigate(`?${collect().toString()}`);
       }
     });

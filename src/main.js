@@ -3,7 +3,7 @@ import { query, queryOne, preconnect, getMeta } from "./db.js";
 import * as Q from "./queries.js";
 import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, CONTINENT, GAMEOBJECT_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
@@ -11,6 +11,7 @@ import { ASSETS_BASE, resolveOrigins } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
+import { showTalents } from "./talents.js";
 // Seamless-minimap transform manifest (tile/adt/grid + per-continent bbox). Tiny,
 // committed; bundled at build time. The tile pyramid itself lives on R2.
 import minimapManifest from "../scripts/data/minimap.json";
@@ -96,11 +97,13 @@ function route() {
   const object = params.get("object");
   const icon = params.get("icon");
   const browse = params.get("browse");
+  const compare = params.get("compare");
   const term = params.get("search");
   // Browse first: browse URLs carry filter params (e.g. faction=a|h) that would
   // otherwise collide with the singular entity-detail routes below.
   // return the view's promise so boot can time the first render (page load).
   if (browse) return showBrowse(browse, navigate);
+  else if (compare) return showCompare(compare);
   else if (item) return showItem(Number(item));
   else if (npc) return showNpc(Number(npc));
   else if (quest) return showQuest(Number(quest));
@@ -115,8 +118,10 @@ function route() {
   else if (params.get("flights") !== null) return showFlights(params.get("cont") ? Number(params.get("cont")) : 0);
   else if (params.get("worldmap") !== null) return showWorldMap(params.get("worldmap") ? Number(params.get("worldmap")) : 0);
   else if (params.get("dungeons") !== null) return showDungeons();
+  else if (params.get("random") !== null) return showRandom();
   else if (params.get("guides") !== null) return showLeveling();
   else if (params.get("guide")) return showGuide(params.get("guide"));
+  else if (params.get("talents") !== null) return showTalents(params.get("talents"));
   else if (term) { searchInput.value = term; return showSearch(term); }
   else return showHome();
 }
@@ -150,10 +155,60 @@ function addShareButton() {
   anchor.insertAdjacentElement("afterend", btn);
 }
 
-// route() then drop the Share button onto the rendered detail page.
+// ---- compare tray (a small localStorage-backed basket of items) ----
+// Lets you collect items across pages, then open them side-by-side via ?compare=.
+const CMP_KEY = "tw_compare", CMP_MAX = 8;
+function getCmp() {
+  try { const a = JSON.parse(localStorage.getItem(CMP_KEY) || "[]"); return Array.isArray(a) ? a.filter(Number).slice(0, CMP_MAX) : []; }
+  catch { return []; }
+}
+function setCmp(arr) {
+  try { localStorage.setItem(CMP_KEY, JSON.stringify(arr.slice(0, CMP_MAX))); } catch { /* private mode */ }
+  renderCompareTray();
+}
+function toggleCmp(id) {
+  const a = getCmp();
+  const i = a.indexOf(id);
+  if (i >= 0) a.splice(i, 1); else if (a.length < CMP_MAX) a.push(id);
+  setCmp(a);
+}
+// Floating pill: "⚖ Compare (n)" -> ?compare=…, with a clear button. Hidden when <2.
+function renderCompareTray() {
+  let el = document.getElementById("cmpTray");
+  const ids = getCmp();
+  if (ids.length < 2) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement("div"); el.id = "cmpTray"; el.className = "cmp-tray"; document.body.appendChild(el); }
+  el.innerHTML = `<a class="nav cmp-tray-open" href="?compare=${ids.join(":")}">⚖ Compare (${ids.length})</a><button type="button" class="cmp-tray-clear" title="Clear compare list" aria-label="Clear compare list">×</button>`;
+  el.querySelector(".cmp-tray-clear").onclick = () => setCmp([]);
+}
+
+// Item pages get an "add to compare" toggle next to the Share button.
+function addCompareButton() {
+  const params = new URLSearchParams(location.search);
+  const id = Number(params.get("item"));
+  if (!id) return;
+  const anchor = app.querySelector(".item-meta");
+  if (!anchor || anchor.querySelector(".cmp-add")) return;
+  const inList = getCmp().includes(id);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "cmp-add" + (inList ? " on" : "");
+  btn.title = "Add this item to the compare list";
+  btn.textContent = inList ? "⚖ In compare" : "⚖ Compare";
+  btn.addEventListener("click", () => {
+    toggleCmp(id);
+    const now = getCmp().includes(id);
+    btn.classList.toggle("on", now);
+    btn.textContent = now ? "⚖ In compare" : "⚖ Compare";
+  });
+  anchor.appendChild(btn);
+}
+
+// route() then drop the Share + compare buttons onto the rendered detail page.
 function renderRoute() {
   const p = Promise.resolve(route());
-  p.then(addShareButton, addShareButton);
+  const after = () => { addShareButton(); addCompareButton(); renderCompareTray(); };
+  p.then(after, after);
   return p;
 }
 
@@ -171,6 +226,7 @@ function showHome() {
        <a class="nav" href="?browse=zones">zones</a> /
        <a class="nav" href="?dungeons">dungeons &amp; raids</a> /
        <a class="nav" href="?guides">leveling guides</a> /
+       <a class="nav" href="?talents">talent calculator</a> /
        <a class="nav" href="?browse=objects">objects</a> /
        <a class="nav" href="?worldmap">world map</a> /
        <a class="nav" href="?flights">flight paths</a> /
@@ -180,6 +236,10 @@ function showHome() {
       <a class="ilink" href="?item=2770">Copper Ore</a> ·
       <a class="ilink" href="?item=7909">Aquamarine</a> ·
       <a class="ilink" href="?npc=2376">Torn Fin Oracle</a></p>
+    <p class="muted">Embedding elsewhere? Drop our
+      <a class="nav-ext" href="${import.meta.env.BASE_URL}embed/tw-power.js">tooltip widget</a>
+      on any page for Wowhead-style hover tooltips on links to this database —
+      <a class="nav-ext" href="${import.meta.env.BASE_URL}embed/demo.html" target="_blank" rel="noopener">see the demo</a>.</p>
   </div>`;
 }
 
@@ -283,12 +343,13 @@ async function showItem(id) {
     if (sp) spellMap.set(sid, sp);
   }));
 
-  const [dropped, objects, sold, contained, contains, disen, quests, starts, createdBy, reagentFor, teaches, srcRows, gatherSpawns] =
+  const [dropped, objects, sold, contained, contains, disen, quests, starts, createdBy, reagentFor, teaches, srcRows, gatherSpawns, sameModel] =
     await Promise.all([
       query(Q.Q_DROPPED_BY, [id]), query(Q.Q_OBJECT_SOURCE, [id]), query(Q.Q_SOLD_BY, [id]),
       query(Q.Q_CONTAINED_IN, [id]), query(Q.Q_CONTAINS, [id]), query(Q.Q_DISENCHANTS_INTO, [id]), query(Q.Q_QUEST_ITEM, [id]),
       query(Q.Q_STARTS_QUEST, [id]), query(Q.Q_CREATED_BY, [id]), query(Q.Q_REAGENT_FOR, [id]),
       query(Q.Q_TEACHES, [id]), query(Q.Q_ITEM_SOURCES, [id]), query(Q.Q_ITEM_OBJECT_SPAWNS, [id]),
+      it.display_id ? query(Q.Q_SAME_MODEL, [it.display_id, id]) : Promise.resolve([]),
     ]);
   const srcCsv = srcRows.map((r) => r.source).join(",");
 
@@ -402,6 +463,14 @@ async function showItem(id) {
       value: (s) => (s.recipe_item ? s.recipe_name || "Recipe" : s.trainer ? "Trainer" : s.auto ? "Auto" : "") },
   ];
 
+  // items sharing this one's display_id (same model / appearance)
+  const sameModelCols = [
+    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+    { label: "Slot", cls: "muted", cell: (r) => INV_TYPE[r.inventory_type] || "", value: (r) => INV_TYPE[r.inventory_type] || "" },
+    { label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
+    { label: "Req Lvl", num: true, cls: "muted", cell: (r) => r.required_level || "", value: (r) => r.required_level || 0 },
+  ];
+
   const reqQuests = quests.filter((q) => q.role === "req");
   const rewQuests = quests.filter((q) => q.role !== "req");
 
@@ -424,6 +493,7 @@ async function showItem(id) {
     { id: "starts", label: "Starts quest", ...regTable(questCols(false, false), starts) },
     { id: "created", label: "Created by", ...regTable(createdCols, createdRows) },
     { id: "reagent", label: "Reagent for", ...regTable(reagentForCols, reagentFor.filter((r) => r.created)) },
+    { id: "samemodel", label: "Same model", ...regTable(sameModelCols, sameModel) },
   ];
 
   app.innerHTML =
@@ -436,6 +506,87 @@ async function showItem(id) {
     </div>`;
   mountTables();
   wireTabs();
+}
+
+// ---- random page (surprise-me) ----
+// Rolls a random entity kind, then a random row, and replaces the URL with its
+// page so Back returns to wherever the user was (not a loop of ?random).
+async function showRandom() {
+  app.innerHTML = `<div class="loading">Rolling the dice…</div>`;
+  const picks = [
+    [Q.Q_RANDOM_ITEM, (r) => `?item=${r.entry}`],
+    [Q.Q_RANDOM_NPC, (r) => `?npc=${r.entry}`],
+    [Q.Q_RANDOM_QUEST, (r) => `?quest=${r.entry}`],
+  ];
+  const [q, to] = picks[Math.floor(Math.random() * picks.length)];
+  let row;
+  try { row = await queryOne(q, []); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (row && row.entry) navigate(to(row), true);
+  else return showHome();
+}
+
+// ---- item comparison (?compare=a:b:c) ----
+// Side-by-side tooltips + a stat-delta table. Ids are colon-separated item entries;
+// both the browse "Compare" button and the item-page compare tray build this URL.
+async function showCompare(spec) {
+  const ids = [...new Set(String(spec).split(":").map(Number).filter(Boolean))].slice(0, 8);
+  document.title = "Compare items - Tortoise-WoW DB";
+  if (ids.length < 2) {
+    app.innerHTML = `<div class="home"><h1>Compare items</h1><p class="muted">Add two or more items to compare. Use the <b>Compare</b> button when selecting rows in <a class="nav" href="?browse=items">Browse Items</a>, or the ⚖ button on any item page.</p></div>`;
+    return;
+  }
+  app.innerHTML = `<div class="loading">Loading comparison…</div>`;
+  let its;
+  try { its = await Promise.all(ids.map((id) => queryOne(Q.Q_ITEM, [id]))); }
+  catch (e) { app.innerHTML = errorBox(e); return; }
+  const items = ids.map((id, i) => its[i]).filter(Boolean);
+  if (items.length < 2) { app.innerHTML = `<div class="home"><p>Need at least two valid items to compare.</p></div>`; return; }
+
+  // per-item spell maps (equip/use effects in the tooltip) + derived gear stats
+  const [spellMaps, statRowsAll] = await Promise.all([
+    Promise.all(items.map(async (it) => {
+      const m = new Map();
+      const sids = [1, 2, 3, 4, 5].map((i) => it[`spellid_${i}`]).filter(Boolean);
+      await Promise.all(sids.map(async (sid) => { const sp = await queryOne(Q.Q_SPELL, [sid]); if (sp) m.set(sid, sp); }));
+      return m;
+    })),
+    Promise.all(items.map((it) => query(Q.Q_ITEM_STATS, [it.entry]))),
+  ]);
+  const statMaps = statRowsAll.map((rows) => { const m = {}; for (const r of rows) m[r.stat] = r.value; return m; });
+
+  // union of stat keys, rendered in GEAR_CRITERIA display order
+  const present = new Set();
+  statMaps.forEach((m) => Object.keys(m).forEach((k) => present.add(k)));
+  const orderedKeys = GEAR_CRITERIA.flatMap((g) => g.options.map(([k]) => k)).filter((k) => present.has(k));
+
+  const rmUrl = (entry) => { const rest = ids.filter((x) => x !== entry); return rest.length >= 2 ? `?compare=${rest.join(":")}` : `?item=${rest[0] || entry}`; };
+  const cards = items.map((it, i) => `
+    <div class="cmp-col">
+      <div class="cmp-card">${renderTooltip(it, { spellMap: spellMaps[i], linkSpells: true })}</div>
+      <div class="cmp-links muted"><a class="ilink" href="?item=${it.entry}">Open page</a>${items.length > 2 ? ` · <a class="nav" href="${rmUrl(it.entry)}">Remove</a>` : ""}</div>
+    </div>`).join("");
+
+  // stat-delta table: one column per item, best value per row highlighted. Higher is
+  // better for every gear stat and iLvl; lower is better for the required level.
+  const cell = (v, best) => v == null ? '<td class="muted">—</td>' : `<td class="${v === best ? "cmp-best" : ""}">${v}</td>`;
+  const numRow = (label, vals, lowerBetter = false) => {
+    const nums = vals.filter((v) => v != null);
+    const best = nums.length ? (lowerBetter ? Math.min(...nums) : Math.max(...nums)) : null;
+    return `<tr><th>${label}</th>${vals.map((v) => cell(v, best)).join("")}</tr>`;
+  };
+  const statTable = `<table class="cmp-table">
+    <thead><tr><th></th>${items.map((it) => `<th>${itemLink(it.entry, it.name, it.quality, it.icon)}</th>`).join("")}</tr></thead>
+    <tbody>
+      ${numRow("Item Level", items.map((it) => it.item_level || null))}
+      ${numRow("Required Level", items.map((it) => it.required_level || null), true)}
+      ${orderedKeys.map((k) => numRow(GEAR_STAT_LABEL[k], statMaps.map((m) => m[k] ?? null))).join("")}
+    </tbody></table>`;
+
+  app.innerHTML = `<div class="compare-view">
+    <h1>Compare items</h1>
+    <div class="cmp-cards">${cards}</div>
+    <h2>Stat comparison</h2>${statTable}
+  </div>`;
 }
 
 // Stat-summary table for a set: rows = stats, columns = Total + each member; the
@@ -1423,10 +1574,11 @@ async function showFaction(id) {
   const name = fac.name || `Faction #${fac.id}`;
   document.title = `${name} - Tortoise-WoW DB`;
 
-  const [items, quests, members] = await Promise.all([
+  const [items, quests, members, mobs] = await Promise.all([
     query(Q.Q_FACTION_ITEMS, [id]), query(Q.Q_FACTION_QUESTS, [id]), query(Q.Q_FACTION_NPCS, [id]),
+    query(Q.Q_FACTION_MOBS, [id]),
   ]);
-  const memberLoc = await resolveNpcLocations(members.map((m) => m.entry));
+  const npcLoc = await resolveNpcLocations([...members.map((m) => m.entry), ...mobs.map((m) => m.entry)]);
 
   // Standing column: value=rank (orders Friendly→Exalted), cell=label (group header).
   const itemCols = [
@@ -1444,13 +1596,56 @@ async function showFaction(id) {
     { label: "NPC", cell: (r) => npcLink(r.entry, r.name), value: (r) => r.name },
     { label: "Title", cls: "muted", cell: (r) => esc(r.subname || ""), value: (r) => r.subname || "" },
     { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
-    { label: "Location", cls: "muted", cell: (r) => (memberLoc.get(r.entry) || {}).html || "", value: (r) => (memberLoc.get(r.entry) || {}).text || "" },
+    { label: "Location", cls: "muted", cell: (r) => (npcLoc.get(r.entry) || {}).html || "", value: (r) => (npcLoc.get(r.entry) || {}).text || "" },
+  ];
+  // rep-per-kill grind targets. A kill stops giving rep once you reach maxstanding,
+  // so "kills to Exalted" only applies when the mob caps at Exalted (>=7).
+  const toExalted = (v) => Math.ceil(REP_EXALTED / v);
+  const mobCols = [
+    { label: "NPC", cell: (r) => npcLink(r.entry, r.name) + (CREATURE_RANK[r.rank] ? ` <span class="muted">(${CREATURE_RANK[r.rank]})</span>` : ""), value: (r) => r.name },
+    { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
+    { label: "Location", cls: "muted", cell: (r) => (npcLoc.get(r.entry) || {}).html || "", value: (r) => (npcLoc.get(r.entry) || {}).text || "" },
+    { label: "Rep / kill", num: true, cell: (r) => `+${r.value}`, value: (r) => r.value || 0 },
+    { label: "Caps at", cls: "muted", cell: (r) => REP_STANDING[r.maxstanding] || "", value: (r) => r.maxstanding || 0 },
+    { label: "Kills → Exalted", num: true, cls: "muted", cell: (r) => (r.maxstanding >= 7 ? toExalted(r.value).toLocaleString() : "—"), value: (r) => (r.maxstanding >= 7 ? toExalted(r.value) : Infinity) },
   ];
 
+  // ---- rep calculator: tier thresholds + a grind-first strategy ----
+  // Optimal order is grind BEFORE questing: a kill stops paying rep once you reach
+  // its cap standing, and quest rep is a finite one-off — so farm mobs while they
+  // still pay, then cash quests in for the final push (usually the last tier).
+  const questTotal = quests.reduce((s, q) => s + (q.value || 0), 0);
+  const repMobs = mobs.filter((m) => m.value > 0);
+  const fastMob = repMobs.slice().sort((a, b) => b.value - a.value)[0];  // best rep/kill
+  const grindCeiling = repMobs.reduce((m, x) => Math.max(m, x.maxstanding || 0), 0); // highest standing kills reach
+  const tierRows = [4, 5, 6, 7].map((s) => `<tr><td>${REP_STANDING[s]}</td><td class="num">${REP_TO_STANDING[s].toLocaleString()}</td></tr>`).join("");
+  const notes = [];
+  if (repMobs.length) {
+    notes.push(`<li><b>⚔ Grind first, quest last.</b> Kills stop granting rep at their cap standing and quest rep is a one-off — so farm mobs while they still pay, then turn in quests for the final stretch.</li>`);
+    if (fastMob) {
+      const cap = fastMob.maxstanding, capRep = REP_TO_STANDING[cap];
+      const detail = cap >= 7
+        ? `grinds all the way to Exalted — ~<b>${toExalted(fastMob.value).toLocaleString()} kills</b>`
+        : `is fastest${capRep ? ` — ~<b>${Math.ceil(capRep / fastMob.value).toLocaleString()} kills</b> to ${REP_STANDING[cap]}` : ""}, then it caps out`;
+      notes.push(`<li><b>Fastest grind:</b> ${npcLink(fastMob.entry, fastMob.name)} at +${fastMob.value}/kill ${detail}.</li>`);
+    }
+    if (grindCeiling > 0 && grindCeiling < 7) notes.push(`<li>Kills top out at <b>${REP_STANDING[grindCeiling]}</b> — cover the rest to Exalted with quests.</li>`);
+  }
+  if (quests.length) notes.push(`<li><b>Quests:</b> +${questTotal.toLocaleString()} across ${quests.length} quest${quests.length === 1 ? "" : "s"} (worth <b>${REP_STANDING[repStandingReached(questTotal)]}</b> on their own) — save them until after the grind.</li>`);
+  const calc = (quests.length || mobs.length) ? `<details class="rep-calc" open>
+    <summary>Reputation calculator — grind first, quests last</summary>
+    <div class="rep-calc-body">
+      <table class="rep-tiers"><thead><tr><th>Standing</th><th class="num">Total rep</th></tr></thead><tbody>${tierRows}</tbody></table>
+      <ul class="rep-notes">${notes.join("")}</ul>
+    </div>
+  </details>` : "";
+
   const meta = [`${fac.items} item${fac.items === 1 ? "" : "s"}`, `${fac.repquests} rep quest${fac.repquests === 1 ? "" : "s"}`];
+  if (fac.repmobs) meta.push(`${fac.repmobs} rep mob${fac.repmobs === 1 ? "" : "s"}`);
   const tabDefs = [
     { id: "items", label: "Items", ...regTable(itemCols, items, { pageSize: 200, groupable: true, group: 1 }) },
     { id: "quests", label: "Rep from quests", ...regTable(questColsF, quests, { pageSize: 100 }) },
+    { id: "mobs", label: "Rep from kills", ...regTable(mobCols, mobs, { pageSize: 100 }) },
     { id: "members", label: "Members", ...regTable(memberCols, members, { pageSize: 100 }) },
   ];
 
@@ -1460,6 +1655,7 @@ async function showFaction(id) {
         <h1>${esc(name)}</h1>
         <div class="npc-meta muted">${meta.join(" · ")}<span class="dim"> · Faction #${fac.id}</span></div>
       </div>
+      ${calc}
       ${tabs(tabDefs)}
     </div>`;
   mountTables();
