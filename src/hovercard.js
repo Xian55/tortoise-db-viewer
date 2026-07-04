@@ -2,8 +2,8 @@
 // renderTooltip; quests get a compact card. Queried lazily, cached per key.
 import { query, queryOne } from "./db.js";
 import { renderTooltip, spellTooltip, modelThumbUrl, esc } from "./render.js";
-import { Q_ITEM, Q_SPELL, Q_QUEST, Q_ITEM_SET, Q_ITEMSET_MEMBERS, Q_ITEMSET_BONUSES } from "./queries.js";
-import { QUEST_TYPE, questZoneLabel } from "./constants.js";
+import { Q_ITEM, Q_SPELL, Q_QUEST, Q_NPC_CARD, Q_ITEM_SET, Q_ITEMSET_MEMBERS, Q_ITEMSET_BONUSES } from "./queries.js";
+import { QUEST_TYPE, CREATURE_TYPE, CREATURE_RANK, questZoneLabel } from "./constants.js";
 
 const cache = new Map();              // `${kind}:${id}` -> rendered HTML (or null)
 let card = null, currentKey = null, mx = 0, my = 0, raf = 0;
@@ -29,6 +29,16 @@ function questCardHtml(q) {
     `<div class="tt-line muted">${bits.join(" · ")}</div>${obj}</div>`;
 }
 
+function npcCardHtml(c) {
+  const lvl = c.level_max && c.level_max !== c.level_min ? `${c.level_min}-${c.level_max}` : (c.level_min || "?");
+  const bits = [`Level ${lvl}`];
+  if (CREATURE_RANK[c.rank]) bits.push(CREATURE_RANK[c.rank]);
+  if (CREATURE_TYPE[c.type] && c.type !== 10) bits.push(CREATURE_TYPE[c.type]); // 10 = "Not specified"
+  const sub = c.subname ? `<div class="tt-line muted">&lt;${esc(c.subname)}&gt;</div>` : "";
+  return `<div class="tooltip"><div class="tt-name">${esc(c.name)}</div>${sub}` +
+    `<div class="tt-line muted">${bits.join(" · ")}</div></div>`;
+}
+
 async function getHtml(kind, id) {
   const key = `${kind}:${id}`;
   if (cache.has(key)) return cache.get(key);
@@ -52,6 +62,9 @@ async function getHtml(kind, id) {
   } else if (kind === "spell") {
     const sp = await queryOne(Q_SPELL, [id]);
     if (sp) html = spellTooltip(sp);
+  } else if (kind === "npc") {
+    const c = await queryOne(Q_NPC_CARD, [id]);
+    if (c) html = npcCardHtml(c);
   } else if (kind === "model") {
     // No DB round-trip: the display_id is already on the page. Render the
     // Wowhead thumb; if it 404s (Turtle-custom / un-rendered), swap to a note.
@@ -68,8 +81,11 @@ function position() {
   if (!card || card.style.display === "none") return;
   const pad = 16, w = card.offsetWidth, h = card.offsetHeight;
   let x = mx + pad, y = my + pad;
-  if (x + w > window.innerWidth - 8) x = mx - w - pad;
-  if (y + h > window.innerHeight - 8) y = Math.max(8, window.innerHeight - h - 8);
+  if (x + w > window.innerWidth - 8) x = mx - w - pad;   // flip left of the cursor
+  if (y + h > window.innerHeight - 8) y = my - h - pad;  // flip above the cursor
+  // then clamp inside the viewport so a wide card near an edge never spills off
+  x = Math.max(8, Math.min(x, window.innerWidth - w - 8));
+  y = Math.max(8, Math.min(y, window.innerHeight - h - 8));
   card.style.left = `${x}px`;
   card.style.top = `${y}px`;
 }
@@ -98,12 +114,13 @@ export function initHovercards() {
     mx = e.clientX; my = e.clientY;
     const model = e.target.closest("[data-display]");
     if (model) { showFor("model", Number(model.getAttribute("data-display"))); return; }
-    const a = e.target.closest('a.ilink[href^="?item="], a.ilink[href^="?quest="], a.ilink[href^="?spell="]');
+    const a = e.target.closest('a.ilink[href^="?item="], a.ilink[href^="?quest="], a.ilink[href^="?spell="], a.ilink[href^="?npc="]');
     if (a) {
       const p = new URLSearchParams(a.getAttribute("href").slice(1));
       if (p.get("item")) showFor("item", Number(p.get("item")));
       else if (p.get("quest")) showFor("quest", Number(p.get("quest")));
       else if (p.get("spell")) showFor("spell", Number(p.get("spell")));
+      else if (p.get("npc")) showFor("npc", Number(p.get("npc")));
     } else if (currentKey !== null) hide();
   });
   document.addEventListener("mousemove", (e) => {

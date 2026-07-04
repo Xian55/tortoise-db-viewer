@@ -28,6 +28,9 @@ export const Q_SAME_MODEL = `
 // all derived gear stats for one item (compare view stat-delta table).
 export const Q_ITEM_STATS = `SELECT stat, value FROM item_stats WHERE item = ?1`;
 
+// compact NPC info for the hover tooltip (name/subname/level/rank/type).
+export const Q_NPC_CARD = `SELECT entry, name, subname, level_min, level_max, rank, type FROM creatures WHERE entry = ?1`;
+
 // ---- random page (surprise-me button) ----
 export const Q_RANDOM_ITEM = `SELECT entry FROM items WHERE hidden = 0 AND quality >= 2 AND name <> '' ORDER BY RANDOM() LIMIT 1`;
 export const Q_RANDOM_NPC = `SELECT entry FROM creatures WHERE name <> '' AND COALESCE(hidden,0) = 0 ORDER BY RANDOM() LIMIT 1`;
