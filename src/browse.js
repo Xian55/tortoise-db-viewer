@@ -15,6 +15,10 @@ import {
 
 const PAGE = 100;
 const lvlRange = (r) => (r.level_max && r.level_max !== r.level_min ? `${r.level_min}-${r.level_max}` : (r.level_min || ""));
+// item classes with no real items -- hidden from the browse Class dropdown (the
+// ITEM_CLASS map itself is kept intact for labelling). Gem/Generic/Permanent are
+// empty; Money has a single row not worth a menu entry.
+const EMPTY_ITEM_CLASSES = new Set(["3", "8", "10", "14"]);
 
 const dpsVal = (r) => (r.delay > 0 && (r.dmg_min1 || r.dmg_max1) ? ((r.dmg_min1 + r.dmg_max1) / 2) / (r.delay / 1000) : 0);
 // Effective "available level": the item's own equip requirement, or -- for a
@@ -84,13 +88,16 @@ const ALLCOL = {
 
 // class-adaptive default column keys (Name is always shown first, separately).
 // These are the pre-checked chooser state when no cols= param is present.
-function defaultColKeys(cls, subclass) {
+function defaultColKeys(cls, subclass, slot) {
   if (cls === "2" && subclass === "20") return ["fishing", "ilvl", "req", "source"];
   if (cls === "2") return ["dps", "speed", "ilvl", "req", "source"];
   if (cls === "4") return ["armor", "ilvl", "req", "slot", "source"];
   if (cls === "6") return ["ammo", "ilvl", "req", "source"];
   if (cls === "9") return ["prof", "req", "source"];
-  return ["slots", "ilvl", "req", "slot", "source"];
+  // containers/quivers (by class or a bag-slot filter) -> show the bag capacity
+  if (cls === "1" || cls === "11" || (slot || "").split(",").includes("18")) return ["slots", "ilvl", "req", "source"];
+  // generic mixed view: no bag-slots column (meaningless for gear/consumables)
+  return ["ilvl", "req", "slot", "source"];
 }
 
 // fixed render order for the selected non-stat columns; stat columns slot in
@@ -128,7 +135,7 @@ function colsField(selectedKeys) {
   const body = COL_GROUPS.map((g) =>
     `<div class="multi-grp">${esc(g.group)}</div>` + g.options.map(([v, l]) =>
       `<label class="multi-opt"><input type="checkbox" data-mv="cols" value="${v}"${sel.has(String(v)) ? " checked" : ""}> ${esc(l)}</label>`).join("")).join("");
-  return `<div class="fld multi" data-multi="cols"><label>Display Columns</label>
+  return `<div class="fld multi" data-multi="cols">
     <button type="button" class="multi-btn">${esc(summary)} ▾</button>
     <div class="multi-panel">${body}</div></div>`;
 }
@@ -223,11 +230,11 @@ function checkField(name, label, checked) {
 
 // multi-select checkbox dropdown; value persisted as a comma list (e.g. quality=3,4)
 let openMulti = null;
-function multiField(name, label, entries, csv) {
+function multiField(name, label, entries, csv, raw) {
   const sel = new Set((csv || "").split(",").filter(Boolean));
   const summary = sel.size ? `${sel.size} selected` : "Any";
   const boxes = entries.map(([v, l]) =>
-    `<label class="multi-opt"><input type="checkbox" data-mv="${name}" value="${v}"${sel.has(String(v)) ? " checked" : ""}> ${esc(l)}</label>`).join("");
+    `<label class="multi-opt"><input type="checkbox" data-mv="${name}" value="${v}"${sel.has(String(v)) ? " checked" : ""}> ${raw ? l : esc(l)}</label>`).join("");
   return `<div class="fld multi" data-multi="${name}"><label>${esc(label)}</label>
     <button type="button" class="multi-btn">${esc(summary)} ▾</button>
     <div class="multi-panel">${boxes}</div></div>`;
@@ -284,7 +291,7 @@ async function browseItems(p) {
   // Name is always shown; stat keys resolve via the item_stats join, the rest via
   // ALLCOL. defaultColKeys keeps the smart per-class layout as the pre-checked set.
   const chosen = (p.get("cols") || "").split(",").filter(Boolean);
-  const selectedKeys = chosen.length ? chosen : defaultColKeys(f.class, f.subclass);
+  const selectedKeys = chosen.length ? chosen : defaultColKeys(f.class, f.subclass, f.slot);
   const where = ["i.hidden = 0"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
   const addIn = (col, csv) => {
@@ -310,6 +317,11 @@ async function browseItems(p) {
   if (!srcVals.includes("unobtainable")) {
     where.push(`i.entry NOT IN (SELECT item FROM item_sources WHERE source='unobtainable')`);
   }
+  // A gear-score ranking should only rank gear you can actually get: drop items with
+  // no recorded acquisition source (GM/test/beta artifacts otherwise inflate the top
+  // of the Score list). Only applied when weighting -- the plain catalogue keeps
+  // no-source items (many legit items lack loot data). EXISTS is NULL-safe.
+  if (weights.length) where.push(`EXISTS (SELECT 1 FROM item_sources s WHERE s.item = i.entry)`);
   if (f.bind !== "") add("i.bonding = ?", +f.bind);
   // usable by class: unrestricted (-1) or the class bit is set in allowable_class.
   if (f.uclass !== "") { where.push("(i.allowable_class = -1 OR (i.allowable_class & ?) <> 0)"); binds.push(+f.uclass); }
@@ -332,13 +344,18 @@ async function browseItems(p) {
   }
 
   // stat columns to SHOW: selected stats not already covered by a value column,
-  // plus any active filter criterion (so filtering by a stat also surfaces it).
+  // plus any active filter criterion (so filtering by a stat also surfaces it),
+  // plus the stats a gear-score weighting uses -- so you can see the values feeding
+  // the Score. Weighted keys that ARE value columns (dps/armor) surface as those.
   // Each needs a LEFT JOIN on item_stats for its value.
+  const weightKeys = weights.map((w) => w.key);
+  const weightStatCols = weightKeys.filter((k) => !VALUE_COL_KEYS.has(k) && GEAR_STAT_LABEL[k]);
+  const weightValCols = weightKeys.filter((k) => VALUE_COL_KEYS.has(k)); // dps, armor
   const statSelKeys = selectedKeys.filter((k) => !VALUE_COL_KEYS.has(k) && GEAR_STAT_LABEL[k]);
   const critColKeys = criteria.filter((c) => !VALUE_COL_KEYS.has(c.key)).map((c) => c.key);
-  const columnStatKeys = [...new Set([...critColKeys, ...statSelKeys])];
-  // weighted stat keys are joined too (for the Score column) even when not shown.
-  const joinKeys = [...new Set([...columnStatKeys, ...weights.map((w) => w.key)])];
+  const columnStatKeys = [...new Set([...critColKeys, ...statSelKeys, ...weightStatCols])];
+  // all weighted keys are joined (the Score reads stat_<key>), even value-col ones.
+  const joinKeys = [...new Set([...columnStatKeys, ...weightKeys])];
   const joins = joinKeys.map((key, n) => `LEFT JOIN item_stats s${n} ON s${n}.item=i.entry AND s${n}.stat='${key}'`).join(" ");
   const statSel2 = joinKeys.map((key, n) => `, s${n}.value AS stat_${key}`).join("");
   // the Fishing value column reads a correlated subquery (fishing isn't a GEAR stat).
@@ -377,40 +394,94 @@ async function browseItems(p) {
   const matchSel = `<select data-f="match" class="crit-match" title="How to combine the criteria below">
     <option value="all"${critMatch === "all" ? " selected" : ""}>Match all</option>
     <option value="any"${critMatch === "any" ? " selected" : ""}>Match any</option></select>`;
-  const critBlock = `<div class="fld crit" data-criteria><label>Stats ${matchSel}</label>
+  const critInner = `<div data-criteria>
     <div class="crit-rows">${critRows}</div>
-    <button type="button" class="crit-add" data-cadd>+ Add criterion</button>
+    <div class="sec-actions"><button type="button" class="crit-add" data-cadd>+ Add criterion</button>
+      <span class="sec-inline">Match ${matchSel}</span></div>
   </div>`;
   // gear-score weight builder: preset dropdown + per-stat multiplier rows
-  const presetSel = `<select data-wpreset><option value="">Preset…</option>${STAT_WEIGHT_PRESETS.map((pr) => `<option value="${pr.id}"${pr.id === presetId ? " selected" : ""}>${esc(pr.label)}</option>`).join("")}</select>`;
+  const presetGroups = [...new Set(STAT_WEIGHT_PRESETS.map((pr) => pr.group || "Presets"))];
+  const presetSel = `<select data-wpreset><option value="">Preset…</option>${presetGroups.map((g) =>
+    `<optgroup label="${esc(g)}">${STAT_WEIGHT_PRESETS.filter((pr) => (pr.group || "Presets") === g).map((pr) =>
+      `<option value="${pr.id}"${pr.id === presetId ? " selected" : ""}>${esc(pr.label)}</option>`).join("")}</optgroup>`).join("")}</select>`;
   const wtRows = weights.length ? weights.map(weightRow).join("") : weightRow(null);
-  const weightBlock = `<div class="fld crit wt" data-weights><label>Gear score</label>
+  const weightInner = `<div data-weights>
     <div class="wt-preset">${presetSel}</div>
     <div class="crit-rows wt-rows">${wtRows}</div>
     <button type="button" class="crit-add" data-wadd>+ Add stat</button>
   </div>`;
-  const filters = `<div class="filters">
-    ${textField("q", "Name", f.q)}
-    ${selectField("class", "Class", options(Object.entries(ITEM_CLASS), f.class, "Any class"))}
-    ${subMap ? multiField("subclass", "Subtype", Object.entries(subMap), f.subclass) : ""}
-    ${multiField("quality", "Quality", QUALITY.map((q, i) => [i, q.name]), f.quality)}
-    ${multiField("slot", "Slot", Object.entries(INV_TYPE), f.slot)}
-    ${multiField("source", "Source", ITEM_SOURCE, f.source)}
-    <div class="break"></div>
-    ${numField("minrl", "Req lvl ≥", f.minrl)} ${numField("maxrl", "Req lvl ≤", f.maxrl)}
+
+  // ---- active-filter chips (Iteration 3): a compact, removable summary. Each chip
+  // carries the URL mutation that removes it (data-rf / data-rv / data-rcrit / data-rweights). ----
+  const CSV = (s) => (s || "").split(",").filter(Boolean);
+  const SRC = Object.fromEntries(ITEM_SOURCE);
+  const chips = [];
+  const chip = (labelHtml, rm) => chips.push(`<span class="chip">${labelHtml}<button type="button" class="chip-x" ${rm} aria-label="Remove">×</button></span>`);
+  if (f.q) chip(`Name <b>${esc(f.q)}</b>`, `data-rf="q"`);
+  if (f.class !== "") chip(`<b>${esc(ITEM_CLASS[f.class] || f.class)}</b>`, `data-rf="class"`);
+  for (const v of CSV(f.subclass)) if (subMap && subMap[v]) chip(`<b>${esc(subMap[v])}</b>`, `data-rf="subclass" data-rv="${v}"`);
+  for (const v of CSV(f.quality)) if (QUALITY[v]) chip(`<b style="color:${QUALITY[v].color}">${esc(QUALITY[v].name)}</b>`, `data-rf="quality" data-rv="${v}"`);
+  for (const v of CSV(f.slot)) if (INV_TYPE[v]) chip(`Slot <b>${esc(INV_TYPE[v])}</b>`, `data-rf="slot" data-rv="${v}"`);
+  for (const v of CSV(f.source)) if (SRC[v]) chip(`Source <b>${esc(SRC[v])}</b>`, `data-rf="source" data-rv="${v}"`);
+  if (f.minrl !== "") chip(`Req ≥ <b>${esc(f.minrl)}</b>`, `data-rf="minrl"`);
+  if (f.maxrl !== "") chip(`Req ≤ <b>${esc(f.maxrl)}</b>`, `data-rf="maxrl"`);
+  if (f.minil !== "") chip(`iLvl ≥ <b>${esc(f.minil)}</b>`, `data-rf="minil"`);
+  if (f.maxil !== "") chip(`iLvl ≤ <b>${esc(f.maxil)}</b>`, `data-rf="maxil"`);
+  if (f.bind !== "") chip(`Bind <b>${esc(BONDING[f.bind] || f.bind)}</b>`, `data-rf="bind"`);
+  if (f.uclass !== "") { const c = (CLASS_MASK.find((x) => String(x[0]) === f.uclass) || [])[1]; chip(`Usable <b>${esc(c || f.uclass)}</b>`, `data-rf="uclass"`); }
+  if (f.faction !== "") chip(`Faction <b>${f.faction === "a" ? "Alliance" : "Horde"}</b>`, `data-rf="faction"`);
+  if (f.prof !== "") chip(`Prof <b>${esc(PROFESSION_LABEL[f.prof] || f.prof)}</b>`, `data-rf="prof"`);
+  if (f.unique === "1") chip(`<b>Unique</b>`, `data-rf="unique"`);
+  for (const c of criteria) chip(`<b>${esc(GEAR_STAT_LABEL[c.key] || c.key)} ${esc(c.op)} ${esc(c.val)}</b>`, `data-rcrit="${esc(`${c.key},${c.op},${c.val}`)}"`);
+  if (weights.length) chip(`⚔ <b>Gear score (${weights.length})</b>`, `data-rweights="1"`);
+  const chipsHtml = chips.length
+    ? `<div class="active-chips">${chips.join("")}<button type="button" class="chip-clear" data-reset="1">Clear all</button></div>` : "";
+
+  // collapsible sub-sections; each auto-opens when it has active values + shows a count badge.
+  const badge = (n) => (n ? ` <span class="badge">${n}</span>` : "");
+  const moreCount = [f.minil, f.maxil, f.bind, f.uclass, f.faction, f.prof, f.unique === "1" ? "1" : ""].filter(Boolean).length;
+  const section = (title, count, body, open = count) => `<details class="sec"${open ? " open" : ""}><summary>${title}${badge(count)}</summary><div class="sec-body">${body}</div></details>`;
+  const moreBody = `<div class="filters embed">
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
-    ${colsField(selectedKeys)}
-    <div class="break"></div>
     ${selectField("bind", "Bind", options(Object.entries(BONDING), f.bind, "Any"))}
     ${selectField("uclass", "Usable by", options(CLASS_MASK, f.uclass, "Any class"))}
     ${selectField("faction", "Faction", options([["a", "Alliance"], ["h", "Horde"]], f.faction, "Any"))}
     ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any"))}
     ${selectField("unique", "Unique", options([["1", "Unique only"]], f.unique, "Any"))}
-    ${critBlock}
-    ${weightBlock}
-    <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  const cols = buildItemCols(selectedKeys, statCols, f.prof !== "");
+  // Columns is its own group -- it controls what's SHOWN, not what's filtered. Muted
+  // badge = how many columns are visible; opens when a custom set is active.
+  const colsSection = `<details class="sec cols-sec"${chosen.length ? " open" : ""}>
+    <summary>Columns <span class="badge mut">${selectedKeys.length} shown</span></summary>
+    <div class="sec-body"><p class="sec-hint">Choose which columns the results table shows.</p>${colsField(selectedKeys)}</div></details>`;
+  const sectionsHtml = `<div class="filters-sections">
+    ${section("More filters", moreCount, moreBody, moreCount)}
+    ${section("Stat filters", criteria.length, critInner)}
+    ${section("Gear score", weights.length, weightInner)}
+    ${colsSection}
+  </div>`;
+
+  let panelOpen = true;
+  try { panelOpen = localStorage.getItem("browseFiltersOpen") !== "0"; } catch { /* private mode */ }
+  const filters = `${chipsHtml}
+    <details class="filters-panel" data-fpanel${panelOpen ? " open" : ""}>
+      <summary class="filters-toggle">Filters</summary>
+      <div class="filters">
+        ${textField("q", "Name", f.q)}
+        ${selectField("class", "Class", options(Object.entries(ITEM_CLASS).filter(([k]) => !EMPTY_ITEM_CLASSES.has(k)), f.class, "Any class"))}
+        ${subMap ? multiField("subclass", "Subtype", Object.entries(subMap), f.subclass) : ""}
+        ${multiField("quality", "Quality", QUALITY.map((q, i) => [i, `<span style="color:${q.color}">${esc(q.name)}</span>`]), f.quality, true)}
+        ${multiField("slot", "Slot", Object.entries(INV_TYPE), f.slot)}
+        ${multiField("source", "Source", ITEM_SOURCE, f.source)}
+        ${numField("minrl", "Req lvl ≥", f.minrl)} ${numField("maxrl", "Req lvl ≤", f.maxrl)}
+        <div class="break"></div>
+        ${sectionsHtml}
+      </div>
+    </details>`;
+  // Display value columns = the chosen set plus any weighted value-col (dps/armor);
+  // the Columns chooser itself still reflects only the user's selectedKeys.
+  const displayKeys = weightValCols.length ? [...new Set([...selectedKeys, ...weightValCols])] : selectedKeys;
+  const cols = buildItemCols(displayKeys, statCols, f.prof !== "");
   if (scoreCol) cols.splice(1, 0, scoreCol); // Score sits right after Name
   return { rows, cols, filters, noun: "items" };
 }
@@ -769,7 +840,7 @@ export async function showBrowse(kind, navigate) {
     // Columns: drop cols= when it matches the class defaults, so the view stays
     // adaptive (a bare URL re-derives defaults) and shared URLs aren't cluttered.
     if (isItems) {
-      const defs = defaultColKeys(np.get("class") || "", np.get("subclass") || "");
+      const defs = defaultColKeys(np.get("class") || "", np.get("subclass") || "", np.get("slot") || "");
       const cur = multi.cols || [];
       if (cur.length === defs.length && cur.every((k) => defs.includes(k))) np.delete("cols");
     }
@@ -892,6 +963,33 @@ export async function showBrowse(kind, navigate) {
       }
     });
   }
-  const reset = app.querySelector("[data-reset]");
-  if (reset) reset.addEventListener("click", () => navigate(`?browse=${kind}`));
+  app.querySelectorAll("[data-reset]").forEach((r) => r.addEventListener("click", () => navigate(`?browse=${kind}`)));
+
+  // active-filter chips: each carries the URL mutation that removes it. Editing the
+  // live query params directly is simpler + robust vs. round-tripping through collect().
+  app.querySelectorAll(".chip-x").forEach((btn) => btn.addEventListener("click", () => {
+    const np = new URLSearchParams(location.search);
+    const d = btn.dataset;
+    if (d.rf) {
+      if (d.rv != null) {
+        const vals = (np.get(d.rf) || "").split(",").filter((v) => v && v !== d.rv);
+        if (vals.length) np.set(d.rf, vals.join(",")); else np.delete(d.rf);
+      } else np.delete(d.rf);
+      if (d.rf === "class") { np.delete("subclass"); np.delete("cols"); } // class change resets both
+    } else if (d.rcrit) {
+      const keep = (np.get("stats") || "").split("|").filter((s) => s && s !== d.rcrit);
+      if (keep.length) np.set("stats", keep.join("|")); else np.delete("stats");
+      if (np.get("sort") === `s_${d.rcrit.split(",")[0]}`) { np.delete("sort"); np.delete("dir"); }
+    } else if (d.rweights) {
+      np.delete("weights"); np.delete("preset");
+      if (np.get("sort") === "score") { np.delete("sort"); np.delete("dir"); }
+    }
+    navigate(`?${np.toString()}`);
+  }));
+
+  // remember whether the Filters panel is expanded (UI preference, not in the URL)
+  const fpanel = app.querySelector("[data-fpanel]");
+  if (fpanel) fpanel.addEventListener("toggle", () => {
+    try { localStorage.setItem("browseFiltersOpen", fpanel.open ? "1" : "0"); } catch { /* private mode */ }
+  });
 }
