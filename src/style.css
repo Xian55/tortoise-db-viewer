@@ -30,9 +30,9 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .topnav { display: flex; }
 .topnav .nav { color: var(--text); font-weight: 500; }
 /* mega-menu: horizontal bar + nested hover flyouts (see src/nav.js) */
-.menubar { list-style: none; display: flex; gap: 14px; flex-wrap: wrap; margin: 0; padding: 0; }
+.menubar { list-style: none; display: flex; gap: 14px; flex-wrap: nowrap; margin: 0; padding: 0; }
 .menubar > li { position: relative; }
-.menubar > li > .nav { display: block; padding: 2px 0; }
+.menubar > li > .nav { display: block; padding: 2px 0; white-space: nowrap; }
 .navlabel { cursor: default; }
 .has-sub > .nav::after { content: " ▾"; font-size: 10px; opacity: .6; }
 .submenu {
@@ -46,29 +46,45 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .submenu .nav { display: block; padding: 5px 16px; white-space: nowrap; font-weight: 500; }
 .submenu .nav:hover { background: rgba(255, 255, 255, .06); text-decoration: none; }
 .submenu .has-sub > .nav::after { content: "›"; float: right; opacity: .6; margin-left: 10px; }
-@media (min-width: 761px) { .menubar li:hover > .submenu { display: block; } }
+@media (min-width: 1101px) { .menubar li:hover > .submenu { display: block; } }
 .nav-toggle { display: none; background: none; border: 1px solid var(--border); color: var(--text);
   font-size: 18px; line-height: 1; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+.nav-exp { display: none; }                    /* the mobile expand toggle; hidden on desktop */
 #searchForm { display: flex; gap: 6px; flex: 1; max-width: 480px; }
 
-/* Mobile: collapse the nav behind a hamburger; search drops to its own row. */
-@media (max-width: 760px) {
+/* Mobile / tablet / landscape phone (≤1100px): collapse the nav behind a hamburger so
+   the menubar never wraps to a second line; search drops to its own row. Parents show
+   a +/− toggle -- the label still navigates, the toggle expands (see nav.js wireNav). */
+@media (max-width: 1100px) {
+  /* Top BAR stays one row: brand + search + ☰. Only the menu (topnav) drops to a
+     second row, and only when ☰ is tapped open. */
   .topbar { flex-wrap: wrap; gap: 10px 12px; }
-  .nav-toggle { display: block; margin-left: auto; }       /* push toggle to the right of the brand */
-  .topnav { display: none; flex-basis: 100%; }
+  #searchForm { order: 2; flex: 1 1 150px; min-width: 130px; max-width: none; }
+  .nav-toggle { display: block; order: 3; }                /* sits after the search box */
+  .topnav { display: none; order: 4; flex-basis: 100%; }   /* the opened menu = its own row */
   .topbar.nav-open .topnav { display: block; }
-  /* accordion: parents expand on tap (wireNav adds .open); submenus go inline */
   .menubar { flex-direction: column; gap: 2px; width: 100%; }
-  .menubar > li { width: 100%; }
-  .menubar > li > .nav { padding: 8px 4px; border-bottom: 1px solid var(--border); }
+  .menubar li { width: 100%; }
+  /* has-sub row = link (navigates) + expand toggle, on one line; submenu drops below */
+  .menubar li.has-sub { display: grid; grid-template-columns: 1fr auto; align-items: stretch; }
+  .menubar li.has-sub > .nav { grid-column: 1; }
+  .menubar li.has-sub > .nav-exp { grid-column: 2; }
+  .menubar li.has-sub > .submenu { grid-column: 1 / -1; }
+  .menubar > li > .nav { padding: 10px 4px; border-bottom: 1px solid var(--border); }
+  .nav-exp { display: block; width: 52px; background: none; color: var(--muted); cursor: pointer;
+    border: none; border-bottom: 1px solid var(--border); border-left: 1px solid var(--border);
+    font-size: 20px; line-height: 1; }
+  .nav-exp::before { content: "+"; }
+  .has-sub.open > .nav-exp::before { content: "−"; }
   .submenu { position: static; display: none; min-width: 0; border: none; border-radius: 0;
     box-shadow: none; background: transparent; padding: 0 0 0 14px; }
   .menubar > li > .submenu, .submenu .submenu { top: auto; left: auto; }
   .has-sub.open > .submenu { display: block; }
-  .has-sub > .nav::after { content: " +"; float: right; }
-  .has-sub.open > .nav::after { content: " −"; }
-  #searchForm { flex-basis: 100%; max-width: none; order: 5; }
+  .has-sub > .nav::after { content: none; }    /* the +/− lives on the toggle button now */
 }
+/* very small phones: drop the brand wordmark (keep the turtle) so brand+search+☰
+   still fit one row */
+@media (max-width: 430px) { .brand-text { display: none; } #searchForm { min-width: 108px; } }
 #search {
   flex: 1; padding: 7px 11px; border-radius: 6px;
   border: 1px solid var(--border); background: var(--panel2); color: var(--text);
@@ -188,6 +204,27 @@ th.sortable.active { color: var(--gold); }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--panel2); }
 .ilink:hover { text-decoration: underline; }
+/* Mobile: the shared data table (.dtable) becomes stacked cards -- each row a card,
+   each cell a "LABEL  value" line -- so dense tables (crafting, browse, loot) stay
+   readable instead of squishing/overflowing. Custom tables (cmp-table, rep-tiers)
+   aren't .dtable, so they're untouched. */
+@media (max-width: 640px) {
+  .dtable, .dtable tbody, .dtable tr, .dtable td { display: block; width: 100%; }
+  .dtable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .dtable tr { border: 1px solid var(--border); border-radius: 8px; margin: 0 0 10px; background: var(--panel); }
+  .dtable tbody tr:hover { background: var(--panel); }
+  .dtable td.selcol { display: none; }                 /* bulk-select is a desktop feature */
+  .dtable td[data-label] { position: relative; padding: 6px 12px 6px 42%; text-align: left;
+    border-bottom: 1px solid var(--border); min-height: 1.9em; }
+  .dtable td[data-label]::before { content: attr(data-label); position: absolute; left: 12px; top: 6px;
+    width: 34%; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dtable tr td[data-label]:last-child { border-bottom: none; }
+  /* group headers span the whole card */
+  .dtable tr.grouprow { background: var(--panel2); }
+  .dtable tr.grouprow td { padding: 8px 12px; font-weight: 600; }
+  .dtable tr.grouprow td::before { content: none; }
+}
 /* quest-page "Watch walkthrough" link to the community YouTube channel */
 .yt-link { display: inline-flex; align-items: center; gap: 4px; color: #ff4d4d; font-weight: 600; }
 .yt-link:hover { text-decoration: underline; }
@@ -287,7 +324,7 @@ img.icon-grid-img { object-fit: cover; background: #000; }
 img.icon-hero { object-fit: cover; }
 
 /* hover tooltip card */
-.hovercard { position: fixed; z-index: 1000; pointer-events: none; max-width: 340px; }
+.hovercard { position: fixed; z-index: 1000; pointer-events: none; max-width: min(340px, calc(100vw - 16px)); }
 .hovercard .tooltip { box-shadow: 0 8px 30px rgba(0, 0, 0, .65); }
 
 h1 { font-size: 22px; }

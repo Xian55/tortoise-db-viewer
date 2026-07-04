@@ -73,6 +73,7 @@ const ITEMS = {
     { label: "Quest", href: item("class=12") },
     { label: "Keys", href: item("class=13") },
     { label: "Miscellaneous", href: item("class=15") },
+    { label: "Item Sets", href: "?browse=itemsets" },
   ],
 };
 
@@ -99,26 +100,35 @@ const SPELLS = {
 
 const ZONES = {
   label: "Zones", href: "?browse=zones",
-  children: Object.entries(CONTINENT).map(([id, name]) => ({ label: name, href: `?browse=zones&cont=${id}` })),
+  children: [
+    ...Object.entries(CONTINENT).map(([id, name]) => ({ label: name, href: `?browse=zones&cont=${id}` })),
+    { label: "World Map", href: "?worldmap" },
+    { label: "Dungeons & Raids", href: "?dungeons" },
+    { label: "Flight Paths", href: "?flights" },
+  ],
+};
+
+// Utilities grouped under "More" so the menubar fits one line (no wrap).
+const MORE = {
+  label: "More",
+  children: [
+    { label: "Objects", href: "?browse=objects" },
+    { label: "Icons", href: "?icons" },
+    { label: "Random", href: "?random" },
+  ],
 };
 
 export const MENU = [
   ITEMS,
-  { label: "Item Sets", href: "?browse=itemsets" },
   NPCS,
   { label: "Quests", href: "?browse=quests" },
   SPELLS,
   CRAFTING,
   { label: "Factions", href: "?browse=factions" },
   ZONES,
-  { label: "World Map", href: "?worldmap" },
-  { label: "Dungeons", href: "?dungeons" },
   { label: "Guides", href: "?guides" },
   { label: "Talents", href: "?talents" },
-  { label: "Objects", href: "?browse=objects" },
-  { label: "Flights", href: "?flights" },
-  { label: "Icons", href: "?icons" },
-  { label: "Random", href: "?random" },
+  MORE,
 ];
 
 function renderLi(node) {
@@ -126,27 +136,33 @@ function renderLi(node) {
   const label = node.href
     ? `<a class="nav" href="${esc(node.href)}">${esc(node.label)}</a>`
     : `<span class="nav navlabel">${esc(node.label)}</span>`;
+  // has-sub items get an explicit expand toggle (mobile only, hidden on desktop) so
+  // the label itself stays a real link -- tap the text to navigate, the +/− to expand.
+  const exp = hasSub ? `<button type="button" class="nav-exp" aria-label="Expand ${esc(node.label)}" tabindex="-1"></button>` : "";
   const sub = hasSub ? `<ul class="submenu">${node.children.map(renderLi).join("")}</ul>` : "";
-  return `<li class="${hasSub ? "has-sub" : ""}">${label}${sub}</li>`;
+  return `<li class="${hasSub ? "has-sub" : ""}">${label}${exp}${sub}</li>`;
 }
 
 export function buildNavHtml() {
   return `<ul class="menubar">${MENU.map(renderLi).join("")}</ul>`;
 }
 
-// Mobile: tapping a parent expands its submenu (instead of navigating). Desktop
-// uses CSS :hover, so this only acts under the hamburger breakpoint. stopPropagation
-// keeps the global SPA-nav handler from also firing on a parent tap.
+// Mobile (≤1024px, the hamburger breakpoint): the +/− toggle (or a label with no
+// destination of its own) expands a submenu; a real link -- leaf OR a parent that
+// has an href, like "One-Handed" -- navigates via the global SPA handler. Desktop
+// uses CSS :hover flyouts, so this is a no-op there.
 export function wireNav(topnav) {
   topnav.addEventListener("click", (e) => {
-    if (!window.matchMedia("(max-width: 760px)").matches) return; // desktop: hover + normal nav
-    const label = e.target.closest("a.nav, .navlabel");
-    const li = label && label.parentElement;
-    if (li && li.classList.contains("has-sub")) {
-      e.preventDefault();
-      e.stopPropagation();
-      li.classList.toggle("open");
+    if (!window.matchMedia("(max-width: 1100px)").matches) return;
+    const exp = e.target.closest(".nav-exp");
+    if (exp) { e.preventDefault(); e.stopPropagation(); exp.closest("li").classList.toggle("open"); return; }
+    // a parent with no link of its own (a plain label, e.g. "More" / "By Class") toggles
+    const lbl = e.target.closest(".navlabel");
+    if (lbl && lbl.parentElement.classList.contains("has-sub")) {
+      e.preventDefault(); e.stopPropagation();
+      lbl.parentElement.classList.toggle("open");
     }
+    // otherwise it's a real link -> fall through so main.js navigates (and closes the nav)
   });
 }
 

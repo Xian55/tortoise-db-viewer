@@ -94,7 +94,8 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
 
     let body = "", prev = Symbol("none");
     for (const r of slice) {
-      const cells = dcols.map((c) => `<td${c.cls ? ` class="${c.cls}"` : ""}>${c.cell(r)}</td>`).join("");
+      // data-label drives the mobile stacked-card layout (each cell shows its header).
+      const cells = dcols.map((c) => `<td data-label="${esc(c.label)}"${c.cls ? ` class="${c.cls}"` : ""}>${c.cell(r)}</td>`).join("");
       if (grouped) {
         const g = keyOf(gcol, r), gk = String(g), col = state.collapsed.has(gk);
         if (g !== prev) {
@@ -122,7 +123,7 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
       <span class="muted">Page ${state.page + 1} / ${pages}</span>
       <button data-pg="${state.page + 1}"${state.page >= pages - 1 ? " disabled" : ""}>Next →</button></div>` : "";
 
-    container.innerHTML = groupSel + `<table><thead><tr>${selTh}${head}</tr></thead><tbody>${body}</tbody></table>` + pager;
+    container.innerHTML = groupSel + `<table class="dtable"><thead><tr>${selTh}${head}</tr></thead><tbody>${body}</tbody></table>` + pager;
     if (selectable) syncSelUI();
   }
 

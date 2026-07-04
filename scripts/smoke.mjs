@@ -25,6 +25,7 @@ const browser = await puppeteer.launch({
 // large whole-table result (all spells / all plate) at once thrashed memory and
 // hung the CDP connection. The real win was dropping networkidle0 (see WAIT).
 const page = await browser.newPage();
+await page.setViewport({ width: 1280, height: 900 }); // desktop default (nav shows the full menubar > 1100px)
 // capture clipboard writes so the copy operations can be asserted headlessly
 await page.evaluateOnNewDocument(() => {
   Object.defineProperty(navigator, "clipboard", {
@@ -1165,6 +1166,17 @@ async function testHover() {
   return name !== "(none)";
 }
 
+// NPC links get a hover tooltip too (name + level/rank/type), like items/quests/spells.
+async function testNpcHover() {
+  await page.goto(`${BASE}?browse=npcs`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector('.browse table tbody a.ilink[href^="?npc="]', { timeout: T });
+  await page.hover('.browse table tbody a.ilink[href^="?npc="]');
+  await page.waitForSelector(".hovercard .tt-name", { timeout: 10000 }).catch(() => {});
+  const name = await page.$eval(".hovercard .tt-name", (e) => e.textContent).catch(() => "(none)");
+  console.log(`npc-hover: card name="${name}"`);
+  return name !== "(none)";
+}
+
 // The quest desc embeds objectives (collect items w/ icons) and rewards
 // ("You will receive:" item + icon) inline, like the in-game log. Quest 60141 ->
 // collect Rockhide Boar Meat, receive Linen Bag.
@@ -1389,6 +1401,22 @@ async function testFooter() {
 }
 
 // Mobile: the top nav collapses behind a hamburger that toggles it open.
+// Mobile: the shared data table collapses to stacked cards (each cell a labelled
+// line) so dense tables don't overflow. Crafting has 4 columns incl. reagent lists.
+async function testMobileTable() {
+  await page.setViewport({ width: 390, height: 800, isMobile: true });
+  await page.goto(`${BASE}?browse=crafting&prof=185&sort=skill&dir=a`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".dtable td[data-label]", { timeout: T });
+  const r = await page.evaluate(() => ({
+    tdBlock: getComputedStyle(document.querySelector(".dtable td[data-label]")).display === "block",
+    label: getComputedStyle(document.querySelector(".dtable td[data-label]"), "::before").content.replace(/"/g, ""),
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+  }));
+  await page.setViewport({ width: 1280, height: 900 }); // restore
+  console.log(`mobile-table: cards=${r.tdBlock} label="${r.label}" hOverflow=${r.overflow}`);
+  return r.tdBlock && r.label.length > 0 && r.overflow <= 0;
+}
+
 async function testMobileNav() {
   await page.setViewport({ width: 390, height: 800 });
   await page.goto(`${BASE}?`, { waitUntil: WAIT, timeout: T });
@@ -1851,6 +1879,7 @@ run(() => testBrowsePersist());
 run(() => testBrowseMulti());
 run(() => testBrowseCriteria());
 run(() => testHover());
+run(() => testNpcHover());              // npc links get a hover tooltip (name/level/type)
 const sc = (s) => `&stats=${encodeURIComponent(s)}`;
 run(() => testBrowse("items", "&class=2&quality=4&minrl=40", "DPS"));
 run(() => testBrowse("items", `&class=4${sc("armor,>=,100")}`, "Armor"));
@@ -1896,6 +1925,7 @@ run(() => testSubclassMulti());                             // Subtype multi-sel
 run(() => testFishingPoleCols());                           // fishing poles: +N Fishing column, no DPS/Speed
 run(() => testBrowse("zones", "&cont=0", "Zone"));          // Zones continent filter
 run(() => testFooter());      // site footer: load time + "Updated" stamp + source link
+run(() => testMobileTable());  // shared data table -> stacked cards on mobile (no overflow)
 run(() => testMobileNav());   // responsive top bar (run last; resets viewport)
 
 // Warm up once with a generous timeout: the first navigation downloads the
