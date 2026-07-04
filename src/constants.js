@@ -106,14 +106,22 @@ export const GEAR_STAT_LABEL = Object.fromEntries(GEAR_CRITERIA.flatMap((g) => g
 // armor a tiny one since its values are large. Rough starting points -- users tune
 // them freely in the UI. Keys MUST be GEAR_STAT_LABEL keys.
 export const STAT_WEIGHT_PRESETS = [
-  { id: "warrior-dps", label: "Warrior · DPS", weights: { str: 2, ap: 1, crit: 14, hit: 12, dps: 3, agi: 1 } },
-  { id: "warrior-tank", label: "Warrior · Tank", weights: { sta: 2, def: 12, dodge: 10, parry: 10, block: 6, armor: 0.05 } },
-  { id: "rogue-dps", label: "Rogue · DPS", weights: { agi: 2, ap: 1, crit: 14, hit: 12, dps: 3 } },
-  { id: "hunter-dps", label: "Hunter · DPS", weights: { agi: 2, ap: 1, crit: 12, hit: 12, dps: 2, int: 0.5 } },
-  { id: "feral-dps", label: "Druid · Feral", weights: { agi: 2, str: 1.5, ap: 1, crit: 12, hit: 10 } },
-  { id: "caster-dps", label: "Caster · DPS", weights: { sp: 1, spCrit: 14, spHit: 10, int: 0.3, mp5: 0.4 } },
-  { id: "healer", label: "Healer", weights: { heal: 1, mp5: 0.6, sp: 0.5, int: 0.3, spi: 0.2 } },
-  { id: "tank-avoid", label: "Tank · Avoidance", weights: { def: 12, dodge: 10, parry: 10, sta: 1.5, armor: 0.05, block: 5 } },
+  { id: "warrior-dps", group: "Max level", label: "Warrior · DPS", weights: { str: 2, ap: 1, crit: 14, hit: 12, dps: 3, agi: 1 } },
+  { id: "warrior-tank", group: "Max level", label: "Warrior · Tank", weights: { sta: 2, def: 12, dodge: 10, parry: 10, block: 6, armor: 0.05 } },
+  { id: "rogue-dps", group: "Max level", label: "Rogue · DPS", weights: { agi: 2, ap: 1, crit: 14, hit: 12, dps: 3 } },
+  { id: "hunter-dps", group: "Max level", label: "Hunter · DPS", weights: { agi: 2, ap: 1, crit: 12, hit: 12, dps: 2, int: 0.5 } },
+  { id: "feral-dps", group: "Max level", label: "Druid · Feral", weights: { agi: 2, str: 1.5, ap: 1, crit: 12, hit: 10 } },
+  { id: "caster-dps", group: "Max level", label: "Caster · DPS", weights: { sp: 1, spCrit: 14, spHit: 10, int: 0.3, mp5: 0.4 } },
+  { id: "healer", group: "Max level", label: "Healer", weights: { heal: 1, mp5: 0.6, sp: 0.5, int: 0.3, spi: 0.2 } },
+  { id: "tank-avoid", group: "Max level", label: "Tank · Avoidance", weights: { def: 12, dodge: 10, parry: 10, sta: 1.5, armor: 0.05, block: 5 } },
+  // Leveling: survival (Stamina) + primary stat + weapon throughput dominate; hit/crit
+  // matter less than at 60, and mana regen (spi/mp5) keeps casters killing between drinks.
+  { id: "lvl-melee", group: "Leveling", label: "Leveling · Melee (Str)", weights: { sta: 2, str: 2, ap: 1, dps: 4, crit: 5 } },
+  { id: "lvl-melee-agi", group: "Leveling", label: "Leveling · Melee (Agi)", weights: { sta: 2, agi: 2, ap: 1, dps: 4, crit: 5 } },
+  { id: "lvl-hunter", group: "Leveling", label: "Leveling · Hunter", weights: { agi: 2, sta: 1.5, ap: 1, dps: 3, int: 0.4 } },
+  { id: "lvl-caster", group: "Leveling", label: "Leveling · Caster", weights: { sta: 1.5, sp: 1, int: 0.6, spi: 0.6, spCrit: 5 } },
+  { id: "lvl-healer", group: "Leveling", label: "Leveling · Healer", weights: { sta: 1, heal: 1, int: 0.6, spi: 0.6, mp5: 0.6 } },
+  { id: "lvl-tank", group: "Leveling", label: "Leveling · Tank", weights: { sta: 3, armor: 0.06, str: 1, def: 6, dodge: 5, block: 4 } },
 ];
 export const STAT_WEIGHT_PRESET_MAP = Object.fromEntries(STAT_WEIGHT_PRESETS.map((p) => [p.id, p]));
 

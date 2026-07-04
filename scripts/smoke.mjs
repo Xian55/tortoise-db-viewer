@@ -168,8 +168,14 @@ async function testGearScore() {
   const scores = idx < 0 ? [] : await page.$$eval(".browse tbody tr", (rows, i) => rows.map((r) => parseFloat(r.querySelectorAll("td")[i]?.textContent) || 0), idx);
   const nonzero = scores.filter((v) => v > 0);
   const desc = nonzero.length < 2 || nonzero[0] >= nonzero[nonzero.length - 1];
-  console.log(`gear-score: hasScore=${idx >= 0} rows=${nonzero.length} top=${scores[0]} desc=${desc}`);
-  return idx >= 0 && nonzero.length > 0 && desc;
+  // ranking must only include obtainable gear -> every row has a non-empty Source
+  const srcIdx = headers.indexOf("Source");
+  const srcs = srcIdx < 0 ? [] : await page.$$eval(".browse tbody tr", (rows, i) => rows.map((r) => (r.querySelectorAll("td")[i]?.textContent || "").trim()), srcIdx);
+  const allSourced = srcs.length > 0 && srcs.every((s) => s.length > 0);
+  // the weighted stats surface as columns (Crit %, Hit % for these weights)
+  const weightedCols = headers.includes("Crit %") && headers.includes("Hit %");
+  console.log(`gear-score: hasScore=${idx >= 0} rows=${nonzero.length} top=${scores[0]} desc=${desc} allSourced=${allSourced} weightedCols=${weightedCols}`);
+  return idx >= 0 && nonzero.length > 0 && desc && allSourced && weightedCols;
 }
 
 // ?compare=a:b renders side-by-side tooltip cards + a stat-delta table with the
@@ -460,6 +466,20 @@ async function testQuestRewardFactionBrowse() {
 // the class defaults -- Faction (race/quest lock), a stat column (Stamina), and
 // Quest Lvl (min level to take the reward quest). source=quest guarantees quest
 // rewards so Quest Lvl is populated.
+// Item filters (Iteration 3): active-filter chips render with quality color, and a
+// chip removes its own filter from the URL.
+async function testFilterChips() {
+  await page.goto(`${BASE}?browse=items&class=2&quality=4`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".active-chips .chip", { timeout: T });
+  const chips = await page.$$eval(".active-chips .chip", (e) => e.map((c) => c.textContent.replace(/×/g, "").trim()));
+  const epicColor = await page.$$eval(".active-chips .chip b", (bs) => { const b = bs.find((x) => /Epic/.test(x.textContent)); return b ? b.style.color : ""; });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".chip-x")].find((x) => x.dataset.rf === "quality"); if (b) b.click(); });
+  await page.waitForFunction(() => !/quality=/.test(location.search), { timeout: T });
+  const after = await page.evaluate(() => location.search);
+  console.log(`filter-chips: chips=${JSON.stringify(chips)} epicColor="${epicColor}" after="${after}"`);
+  return chips.length >= 2 && /163, ?53, ?238/.test(epicColor) && !/quality=/.test(after) && /class=2/.test(after);
+}
+
 async function testColumnChooser() {
   await page.goto(`${BASE}?browse=items&source=quest&cols=faction,sta,questlvl`, { waitUntil: WAIT, timeout: T });
   await page.waitForSelector(".browse table tbody tr", { timeout: T });
@@ -1849,6 +1869,7 @@ run(() => testReagentNoReq());                         // reagents hide the empt
 run(() => testBrowseSource("vendor"));
 run(() => testBrowseSource("worlddrop"));  // new World Drop source filter
 run(() => testQuestRewardFactionBrowse());  // quest-reward Faction column + faction filter
+run(() => testFilterChips());              // active-filter chips + quality color + chip removal
 run(() => testColumnChooser());            // cols= chooser: Faction + Stamina + Quest Lvl columns
 run(() => testBrowseSpellCat());           // spell category + class filters
 run(() => testQuestOrigin(41189));         // quest Origin=Turtle WoW filter + TW badge
