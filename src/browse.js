@@ -172,20 +172,34 @@ function critRow(c) {
 }
 
 // ---- gear-score weights (aowow-style "best gear for spec") ----
-// Parse the `weights` URL param ("key:w|key:w"); keep valid stat keys + finite,
+// Weightable keys fall in two buckets: the item_stats-backed GEAR_CRITERIA stats
+// (str/agi/crit/sp/...), and these DERIVED extras read straight off item columns (so
+// they're weightable but not valid Stat-filter criteria). Each carries a value(row)
+// fn used by the Score. Negative weights work (e.g. speed<0 favours fast weapons).
+const WEIGHT_EXTRA = [
+  ["speed", "Weapon Speed", (r) => (r.delay ? r.delay / 1000 : 0)],
+  ["ilvl", "Item Level", (r) => r.item_level || 0],
+];
+const WEIGHT_EXTRA_FN = Object.fromEntries(WEIGHT_EXTRA.map(([k, , fn]) => [k, fn]));
+const WEIGHT_KEYS = new Set([...Object.keys(GEAR_STAT_LABEL), ...WEIGHT_EXTRA.map(([k]) => k)]);
+// stat <select> for a weight row = the criteria stats + the weight-only extras.
+function weightStatOptions(cur) {
+  return critStatOptions(cur) + `<optgroup label="Item">${WEIGHT_EXTRA.map(([v, l]) => opt(v, l, cur)).join("")}</optgroup>`;
+}
+// Parse the `weights` URL param ("key:w|key:w"); keep valid weight keys + finite,
 // non-zero weights.
 function parseWeights(raw) {
   if (!raw) return [];
   return raw.split("|").map((s) => {
     const [key, w] = s.split(":");
     return { key, w: +w };
-  }).filter((x) => GEAR_STAT_LABEL[x.key] && Number.isFinite(x.w) && x.w !== 0);
+  }).filter((x) => WEIGHT_KEYS.has(x.key) && Number.isFinite(x.w) && x.w !== 0);
 }
 // one weight row (stat + multiplier + remove). w may be null (blank row).
 function weightRow(w) {
   const key = w ? w.key : "", val = w ? w.w : "";
   return `<div class="wt-row" data-wrow>
-    <select data-wstat><option value=""${key ? "" : " selected"}>Stat…</option>${critStatOptions(key)}</select>
+    <select data-wstat><option value=""${key ? "" : " selected"}>Stat…</option>${weightStatOptions(key)}</select>
     <span class="wt-x">×</span>
     <input type="number" data-wval value="${esc(String(val))}" step="0.5" placeholder="1">
     <button type="button" class="crit-rm" data-wrm title="Remove weight">✕</button>
@@ -354,8 +368,9 @@ async function browseItems(p) {
   const statSelKeys = selectedKeys.filter((k) => !VALUE_COL_KEYS.has(k) && GEAR_STAT_LABEL[k]);
   const critColKeys = criteria.filter((c) => !VALUE_COL_KEYS.has(c.key)).map((c) => c.key);
   const columnStatKeys = [...new Set([...critColKeys, ...statSelKeys, ...weightStatCols])];
-  // all weighted keys are joined (the Score reads stat_<key>), even value-col ones.
-  const joinKeys = [...new Set([...columnStatKeys, ...weightKeys])];
+  // item_stats-backed weighted keys are joined (the Score reads stat_<key>); the
+  // derived extras (speed/ilvl) resolve from item columns instead, so skip them here.
+  const joinKeys = [...new Set([...columnStatKeys, ...weightKeys.filter((k) => !WEIGHT_EXTRA_FN[k])])];
   const joins = joinKeys.map((key, n) => `LEFT JOIN item_stats s${n} ON s${n}.item=i.entry AND s${n}.stat='${key}'`).join(" ");
   const statSel2 = joinKeys.map((key, n) => `, s${n}.value AS stat_${key}`).join("");
   // the Fishing value column reads a correlated subquery (fishing isn't a GEAR stat).
@@ -375,7 +390,7 @@ async function browseItems(p) {
   if (weights.length) {
     for (const r of rows) {
       let sc = 0;
-      for (const { key, w } of weights) sc += w * (r[`stat_${key}`] || 0);
+      for (const { key, w } of weights) sc += w * (WEIGHT_EXTRA_FN[key] ? WEIGHT_EXTRA_FN[key](r) : (r[`stat_${key}`] || 0));
       r.__score = Math.round(sc * 10) / 10;
     }
     rows.sort((a, b) => b.__score - a.__score);
