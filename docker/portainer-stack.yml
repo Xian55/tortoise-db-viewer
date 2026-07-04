@@ -1,0 +1,31 @@
+# Portainer Stack — Tortoise-WoW DB viewer (self-host)
+#
+# Portainer > Stacks > Add stack > Web editor: paste this.
+# Portainer stacks don't build from a local context, so this PULLS the published
+# shell image from GHCR. You must place the heavy assets on the Docker host and
+# bind-mount them at /assets.
+#
+# Prepare the assets on the host ONCE (needs the repo + Bun/Node to build the DB;
+# the map/minimap tiles are committed in the repo):
+#     git clone https://github.com/Xian55/tortoise-db-viewer
+#     cd tortoise-db-viewer && bun install && bun scripts/build-db.mjs
+#     mkdir -p /srv/tortoise-db
+#     cp -r public/data public/maps public/minimap /srv/tortoise-db/
+# Then point ASSETS_DIR (below / stack env) at /srv/tortoise-db.
+#
+# The /assets dir must contain:
+#     data/tortoise.sqlite
+#     data/version.json
+#     maps/*.webp
+#     minimap/<mapId>/{z}/{x}/{y}.webp
+
+services:
+  tortoise-db:
+    image: ghcr.io/xian55/tortoise-db-viewer:latest
+    container_name: tortoise-db
+    ports:
+      - "8080:80"
+    volumes:
+      # Set ASSETS_DIR in the stack's "Environment variables" (defaults shown).
+      - ${ASSETS_DIR:-/srv/tortoise-db}:/assets:ro
+    restart: unless-stopped

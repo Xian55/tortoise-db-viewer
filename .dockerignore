@@ -1,0 +1,25 @@
+# Docker build context — ship the app shell only.
+# Heavy/generated assets are served from the mounted /assets volume, never baked.
+
+node_modules
+dist
+.git
+.github
+notes
+*.log
+.DS_Store
+
+# Heavy/generated runtime assets (served from the volume, not the image)
+public/data
+public/maps
+public/minimap
+public/tt
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Local-only Python tooling / caches (not needed to build the shell)
+__pycache__
+*.pyc
