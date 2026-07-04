@@ -174,8 +174,10 @@ async function testGearScore() {
   const allSourced = srcs.length > 0 && srcs.every((s) => s.length > 0);
   // the weighted stats surface as columns (Crit %, Hit % for these weights)
   const weightedCols = headers.includes("Crit %") && headers.includes("Hit %");
-  console.log(`gear-score: hasScore=${idx >= 0} rows=${nonzero.length} top=${scores[0]} desc=${desc} allSourced=${allSourced} weightedCols=${weightedCols}`);
-  return idx >= 0 && nonzero.length > 0 && desc && allSourced && weightedCols;
+  // weapon speed / item level are weightable (derived, not item_stats)
+  const derivedOpts = await page.$$eval("[data-wstat] option", (o) => { const t = o.map((x) => x.textContent); return t.includes("Weapon Speed") && t.includes("Item Level"); });
+  console.log(`gear-score: hasScore=${idx >= 0} rows=${nonzero.length} top=${scores[0]} desc=${desc} allSourced=${allSourced} weightedCols=${weightedCols} derivedOpts=${derivedOpts}`);
+  return idx >= 0 && nonzero.length > 0 && desc && allSourced && weightedCols && derivedOpts;
 }
 
 // ?compare=a:b renders side-by-side tooltip cards + a stat-delta table with the
