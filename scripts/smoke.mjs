@@ -38,7 +38,13 @@ const errors = [];
 // icon CDN. CDN item icons are decorative (render.js falls back to the atlas /
 // renders without them) and headless Chrome intermittently ORB-blocks them after
 // the CDN's render-us -> render/us redirect, which would flake the run.
-const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com/;
+// Also ignore missing minimap tiles: the world-map pyramid is intentionally
+// sparse (empty ocean/edge ADT blocks were never generated), so Leaflet requests
+// in-bounds tiles that 404 by design and it renders them blank. A real minimap
+// break (wrong base -> ALL tiles 404) is still caught by testWorldMap's tiles>0
+// assertion. `vite dev` hid this by SPA-falling-back missing files to 200; a
+// correct static server (nginx) 404s them.
+const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|minimap\/.+\.webp$/;
 page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 page.on("requestfailed", (r) => { if (!BENIGN.test(r.url())) errors.push("reqfail: " + r.url() + " " + r.failure()?.errorText); });
 page.on("response", (r) => { if (r.status() >= 400 && !BENIGN.test(r.url())) errors.push(`http ${r.status()}: ${r.url()}`); });

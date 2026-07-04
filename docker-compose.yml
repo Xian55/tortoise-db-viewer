@@ -1,0 +1,18 @@
+# Local self-host of the Tortoise-WoW DB viewer.
+#
+# The image is the app shell only. The heavy assets (built DB + maps + minimap)
+# are supplied through the /assets volume — see docker/README.md for how to
+# produce them. Easiest path: run `bun scripts/build-db.mjs` in the repo, then
+# mount the repo's public/ directory (which then holds data/, maps/, minimap/).
+
+services:
+  tortoise-db:
+    build: .
+    # Or skip the local build and pull the published shell:
+    # image: ghcr.io/xian55/tortoise-db-viewer:latest
+    ports:
+      - "8080:80"
+    volumes:
+      # Must contain: data/tortoise.sqlite, data/version.json, maps/, minimap/
+      - ./public:/assets:ro
+    restart: unless-stopped
