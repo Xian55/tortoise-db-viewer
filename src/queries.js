@@ -319,10 +319,27 @@ export const Q_SPELL_USED_BY = `
 // Trainer NPCs that teach this spell (resolved through the learn-spell indirection
 // in build-db). Capped; the page notes the total separately if needed.
 export const Q_SPELL_TRAINERS = `
-  SELECT c.entry, c.name, c.level_min, c.level_max
+  SELECT c.entry, c.name, c.level_min, c.level_max, c.team
   FROM spell_trainer st JOIN creatures c ON c.entry = st.npc
   WHERE st.spell = ?1 AND c.name <> ''
   ORDER BY c.level_min, c.name LIMIT 200`;
+
+// Learnable abilities of a gathering profession (Fishing/Herbalism/Skinning have
+// no crafted output -> no spell_creates rows, so the Crafting browse is empty for
+// them). Lists each learnable spell of the skill + the trainer NPCs that teach it,
+// carrying the trainer's faction team. One row per (spell, trainer); browse.js
+// folds trainers into each spell. learnable=1 keeps only trainer/book-taught
+// spells (drops passive utility like "Open Fishing Hole"); teaches IS NULL drops
+// recipe learn-stub twins.
+export const Q_PROFESSION_LEARN = `
+  SELECT s.entry AS spell, s.name, s.rank, s.icon,
+         c.entry AS npc, c.name AS npc_name, c.level_min AS npc_level, c.team
+  FROM spells s
+  LEFT JOIN spell_trainer st ON st.spell = s.entry
+  LEFT JOIN creatures c ON c.entry = st.npc AND c.name <> ''
+  WHERE s.skill = ?1 AND s.name <> '' AND s.learnable = 1
+        AND s.teaches IS NULL AND s.hidden = 0
+  ORDER BY s.entry, c.team, c.level_min, c.name`;
 
 // Items (book/tome/recipe) whose Use "learn" effect teaches this spell.
 export const Q_SPELL_BOOKS = `

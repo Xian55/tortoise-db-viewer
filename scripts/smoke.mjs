@@ -602,6 +602,23 @@ async function testCraftEnchanting() {
   return rows > 30 && spellLinks > 0;
 }
 
+// gathering professions (Fishing/Herbalism/Skinning) craft no item, so the recipe
+// query is empty -- the Crafting browse instead lists their learnable abilities +
+// the trainers (with faction badges) that teach them. Regression: these three
+// professions rendered a blank page.
+async function testGatheringProf() {
+  await page.goto(`${BASE}?browse=crafting&prof=182`, { waitUntil: WAIT, timeout: T }); // Herbalism
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const spellLinks = await page.$$eval('.browse tbody a.ilink.spell[href*="spell="]', (a) => a.length);
+  const npcLinks = await page.$$eval('.browse tbody a.ilink.npc[href*="npc="]', (a) => a.length);
+  const badges = await page.$$eval(".browse tbody .tbadge", (e) => e.length);
+  console.log(`gathering prof=182: rows=${rows} headers=[${headers.join(",")}] spellLinks=${spellLinks} npcLinks=${npcLinks} badges=${badges}`);
+  return rows > 0 && headers.includes("Ability") && headers.includes("Trainers") && headers.includes("Faction")
+    && spellLinks > 0 && npcLinks > 0 && badges > 0;
+}
+
 // "Obtainable only" checkbox (default on) hides crafts with no recipe/trainer/auto
 async function testCraftObtainable() {
   const count = async (qs) => {
@@ -1922,6 +1939,7 @@ run(() => testFilter("unique", "1"));
 run(() => testCrafted(2575, "Tailoring"));
 run(() => testCrafting());
 run(() => testCraftEnchanting());
+run(() => testGatheringProf());
 run(() => testCraftObtainable());
 run(() => testSelection());
 run(() => testGroupSelection());

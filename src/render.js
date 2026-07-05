@@ -325,6 +325,18 @@ export function zoneLink(areaid, name) {
   return `<a class="ilink zone" href="?zone=${areaid}">${esc(name)}</a>`;
 }
 
+// Faction-alignment label/badge for an NPC (creatures.team: 1 Alliance, 2 Horde,
+// 3 both, else neutral). Used where "which side can use this NPC" matters --
+// profession trainers on the crafting browse + spell page.
+export function teamLabel(team) {
+  return team === 1 ? "Alliance" : team === 2 ? "Horde" : team === 3 ? "Both" : "Neutral";
+}
+export function teamBadge(team) {
+  const cls = team === 1 ? "team-a" : team === 2 ? "team-h" : team === 3 ? "team-b" : "team-n";
+  const abbr = team === 1 ? "A" : team === 2 ? "H" : team === 3 ? "A/H" : "N";
+  return `<span class="tbadge ${cls}" title="${teamLabel(team)}">${abbr}</span>`;
+}
+
 // Spell link. icon is the basename (CDN or custom atlas); rendered only when set
 // (spells without an extracted icon degrade to a clean text link, no "?" image).
 export function spellLink(entry, name, icon) {

@@ -2,15 +2,15 @@
 // against the in-memory DB; sorting + pagination are handled client-side by the
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
-import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SPELLS, Q_BROWSE_ITEMSETS, Q_BROWSE_OBJECTS } from "./queries.js";
-import { itemLink, npcLink, questLink, factionLink, zoneLink, spellLink, objectLink, sourceTags, moneyHtml, esc } from "./render.js";
+import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SPELLS, Q_BROWSE_ITEMSETS, Q_BROWSE_OBJECTS, Q_PROFESSION_LEARN } from "./queries.js";
+import { itemLink, npcLink, questLink, factionLink, zoneLink, spellLink, objectLink, sourceTags, moneyHtml, teamBadge, esc } from "./render.js";
 import { createTable } from "./table.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
   CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
   BONDING, CLASS_MASK, PROFESSION, PROFESSION_LABEL, RACE_ALLIANCE, RACE_HORDE,
   QUEST_TYPE, CONTINENT, SPELL_SCHOOL, SPELL_CATEGORIES, GAMEOBJECT_TYPE, questZoneLabel,
-  STAT_WEIGHT_PRESETS, STAT_WEIGHT_PRESET_MAP,
+  STAT_WEIGHT_PRESETS, STAT_WEIGHT_PRESET_MAP, GATHERING_SKILLS, SKILL_RANK_ORDER,
 } from "./constants.js";
 
 const PAGE = 100;
@@ -570,8 +570,61 @@ function craftSkillCell(c) {
   return `<span style="white-space:nowrap">${out.join(" ")}</span>`;
 }
 
+// Gathering professions (Fishing/Herbalism/Skinning) craft nothing, so the recipe
+// query is empty for them. Show their learnable abilities + trainers instead: the
+// spell, its proficiency tier, which NPCs teach it, and which faction those
+// trainers serve (answers "what do I learn and where / from which side").
+async function browseGathering(p, f) {
+  const rows = await query(Q_PROFESSION_LEARN, [+f.prof]);
+  const bySpell = new Map();
+  for (const r of rows) {
+    let g = bySpell.get(r.spell);
+    if (!g) { g = { spell: r.spell, name: r.name, rank: r.rank, icon: r.icon, trainers: [] }; bySpell.set(r.spell, g); }
+    if (r.npc) g.trainers.push({ npc: r.npc, name: r.npc_name, level: r.npc_level, team: r.team });
+  }
+  let list = [...bySpell.values()];
+  if (f.q) { const ql = f.q.toLowerCase(); list = list.filter((c) => (c.name || "").toLowerCase().includes(ql)); }
+  // tier from the spell rank word ("Rank 2" and the like sort last)
+  const rankVal = (c) => SKILL_RANK_ORDER[(c.rank || "").split(" ")[0]] || 99;
+  // which sides can learn it here (union of the trainers' teams)
+  const teamsText = (c) => {
+    const s = new Set(c.trainers.map((t) => t.team || 0));
+    const parts = [];
+    if (s.has(1) || s.has(3)) parts.push("Alliance");
+    if (s.has(2) || s.has(3)) parts.push("Horde");
+    if (s.has(0)) parts.push("Neutral");
+    return parts.length ? parts.join(" · ") : "—";
+  };
+  const cols = [
+    { key: "name", label: "Ability", cell: (c) => spellLink(c.spell, c.rank ? `${c.name} (${c.rank})` : c.name, c.icon), value: (c) => c.name },
+    { key: "tier", label: "Tier", cls: "muted", cell: (c) => esc(c.rank || ""), value: rankVal },
+    { key: "trainers", label: "Trainers", cell: (c) => trainerCell(c.trainers), value: (c) => c.trainers.length },
+    { key: "faction", label: "Faction", cls: "muted", cell: (c) => esc(teamsText(c)), value: (c) => teamsText(c), group: (c) => teamsText(c) },
+  ];
+  const filters = `<div class="filters">
+    ${textField("q", "Name", f.q)}
+    ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any"))}
+    <button class="reset" data-reset="1">Reset</button>
+  </div>`;
+  return { rows: list, cols, filters, noun: "abilities", noGroup: true };
+}
+
+// Trainer NPC list for one ability: faction badge + link, ordered Alliance ->
+// Horde -> Neutral then level. Capped -- the ability's spell page has the full list.
+const TEAM_ORDER = { 1: 0, 2: 1, 3: 2, 0: 3 };
+function trainerCell(trainers) {
+  if (!trainers.length) return `<span class="muted">Not taught by a trainer</span>`;
+  const sorted = [...trainers].sort((a, b) =>
+    (TEAM_ORDER[a.team] - TEAM_ORDER[b.team]) || ((a.level || 0) - (b.level || 0)) || a.name.localeCompare(b.name));
+  const CAP = 8;
+  const shown = sorted.slice(0, CAP).map((t) => `${teamBadge(t.team)} ${npcLink(t.npc, t.name)}`);
+  const extra = sorted.length - CAP;
+  return `<span class="trainer-list">${shown.join(", ")}${extra > 0 ? `<span class="muted">, +${extra} more</span>` : ""}</span>`;
+}
+
 async function browseCrafting(p) {
   const f = { q: p.get("q") || "", prof: p.get("prof") || "", obtainable: p.get("obtainable") !== "0" };
+  if (f.prof && GATHERING_SKILLS.has(+f.prof)) return browseGathering(p, f);
   const rows = await query(Q_CRAFTING, []);
   // one query row per (craft spell, reagent); fold reagents into one craft per spell.
   const bySpell = new Map();
@@ -825,7 +878,7 @@ export async function showBrowse(kind, navigate) {
     tableApi = createTable(tableEl, {
       columns: view.cols, rows: view.rows, pageSize: PAGE, groupable: true,
       sort: p.get("sort"), dir: p.get("dir"),
-      group: p.get("groupby") ?? (kind === "crafting" ? "prof" : null),
+      group: view.noGroup ? (p.get("groupby") || null) : (p.get("groupby") ?? (kind === "crafting" ? "prof" : null)),
       selectable: isItems, rowKey: isItems ? (r) => r.entry : undefined,
       onSelectionChange: bar ? (count) => updateSelbar(count) : undefined,
       // mirror sort/group into the URL (no re-render) so the view is shareable

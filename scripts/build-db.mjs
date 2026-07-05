@@ -121,6 +121,28 @@ for (const spec of IMPORTS) importSpec(spec);
 // model thumbnail (render.js modelThumbUrl). display_id2..4 are unused here.
 db.exec("ALTER TABLE creatures RENAME COLUMN display_id1 TO display_id");
 
+// Creature faction alignment (team): resolve creature_template.faction ->
+// faction_template.our_mask (0x2 = Alliance, 0x4 = Horde). Lets the UI tag which
+// side an NPC serves -- e.g. which faction can use a profession trainer. 0 =
+// neutral/monster, 1 = Alliance, 2 = Horde, 3 = both (shared city guards, etc).
+db.exec("ALTER TABLE creatures ADD COLUMN team INTEGER NOT NULL DEFAULT 0");
+{
+  const ftCols = srcColumns("faction_template", "tw_world_faction_template.sql");
+  const iId = ftCols.indexOf("id"), iMask = ftCols.indexOf("our_mask");
+  const upd = db.prepare("UPDATE creatures SET team = ? WHERE faction = ?");
+  db.transaction(() => {
+    for (const r of srcRows("faction_template", "tw_world_faction_template.sql")) {
+      const om = clean(r[iMask]) || 0;
+      const a = om & 2, h = om & 4;
+      const team = a && h ? 3 : a ? 1 : h ? 2 : 0;
+      if (team) upd.run(team, clean(r[iId]));
+    }
+  })();
+  const na = db.prepare("SELECT COUNT(*) n FROM creatures WHERE team=1").get().n;
+  const nh = db.prepare("SELECT COUNT(*) n FROM creatures WHERE team=2").get().n;
+  console.log(`  creature team: ${na} Alliance, ${nh} Horde`);
+}
+
 // The server SQL item_display_info dump is missing or stale for Turtle's newer
 // items (both custom AND standard icons). The supplement -- extracted once from
 // the client ItemDisplayInfo.dbc (scripts/extract-icons.py) and committed --

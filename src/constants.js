@@ -79,6 +79,11 @@ export const PROFESSION = [
   [142, "Survival"], [197, "Tailoring"],
 ];
 export const PROFESSION_LABEL = Object.fromEntries(PROFESSION);
+// Gathering professions produce no crafted item (no spell_creates rows), so the
+// Crafting browse lists their learnable abilities + trainers instead of recipes.
+export const GATHERING_SKILLS = new Set([356, 182, 393]); // Fishing, Herbalism, Skinning
+// Trade-skill proficiency tiers, for sorting the learnable-abilities table.
+export const SKILL_RANK_ORDER = { Apprentice: 1, Journeyman: 2, Expert: 3, Artisan: 4, Master: 5 };
 
 // resistance column -> tooltip label
 export const RESISTANCES = [

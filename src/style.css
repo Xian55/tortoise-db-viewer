@@ -345,6 +345,16 @@ h1 { font-size: 22px; }
 .tagx { display: inline-block; padding: 1px 8px; margin-left: 4px; font-size: 12px;
   background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
 
+/* faction-alignment badge (profession trainers, spell page) */
+.tbadge { display: inline-block; min-width: 15px; padding: 0 5px; font-size: 11px;
+  font-weight: 700; text-align: center; line-height: 16px; border-radius: 8px;
+  border: 1px solid var(--border); vertical-align: middle; }
+.tbadge.team-a { color: #7db4ff; border-color: #3a5a8c; background: rgba(60, 100, 170, .18); }
+.tbadge.team-h { color: #ff8a7d; border-color: #8c3a3a; background: rgba(170, 60, 60, .18); }
+.tbadge.team-b { color: #d8b86a; border-color: #8c7a3a; background: rgba(150, 130, 60, .16); }
+.tbadge.team-n { color: var(--muted); }
+.trainer-list .tbadge { margin-right: 2px; }
+
 /* quest links + detail card */
 a.ilink.quest { color: var(--gold); }
 a.ilink.faction { color: #66c2cc; }
