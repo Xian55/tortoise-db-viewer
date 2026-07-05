@@ -3,9 +3,9 @@
 // (https://github.com/Xian55/GearExport): an array of { name, slots: { <Slot>:
 // { itemId, obtained } } }. Everything persists to localStorage -- there is no
 // backend -- so loadouts survive reloads on this browser.
-import { query } from "./db.js";
-import { qItemsIn, qItemStatsIn, qEnchantsIn, qRandomSuffixIn, qItemSearchInv } from "./queries.js";
-import { itemLink, questLink, spellLink, sourceTags, iconImg, qualityColor, esc } from "./render.js";
+import { query, queryOne } from "./db.js";
+import { qItemsIn, qItemStatsIn, qEnchantsIn, qRandomSuffixIn, qItemSearchInv, Q_ITEM_SET, Q_ITEMSET_BONUSES, Q_ITEMSET_MEMBERS } from "./queries.js";
+import { itemLink, questLink, spellLink, sourceTags, iconImg, qualityColor, resolveSpellText, esc } from "./render.js";
 import { ftsQuery, trigramQuery } from "./search.js";
 import { GEAR_STAT_LABEL, STAT_WEIGHT_PRESETS, STAT_WEIGHT_PRESET_MAP, CLASS_MASK } from "./constants.js";
 
@@ -169,7 +169,7 @@ function weightsFor(ch, specId) {
 
 const mergeStats = (a, b) => { const r = { ...a }; for (const k in b) r[k] = (r[k] || 0) + b[k]; return r; };
 
-async function computeUpgrades(ch, specId, { level = 60, lookAhead = 3, slot = "", topN, eqInv = {}, eqBonus = {} } = {}) {
+async function computeUpgrades(ch, specId, { level = 60, lookAhead = 3, slot = "", topN, eqInv = {}, eqBonus = {}, includeDowngrades = false } = {}) {
   const weights = weightsFor(ch, specId);
   const n = topN ?? (slot ? 15 : 5); // a single-slot search shows a deeper list
   const maxReq = level + lookAhead;
@@ -224,10 +224,12 @@ async function computeUpgrades(ch, specId, { level = 60, lookAhead = 3, slot = "
       }
       return diff;
     };
+    // upgrades only (> equipped), unless "include lower-score" is on -> any candidate
+    const gainFloor = includeDowngrades ? -Infinity : 0.05;
     const ups = pool
       .filter((c) => availAt(c) <= maxReq && (c.ilvl || 0) <= ilvlCap && allowed(c))
       .map((c) => ({ ...c, score: scoreWith(statMap.get(c.entry) || {}, weights), avail: availAt(c), diff: diffVs(c) }))
-      .filter((c) => c.score > base + 0.05 && !seen.has(c.entry))
+      .filter((c) => c.score > base + gainFloor && !seen.has(c.entry))
       .sort((a, b) => b.score - a.score)
       .slice(0, n);
     if (ups.length) out.push({ slot: s, equippedId, base, ups });
@@ -326,27 +328,49 @@ function diffHtml(diff) {
   }).join("")}</div>`;
 }
 
+// item sets among the equipped gear: name, X/Y pieces, and each bonus (active when
+// the piece count meets its threshold, else how many more are needed).
+function setsSection(sets) {
+  if (!sets.length) return "";
+  return `<div class="char-sets"><h2>Set bonuses</h2>${sets.map((set) => {
+    const bonuses = set.bonuses.map((b) => {
+      const active = set.have >= b.threshold;
+      const txt = b.description ? resolveSpellText(b.description, b) : (b.spell_name || "");
+      const body = b.spell ? `<a class="ilink" href="?spell=${b.spell}">${esc(txt)}</a>` : esc(txt);
+      return `<div class="set-bonus${active ? " on" : ""}"><span class="set-thr">${b.threshold} pc</span> ${body}${active ? "" : ` <span class="muted">— need ${b.threshold - set.have} more</span>`}</div>`;
+    }).join("");
+    return `<div class="set-block">
+      <div class="set-head"><a class="ilink" href="?itemset=${set.id}">${esc(set.name)}</a>
+        <span class="set-count${set.have >= 2 ? " on" : ""}">${set.have}/${set.total} pieces</span></div>
+      ${bonuses}</div>`;
+  }).join("")}</div>`;
+}
+
 function upgradesHtml(list, itemMap) {
   if (!list.length) return `<p class="muted">No higher-scoring upgrades found for this spec.</p>`;
   return list.map(({ slot, equippedId, base, ups }) => {
     const eq = equippedId && itemMap.get(equippedId);
-    // equipped baseline row at the top of each slot's table
-    const eqRow = `<tr class="up-eq">
-      <td class="up-item">${eq ? `${itemLink(eq.entry, eq.name, eq.quality, eq.icon)} <span class="up-tag">equipped</span>` : `<span class="muted">— empty —</span>`}</td>
-      <td class="up-num">${round1(base)}</td><td class="up-num">—</td><td></td><td></td></tr>`;
-    const rows = ups.map((c) => {
+    // merge the equipped item INTO the ranking at its own score, so the baseline is
+    // visible in place (above the downgrades, below the upgrades).
+    const rows = [...ups];
+    if (eq) rows.push({ entry: eq.entry, name: eq.name, quality: eq.quality, icon: eq.icon, score: base, isEq: true });
+    rows.sort((a, b) => b.score - a.score);
+    const body = rows.map((c) => {
+      if (c.isEq) return `<tr class="up-eq">
+        <td class="up-item">${itemLink(c.entry, c.name, c.quality, c.icon)} <span class="up-tag">equipped</span></td>
+        <td class="up-num">${round1(base)}</td><td class="up-num">—</td><td></td><td></td></tr>`;
       const quests = (c.quests || []).map((q) => questLink(q.entry, q.title)).join(" ");
       return `<tr>
         <td class="up-item">${itemLink(c.entry, c.name, c.quality, c.icon)}${c.avail ? ` <span class="up-lvl" title="Available at level">lvl ${c.avail}</span>` : ""}</td>
         <td class="up-num">${round1(c.score)}</td>
-        <td class="up-num"><span class="up-gain">+${round1(c.score - base)}</span></td>
+        <td class="up-num"><span class="up-gain${c.score < base ? " down" : ""}">${c.score >= base ? "+" : ""}${round1(c.score - base)}</span></td>
         <td class="up-change">${diffHtml(c.diff)}</td>
         <td class="up-src">${sourceTags(c.srcKeys)}${quests}</td>
       </tr>`;
     }).join("");
     return `<div class="up-table-wrap"><table class="up-table">
       <thead><tr><th>${esc(slot.label)}</th><th class="up-num">Score</th><th class="up-num">Gain</th><th>Stat change</th><th>Source</th></tr></thead>
-      <tbody>${eqRow}${rows}</tbody></table></div>`;
+      <tbody>${body}</tbody></table></div>`;
   }).join("");
 }
 
@@ -577,6 +601,18 @@ export async function showCharacter(idOrChar, navigate) {
       </div></div>`
     : `<p class="muted char-nostats">No stat data for the equipped items.</p>`;
 
+  // set bonuses from equipped set pieces
+  const setCounts = new Map();
+  for (const s of SLOTS) { const it = itemMap.get(ch.slots?.[s.k]?.itemId); if (it && it.set_id) setCounts.set(it.set_id, (setCounts.get(it.set_id) || 0) + 1); }
+  let setsHtml = "";
+  if (setCounts.size) {
+    const data = await Promise.all([...setCounts.keys()].map(async (sid) => {
+      const [info, bonuses, members] = await Promise.all([queryOne(Q_ITEM_SET, [sid]), query(Q_ITEMSET_BONUSES, [sid]), query(Q_ITEMSET_MEMBERS, [sid])]);
+      return info ? { id: sid, name: info.name, bonuses, total: members.length, have: setCounts.get(sid) } : null;
+    }));
+    setsHtml = setsSection(data.filter(Boolean).sort((a, b) => b.have - a.have));
+  }
+
   const defaultSpec = ch.spec || guessSpec(statTotals, ch.level || 60);
   app.innerHTML = `<div class="char-view">
     <h1 class="char-title">${esc(ch.name)}</h1>
@@ -592,6 +628,7 @@ export async function showCharacter(idOrChar, navigate) {
     </div>
     ${shared ? `<p class="muted char-shared-note">Viewing a shared build. Edits won't stick — click <b>★ Save to my characters</b> to keep it.</p>` : ""}
     ${summary}
+    ${setsHtml}
     <div class="gear-bar">
       <h2 class="gear-bar-title">Gear</h2>
       <div class="gear-toggle" role="group" aria-label="Gear layout">
@@ -609,6 +646,8 @@ export async function showCharacter(idOrChar, navigate) {
         <label>Slot ${slotSelect(ch.slotFilter || "")}</label>
         <label>My level <input type="number" id="charLevel" min="1" max="60" value="${ch.level || 60}"></label>
         <label>Look ahead <input type="number" id="charAhead" min="0" max="20" value="${ch.lookAhead ?? 3}"></label>
+        <label>Show <input type="number" id="charTopN" min="1" max="30" value="${ch.topN ?? 5}"> / slot</label>
+        <label class="up-check"><input type="checkbox" id="charDowngrades"${ch.showDowngrades ? " checked" : ""}> include lower-score</label>
         <button type="button" class="btn" id="charFindUp">Find upgrades</button>
         <span class="muted" id="charUpMsg"></span>
       </div>
@@ -658,6 +697,8 @@ export async function showCharacter(idOrChar, navigate) {
   const slotSel = app.querySelector("#charSlot");
   const lvlIn = app.querySelector("#charLevel");
   const aheadIn = app.querySelector("#charAhead");
+  const topNIn = app.querySelector("#charTopN");
+  const downIn = app.querySelector("#charDowngrades");
   const customBox = app.querySelector("#charCustom");
   const specWeights = app.querySelector("#charSpecWeights");
   const upList = app.querySelector("#charUpList");
@@ -668,10 +709,12 @@ export async function showCharacter(idOrChar, navigate) {
     const specId = specSel.value;
     const level = clamp(lvlIn.value, 1, 60, 60);
     const lookAhead = clamp(aheadIn.value, 0, 20, 3);
+    const topN = clamp(topNIn.value, 1, 30, 5);
+    const includeDowngrades = downIn.checked;
     const slot = slotSel.value;
-    lvlIn.value = level; aheadIn.value = lookAhead;
+    lvlIn.value = level; aheadIn.value = lookAhead; topNIn.value = topN;
     if (specId === "custom") ch.customWeights = readCustom(customBox);
-    ch.spec = specId; ch.level = level; ch.lookAhead = lookAhead; ch.slotFilter = slot;
+    ch.spec = specId; ch.level = level; ch.lookAhead = lookAhead; ch.topN = topN; ch.showDowngrades = includeDowngrades; ch.slotFilter = slot;
     ch.race = raceSel.value ? Number(raceSel.value) : null;
     ch.cls = classSel.value ? Number(classSel.value) : null; save();
     note.textContent = `Ranks obtainable items you could equip by level ${level + lookAhead} (your level + look-ahead).`;
@@ -689,7 +732,7 @@ export async function showCharacter(idOrChar, navigate) {
     const eqInv = {}, eqBonus = {};
     for (const s of SLOTS) { const it = itemMap.get(ch.slots?.[s.k]?.itemId); if (it) eqInv[s.k] = it.inv; const bo = slotBonus(s.k); if (bo) eqBonus[s.k] = bo; }
     try {
-      const list = await computeUpgrades(ch, specId, { level, lookAhead, slot, eqInv, eqBonus });
+      const list = await computeUpgrades(ch, specId, { level, lookAhead, slot, topN, eqInv, eqBonus, includeDowngrades });
       await attachSources(list);
       upList.innerHTML = upgradesHtml(list, itemMap);
       upMsg.textContent = list.length ? `${list.reduce((n, b) => n + b.ups.length, 0)} across ${list.length} slots` : "none found";
@@ -702,6 +745,8 @@ export async function showCharacter(idOrChar, navigate) {
   slotSel.onchange = runUpgrades;
   lvlIn.onchange = runUpgrades;
   aheadIn.onchange = runUpgrades;
+  topNIn.onchange = runUpgrades;
+  downIn.onchange = runUpgrades;
   // custom weight editor: edit a row -> re-score; +stat adds a blank row; ✕ removes
   customBox.addEventListener("change", (e) => { if (e.target.matches(".cw-stat, .cw-val")) runUpgrades(); });
   customBox.addEventListener("click", (e) => {

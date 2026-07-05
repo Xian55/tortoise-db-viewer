@@ -30,7 +30,7 @@ export const Q_ITEM_STATS = `SELECT stat, value FROM item_stats WHERE item = ?1`
 
 // Batch fetch for the character loadout page (17 gear slots -> one query each).
 // n positional params (?1..?n) matching the distinct item ids passed in.
-export const qItemsIn = (n) => `SELECT i.entry, i.name, i.quality, i.item_level, i.required_level, i.inventory_type AS inv, di.icon
+export const qItemsIn = (n) => `SELECT i.entry, i.name, i.quality, i.item_level, i.required_level, i.inventory_type AS inv, i.set_id, di.icon
   FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE i.entry IN (${Array.from({ length: n }, (_, k) => `?${k + 1}`).join(",")})`;
 export const qItemStatsIn = (n) => `SELECT item, stat, value FROM item_stats
