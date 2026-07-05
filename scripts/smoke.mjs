@@ -223,11 +223,17 @@ async function testCharacterLoadout() {
     itemLinks: document.querySelectorAll(".char-view .gear-icon[href*='item=']").length,
     statRows: document.querySelectorAll(".char-summary .stat-pill").length,
     unobtained: document.querySelectorAll(".char-view .gt-unobt").length,
-    enchant: !!document.querySelector(".char-ench a.ilink.spell"),         // enchantId -> spell label
+    enchant: !!document.querySelector(".gt-ench"),                          // icon-view enchant badge
     classPicker: document.querySelector("#charClass")?.value,               // inherited from import
     levelPicker: document.querySelector("#charLevel")?.value,
     hasExport: !!document.querySelector("#charExport"),
   }));
+  // gear layout toggle: detailed view spells out item name + enchant, then restore icons
+  await page.click('[data-gv="detail"]');
+  await page.waitForSelector(".det-slot", { timeout: T });
+  const detail = await page.evaluate(() => ({ rows: document.querySelectorAll(".det-slot").length, enchLink: !!document.querySelector(".det-ench a.ilink.spell") }));
+  await page.click('[data-gv="icons"]');
+  await page.waitForSelector(".char-sheet.sheet-icons", { timeout: T });
   // upgrade finder: ranked table per slot (item, score, gain, stat change, source)
   await page.click("#charFindUp");
   await page.waitForSelector(".up-table tbody tr:not(.up-eq)", { timeout: T });
@@ -257,9 +263,10 @@ async function testCharacterLoadout() {
     noDelete: !document.querySelector("#charDelete"),
     slots: document.querySelectorAll(".gear-icon[href*='item=']").length,
   }));
-  console.log(`character loadout: title=${sheet.title} items=${sheet.itemLinks} stats=${sheet.statRows} unobt=${sheet.unobtained} ench=${sheet.enchant} class=${sheet.classPicker} lvl=${sheet.levelPicker} | up rows=${up.rows} diffs=${up.diffs} src=${up.sources} noStaff=${up.noStaff} noTest=${up.noTest} roundTrip=${roundTrip} | share=${share.isLoadout} banner=${share.banner} save=${share.saveBtn} slots=${share.slots}`);
+  console.log(`character loadout: title=${sheet.title} items=${sheet.itemLinks} stats=${sheet.statRows} unobt=${sheet.unobtained} ench=${sheet.enchant} class=${sheet.classPicker} lvl=${sheet.levelPicker} | detail rows=${detail.rows} enchLink=${detail.enchLink} | up rows=${up.rows} diffs=${up.diffs} src=${up.sources} noStaff=${up.noStaff} noTest=${up.noTest} roundTrip=${roundTrip} | share=${share.isLoadout} banner=${share.banner} save=${share.saveBtn} slots=${share.slots}`);
   return sheet.title === "Smoke Gear" && sheet.itemLinks >= 5 && sheet.statRows > 0 && sheet.unobtained === 1
     && sheet.enchant && sheet.classPicker === "2" && sheet.levelPicker === "36" && sheet.hasExport
+    && detail.rows > 0 && detail.enchLink
     && up.rows > 0 && up.diffs > 0 && up.sources > 0 && up.noStaff && up.noTest && roundTrip
     && share.isLoadout && share.banner && share.saveBtn && share.noDelete && share.slots >= 5;
 }

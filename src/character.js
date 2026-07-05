@@ -542,6 +542,34 @@ export async function showCharacter(idOrChar, navigate) {
       <span class="gt-label">${esc(s.label)}</span>
     </div>`;
   };
+
+  // detailed row per slot: big icon + item name + enchant/suffix spelled out below.
+  const detailHtml = (s) => {
+    const slot = ch.slots?.[s.k];
+    const it = slot && itemMap.get(slot.itemId);
+    const suf = slot?.suffixId ? suffixMap.get(slot.suffixId) : null;
+    const ench = slot?.enchantId ? enchMap.get(slot.enchantId) : null;
+    const sufName = slot?.suffixId ? (suf?.name ? ` <span class="char-suffix">${esc(suf.name)}</span>` : ` <span class="muted">(random)</span>`) : "";
+    const nameLine = it
+      ? `<a class="ilink" href="?item=${it.entry}" style="color:${qualityColor(it.quality)}">${esc(it.name)}</a>${sufName}${slot.obtained === false ? ` <span class="gt-unobt" title="Not yet obtained">◇</span>` : ""}`
+      : slot?.itemId ? `<span class="muted">Item #${slot.itemId} — not in DB</span>` : `<span class="muted">empty</span>`;
+    const enchLine = slot?.enchantId ? `<div class="det-sub det-ench">⚚ ${ench ? spellLink(ench.spell, ench.name) : `Enchant #${slot.enchantId}`}</div>` : "";
+    const sufLine = suf?.stats ? `<div class="det-sub det-suf">✦ ${esc(suf.name || "")} <span class="muted">(${Object.entries(suf.stats).map(([k, v]) => `+${v} ${esc(GEAR_STAT_LABEL[k] || k)}`).join(", ")})</span></div>` : "";
+    const icon = it
+      ? `<a class="ilink det-icon" href="?item=${it.entry}" style="border-color:${qualityColor(it.quality)}">${iconImg(it.icon, "gt-img")}</a>`
+      : `<span class="det-icon empty"></span>`;
+    return `<div class="det-slot${slot?.itemId ? "" : " is-empty"}" data-slot="${s.k}">
+      ${icon}
+      <div class="det-body"><span class="det-slot-label">${esc(s.label)}</span>
+        <div class="det-name">${nameLine}</div>${enchLine}${sufLine}</div>
+      <span class="det-actions">
+        <button type="button" class="slot-set gt-btn" data-slot="${s.k}" title="Change">✎</button>
+        ${slot?.itemId ? `<button type="button" class="slot-clr gt-btn" data-slot="${s.k}" title="Clear">✕</button>` : ""}</span>
+    </div>`;
+  };
+  const gearView = (() => { try { return localStorage.getItem("tw_gearview") === "detail" ? "detail" : "icons"; } catch { return "icons"; } })();
+  const gearHtml = (gearView === "detail" ? SLOTS.map(detailHtml) : SLOTS.map(tileHtml)).join("");
+
   const statOrder = Object.keys(GEAR_STAT_LABEL).filter((k) => statTotals[k]);
   const summary = statOrder.length
     ? `<div class="char-summary"><h2>Total stats</h2><div class="stat-pills">
@@ -564,7 +592,14 @@ export async function showCharacter(idOrChar, navigate) {
     </div>
     ${shared ? `<p class="muted char-shared-note">Viewing a shared build. Edits won't stick — click <b>★ Save to my characters</b> to keep it.</p>` : ""}
     ${summary}
-    <div class="char-sheet">${SLOTS.map(tileHtml).join("")}</div>
+    <div class="gear-bar">
+      <h2 class="gear-bar-title">Gear</h2>
+      <div class="gear-toggle" role="group" aria-label="Gear layout">
+        <button type="button" class="gv-btn${gearView === "icons" ? " on" : ""}" data-gv="icons" title="Icon grid" aria-label="Icon grid">▦</button>
+        <button type="button" class="gv-btn${gearView === "detail" ? " on" : ""}" data-gv="detail" title="Detailed list" aria-label="Detailed list">☰</button>
+      </div>
+    </div>
+    <div class="char-sheet sheet-${gearView}">${gearHtml}</div>
     <div class="char-upgrades">
       <h2>Suggested upgrades</h2>
       <div class="up-controls">
@@ -585,6 +620,8 @@ export async function showCharacter(idOrChar, navigate) {
   </div>`;
 
   const reload = () => showCharacter(shared ? ch : id, navigate);
+  // gear layout toggle (icons grid <-> detailed list), remembered across characters
+  app.querySelectorAll("[data-gv]").forEach((b) => { b.onclick = () => { try { localStorage.setItem("tw_gearview", b.dataset.gv); } catch { /* private mode */ } reload(); }; });
   // inline rename (no prompt())
   app.querySelector("#charRename")?.addEventListener("click", () => {
     const h1 = app.querySelector(".char-title");
@@ -684,7 +721,7 @@ export async function showCharacter(idOrChar, navigate) {
   const closePop = () => app.querySelector(".slot-pop")?.remove();
   app.querySelectorAll(".slot-set").forEach((b) => { b.onclick = () => {
     const k = b.dataset.slot;
-    const tile = b.closest(".gear-tile");
+    const tile = b.closest(".gear-tile, .det-slot");
     closePop();
     const pop = document.createElement("div");
     pop.className = "slot-pop";

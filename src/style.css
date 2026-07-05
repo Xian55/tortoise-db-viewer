@@ -820,8 +820,35 @@ a.ext { color: var(--gold); }
 .char-title { margin-bottom: 4px; }
 .char-shared-note { margin: -4px 0 10px; padding: 6px 10px; border: 1px solid #8c7a3a;
   border-radius: 6px; background: rgba(150, 130, 60, .12); }
+/* gear header + layout toggle */
+.gear-bar { display: flex; align-items: center; gap: 12px; margin: 18px 0 6px; }
+.gear-bar-title { font-size: 18px; margin: 0; }
+.gear-toggle { margin-left: auto; display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.gv-btn { background: var(--panel); border: 0; color: var(--muted); cursor: pointer; padding: 4px 10px; font-size: 14px; line-height: 1.2; }
+.gv-btn + .gv-btn { border-left: 1px solid var(--border); }
+.gv-btn:hover { background: var(--panel2); color: var(--text); }
+.gv-btn.on { background: var(--panel2); color: var(--gold); }
+
 /* compact icon gear grid */
-.char-sheet { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.char-sheet { margin-top: 6px; }
+.char-sheet.sheet-icons { display: flex; flex-wrap: wrap; gap: 10px; }
+.char-sheet.sheet-detail { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+/* detailed row layout */
+.det-slot { position: relative; display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.det-slot.is-empty { border-style: dashed; background: transparent; }
+.det-icon { width: 40px; height: 40px; flex: none; box-sizing: border-box; border: 2px solid var(--border);
+  border-radius: 6px; overflow: hidden; background: var(--panel2); }
+.det-icon .gt-img { width: 100%; height: 100%; display: block; border: 0; margin: 0; border-radius: 0; vertical-align: top; }
+.det-icon.empty { border-style: dashed; }
+.det-body { flex: 1; min-width: 0; }
+.det-slot-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.det-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.det-sub { font-size: 12px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.det-ench, .det-ench a.ilink.spell { color: #b07fce; }
+.det-suf { color: #74c98a; }
+.det-actions { display: none; gap: 3px; flex: none; }
+.det-slot:hover .det-actions { display: flex; }
 .gear-tile { position: relative; width: 62px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .gt-wrap { position: relative; width: 44px; height: 44px; }
 .gear-icon { display: block; width: 44px; height: 44px; box-sizing: border-box;
