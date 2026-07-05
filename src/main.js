@@ -6,6 +6,7 @@ import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { showCharacters, showCharacter, showSharedLoadout } from "./character.js";
+import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
 import { ASSETS_BASE, resolveOrigins } from "./config.js";
@@ -126,6 +127,8 @@ function route() {
   else if (params.get("loadout")) return showSharedLoadout(params.get("loadout"), navigate);
   else if (params.get("character")) return showCharacter(params.get("character"), navigate);
   else if (params.get("characters") !== null) return showCharacters(navigate);
+  else if (params.get("weightset")) return showSharedWeightSet(params.get("weightset"), navigate);
+  else if (params.get("weights") !== null) return showWeightSets(navigate);
   else if (term) { searchInput.value = term; return showSearch(term); }
   else return showHome();
 }
@@ -232,6 +235,7 @@ function showHome() {
        <a class="nav" href="?guides">leveling guides</a> /
        <a class="nav" href="?talents">talent calculator</a> /
        <a class="nav" href="?characters">characters</a> /
+       <a class="nav" href="?weights">gear-score presets</a> /
        <a class="nav" href="?browse=objects">objects</a> /
        <a class="nav" href="?worldmap">world map</a> /
        <a class="nav" href="?flights">flight paths</a> /

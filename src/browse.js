@@ -5,6 +5,7 @@ import { query } from "./db.js";
 import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SPELLS, Q_BROWSE_ITEMSETS, Q_BROWSE_OBJECTS, Q_PROFESSION_LEARN } from "./queries.js";
 import { itemLink, npcLink, questLink, factionLink, zoneLink, spellLink, objectLink, sourceTags, moneyHtml, teamBadge, esc } from "./render.js";
 import { createTable } from "./table.js";
+import { loadSets, resolveWeights } from "./weightsets.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
   CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
@@ -414,9 +415,11 @@ async function browseItems(p) {
     <div class="sec-actions"><button type="button" class="crit-add" data-cadd>+ Add criterion</button>
       <span class="sec-inline">Match ${matchSel}</span></div>
   </div>`;
-  // gear-score weight builder: preset dropdown + per-stat multiplier rows
+  // gear-score weight builder: preset dropdown (built-in + saved custom) + rows
   const presetGroups = [...new Set(STAT_WEIGHT_PRESETS.map((pr) => pr.group || "Presets"))];
-  const presetSel = `<select data-wpreset><option value="">Preset…</option>${presetGroups.map((g) =>
+  const mySets = loadSets();
+  const myGroup = mySets.length ? `<optgroup label="My presets">${mySets.map((s) => `<option value="${s.id}"${s.id === presetId ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</optgroup>` : "";
+  const presetSel = `<select data-wpreset><option value="">Preset…</option>${myGroup}${presetGroups.map((g) =>
     `<optgroup label="${esc(g)}">${STAT_WEIGHT_PRESETS.filter((pr) => (pr.group || "Presets") === g).map((pr) =>
       `<option value="${pr.id}"${pr.id === presetId ? " selected" : ""}>${esc(pr.label)}</option>`).join("")}</optgroup>`).join("")}</select>`;
   const wtRows = weights.length ? weights.map(weightRow).join("") : weightRow(null);
@@ -1004,10 +1007,11 @@ export async function showBrowse(kind, navigate) {
   if (wtWrap) {
     const preset = wtWrap.querySelector("[data-wpreset]");
     if (preset) preset.addEventListener("change", () => {
-      const pr = STAT_WEIGHT_PRESET_MAP[preset.value];
-      if (!pr) return;
+      const w = resolveWeights(preset.value); // built-in preset or a saved custom set
+      if (!w) return;
       const np = collect();
-      np.set("weights", Object.entries(pr.weights).map(([k, w]) => `${k}:${w}`).join("|"));
+      np.set("weights", Object.entries(w).map(([k, v]) => `${k}:${v}`).join("|"));
+      np.set("preset", preset.value);
       np.set("sort", "score"); np.set("dir", "d"); // preset -> rank by score desc
       navigate(`?${np.toString()}`);
     });

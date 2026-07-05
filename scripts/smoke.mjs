@@ -271,6 +271,29 @@ async function testCharacterLoadout() {
     && share.isLoadout && share.banner && share.saveBtn && share.noDelete && share.slots >= 5;
 }
 
+// Gear-score presets (?weights): create/import a stat-weight set, confirm it lists
+// and becomes selectable in the item browser's gear-score dropdown (ranking by it).
+async function testWeightSets() {
+  await page.goto(`${BASE}?weights`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector("#wsImport", { timeout: T });
+  await page.evaluate(() => { document.querySelector("#wsJson").value = JSON.stringify({ name: "Smoke Preset", weights: { def: 12, sta: 3, speed: -3 } }); });
+  await page.click("#wsImport");
+  await page.waitForSelector(".ws-card", { timeout: T });
+  const p1 = await page.evaluate(() => ({
+    cards: document.querySelectorAll(".ws-card").length,
+    name: document.querySelector(".ws-card-name")?.textContent?.trim(),
+    pills: document.querySelectorAll(".ws-pills .wpill").length,
+    id: JSON.parse(localStorage.getItem("tw_weightsets") || "[]").find((s) => s.name === "Smoke Preset")?.id,
+  }));
+  await page.goto(`${BASE}?browse=items&class=4`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector("[data-wpreset]", { timeout: T });
+  const inBrowse = await page.evaluate((id) => [...document.querySelectorAll('[data-wpreset] optgroup[label="My presets"] option')].some((o) => o.value === id), p1.id);
+  await page.select("[data-wpreset]", p1.id);
+  const scored = await page.waitForFunction(() => [...document.querySelectorAll(".browse th")].some((h) => /Score/.test(h.textContent)), { timeout: T }).then(() => true).catch(() => false);
+  console.log(`weight sets: cards=${p1.cards} name=${p1.name} pills=${p1.pills} inBrowse=${inBrowse} scored=${scored}`);
+  return p1.cards >= 1 && p1.name === "Smoke Preset" && p1.pills === 3 && inBrowse && scored;
+}
+
 // Items that roll a random suffix (item.random_property) show a "🎲 Random suffix"
 // badge + the pool of possible suffixes with stat ranges + chance (item 7457
 // "Knight's Gauntlets" -> of the Bear / of the Whale / …).
@@ -1893,6 +1916,7 @@ run(() => testItem(647, "Destiny"));
 run(() => testSameModel(33292, 2));  // items sharing a display_id (Same model tab)
 run(() => testCompare(47185, 47191));  // ?compare= side-by-side tooltips + stat deltas
 run(() => testCharacterLoadout());     // ?characters import -> gear sheet + export
+run(() => testWeightSets());           // ?weights preset manager + browse integration
 run(() => testItemRandomSuffix(7457)); // item page random-suffix pool + badge
 run(() => testGearScore());            // stat-weight Score column + score-desc sort
 run(() => testCriteriaOr());           // multi-criteria match=any (OR) vs default AND

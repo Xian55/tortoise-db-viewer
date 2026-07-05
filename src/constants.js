@@ -111,14 +111,30 @@ export const GEAR_STAT_LABEL = Object.fromEntries(GEAR_CRITERIA.flatMap((g) => g
 // armor a tiny one since its values are large. Rough starting points -- users tune
 // them freely in the UI. Keys MUST be GEAR_STAT_LABEL keys.
 export const STAT_WEIGHT_PRESETS = [
-  { id: "warrior-dps", group: "Max level", label: "Warrior · DPS", weights: { str: 2, ap: 1, crit: 14, hit: 12, dps: 3, agi: 1 } },
-  { id: "warrior-tank", group: "Max level", label: "Warrior · Tank", weights: { sta: 2, def: 12, dodge: 10, parry: 10, block: 6, armor: 0.05 } },
-  { id: "rogue-dps", group: "Max level", label: "Rogue · DPS", weights: { agi: 2, ap: 1, crit: 14, hit: 12, dps: 3 } },
-  { id: "hunter-dps", group: "Max level", label: "Hunter · DPS", weights: { agi: 2, ap: 1, crit: 12, hit: 12, dps: 2, int: 0.5 } },
-  { id: "feral-dps", group: "Max level", label: "Druid · Feral", weights: { agi: 2, str: 1.5, ap: 1, crit: 12, hit: 10 } },
-  { id: "caster-dps", group: "Max level", label: "Caster · DPS", weights: { sp: 1, spCrit: 14, spHit: 10, int: 0.3, mp5: 0.4 } },
-  { id: "healer", group: "Max level", label: "Healer", weights: { heal: 1, mp5: 0.6, sp: 0.5, int: 0.3, spi: 0.2 } },
-  { id: "tank-avoid", group: "Max level", label: "Tank · Avoidance", weights: { def: 12, dodge: 10, parry: 10, sta: 1.5, armor: 0.05, block: 5 } },
+  // Max-level class/spec starters (standard 1.12 Classic theorycraft, approximate).
+  // Existing ids kept so saved builds keep resolving. Customize any of them.
+  { id: "warrior-dps", group: "Max level", label: "Warrior · Fury/Arms", weights: { str: 2, ap: 1, crit: 14, hit: 12, dps: 3, agi: 1 } },
+  { id: "warrior-tank", group: "Max level", label: "Warrior · Protection", weights: { sta: 2, def: 12, dodge: 10, parry: 10, block: 6, str: 0.5, armor: 0.05 } },
+  { id: "paladin-ret", group: "Max level", label: "Paladin · Retribution", weights: { str: 2, ap: 1, crit: 12, hit: 12, dps: 3, sp: 0.3 } },
+  { id: "paladin-prot", group: "Max level", label: "Paladin · Protection", weights: { sta: 2, def: 12, dodge: 10, parry: 8, block: 6, str: 1, sp: 0.5, int: 0.3, armor: 0.05 } },
+  { id: "paladin-holy", group: "Max level", label: "Paladin · Holy", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.4, spCrit: 6, spi: 0.2 } },
+  { id: "hunter-dps", group: "Max level", label: "Hunter · Ranged", weights: { agi: 2, ap: 1, crit: 12, hit: 12, dps: 2, int: 0.5 } },
+  { id: "rogue-dps", group: "Max level", label: "Rogue · Combat/Assassination", weights: { agi: 2, ap: 1, crit: 14, hit: 12, dps: 3 } },
+  { id: "priest-shadow", group: "Max level", label: "Priest · Shadow", weights: { sp: 1, spCrit: 8, spHit: 10, int: 0.3, mp5: 0.3, sta: 0.5 } },
+  { id: "priest-heal", group: "Max level", label: "Priest · Holy/Discipline", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.4, spi: 0.3 } },
+  { id: "shaman-enh", group: "Max level", label: "Shaman · Enhancement", weights: { ap: 1, str: 1.5, agi: 1, crit: 10, hit: 12, dps: 3, int: 0.3 } },
+  { id: "shaman-ele", group: "Max level", label: "Shaman · Elemental", weights: { sp: 1, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3 } },
+  { id: "shaman-resto", group: "Max level", label: "Shaman · Restoration", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.3, spi: 0.2 } },
+  { id: "mage-fire", group: "Max level", label: "Mage · Fire", weights: { sp: 1, spCrit: 12, spHit: 10, int: 0.4, mp5: 0.3 } },
+  { id: "mage-frost", group: "Max level", label: "Mage · Frost/Arcane", weights: { sp: 1, spCrit: 8, spHit: 10, int: 0.5, mp5: 0.3 } },
+  { id: "warlock-dps", group: "Max level", label: "Warlock · DPS", weights: { sp: 1, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3, sta: 0.5 } },
+  { id: "druid-balance", group: "Max level", label: "Druid · Balance", weights: { sp: 1, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3 } },
+  { id: "feral-dps", group: "Max level", label: "Druid · Feral DPS", weights: { agi: 2, str: 1.5, ap: 1, crit: 12, hit: 10 } },
+  { id: "druid-feral-tank", group: "Max level", label: "Druid · Feral Tank", weights: { sta: 2, agi: 1.5, armor: 0.06, def: 8, dodge: 8 } },
+  { id: "druid-resto", group: "Max level", label: "Druid · Restoration", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.3, spi: 0.2 } },
+  { id: "caster-dps", group: "Max level", label: "Caster · DPS (generic)", weights: { sp: 1, spCrit: 14, spHit: 10, int: 0.3, mp5: 0.4 } },
+  { id: "healer", group: "Max level", label: "Healer (generic)", weights: { heal: 1, mp5: 0.6, sp: 0.5, int: 0.3, spi: 0.2 } },
+  { id: "tank-avoid", group: "Max level", label: "Tank · Avoidance (generic)", weights: { def: 12, dodge: 10, parry: 10, sta: 1.5, armor: 0.05, block: 5 } },
   // Leveling: survival (Stamina) + primary stat + weapon throughput dominate; hit/crit
   // matter less than at 60, and mana regen (spi/mp5) keeps casters killing between drinks.
   { id: "lvl-melee", group: "Leveling", label: "Leveling · Melee (Str)", weights: { sta: 2, str: 2, ap: 1, dps: 4, crit: 5 } },

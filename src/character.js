@@ -7,6 +7,7 @@ import { query, queryOne } from "./db.js";
 import { qItemsIn, qItemStatsIn, qEnchantsIn, qRandomSuffixIn, qItemSearchInv, Q_ITEM_SET, Q_ITEMSET_BONUSES, Q_ITEMSET_MEMBERS } from "./queries.js";
 import { itemLink, questLink, spellLink, sourceTags, iconImg, qualityColor, resolveSpellText, esc } from "./render.js";
 import { ftsQuery, trigramQuery } from "./search.js";
+import { loadSets, resolveWeights } from "./weightsets.js";
 import { GEAR_STAT_LABEL, STAT_WEIGHT_PRESETS, STAT_WEIGHT_PRESET_MAP, CLASS_MASK } from "./constants.js";
 
 const KEY = "tw_characters";
@@ -164,7 +165,8 @@ const TEST_ITEM_RE = /\b(test|deprecated|placeholder|unused|debug|beta|qa)\b|\[p
 // equipped item (or top-N outright for an empty slot) under the given spec, limited
 // to items the character can equip now or soon: required_level <= level + lookAhead.
 function weightsFor(ch, specId) {
-  return specId === "custom" ? (ch.customWeights || {}) : (STAT_WEIGHT_PRESET_MAP[specId]?.weights || {});
+  if (specId === "custom") return ch.customWeights || {};
+  return resolveWeights(specId) || {}; // saved custom preset, else a built-in
 }
 
 const mergeStats = (a, b) => { const r = { ...a }; for (const k in b) r[k] = (r[k] || 0) + b[k]; return r; };
@@ -258,7 +260,9 @@ async function attachSources(list) {
 function specSelect(sel) {
   const groups = {};
   for (const p of STAT_WEIGHT_PRESETS) (groups[p.group] ??= []).push(p);
-  return `<select id="charSpec">${Object.entries(groups).map(([g, ps]) =>
+  const mine = loadSets();
+  const myGroup = mine.length ? `<optgroup label="My presets">${mine.map((s) => `<option value="${s.id}"${s.id === sel ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</optgroup>` : "";
+  return `<select id="charSpec">${myGroup}${Object.entries(groups).map(([g, ps]) =>
     `<optgroup label="${esc(g)}">${ps.map((p) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.label)}</option>`).join("")}</optgroup>`).join("")}
     <option value="custom"${sel === "custom" ? " selected" : ""}>Custom…</option></select>`;
 }
@@ -292,7 +296,7 @@ function weightRowHtml(k, w) {
 // copies them into the editable custom editor.
 function specWeightsHtml(specId) {
   if (specId === "custom") return "";
-  const w = STAT_WEIGHT_PRESET_MAP[specId]?.weights;
+  const w = resolveWeights(specId);
   if (!w) return "";
   const pills = Object.entries(w).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
     .map(([k, v]) => `<span class="wpill">${esc(statLabel(k))} <b>×${v}</b></span>`).join("<span class=\"wsep\">·</span>");
@@ -722,7 +726,7 @@ export async function showCharacter(idOrChar, navigate) {
     specWeights.innerHTML = specWeightsHtml(specId);
     const custBtn = specWeights.querySelector("#charCustomize");
     if (custBtn) custBtn.onclick = () => {
-      ch.customWeights = { ...(STAT_WEIGHT_PRESET_MAP[specId]?.weights || {}) };
+      ch.customWeights = { ...(resolveWeights(specId) || {}) };
       specSel.value = "custom"; customBox.hidden = false;
       customBox.innerHTML = customEditor(ch.customWeights);
       runUpgrades();

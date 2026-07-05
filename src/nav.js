@@ -113,6 +113,7 @@ const MORE = {
   label: "More",
   children: [
     { label: "Characters", href: "?characters" },
+    { label: "Gear-score presets", href: "?weights" },
     { label: "Objects", href: "?browse=objects" },
     { label: "Icons", href: "?icons" },
     { label: "Random", href: "?random" },

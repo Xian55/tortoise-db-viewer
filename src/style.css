@@ -820,6 +820,25 @@ a.ext { color: var(--gold); }
 .char-title { margin-bottom: 4px; }
 .char-shared-note { margin: -4px 0 10px; padding: 6px 10px; border: 1px solid #8c7a3a;
   border-radius: 6px; background: rgba(150, 130, 60, .12); }
+/* gear-score presets manager (?weights) */
+.ws-list { display: flex; flex-direction: column; gap: 8px; }
+.ws-card { display: block; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); margin-bottom: 0; }
+.ws-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.ws-card-name { font-weight: 600; font-size: 15px; }
+.ws-card-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.ws-pills { font-size: 13px; }
+.ws-editor { display: flex; flex-direction: column; gap: 8px; }
+.ws-name { font-size: 16px; font-weight: 600; padding: 6px 10px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--panel2); color: var(--text); max-width: 320px; }
+.ws-rows { display: flex; flex-direction: column; gap: 6px; }
+.ws-row { display: flex; align-items: center; gap: 6px; }
+.ws-stat { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel2); color: var(--text); }
+.ws-val { width: 70px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel2); color: var(--text); }
+.ws-rm { background: none; border: 1px solid transparent; color: var(--muted); cursor: pointer; border-radius: 5px; padding: 2px 7px; }
+.ws-rm:hover { border-color: #8c3a3a; color: #e88; }
+.ws-editor-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
 /* set bonuses from equipped pieces */
 .char-sets { margin-top: 16px; }
 .char-sets h2 { margin-bottom: 8px; }
