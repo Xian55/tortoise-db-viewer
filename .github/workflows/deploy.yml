@@ -166,6 +166,19 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
+          # Hash-gate: build-tooltips writes tt/manifest.json {count,hash,version}.
+          # Compare the local hash against the one already on R2 (read via the S3 API,
+          # NOT the cached public URL, so it's authoritative) and skip the 74k-file
+          # sync when tt is unchanged. Self-healing: a missing/differing R2 manifest
+          # (first run, wiped bucket) falls through to a full sync.
+          LOCAL_HASH=$(jq -r .hash tt-json/tt/manifest.json 2>/dev/null || echo "")
+          R2_HASH=$(aws s3 cp s3://tortoise-db-viewer/tt/manifest.json - \
+            --endpoint-url "$R2_ENDPOINT" 2>/dev/null | jq -r .hash 2>/dev/null || echo "")
+          if [ -n "$LOCAL_HASH" ] && [ "$LOCAL_HASH" = "$R2_HASH" ]; then
+            echo "tt unchanged (hash=$LOCAL_HASH) -- skipping R2 sync"
+            exit 0
+          fi
+          echo "tt changed (local=$LOCAL_HASH r2=${R2_HASH:-none}) -- syncing to R2"
           aws configure set default.s3.max_concurrent_requests 64
           aws configure set default.s3.max_queue_size 10000
           aws s3 sync tt-json/tt s3://tortoise-db-viewer/tt \
