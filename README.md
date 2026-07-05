@@ -97,6 +97,28 @@ One-time setup: repo **Settings → Pages → Source: GitHub Actions**.
 The Vite base path defaults to `/tortoise-db-viewer/` (the repo name). For a
 custom domain or user site, override with env `BASE_PATH=/`.
 
+## Self-host (Docker)
+
+Run your own copy — an offline archive, a private-server mirror, or a LAN box
+that never touches GitHub Pages / R2. The published image is the **static app
+shell only** (built with base `/`, same-origin asset resolution); the heavy,
+data-derived assets (the built DB, zone maps, minimap tiles) are served from a
+**volume mounted at `/assets`**, so the image stays small.
+
+```sh
+# 1. Build the DB, then serve the shell + your public/ assets
+bun scripts/build-db.mjs
+docker compose up -d --build          # -> http://localhost:8080/
+
+# ...or pull the prebuilt shell and point a volume at your assets
+docker run -d -p 8080:80 -v /srv/tortoise-db:/assets:ro \
+  ghcr.io/xian55/tortoise-db-viewer:latest
+```
+
+Full setup — asset layout, `docker run` / **Portainer** stack, the optional
+embeddable-tooltip (`/tt`) step, and TLS notes — is in
+[`docker/README.md`](docker/README.md).
+
 ## Test
 
 ```sh
