@@ -22,10 +22,17 @@
     return s[s.length - 1];
   })();
 
-  // Base = everything up to and including the site path (…/tortoise-db-viewer/).
-  var base = (script && script.getAttribute("data-tt-base")) || "";
-  if (!base && script && script.src) base = script.src.replace(/embed\/[^/]*$/, "");
+  // Base = everything up to and including the site path (…/tortoise-db-viewer/),
+  // derived from this script's own src. Used for the custom-icon webp fallback.
+  var base = "";
+  if (script && script.src) base = script.src.replace(/embed\/[^/]*$/, "");
   if (base && base.slice(-1) !== "/") base += "/";
+  // The tooltip JSON (~74k tiny files) is served from the R2 asset bucket, not the
+  // Pages origin -- that many files overruns the Pages deploy's file sync. Default
+  // the data origin to R2; data-tt-base overrides it (e.g. a self-host mirror).
+  var ttBase = (script && script.getAttribute("data-tt-base"))
+    || "https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/";
+  if (ttBase.slice(-1) !== "/") ttBase += "/";
   var RECOLOR = !(script && script.getAttribute("data-color") === "0");
 
   var QUALITY = ["#9d9d9d", "#ffffff", "#1eff00", "#0070dd", "#a335ee", "#ff8000", "#e6cc80", "#e6cc80"];
@@ -63,7 +70,7 @@
   function fetchData(key) {
     if (cache[key]) return cache[key];
     var parts = key.split(":");
-    var p = fetch(base + "tt/" + parts[0] + "/" + parts[1] + ".json", { mode: "cors" })
+    var p = fetch(ttBase + "tt/" + parts[0] + "/" + parts[1] + ".json", { mode: "cors" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .catch(function () { return null; });
     cache[key] = p;

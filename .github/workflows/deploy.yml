@@ -153,8 +153,32 @@ jobs:
         if: steps.ttcache.outputs.cache-hit != 'true'
         run: OUT_DIR=tt-json bun scripts/build-tooltips.mjs
 
-      - name: Merge tooltip JSON into the site
-        run: cp -r tt-json/tt dist/
+      # Serve the tooltip JSON from R2, NOT the Pages artifact. There are ~74k of
+      # these tiny per-entity files; bundling them (on top of the ~95k OG stubs)
+      # pushed the artifact past ~170k files, which GitHub Pages' deploy file-sync
+      # ("syncing_files") consistently fails on. The embed widget (tw-power.js)
+      # fetches them from R2 by default. --size-only so a fresh checkout's re-stamped
+      # mtimes don't re-upload every file each deploy.
+      - name: Upload tooltip JSON to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          aws configure set default.s3.max_concurrent_requests 64
+          aws configure set default.s3.max_queue_size 10000
+          aws s3 sync tt-json/tt s3://tortoise-db-viewer/tt \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json --size-only --no-progress \
+            --cache-control "public,max-age=86400" --delete
+
+      # The DB, zone maps and minimap tiles are all served from R2 (VITE_ASSETS_BASE)
+      # in production, but Vite copies public/ into dist -- so they'd ship redundantly
+      # in the Pages artifact (~75 MB DB + ~13 MB brotli + ~2700 tile files). Drop them
+      # so the artifact is just the site shell + OG stubs.
+      - name: Trim R2-served assets from the Pages artifact
+        run: rm -rf dist/data/tortoise.sqlite dist/data/tortoise.sqlite.br dist/maps dist/minimap
 
       - uses: actions/upload-pages-artifact@v3
         with:
