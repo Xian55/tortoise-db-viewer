@@ -5,6 +5,7 @@ import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, faction
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
+import { showCharacters, showCharacter } from "./character.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
 import { ASSETS_BASE, resolveOrigins } from "./config.js";
@@ -122,6 +123,8 @@ function route() {
   else if (params.get("guides") !== null) return showLeveling();
   else if (params.get("guide")) return showGuide(params.get("guide"));
   else if (params.get("talents") !== null) return showTalents(params.get("talents"));
+  else if (params.get("character")) return showCharacter(params.get("character"), navigate);
+  else if (params.get("characters") !== null) return showCharacters(navigate);
   else if (term) { searchInput.value = term; return showSearch(term); }
   else return showHome();
 }
@@ -227,6 +230,7 @@ function showHome() {
        <a class="nav" href="?dungeons">dungeons &amp; raids</a> /
        <a class="nav" href="?guides">leveling guides</a> /
        <a class="nav" href="?talents">talent calculator</a> /
+       <a class="nav" href="?characters">characters</a> /
        <a class="nav" href="?browse=objects">objects</a> /
        <a class="nav" href="?worldmap">world map</a> /
        <a class="nav" href="?flights">flight paths</a> /
@@ -329,6 +333,30 @@ function renderItemSet(set, members, bonuses, currentEntry, linkName = true) {
   </div>`;
 }
 
+// Random-suffix pool for an item, grouped by suffix name with the stat range each
+// rolls and the total drop chance (there's one ItemRandomProperties variant per
+// exact stat roll, e.g. "of the Bear" 7/7, 7/8, 8/8 -> one "of the Bear" row).
+function suffixSection(rows) {
+  if (!rows || !rows.length) return "";
+  const groups = new Map();
+  for (const r of rows) {
+    const st = JSON.parse(r.stats || "{}");
+    const key = r.name || "(+stats)";
+    let g = groups.get(key);
+    if (!g) { g = { chance: 0, stats: {} }; groups.set(key, g); }
+    g.chance += r.chance || 0;
+    for (const k in st) { const c = g.stats[k] || [Infinity, -Infinity]; g.stats[k] = [Math.min(c[0], st[k]), Math.max(c[1], st[k])]; }
+  }
+  const lis = [...groups.entries()].sort((a, b) => b[1].chance - a[1].chance).map(([name, g]) => {
+    const statStr = Object.entries(g.stats).map(([k, [mn, mx]]) => `+${mn === mx ? mn : `${mn}–${mx}`} ${esc(GEAR_STAT_LABEL[k] || k)}`).join(", ");
+    return `<li><span class="suf-name">${esc(name)}</span> <span class="muted suf-stats">${statStr}</span> <span class="suf-chance muted">${g.chance.toFixed(1)}%</span></li>`;
+  });
+  return `<div class="item-suffixes">
+    <h2>🎲 Random suffixes</h2>
+    <p class="muted">This item can drop with one of these random suffixes:</p>
+    <ul class="suf-list">${lis.join("")}</ul></div>`;
+}
+
 async function showItem(id) {
   app.innerHTML = `<div class="loading">Loading item ${id}…</div>`;
   let it;
@@ -351,6 +379,8 @@ async function showItem(id) {
       query(Q.Q_TEACHES, [id]), query(Q.Q_ITEM_SOURCES, [id]), query(Q.Q_ITEM_OBJECT_SPAWNS, [id]),
       it.display_id ? query(Q.Q_SAME_MODEL, [it.display_id, id]) : Promise.resolve([]),
     ]);
+  // random suffixes this item can roll ("of the Bear", …)
+  const suffixes = it.rolls_suffix ? await query(Q.Q_ITEM_SUFFIXES, [id]) : [];
   const srcCsv = srcRows.map((r) => r.source).join(",");
 
   // item set (if this item belongs to one): shown inside the tooltip (in-game style)
@@ -499,8 +529,9 @@ async function showItem(id) {
   app.innerHTML =
     `<div class="item-view">
       <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true, set: setOpt })}
-        <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}${it.world_drop ? ' · <span class="tagx">World Drop</span>' : ""}</div>
+        <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}${it.world_drop ? ' · <span class="tagx">World Drop</span>' : ""}${it.rolls_suffix ? ' · <span class="tagx" title="Can drop with a random suffix">🎲 Random suffix</span>' : ""}</div>
         ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}
+        ${suffixSection(suffixes)}
       </div>
       <div class="item-rel">${tabs(tabDefs)}</div>
     </div>`;

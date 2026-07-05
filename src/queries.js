@@ -28,6 +28,32 @@ export const Q_SAME_MODEL = `
 // all derived gear stats for one item (compare view stat-delta table).
 export const Q_ITEM_STATS = `SELECT stat, value FROM item_stats WHERE item = ?1`;
 
+// Batch fetch for the character loadout page (17 gear slots -> one query each).
+// n positional params (?1..?n) matching the distinct item ids passed in.
+export const qItemsIn = (n) => `SELECT i.entry, i.name, i.quality, i.item_level, i.required_level, i.inventory_type AS inv, di.icon
+  FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE i.entry IN (${Array.from({ length: n }, (_, k) => `?${k + 1}`).join(",")})`;
+export const qItemStatsIn = (n) => `SELECT item, stat, value FROM item_stats
+  WHERE item IN (${Array.from({ length: n }, (_, k) => `?${k + 1}`).join(",")})`;
+// enchant id -> applying spell (name), for the character sheet's per-slot enchant label.
+export const qEnchantsIn = (n) => `SELECT id, spell, name FROM item_enchant
+  WHERE id IN (${Array.from({ length: n }, (_, k) => `?${k + 1}`).join(",")})`;
+// random-property (suffix) id -> name + stats json, for the "of the Bear"-style rolls.
+export const qRandomSuffixIn = (n) => `SELECT id, name, stats FROM random_suffix
+  WHERE id IN (${Array.from({ length: n }, (_, k) => `?${k + 1}`).join(",")})`;
+// Name search for the character sheet's per-slot item picker: FTS prefix (?1) OR
+// trigram substring (?2), restricted to the slot's inventory types (inlined ints),
+// exact-prefix (?3) ranked first. Excludes obvious test/placeholder items.
+export const qItemSearchInv = (invCsv) => `
+  SELECT i.entry, i.name, i.quality, i.item_level, i.inventory_type AS inv, di.icon
+  FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE (i.entry IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?1)
+      OR i.entry IN (SELECT rowid FROM items_tg WHERE items_tg MATCH ?2))
+    AND i.name <> '' AND i.inventory_type IN (${invCsv})
+    AND i.name NOT LIKE '%(test)%' AND i.name NOT LIKE 'Test %' AND i.name NOT LIKE 'Deprecated %'
+  ORDER BY (i.name LIKE ?3) DESC, i.quality DESC, i.item_level DESC
+  LIMIT 12`;
+
 // compact NPC info for the hover tooltip (name/subname/level/rank/type).
 export const Q_NPC_CARD = `SELECT entry, name, subname, level_min, level_max, rank, type FROM creatures WHERE entry = ?1`;
 
@@ -361,6 +387,14 @@ export const Q_SPELL_SOURCE = `
   LEFT JOIN items rc ON rc.entry = cs.recipe_item
   LEFT JOIN item_display_info rcdi ON rcdi.ID = rc.display_id
   WHERE cs.spell = ?1`;
+
+// Possible random suffixes an item can roll (item.random_property -> suffix_pool ->
+// random_suffix). One row per rollable ItemRandomProperties variant + its chance.
+export const Q_ITEM_SUFFIXES = `
+  SELECT rs.name, rs.stats, sp.chance
+  FROM items i JOIN suffix_pool sp ON sp.entry = i.random_property
+  JOIN random_suffix rs ON rs.id = sp.ench
+  WHERE i.entry = ?1 ORDER BY rs.name, sp.chance DESC`;
 
 // Browse Spells finder: all named spells (profession label resolved client-side).
 // teaches IS NULL drops "learn" stub spells (a recipe's twin of the real craft).

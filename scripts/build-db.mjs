@@ -613,6 +613,86 @@ console.log("Importing spells + crafting graph...");
   }
 }
 
+// ---- Item enchant id -> enchanting spell name ----
+// GearExport (and the item DB) reference enchants by SpellItemEnchantment id, not
+// by name. Map each id to the spell that applies it (effect 53 ENCHANT_ITEM / 54
+// ENCHANT_ITEM_TEMPORARY, misc = the enchant id), preferring a clean-named recipe
+// over QA/Test twins. Powers the character sheet's per-slot enchant label.
+console.log("Deriving item enchants...");
+{
+  db.exec(`CREATE TABLE item_enchant (id INTEGER PRIMARY KEY, spell INTEGER, name TEXT)`);
+  const best = new Map(); // enchantId -> { spell, name, clean }
+  for (const r of db.prepare(`SELECT entry, name, effects FROM spells WHERE effects LIKE '%"effect":53%' OR effects LIKE '%"effect":54%'`).all()) {
+    let effs; try { effs = JSON.parse(r.effects); } catch { continue; }
+    for (const e of effs) {
+      if ((e.effect === 53 || e.effect === 54) && e.misc > 0) {
+        const clean = !/^(qa|test)\b/i.test(r.name || "");
+        const cur = best.get(e.misc);
+        // prefer a clean-named spell; among equals, the lowest entry
+        if (!cur || (clean && !cur.clean) || (clean === cur.clean && r.entry < cur.spell)) {
+          best.set(e.misc, { spell: r.entry, name: r.name, clean });
+        }
+      }
+    }
+  }
+  const ins = db.prepare(`INSERT OR REPLACE INTO item_enchant VALUES (?,?,?)`);
+  db.transaction(() => { for (const [id, v] of best) ins.run(id, v.spell, v.name); })();
+  console.log(`  item_enchant: ${best.size}`);
+}
+
+// ---- Random-suffix ("of the Bear", ...) id -> name + stats ----
+// GearExport reports a rolled item's random-property id (item link's suffixId).
+// The name + stat bonuses live in the client ItemRandomProperties/SpellItemEnchantment
+// DBCs (absent from the SQL dump), extracted locally to scripts/data/random-suffix.json
+// (extract-random-suffix.py). Absent file => empty table (the site shows the base item).
+console.log("Loading random suffixes...");
+{
+  db.exec(`CREATE TABLE random_suffix (id INTEGER PRIMARY KEY, name TEXT, stats TEXT)`);
+  const f = join(ROOT, "scripts", "data", "random-suffix.json");
+  let n = 0;
+  if (existsSync(f)) {
+    const map = JSON.parse(readFileSync(f, "utf8"));
+    const ins = db.prepare(`INSERT OR REPLACE INTO random_suffix VALUES (?,?,?)`);
+    db.transaction(() => {
+      for (const [id, v] of Object.entries(map)) {
+        ins.run(+id, v.suffix || v.name || "", JSON.stringify(v.stats || {}));
+        n++;
+      }
+    })();
+  }
+  console.log(`  random_suffix: ${n}${n ? "" : " (scripts/data/random-suffix.json absent)"}`);
+}
+
+// ---- Which items can roll which random suffixes ----
+// item_template.RandomProperty (>0) indexes a pool in item_enchantment_template
+// (entry -> ench + chance), where each ench is an ItemRandomProperties id (a suffix).
+// Keep only the pools real items reference and enchants that resolved to a stat
+// suffix, so the item page can show "can roll: of the Bear (+7 Sta/+8 Str), …".
+console.log("Building random-suffix pools...");
+{
+  db.exec(`CREATE TABLE suffix_pool (entry INTEGER, ench INTEGER, chance REAL)`);
+  const groups = new Set(db.prepare(`SELECT DISTINCT random_property FROM items WHERE random_property > 0`).all().map((r) => r.random_property));
+  const known = new Set(db.prepare(`SELECT id FROM random_suffix`).all().map((r) => r.id));
+  let n = 0;
+  if (groups.size && known.size) {
+    const cols = srcColumns("item_enchantment_template", "tw_world_item_enchantment_template.sql");
+    const iE = cols.indexOf("entry"), iN = cols.indexOf("ench"), iC = cols.indexOf("chance");
+    const ins = db.prepare(`INSERT INTO suffix_pool VALUES (?,?,?)`);
+    db.transaction(() => {
+      for (const r of srcRows("item_enchantment_template", "tw_world_item_enchantment_template.sql")) {
+        const e = clean(r[iE]), ench = clean(r[iN]);
+        if (groups.has(e) && known.has(ench)) { ins.run(e, ench, clean(r[iC]) || 0); n++; }
+      }
+    })();
+  }
+  db.exec(`CREATE INDEX idx_suffix_pool_entry ON suffix_pool(entry)`);
+  // flag items that can roll a stat suffix (their pool has at least one known suffix)
+  db.exec(`ALTER TABLE items ADD COLUMN rolls_suffix INTEGER NOT NULL DEFAULT 0`);
+  db.exec(`UPDATE items SET rolls_suffix = 1 WHERE random_property > 0 AND random_property IN (SELECT DISTINCT entry FROM suffix_pool)`);
+  const ni = db.prepare(`SELECT COUNT(*) n FROM items WHERE rolls_suffix = 1`).get().n;
+  console.log(`  suffix_pool: ${n} rows | ${ni} items can roll a suffix`);
+}
+
 // ---- Crafting source: trainer-taught vs recipe-item-taught ----
 // For each craft spell, record whether it can be learned from a trainer and the
 // recipe/pattern/plans item (if any) that teaches it. Runs after items + spells.

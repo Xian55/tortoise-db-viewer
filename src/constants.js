@@ -127,6 +127,10 @@ export const STAT_WEIGHT_PRESETS = [
   { id: "lvl-caster", group: "Leveling", label: "Leveling · Caster", weights: { sta: 1.5, sp: 1, int: 0.6, spi: 0.6, spCrit: 5 } },
   { id: "lvl-healer", group: "Leveling", label: "Leveling · Healer", weights: { sta: 1, heal: 1, int: 0.6, spi: 0.6, mp5: 0.6 } },
   { id: "lvl-tank", group: "Leveling", label: "Leveling · Tank", weights: { sta: 3, armor: 0.06, str: 1, def: 6, dodge: 5, block: 4 } },
+  // Paladin tank: leveling tank base, but a NEGATIVE weapon-speed weight favours
+  // fast 1H (faster swings -> more Spiritual Attunement / Seal mana regen + threat),
+  // plus a little Intellect for the mana pool. (speed = swing time in seconds.)
+  { id: "lvl-pala-tank", group: "Leveling", label: "Leveling · Paladin Tank", weights: { sta: 3, def: 6, dodge: 5, block: 4, str: 1, armor: 0.06, int: 0.5, speed: -3 } },
 ];
 export const STAT_WEIGHT_PRESET_MAP = Object.fromEntries(STAT_WEIGHT_PRESETS.map((p) => [p.id, p]));
 

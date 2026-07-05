@@ -6,7 +6,7 @@ import { Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEAR
 import { itemLink, npcLink, questLink, spellLink, dungeonLink, zoneLink, factionLink, objectLink, esc } from "./render.js";
 
 // FTS5 prefix MATCH: prefix-match each alnum token ("fire bl" -> "fire* bl*").
-function ftsQuery(term) {
+export function ftsQuery(term) {
   const toks = term.toLowerCase().match(/[a-z0-9]+/g);
   return toks && toks.length ? toks.map((t) => `${t}*`).join(" ") : null;
 }
@@ -15,7 +15,7 @@ function ftsQuery(term) {
 // "Shadowfang"). Trigram can't index <3-char tokens, so they're dropped; if none
 // remain the sentinel matches nothing (the prefix index still covers short terms).
 const TG_SENTINEL = '"qzqzqzq"';
-function trigramQuery(term) {
+export function trigramQuery(term) {
   const toks = (term.toLowerCase().match(/[a-z0-9]+/g) || []).filter((t) => t.length >= 3);
   return toks.length ? toks.map((t) => `"${t}"`).join(" AND ") : TG_SENTINEL;
 }

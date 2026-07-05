@@ -199,6 +199,74 @@ async function testCompare(a, b) {
   return cards === 2 && rows >= 2 && best > 0;
 }
 
+// Character gear loadouts (character.js): import a GearExport JSON on the
+// ?characters page, land on the ?character= sheet, and verify the slots render
+// item links + a stat summary, and that Export produces re-importable JSON.
+async function testCharacterLoadout() {
+  // GearExport format: race/class/level + per-slot enchantId
+  const loadout = [{
+    name: "Smoke Gear", race: "Human", class: "Paladin", level: 36,
+    slots: {
+      Head: { itemId: 83216, obtained: true }, Chest: { itemId: 60180, suffixId: 1199, obtained: true },
+      Legs: { itemId: 13129, obtained: true }, MainHand: { itemId: 10571, enchantId: 805, obtained: true },
+      Trinket1: { itemId: 55211, obtained: true }, Trinket2: { itemId: 55211, obtained: true },
+      Waist: { itemId: 10329, obtained: false },
+    },
+  }];
+  await page.goto(`${BASE}?characters`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector("#charJson", { timeout: T });
+  await page.evaluate((json) => { document.querySelector("#charJson").value = json; }, JSON.stringify(loadout));
+  await page.click("#charImport");
+  await page.waitForSelector(".char-sheet .char-slot", { timeout: T });
+  const sheet = await page.evaluate(() => ({
+    title: document.querySelector(".char-title")?.textContent?.trim(),
+    itemLinks: document.querySelectorAll(".char-view .char-slot a.ilink[href*='item=']").length,
+    statRows: document.querySelectorAll(".char-summary .cmp-table tbody tr").length,
+    unobtained: document.querySelectorAll(".char-view .char-unobt").length,
+    enchant: !!document.querySelector(".char-ench a.ilink.spell"),         // enchantId -> spell label
+    classPicker: document.querySelector("#charClass")?.value,               // inherited from import
+    levelPicker: document.querySelector("#charLevel")?.value,
+    hasExport: !!document.querySelector("#charExport"),
+  }));
+  // upgrade finder: rank + gains/losses + source
+  await page.click("#charFindUp");
+  await page.waitForSelector(".up-block .up-row", { timeout: T });
+  const up = await page.evaluate(() => ({
+    rows: document.querySelectorAll(".up-row").length,
+    diffs: document.querySelectorAll(".up-diff .dstat").length,
+    sources: document.querySelectorAll(".up-src .tagx, .up-src a.ilink.quest").length,
+    noStaff: ![...document.querySelectorAll(".up-block")].some((bl) =>
+      bl.querySelector(".up-slot-name")?.textContent === "Main Hand" &&
+      [...bl.querySelectorAll(".up-main a.ilink")].some((a) => /staff|gnarled staff/i.test(a.textContent))),
+    // test/deprecated items must never be suggested
+    noTest: ![...document.querySelectorAll(".up-row a.ilink[href*='item=']")].some((a) => /\btest\b|deprecated/i.test(a.textContent)),
+  }));
+  const roundTrip = await page.evaluate(() => {
+    const c = JSON.parse(localStorage.getItem("tw_characters") || "[]")[0];
+    return !!(c && c.race === 1 && c.cls === 2 && c.level === 36 && c.slots.MainHand?.enchantId === 805 && c.slots.Chest?.suffixId === 1199 && c.id);
+  });
+  console.log(`character loadout: title=${sheet.title} items=${sheet.itemLinks} stats=${sheet.statRows} unobt=${sheet.unobtained} ench=${sheet.enchant} class=${sheet.classPicker} lvl=${sheet.levelPicker} | up rows=${up.rows} diffs=${up.diffs} src=${up.sources} noStaff=${up.noStaff} noTest=${up.noTest} roundTrip=${roundTrip}`);
+  return sheet.title === "Smoke Gear" && sheet.itemLinks >= 5 && sheet.statRows > 0 && sheet.unobtained === 1
+    && sheet.enchant && sheet.classPicker === "2" && sheet.levelPicker === "36" && sheet.hasExport
+    && up.rows > 0 && up.diffs > 0 && up.sources > 0 && up.noStaff && up.noTest && roundTrip;
+}
+
+// Items that roll a random suffix (item.random_property) show a "🎲 Random suffix"
+// badge + the pool of possible suffixes with stat ranges + chance (item 7457
+// "Knight's Gauntlets" -> of the Bear / of the Whale / …).
+async function testItemRandomSuffix(id) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-view", { timeout: T });
+  const r = await page.evaluate(() => ({
+    badge: !!document.querySelector('.item-meta .tagx[title*="random"]'),
+    rows: document.querySelectorAll(".item-suffixes .suf-list li").length,
+    hasBear: [...document.querySelectorAll(".item-suffixes .suf-name")].some((e) => /of the Bear/i.test(e.textContent)),
+    hasChance: !!document.querySelector(".item-suffixes .suf-chance"),
+  }));
+  console.log(`item ${id} random suffix: badge=${r.badge} rows=${r.rows} bear=${r.hasBear} chance=${r.hasChance}`);
+  return r.badge && r.rows > 0 && r.hasBear && r.hasChance;
+}
+
 // The "Dropped by" tab carries a Location column resolved for each NPC (open-world
 // zone or dungeon), e.g. wolves dropping Tough Wolf Meat (item 750).
 async function testItemDropLocation(id) {
@@ -1804,6 +1872,8 @@ run(() => testItem(55356, "Netherwrought"));
 run(() => testItem(647, "Destiny"));
 run(() => testSameModel(33292, 2));  // items sharing a display_id (Same model tab)
 run(() => testCompare(47185, 47191));  // ?compare= side-by-side tooltips + stat deltas
+run(() => testCharacterLoadout());     // ?characters import -> gear sheet + export
+run(() => testItemRandomSuffix(7457)); // item page random-suffix pool + badge
 run(() => testGearScore());            // stat-weight Score column + score-desc sort
 run(() => testCriteriaOr());           // multi-criteria match=any (OR) vs default AND
 run(() => testRandom());               // ?random redirects to a random entity page

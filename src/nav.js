@@ -112,6 +112,7 @@ const ZONES = {
 const MORE = {
   label: "More",
   children: [
+    { label: "Characters", href: "?characters" },
     { label: "Objects", href: "?browse=objects" },
     { label: "Icons", href: "?icons" },
     { label: "Random", href: "?random" },
