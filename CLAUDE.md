@@ -114,6 +114,7 @@ python scripts/extract-skill-lines.py # LOCAL: client SkillLine.dbc -> scripts/d
 python scripts/extract-locks.py       # LOCAL: client Lock.dbc -> scripts/data/locks.json (lockId -> mining/herbalism; splits gather nodes)
 python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/minimap/<map>/{z}/{x}/{y}.webp tile pyramid + scripts/data/minimap.json
 python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc -> scripts/data/talents.json (talent-tree structure)
+python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
 bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
 ```
@@ -352,7 +353,13 @@ Re-run `extract-minimap.py` + commit on client map changes.
   `public/maps`; CI can't rebuild it, deploy.yml syncs it to R2). Plus talent-tree
   structure (`scripts/data/talents.json` via `extract-talents.py`, from the client
   `Talent.dbc`/`TalentTab.dbc`; real all-class Turtle trees, re-run on client
-  changes) + the class-picker emblems (`public/icons/class/<slug>.webp` via
+  changes) + random-suffix stats (`scripts/data/random-suffix.json` via
+  `extract-random-suffix.py`, from the client `ItemRandomProperties.dbc` +
+  `SpellItemEnchantment.dbc`; maps a rolled `suffixId` -> "of the Bear" name + stats.
+  build-db loads it into `random_suffix` and joins the SQL-dump
+  `item_enchantment_template` into `suffix_pool` + `items.rolls_suffix` so the item
+  page lists the pool and the character sheet resolves a rolled suffix) + the
+  class-picker emblems (`public/icons/class/<slug>.webp` via
   `extract-class-icons.py`, cropped from the client character-create sheet; served
   from `${ASSETS_BASE}icons/class/`, synced to R2 by deploy.yml's `public/icons`
   sync). See "Custom

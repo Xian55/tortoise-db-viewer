@@ -1,0 +1,10247 @@
+{
+"1000": {
+"stats": {
+"int": 27,
+"str": 26
+},
+"suffix": "of the Gorilla"
+},
+"1001": {
+"stats": {
+"int": 26,
+"str": 27
+},
+"suffix": "of the Gorilla"
+},
+"1002": {
+"stats": {
+"int": 27,
+"str": 27
+},
+"suffix": "of the Gorilla"
+},
+"1003": {
+"stats": {
+"int": 28,
+"str": 27
+},
+"suffix": "of the Gorilla"
+},
+"1004": {
+"stats": {
+"int": 27,
+"str": 28
+},
+"suffix": "of the Gorilla"
+},
+"1005": {
+"stats": {
+"int": 28,
+"str": 28
+},
+"suffix": "of the Gorilla"
+},
+"1006": {
+"stats": {
+"int": 29,
+"str": 28
+},
+"suffix": "of the Gorilla"
+},
+"1007": {
+"stats": {
+"int": 28,
+"str": 29
+},
+"suffix": "of the Gorilla"
+},
+"1008": {
+"stats": {
+"int": 29,
+"str": 29
+},
+"suffix": "of the Gorilla"
+},
+"1009": {
+"stats": {
+"spi": 1,
+"sta": 1
+},
+"suffix": "of the Whale"
+},
+"1010": {
+"stats": {
+"spi": 2,
+"sta": 1
+},
+"suffix": "of the Whale"
+},
+"1011": {
+"stats": {
+"spi": 1,
+"sta": 2
+},
+"suffix": "of the Whale"
+},
+"1012": {
+"stats": {
+"spi": 2,
+"sta": 2
+},
+"suffix": "of the Whale"
+},
+"1013": {
+"stats": {
+"spi": 3,
+"sta": 2
+},
+"suffix": "of the Whale"
+},
+"1014": {
+"stats": {
+"spi": 2,
+"sta": 3
+},
+"suffix": "of the Whale"
+},
+"1015": {
+"stats": {
+"spi": 3,
+"sta": 3
+},
+"suffix": "of the Whale"
+},
+"1016": {
+"stats": {
+"spi": 4,
+"sta": 3
+},
+"suffix": "of the Whale"
+},
+"1017": {
+"stats": {
+"spi": 3,
+"sta": 4
+},
+"suffix": "of the Whale"
+},
+"1018": {
+"stats": {
+"spi": 4,
+"sta": 4
+},
+"suffix": "of the Whale"
+},
+"1019": {
+"stats": {
+"spi": 5,
+"sta": 4
+},
+"suffix": "of the Whale"
+},
+"1020": {
+"stats": {
+"spi": 4,
+"sta": 5
+},
+"suffix": "of the Whale"
+},
+"1021": {
+"stats": {
+"spi": 5,
+"sta": 5
+},
+"suffix": "of the Whale"
+},
+"1022": {
+"stats": {
+"spi": 6,
+"sta": 5
+},
+"suffix": "of the Whale"
+},
+"1023": {
+"stats": {
+"spi": 5,
+"sta": 6
+},
+"suffix": "of the Whale"
+},
+"1024": {
+"stats": {
+"spi": 6,
+"sta": 6
+},
+"suffix": "of the Whale"
+},
+"1025": {
+"stats": {
+"spi": 7,
+"sta": 6
+},
+"suffix": "of the Whale"
+},
+"1026": {
+"stats": {
+"spi": 6,
+"sta": 7
+},
+"suffix": "of the Whale"
+},
+"1027": {
+"stats": {
+"spi": 7,
+"sta": 7
+},
+"suffix": "of the Whale"
+},
+"1028": {
+"stats": {
+"spi": 8,
+"sta": 7
+},
+"suffix": "of the Whale"
+},
+"1029": {
+"stats": {
+"spi": 7,
+"sta": 8
+},
+"suffix": "of the Whale"
+},
+"1030": {
+"stats": {
+"spi": 8,
+"sta": 8
+},
+"suffix": "of the Whale"
+},
+"1031": {
+"stats": {
+"spi": 9,
+"sta": 8
+},
+"suffix": "of the Whale"
+},
+"1032": {
+"stats": {
+"spi": 8,
+"sta": 9
+},
+"suffix": "of the Whale"
+},
+"1033": {
+"stats": {
+"spi": 9,
+"sta": 9
+},
+"suffix": "of the Whale"
+},
+"1034": {
+"stats": {
+"spi": 10,
+"sta": 9
+},
+"suffix": "of the Whale"
+},
+"1035": {
+"stats": {
+"spi": 9,
+"sta": 10
+},
+"suffix": "of the Whale"
+},
+"1036": {
+"stats": {
+"spi": 10,
+"sta": 10
+},
+"suffix": "of the Whale"
+},
+"1037": {
+"stats": {
+"spi": 11,
+"sta": 10
+},
+"suffix": "of the Whale"
+},
+"1038": {
+"stats": {
+"spi": 10,
+"sta": 11
+},
+"suffix": "of the Whale"
+},
+"1039": {
+"stats": {
+"spi": 11,
+"sta": 11
+},
+"suffix": "of the Whale"
+},
+"1040": {
+"stats": {
+"spi": 12,
+"sta": 11
+},
+"suffix": "of the Whale"
+},
+"1041": {
+"stats": {
+"spi": 11,
+"sta": 12
+},
+"suffix": "of the Whale"
+},
+"1042": {
+"stats": {
+"spi": 12,
+"sta": 12
+},
+"suffix": "of the Whale"
+},
+"1043": {
+"stats": {
+"spi": 13,
+"sta": 12
+},
+"suffix": "of the Whale"
+},
+"1044": {
+"stats": {
+"spi": 12,
+"sta": 13
+},
+"suffix": "of the Whale"
+},
+"1045": {
+"stats": {
+"spi": 13,
+"sta": 13
+},
+"suffix": "of the Whale"
+},
+"1046": {
+"stats": {
+"spi": 14,
+"sta": 13
+},
+"suffix": "of the Whale"
+},
+"1047": {
+"stats": {
+"spi": 13,
+"sta": 14
+},
+"suffix": "of the Whale"
+},
+"1048": {
+"stats": {
+"spi": 14,
+"sta": 14
+},
+"suffix": "of the Whale"
+},
+"1049": {
+"stats": {
+"spi": 15,
+"sta": 14
+},
+"suffix": "of the Whale"
+},
+"1050": {
+"stats": {
+"spi": 14,
+"sta": 15
+},
+"suffix": "of the Whale"
+},
+"1051": {
+"stats": {
+"spi": 15,
+"sta": 15
+},
+"suffix": "of the Whale"
+},
+"1052": {
+"stats": {
+"spi": 16,
+"sta": 15
+},
+"suffix": "of the Whale"
+},
+"1053": {
+"stats": {
+"spi": 15,
+"sta": 16
+},
+"suffix": "of the Whale"
+},
+"1054": {
+"stats": {
+"spi": 16,
+"sta": 16
+},
+"suffix": "of the Whale"
+},
+"1055": {
+"stats": {
+"spi": 17,
+"sta": 16
+},
+"suffix": "of the Whale"
+},
+"1056": {
+"stats": {
+"spi": 16,
+"sta": 17
+},
+"suffix": "of the Whale"
+},
+"1057": {
+"stats": {
+"spi": 17,
+"sta": 17
+},
+"suffix": "of the Whale"
+},
+"1058": {
+"stats": {
+"spi": 18,
+"sta": 17
+},
+"suffix": "of the Whale"
+},
+"1059": {
+"stats": {
+"spi": 17,
+"sta": 18
+},
+"suffix": "of the Whale"
+},
+"1060": {
+"stats": {
+"spi": 18,
+"sta": 18
+},
+"suffix": "of the Whale"
+},
+"1061": {
+"stats": {
+"spi": 19,
+"sta": 18
+},
+"suffix": "of the Whale"
+},
+"1062": {
+"stats": {
+"spi": 18,
+"sta": 19
+},
+"suffix": "of the Whale"
+},
+"1063": {
+"stats": {
+"spi": 19,
+"sta": 19
+},
+"suffix": "of the Whale"
+},
+"1064": {
+"stats": {
+"spi": 20,
+"sta": 19
+},
+"suffix": "of the Whale"
+},
+"1065": {
+"stats": {
+"spi": 19,
+"sta": 20
+},
+"suffix": "of the Whale"
+},
+"1066": {
+"stats": {
+"spi": 20,
+"sta": 20
+},
+"suffix": "of the Whale"
+},
+"1067": {
+"stats": {
+"spi": 21,
+"sta": 20
+},
+"suffix": "of the Whale"
+},
+"1068": {
+"stats": {
+"spi": 20,
+"sta": 21
+},
+"suffix": "of the Whale"
+},
+"1069": {
+"stats": {
+"spi": 21,
+"sta": 21
+},
+"suffix": "of the Whale"
+},
+"1070": {
+"stats": {
+"spi": 22,
+"sta": 21
+},
+"suffix": "of the Whale"
+},
+"1071": {
+"stats": {
+"spi": 21,
+"sta": 22
+},
+"suffix": "of the Whale"
+},
+"1072": {
+"stats": {
+"spi": 22,
+"sta": 22
+},
+"suffix": "of the Whale"
+},
+"1073": {
+"stats": {
+"spi": 23,
+"sta": 22
+},
+"suffix": "of the Whale"
+},
+"1074": {
+"stats": {
+"spi": 22,
+"sta": 23
+},
+"suffix": "of the Whale"
+},
+"1075": {
+"stats": {
+"spi": 23,
+"sta": 23
+},
+"suffix": "of the Whale"
+},
+"1076": {
+"stats": {
+"spi": 24,
+"sta": 23
+},
+"suffix": "of the Whale"
+},
+"1077": {
+"stats": {
+"spi": 23,
+"sta": 24
+},
+"suffix": "of the Whale"
+},
+"1078": {
+"stats": {
+"spi": 24,
+"sta": 24
+},
+"suffix": "of the Whale"
+},
+"1079": {
+"stats": {
+"spi": 25,
+"sta": 24
+},
+"suffix": "of the Whale"
+},
+"108": {
+"stats": {
+"def": 3
+},
+"suffix": "of Defense"
+},
+"1080": {
+"stats": {
+"spi": 24,
+"sta": 25
+},
+"suffix": "of the Whale"
+},
+"1081": {
+"stats": {
+"spi": 25,
+"sta": 25
+},
+"suffix": "of the Whale"
+},
+"1082": {
+"stats": {
+"spi": 26,
+"sta": 25
+},
+"suffix": "of the Whale"
+},
+"1083": {
+"stats": {
+"spi": 25,
+"sta": 26
+},
+"suffix": "of the Whale"
+},
+"1084": {
+"stats": {
+"spi": 26,
+"sta": 26
+},
+"suffix": "of the Whale"
+},
+"1085": {
+"stats": {
+"spi": 27,
+"sta": 26
+},
+"suffix": "of the Whale"
+},
+"1086": {
+"stats": {
+"spi": 26,
+"sta": 27
+},
+"suffix": "of the Whale"
+},
+"1087": {
+"stats": {
+"spi": 27,
+"sta": 27
+},
+"suffix": "of the Whale"
+},
+"1088": {
+"stats": {
+"spi": 28,
+"sta": 27
+},
+"suffix": "of the Whale"
+},
+"1089": {
+"stats": {
+"spi": 27,
+"sta": 28
+},
+"suffix": "of the Whale"
+},
+"1090": {
+"stats": {
+"spi": 28,
+"sta": 28
+},
+"suffix": "of the Whale"
+},
+"1091": {
+"stats": {
+"spi": 29,
+"sta": 28
+},
+"suffix": "of the Whale"
+},
+"1092": {
+"stats": {
+"spi": 28,
+"sta": 29
+},
+"suffix": "of the Whale"
+},
+"1093": {
+"stats": {
+"spi": 29,
+"sta": 29
+},
+"suffix": "of the Whale"
+},
+"1094": {
+"stats": {
+"spi": 1,
+"str": 1
+},
+"suffix": "of the Boar"
+},
+"1095": {
+"stats": {
+"spi": 2,
+"str": 1
+},
+"suffix": "of the Boar"
+},
+"1096": {
+"stats": {
+"spi": 1,
+"str": 2
+},
+"suffix": "of the Boar"
+},
+"1097": {
+"stats": {
+"spi": 2,
+"str": 2
+},
+"suffix": "of the Boar"
+},
+"1098": {
+"stats": {
+"spi": 3,
+"str": 2
+},
+"suffix": "of the Boar"
+},
+"1099": {
+"stats": {
+"spi": 2,
+"str": 3
+},
+"suffix": "of the Boar"
+},
+"1100": {
+"stats": {
+"spi": 3,
+"str": 3
+},
+"suffix": "of the Boar"
+},
+"1101": {
+"stats": {
+"spi": 4,
+"str": 3
+},
+"suffix": "of the Boar"
+},
+"1102": {
+"stats": {
+"spi": 3,
+"str": 4
+},
+"suffix": "of the Boar"
+},
+"1103": {
+"stats": {
+"spi": 4,
+"str": 4
+},
+"suffix": "of the Boar"
+},
+"1104": {
+"stats": {
+"spi": 5,
+"str": 4
+},
+"suffix": "of the Boar"
+},
+"1105": {
+"stats": {
+"spi": 4,
+"str": 5
+},
+"suffix": "of the Boar"
+},
+"1106": {
+"stats": {
+"spi": 5,
+"str": 5
+},
+"suffix": "of the Boar"
+},
+"1107": {
+"stats": {
+"spi": 6,
+"str": 5
+},
+"suffix": "of the Boar"
+},
+"1108": {
+"stats": {
+"spi": 5,
+"str": 6
+},
+"suffix": "of the Boar"
+},
+"1109": {
+"stats": {
+"spi": 6,
+"str": 6
+},
+"suffix": "of the Boar"
+},
+"111": {
+"stats": {
+"agi": 5
+},
+"suffix": "of Agility"
+},
+"1110": {
+"stats": {
+"spi": 7,
+"str": 6
+},
+"suffix": "of the Boar"
+},
+"1111": {
+"stats": {
+"spi": 6,
+"str": 7
+},
+"suffix": "of the Boar"
+},
+"1112": {
+"stats": {
+"spi": 7,
+"str": 7
+},
+"suffix": "of the Boar"
+},
+"1113": {
+"stats": {
+"spi": 8,
+"str": 7
+},
+"suffix": "of the Boar"
+},
+"1114": {
+"stats": {
+"spi": 7,
+"str": 8
+},
+"suffix": "of the Boar"
+},
+"1115": {
+"stats": {
+"spi": 8,
+"str": 8
+},
+"suffix": "of the Boar"
+},
+"1116": {
+"stats": {
+"spi": 9,
+"str": 8
+},
+"suffix": "of the Boar"
+},
+"1117": {
+"stats": {
+"spi": 8,
+"str": 9
+},
+"suffix": "of the Boar"
+},
+"1118": {
+"stats": {
+"spi": 9,
+"str": 9
+},
+"suffix": "of the Boar"
+},
+"1119": {
+"stats": {
+"spi": 10,
+"str": 9
+},
+"suffix": "of the Boar"
+},
+"112": {
+"stats": {
+"int": 5
+},
+"suffix": "of Intellect"
+},
+"1120": {
+"stats": {
+"spi": 9,
+"str": 10
+},
+"suffix": "of the Boar"
+},
+"1121": {
+"stats": {
+"spi": 10,
+"str": 10
+},
+"suffix": "of the Boar"
+},
+"1122": {
+"stats": {
+"spi": 11,
+"str": 10
+},
+"suffix": "of the Boar"
+},
+"1123": {
+"stats": {
+"spi": 10,
+"str": 11
+},
+"suffix": "of the Boar"
+},
+"1124": {
+"stats": {
+"spi": 11,
+"str": 11
+},
+"suffix": "of the Boar"
+},
+"1125": {
+"stats": {
+"spi": 12,
+"str": 11
+},
+"suffix": "of the Boar"
+},
+"1126": {
+"stats": {
+"spi": 11,
+"str": 12
+},
+"suffix": "of the Boar"
+},
+"1127": {
+"stats": {
+"spi": 12,
+"str": 12
+},
+"suffix": "of the Boar"
+},
+"1128": {
+"stats": {
+"spi": 13,
+"str": 12
+},
+"suffix": "of the Boar"
+},
+"1129": {
+"stats": {
+"spi": 12,
+"str": 13
+},
+"suffix": "of the Boar"
+},
+"113": {
+"stats": {
+"spi": 5
+},
+"suffix": "of Spirit"
+},
+"1130": {
+"stats": {
+"spi": 13,
+"str": 13
+},
+"suffix": "of the Boar"
+},
+"1131": {
+"stats": {
+"spi": 14,
+"str": 13
+},
+"suffix": "of the Boar"
+},
+"1132": {
+"stats": {
+"spi": 13,
+"str": 14
+},
+"suffix": "of the Boar"
+},
+"1133": {
+"stats": {
+"spi": 14,
+"str": 14
+},
+"suffix": "of the Boar"
+},
+"1134": {
+"stats": {
+"spi": 15,
+"str": 14
+},
+"suffix": "of the Boar"
+},
+"1135": {
+"stats": {
+"spi": 14,
+"str": 15
+},
+"suffix": "of the Boar"
+},
+"1136": {
+"stats": {
+"spi": 15,
+"str": 15
+},
+"suffix": "of the Boar"
+},
+"1137": {
+"stats": {
+"spi": 16,
+"str": 15
+},
+"suffix": "of the Boar"
+},
+"1138": {
+"stats": {
+"spi": 15,
+"str": 16
+},
+"suffix": "of the Boar"
+},
+"1139": {
+"stats": {
+"spi": 16,
+"str": 16
+},
+"suffix": "of the Boar"
+},
+"114": {
+"stats": {
+"sta": 5
+},
+"suffix": "of Stamina"
+},
+"1140": {
+"stats": {
+"spi": 17,
+"str": 16
+},
+"suffix": "of the Boar"
+},
+"1141": {
+"stats": {
+"spi": 16,
+"str": 17
+},
+"suffix": "of the Boar"
+},
+"1142": {
+"stats": {
+"spi": 17,
+"str": 17
+},
+"suffix": "of the Boar"
+},
+"1143": {
+"stats": {
+"spi": 18,
+"str": 17
+},
+"suffix": "of the Boar"
+},
+"1144": {
+"stats": {
+"spi": 17,
+"str": 18
+},
+"suffix": "of the Boar"
+},
+"1145": {
+"stats": {
+"spi": 18,
+"str": 18
+},
+"suffix": "of the Boar"
+},
+"1146": {
+"stats": {
+"spi": 19,
+"str": 18
+},
+"suffix": "of the Boar"
+},
+"1147": {
+"stats": {
+"spi": 18,
+"str": 19
+},
+"suffix": "of the Boar"
+},
+"1148": {
+"stats": {
+"spi": 19,
+"str": 19
+},
+"suffix": "of the Boar"
+},
+"1149": {
+"stats": {
+"spi": 20,
+"str": 19
+},
+"suffix": "of the Boar"
+},
+"115": {
+"stats": {
+"str": 5
+},
+"suffix": "of Strength"
+},
+"1150": {
+"stats": {
+"spi": 19,
+"str": 20
+},
+"suffix": "of the Boar"
+},
+"1151": {
+"stats": {
+"spi": 20,
+"str": 20
+},
+"suffix": "of the Boar"
+},
+"1152": {
+"stats": {
+"spi": 21,
+"str": 20
+},
+"suffix": "of the Boar"
+},
+"1153": {
+"stats": {
+"spi": 20,
+"str": 21
+},
+"suffix": "of the Boar"
+},
+"1154": {
+"stats": {
+"spi": 21,
+"str": 21
+},
+"suffix": "of the Boar"
+},
+"1155": {
+"stats": {
+"spi": 22,
+"str": 21
+},
+"suffix": "of the Boar"
+},
+"1156": {
+"stats": {
+"spi": 21,
+"str": 22
+},
+"suffix": "of the Boar"
+},
+"1157": {
+"stats": {
+"spi": 22,
+"str": 22
+},
+"suffix": "of the Boar"
+},
+"1158": {
+"stats": {
+"spi": 23,
+"str": 22
+},
+"suffix": "of the Boar"
+},
+"1159": {
+"stats": {
+"spi": 22,
+"str": 23
+},
+"suffix": "of the Boar"
+},
+"1160": {
+"stats": {
+"spi": 23,
+"str": 23
+},
+"suffix": "of the Boar"
+},
+"1161": {
+"stats": {
+"spi": 24,
+"str": 23
+},
+"suffix": "of the Boar"
+},
+"1162": {
+"stats": {
+"spi": 23,
+"str": 24
+},
+"suffix": "of the Boar"
+},
+"1163": {
+"stats": {
+"spi": 24,
+"str": 24
+},
+"suffix": "of the Boar"
+},
+"1164": {
+"stats": {
+"spi": 25,
+"str": 24
+},
+"suffix": "of the Boar"
+},
+"1165": {
+"stats": {
+"spi": 24,
+"str": 25
+},
+"suffix": "of the Boar"
+},
+"1166": {
+"stats": {
+"spi": 25,
+"str": 25
+},
+"suffix": "of the Boar"
+},
+"1167": {
+"stats": {
+"spi": 26,
+"str": 25
+},
+"suffix": "of the Boar"
+},
+"1168": {
+"stats": {
+"spi": 25,
+"str": 26
+},
+"suffix": "of the Boar"
+},
+"1169": {
+"stats": {
+"spi": 26,
+"str": 26
+},
+"suffix": "of the Boar"
+},
+"117": {
+"stats": {
+"def": 1
+},
+"suffix": "of Twain"
+},
+"1170": {
+"stats": {
+"spi": 27,
+"str": 26
+},
+"suffix": "of the Boar"
+},
+"1171": {
+"stats": {
+"spi": 26,
+"str": 27
+},
+"suffix": "of the Boar"
+},
+"1172": {
+"stats": {
+"spi": 27,
+"str": 27
+},
+"suffix": "of the Boar"
+},
+"1173": {
+"stats": {
+"spi": 28,
+"str": 27
+},
+"suffix": "of the Boar"
+},
+"1174": {
+"stats": {
+"spi": 27,
+"str": 28
+},
+"suffix": "of the Boar"
+},
+"1175": {
+"stats": {
+"spi": 28,
+"str": 28
+},
+"suffix": "of the Boar"
+},
+"1176": {
+"stats": {
+"spi": 29,
+"str": 28
+},
+"suffix": "of the Boar"
+},
+"1177": {
+"stats": {
+"spi": 28,
+"str": 29
+},
+"suffix": "of the Boar"
+},
+"1178": {
+"stats": {
+"spi": 29,
+"str": 29
+},
+"suffix": "of the Boar"
+},
+"1179": {
+"stats": {
+"sta": 1,
+"str": 1
+},
+"suffix": "of the Bear"
+},
+"1180": {
+"stats": {
+"sta": 2,
+"str": 1
+},
+"suffix": "of the Bear"
+},
+"1181": {
+"stats": {
+"sta": 1,
+"str": 2
+},
+"suffix": "of the Bear"
+},
+"1182": {
+"stats": {
+"sta": 2,
+"str": 2
+},
+"suffix": "of the Bear"
+},
+"1183": {
+"stats": {
+"sta": 3,
+"str": 2
+},
+"suffix": "of the Bear"
+},
+"1184": {
+"stats": {
+"sta": 2,
+"str": 3
+},
+"suffix": "of the Bear"
+},
+"1185": {
+"stats": {
+"sta": 3,
+"str": 3
+},
+"suffix": "of the Bear"
+},
+"1186": {
+"stats": {
+"sta": 4,
+"str": 3
+},
+"suffix": "of the Bear"
+},
+"1187": {
+"stats": {
+"sta": 3,
+"str": 4
+},
+"suffix": "of the Bear"
+},
+"1188": {
+"stats": {
+"sta": 4,
+"str": 4
+},
+"suffix": "of the Bear"
+},
+"1189": {
+"stats": {
+"sta": 5,
+"str": 4
+},
+"suffix": "of the Bear"
+},
+"1190": {
+"stats": {
+"sta": 4,
+"str": 5
+},
+"suffix": "of the Bear"
+},
+"1191": {
+"stats": {
+"sta": 5,
+"str": 5
+},
+"suffix": "of the Bear"
+},
+"1192": {
+"stats": {
+"sta": 6,
+"str": 5
+},
+"suffix": "of the Bear"
+},
+"1193": {
+"stats": {
+"sta": 5,
+"str": 6
+},
+"suffix": "of the Bear"
+},
+"1194": {
+"stats": {
+"sta": 6,
+"str": 6
+},
+"suffix": "of the Bear"
+},
+"1195": {
+"stats": {
+"sta": 7,
+"str": 6
+},
+"suffix": "of the Bear"
+},
+"1196": {
+"stats": {
+"sta": 6,
+"str": 7
+},
+"suffix": "of the Bear"
+},
+"1197": {
+"stats": {
+"sta": 7,
+"str": 7
+},
+"suffix": "of the Bear"
+},
+"1198": {
+"stats": {
+"sta": 8,
+"str": 7
+},
+"suffix": "of the Bear"
+},
+"1199": {
+"stats": {
+"sta": 7,
+"str": 8
+},
+"suffix": "of the Bear"
+},
+"1200": {
+"stats": {
+"sta": 8,
+"str": 8
+},
+"suffix": "of the Bear"
+},
+"1201": {
+"stats": {
+"sta": 9,
+"str": 8
+},
+"suffix": "of the Bear"
+},
+"1202": {
+"stats": {
+"sta": 8,
+"str": 9
+},
+"suffix": "of the Bear"
+},
+"1203": {
+"stats": {
+"sta": 9,
+"str": 9
+},
+"suffix": "of the Bear"
+},
+"1204": {
+"stats": {
+"sta": 10,
+"str": 9
+},
+"suffix": "of the Bear"
+},
+"1205": {
+"stats": {
+"sta": 9,
+"str": 10
+},
+"suffix": "of the Bear"
+},
+"1206": {
+"stats": {
+"sta": 10,
+"str": 10
+},
+"suffix": "of the Bear"
+},
+"1207": {
+"stats": {
+"sta": 11,
+"str": 10
+},
+"suffix": "of the Bear"
+},
+"1208": {
+"stats": {
+"sta": 10,
+"str": 11
+},
+"suffix": "of the Bear"
+},
+"1209": {
+"stats": {
+"sta": 11,
+"str": 11
+},
+"suffix": "of the Bear"
+},
+"1210": {
+"stats": {
+"sta": 12,
+"str": 11
+},
+"suffix": "of the Bear"
+},
+"1211": {
+"stats": {
+"sta": 11,
+"str": 12
+},
+"suffix": "of the Bear"
+},
+"1212": {
+"stats": {
+"sta": 12,
+"str": 12
+},
+"suffix": "of the Bear"
+},
+"1213": {
+"stats": {
+"sta": 13,
+"str": 12
+},
+"suffix": "of the Bear"
+},
+"1214": {
+"stats": {
+"sta": 12,
+"str": 13
+},
+"suffix": "of the Bear"
+},
+"1215": {
+"stats": {
+"sta": 13,
+"str": 13
+},
+"suffix": "of the Bear"
+},
+"1216": {
+"stats": {
+"sta": 14,
+"str": 13
+},
+"suffix": "of the Bear"
+},
+"1217": {
+"stats": {
+"sta": 13,
+"str": 14
+},
+"suffix": "of the Bear"
+},
+"1218": {
+"stats": {
+"sta": 14,
+"str": 14
+},
+"suffix": "of the Bear"
+},
+"1219": {
+"stats": {
+"sta": 15,
+"str": 14
+},
+"suffix": "of the Bear"
+},
+"1220": {
+"stats": {
+"sta": 14,
+"str": 15
+},
+"suffix": "of the Bear"
+},
+"1221": {
+"stats": {
+"sta": 15,
+"str": 15
+},
+"suffix": "of the Bear"
+},
+"1222": {
+"stats": {
+"sta": 16,
+"str": 15
+},
+"suffix": "of the Bear"
+},
+"1223": {
+"stats": {
+"sta": 15,
+"str": 16
+},
+"suffix": "of the Bear"
+},
+"1224": {
+"stats": {
+"sta": 16,
+"str": 16
+},
+"suffix": "of the Bear"
+},
+"1225": {
+"stats": {
+"sta": 17,
+"str": 16
+},
+"suffix": "of the Bear"
+},
+"1226": {
+"stats": {
+"sta": 16,
+"str": 17
+},
+"suffix": "of the Bear"
+},
+"1227": {
+"stats": {
+"sta": 17,
+"str": 17
+},
+"suffix": "of the Bear"
+},
+"1228": {
+"stats": {
+"sta": 18,
+"str": 17
+},
+"suffix": "of the Bear"
+},
+"1229": {
+"stats": {
+"sta": 17,
+"str": 18
+},
+"suffix": "of the Bear"
+},
+"1230": {
+"stats": {
+"sta": 18,
+"str": 18
+},
+"suffix": "of the Bear"
+},
+"1231": {
+"stats": {
+"sta": 19,
+"str": 18
+},
+"suffix": "of the Bear"
+},
+"1232": {
+"stats": {
+"sta": 18,
+"str": 19
+},
+"suffix": "of the Bear"
+},
+"1233": {
+"stats": {
+"sta": 19,
+"str": 19
+},
+"suffix": "of the Bear"
+},
+"1234": {
+"stats": {
+"sta": 20,
+"str": 19
+},
+"suffix": "of the Bear"
+},
+"1235": {
+"stats": {
+"sta": 19,
+"str": 20
+},
+"suffix": "of the Bear"
+},
+"1236": {
+"stats": {
+"sta": 20,
+"str": 20
+},
+"suffix": "of the Bear"
+},
+"1237": {
+"stats": {
+"sta": 21,
+"str": 20
+},
+"suffix": "of the Bear"
+},
+"1238": {
+"stats": {
+"sta": 20,
+"str": 21
+},
+"suffix": "of the Bear"
+},
+"1239": {
+"stats": {
+"sta": 21,
+"str": 21
+},
+"suffix": "of the Bear"
+},
+"1240": {
+"stats": {
+"sta": 22,
+"str": 21
+},
+"suffix": "of the Bear"
+},
+"1241": {
+"stats": {
+"sta": 21,
+"str": 22
+},
+"suffix": "of the Bear"
+},
+"1242": {
+"stats": {
+"sta": 22,
+"str": 22
+},
+"suffix": "of the Bear"
+},
+"1243": {
+"stats": {
+"sta": 23,
+"str": 22
+},
+"suffix": "of the Bear"
+},
+"1244": {
+"stats": {
+"sta": 22,
+"str": 23
+},
+"suffix": "of the Bear"
+},
+"1245": {
+"stats": {
+"sta": 23,
+"str": 23
+},
+"suffix": "of the Bear"
+},
+"1246": {
+"stats": {
+"sta": 24,
+"str": 23
+},
+"suffix": "of the Bear"
+},
+"1247": {
+"stats": {
+"sta": 23,
+"str": 24
+},
+"suffix": "of the Bear"
+},
+"1248": {
+"stats": {
+"sta": 24,
+"str": 24
+},
+"suffix": "of the Bear"
+},
+"1249": {
+"stats": {
+"sta": 25,
+"str": 24
+},
+"suffix": "of the Bear"
+},
+"1250": {
+"stats": {
+"sta": 24,
+"str": 25
+},
+"suffix": "of the Bear"
+},
+"1251": {
+"stats": {
+"sta": 25,
+"str": 25
+},
+"suffix": "of the Bear"
+},
+"1252": {
+"stats": {
+"sta": 26,
+"str": 25
+},
+"suffix": "of the Bear"
+},
+"1253": {
+"stats": {
+"sta": 25,
+"str": 26
+},
+"suffix": "of the Bear"
+},
+"1254": {
+"stats": {
+"sta": 26,
+"str": 26
+},
+"suffix": "of the Bear"
+},
+"1255": {
+"stats": {
+"sta": 27,
+"str": 26
+},
+"suffix": "of the Bear"
+},
+"1256": {
+"stats": {
+"sta": 26,
+"str": 27
+},
+"suffix": "of the Bear"
+},
+"1257": {
+"stats": {
+"sta": 27,
+"str": 27
+},
+"suffix": "of the Bear"
+},
+"1258": {
+"stats": {
+"sta": 28,
+"str": 27
+},
+"suffix": "of the Bear"
+},
+"1259": {
+"stats": {
+"sta": 27,
+"str": 28
+},
+"suffix": "of the Bear"
+},
+"1260": {
+"stats": {
+"sta": 28,
+"str": 28
+},
+"suffix": "of the Bear"
+},
+"1261": {
+"stats": {
+"sta": 29,
+"str": 28
+},
+"suffix": "of the Bear"
+},
+"1262": {
+"stats": {
+"sta": 28,
+"str": 29
+},
+"suffix": "of the Bear"
+},
+"1263": {
+"stats": {
+"sta": 29,
+"str": 29
+},
+"suffix": "of the Bear"
+},
+"1267": {
+"stats": {
+"sta": 41
+},
+"suffix": "of Stamina"
+},
+"1268": {
+"stats": {
+"sta": 42
+},
+"suffix": "of Stamina"
+},
+"1269": {
+"stats": {
+"sta": 43
+},
+"suffix": "of Stamina"
+},
+"1270": {
+"stats": {
+"sta": 44
+},
+"suffix": "of Stamina"
+},
+"1271": {
+"stats": {
+"sta": 45
+},
+"suffix": "of Stamina"
+},
+"1272": {
+"stats": {
+"sta": 46
+},
+"suffix": "of Stamina"
+},
+"1273": {
+"stats": {
+"str": 41
+},
+"suffix": "of Strength"
+},
+"1274": {
+"stats": {
+"str": 42
+},
+"suffix": "of Strength"
+},
+"1275": {
+"stats": {
+"str": 43
+},
+"suffix": "of Strength"
+},
+"1276": {
+"stats": {
+"str": 44
+},
+"suffix": "of Strength"
+},
+"1277": {
+"stats": {
+"str": 45
+},
+"suffix": "of Strength"
+},
+"1278": {
+"stats": {
+"str": 46
+},
+"suffix": "of Strength"
+},
+"1279": {
+"stats": {
+"agi": 41
+},
+"suffix": "of Agility"
+},
+"128": {
+"stats": {
+"def": 4
+},
+"suffix": "of Defense"
+},
+"1280": {
+"stats": {
+"agi": 42
+},
+"suffix": "of Agility"
+},
+"1281": {
+"stats": {
+"agi": 43
+},
+"suffix": "of Agility"
+},
+"1282": {
+"stats": {
+"agi": 44
+},
+"suffix": "of Agility"
+},
+"1283": {
+"stats": {
+"agi": 45
+},
+"suffix": "of Agility"
+},
+"1284": {
+"stats": {
+"agi": 46
+},
+"suffix": "of Agility"
+},
+"1285": {
+"stats": {
+"int": 41
+},
+"suffix": "of Intellect"
+},
+"1286": {
+"stats": {
+"int": 42
+},
+"suffix": "of Intellect"
+},
+"1287": {
+"stats": {
+"int": 43
+},
+"suffix": "of Intellect"
+},
+"1288": {
+"stats": {
+"int": 44
+},
+"suffix": "of Intellect"
+},
+"1289": {
+"stats": {
+"int": 45
+},
+"suffix": "of Intellect"
+},
+"1290": {
+"stats": {
+"int": 46
+},
+"suffix": "of Intellect"
+},
+"1291": {
+"stats": {
+"spi": 41
+},
+"suffix": "of Spirit"
+},
+"1292": {
+"stats": {
+"spi": 42
+},
+"suffix": "of Spirit"
+},
+"1293": {
+"stats": {
+"spi": 43
+},
+"suffix": "of Spirit"
+},
+"1294": {
+"stats": {
+"spi": 44
+},
+"suffix": "of Spirit"
+},
+"1295": {
+"stats": {
+"spi": 45
+},
+"suffix": "of Spirit"
+},
+"1296": {
+"stats": {
+"spi": 46
+},
+"suffix": "of Spirit"
+},
+"1307": {
+"stats": {
+"arcRes": 1
+},
+"suffix": "of Arcane Resistance"
+},
+"1308": {
+"stats": {
+"arcRes": 2
+},
+"suffix": "of Arcane Resistance"
+},
+"1309": {
+"stats": {
+"arcRes": 3
+},
+"suffix": "of Arcane Resistance"
+},
+"1310": {
+"stats": {
+"arcRes": 4
+},
+"suffix": "of Arcane Resistance"
+},
+"1311": {
+"stats": {
+"arcRes": 5
+},
+"suffix": "of Arcane Resistance"
+},
+"1312": {
+"stats": {
+"arcRes": 6
+},
+"suffix": "of Arcane Resistance"
+},
+"1313": {
+"stats": {
+"arcRes": 7
+},
+"suffix": "of Arcane Resistance"
+},
+"1314": {
+"stats": {
+"arcRes": 8
+},
+"suffix": "of Arcane Resistance"
+},
+"1315": {
+"stats": {
+"arcRes": 9
+},
+"suffix": "of Arcane Resistance"
+},
+"1316": {
+"stats": {
+"arcRes": 10
+},
+"suffix": "of Arcane Resistance"
+},
+"1317": {
+"stats": {
+"arcRes": 11
+},
+"suffix": "of Arcane Resistance"
+},
+"1318": {
+"stats": {
+"arcRes": 12
+},
+"suffix": "of Arcane Resistance"
+},
+"1319": {
+"stats": {
+"arcRes": 13
+},
+"suffix": "of Arcane Resistance"
+},
+"132": {
+"stats": {
+"agi": 6
+},
+"suffix": "of Agility"
+},
+"1320": {
+"stats": {
+"arcRes": 14
+},
+"suffix": "of Arcane Resistance"
+},
+"1321": {
+"stats": {
+"arcRes": 15
+},
+"suffix": "of Arcane Resistance"
+},
+"1322": {
+"stats": {
+"arcRes": 16
+},
+"suffix": "of Arcane Resistance"
+},
+"1323": {
+"stats": {
+"arcRes": 17
+},
+"suffix": "of Arcane Resistance"
+},
+"1324": {
+"stats": {
+"arcRes": 18
+},
+"suffix": "of Arcane Resistance"
+},
+"1325": {
+"stats": {
+"arcRes": 19
+},
+"suffix": "of Arcane Resistance"
+},
+"1326": {
+"stats": {
+"arcRes": 20
+},
+"suffix": "of Arcane Resistance"
+},
+"1327": {
+"stats": {
+"arcRes": 21
+},
+"suffix": "of Arcane Resistance"
+},
+"1328": {
+"stats": {
+"arcRes": 22
+},
+"suffix": "of Arcane Resistance"
+},
+"1329": {
+"stats": {
+"arcRes": 23
+},
+"suffix": "of Arcane Resistance"
+},
+"133": {
+"stats": {
+"int": 6
+},
+"suffix": "of Intellect"
+},
+"1330": {
+"stats": {
+"arcRes": 24
+},
+"suffix": "of Arcane Resistance"
+},
+"1331": {
+"stats": {
+"arcRes": 25
+},
+"suffix": "of Arcane Resistance"
+},
+"1332": {
+"stats": {
+"arcRes": 26
+},
+"suffix": "of Arcane Resistance"
+},
+"1333": {
+"stats": {
+"arcRes": 27
+},
+"suffix": "of Arcane Resistance"
+},
+"1334": {
+"stats": {
+"arcRes": 28
+},
+"suffix": "of Arcane Resistance"
+},
+"1335": {
+"stats": {
+"arcRes": 29
+},
+"suffix": "of Arcane Resistance"
+},
+"1336": {
+"stats": {
+"arcRes": 30
+},
+"suffix": "of Arcane Resistance"
+},
+"1337": {
+"stats": {
+"arcRes": 31
+},
+"suffix": "of Arcane Resistance"
+},
+"1338": {
+"stats": {
+"arcRes": 32
+},
+"suffix": "of Arcane Resistance"
+},
+"1339": {
+"stats": {
+"arcRes": 33
+},
+"suffix": "of Arcane Resistance"
+},
+"134": {
+"stats": {
+"spi": 6
+},
+"suffix": "of Spirit"
+},
+"1340": {
+"stats": {
+"arcRes": 34
+},
+"suffix": "of Arcane Resistance"
+},
+"1341": {
+"stats": {
+"arcRes": 25
+},
+"suffix": "of Arcane Resistance"
+},
+"1342": {
+"stats": {
+"arcRes": 36
+},
+"suffix": "of Arcane Resistance"
+},
+"1343": {
+"stats": {
+"arcRes": 37
+},
+"suffix": "of Arcane Resistance"
+},
+"1344": {
+"stats": {
+"arcRes": 38
+},
+"suffix": "of Arcane Resistance"
+},
+"1345": {
+"stats": {
+"arcRes": 39
+},
+"suffix": "of Arcane Resistance"
+},
+"1346": {
+"stats": {
+"arcRes": 40
+},
+"suffix": "of Arcane Resistance"
+},
+"1347": {
+"stats": {
+"arcRes": 41
+},
+"suffix": "of Arcane Resistance"
+},
+"1348": {
+"stats": {
+"arcRes": 42
+},
+"suffix": "of Arcane Resistance"
+},
+"1349": {
+"stats": {
+"arcRes": 43
+},
+"suffix": "of Arcane Resistance"
+},
+"135": {
+"stats": {
+"sta": 6
+},
+"suffix": "of Stamina"
+},
+"1350": {
+"stats": {
+"arcRes": 44
+},
+"suffix": "of Arcane Resistance"
+},
+"1351": {
+"stats": {
+"arcRes": 45
+},
+"suffix": "of Arcane Resistance"
+},
+"1352": {
+"stats": {
+"arcRes": 46
+},
+"suffix": "of Arcane Resistance"
+},
+"1353": {
+"stats": {
+"froRes": 1
+},
+"suffix": "of Frost Resistance"
+},
+"1354": {
+"stats": {
+"froRes": 2
+},
+"suffix": "of Frost Resistance"
+},
+"1355": {
+"stats": {
+"froRes": 3
+},
+"suffix": "of Frost Resistance"
+},
+"1356": {
+"stats": {
+"froRes": 4
+},
+"suffix": "of Frost Resistance"
+},
+"1357": {
+"stats": {
+"froRes": 5
+},
+"suffix": "of Frost Resistance"
+},
+"1358": {
+"stats": {
+"froRes": 6
+},
+"suffix": "of Frost Resistance"
+},
+"1359": {
+"stats": {
+"froRes": 7
+},
+"suffix": "of Frost Resistance"
+},
+"136": {
+"stats": {
+"str": 6
+},
+"suffix": "of Strength"
+},
+"1360": {
+"stats": {
+"froRes": 8
+},
+"suffix": "of Frost Resistance"
+},
+"1361": {
+"stats": {
+"froRes": 9
+},
+"suffix": "of Frost Resistance"
+},
+"1362": {
+"stats": {
+"froRes": 10
+},
+"suffix": "of Frost Resistance"
+},
+"1363": {
+"stats": {
+"froRes": 11
+},
+"suffix": "of Frost Resistance"
+},
+"1364": {
+"stats": {
+"froRes": 12
+},
+"suffix": "of Frost Resistance"
+},
+"1365": {
+"stats": {
+"froRes": 13
+},
+"suffix": "of Frost Resistance"
+},
+"1366": {
+"stats": {
+"froRes": 14
+},
+"suffix": "of Frost Resistance"
+},
+"1367": {
+"stats": {
+"froRes": 15
+},
+"suffix": "of Frost Resistance"
+},
+"1368": {
+"stats": {
+"froRes": 16
+},
+"suffix": "of Frost Resistance"
+},
+"1369": {
+"stats": {
+"froRes": 17
+},
+"suffix": "of Frost Resistance"
+},
+"1370": {
+"stats": {
+"froRes": 18
+},
+"suffix": "of Frost Resistance"
+},
+"1371": {
+"stats": {
+"froRes": 19
+},
+"suffix": "of Frost Resistance"
+},
+"1372": {
+"stats": {
+"froRes": 20
+},
+"suffix": "of Frost Resistance"
+},
+"1373": {
+"stats": {
+"froRes": 21
+},
+"suffix": "of Frost Resistance"
+},
+"1374": {
+"stats": {
+"froRes": 22
+},
+"suffix": "of Frost Resistance"
+},
+"1375": {
+"stats": {
+"froRes": 23
+},
+"suffix": "of Frost Resistance"
+},
+"1376": {
+"stats": {
+"froRes": 24
+},
+"suffix": "of Frost Resistance"
+},
+"1377": {
+"stats": {
+"froRes": 25
+},
+"suffix": "of Frost Resistance"
+},
+"1378": {
+"stats": {
+"froRes": 26
+},
+"suffix": "of Frost Resistance"
+},
+"1379": {
+"stats": {
+"froRes": 27
+},
+"suffix": "of Frost Resistance"
+},
+"1380": {
+"stats": {
+"froRes": 28
+},
+"suffix": "of Frost Resistance"
+},
+"1381": {
+"stats": {
+"froRes": 29
+},
+"suffix": "of Frost Resistance"
+},
+"1382": {
+"stats": {
+"froRes": 30
+},
+"suffix": "of Frost Resistance"
+},
+"1383": {
+"stats": {
+"froRes": 31
+},
+"suffix": "of Frost Resistance"
+},
+"1384": {
+"stats": {
+"froRes": 32
+},
+"suffix": "of Frost Resistance"
+},
+"1385": {
+"stats": {
+"froRes": 33
+},
+"suffix": "of Frost Resistance"
+},
+"1386": {
+"stats": {
+"froRes": 34
+},
+"suffix": "of Frost Resistance"
+},
+"1387": {
+"stats": {
+"froRes": 35
+},
+"suffix": "of Frost Resistance"
+},
+"1388": {
+"stats": {
+"froRes": 36
+},
+"suffix": "of Frost Resistance"
+},
+"1389": {
+"stats": {
+"froRes": 37
+},
+"suffix": "of Frost Resistance"
+},
+"1390": {
+"stats": {
+"froRes": 38
+},
+"suffix": "of Frost Resistance"
+},
+"1391": {
+"stats": {
+"froRes": 39
+},
+"suffix": "of Frost Resistance"
+},
+"1392": {
+"stats": {
+"froRes": 40
+},
+"suffix": "of Frost Resistance"
+},
+"1393": {
+"stats": {
+"froRes": 41
+},
+"suffix": "of Frost Resistance"
+},
+"1394": {
+"stats": {
+"froRes": 42
+},
+"suffix": "of Frost Resistance"
+},
+"1395": {
+"stats": {
+"froRes": 43
+},
+"suffix": "of Frost Resistance"
+},
+"1396": {
+"stats": {
+"froRes": 44
+},
+"suffix": "of Frost Resistance"
+},
+"1397": {
+"stats": {
+"froRes": 45
+},
+"suffix": "of Frost Resistance"
+},
+"1398": {
+"stats": {
+"froRes": 46
+},
+"suffix": "of Frost Resistance"
+},
+"1399": {
+"stats": {
+"firRes": 1
+},
+"suffix": "of Fire Resistance"
+},
+"14": {
+"stats": {
+"agi": 1
+},
+"suffix": "of Agility"
+},
+"1400": {
+"stats": {
+"firRes": 2
+},
+"suffix": "of Fire Resistance"
+},
+"1401": {
+"stats": {
+"firRes": 3
+},
+"suffix": "of Fire Resistance"
+},
+"1402": {
+"stats": {
+"firRes": 4
+},
+"suffix": "of Fire Resistance"
+},
+"1403": {
+"stats": {
+"firRes": 5
+},
+"suffix": "of Fire Resistance"
+},
+"1404": {
+"stats": {
+"firRes": 6
+},
+"suffix": "of Fire Resistance"
+},
+"1405": {
+"stats": {
+"firRes": 7
+},
+"suffix": "of Fire Resistance"
+},
+"1406": {
+"stats": {
+"firRes": 8
+},
+"suffix": "of Fire Resistance"
+},
+"1407": {
+"stats": {
+"firRes": 9
+},
+"suffix": "of Fire Resistance"
+},
+"1408": {
+"stats": {
+"firRes": 10
+},
+"suffix": "of Fire Resistance"
+},
+"1409": {
+"stats": {
+"firRes": 11
+},
+"suffix": "of Fire Resistance"
+},
+"1410": {
+"stats": {
+"firRes": 12
+},
+"suffix": "of Fire Resistance"
+},
+"1411": {
+"stats": {
+"firRes": 13
+},
+"suffix": "of Fire Resistance"
+},
+"1412": {
+"stats": {
+"firRes": 14
+},
+"suffix": "of Fire Resistance"
+},
+"1413": {
+"stats": {
+"firRes": 15
+},
+"suffix": "of Fire Resistance"
+},
+"1414": {
+"stats": {
+"firRes": 16
+},
+"suffix": "of Fire Resistance"
+},
+"1415": {
+"stats": {
+"firRes": 17
+},
+"suffix": "of Fire Resistance"
+},
+"1416": {
+"stats": {
+"firRes": 18
+},
+"suffix": "of Fire Resistance"
+},
+"1417": {
+"stats": {
+"firRes": 19
+},
+"suffix": "of Fire Resistance"
+},
+"1418": {
+"stats": {
+"firRes": 20
+},
+"suffix": "of Fire Resistance"
+},
+"1419": {
+"stats": {
+"firRes": 21
+},
+"suffix": "of Fire Resistance"
+},
+"1420": {
+"stats": {
+"firRes": 22
+},
+"suffix": "of Fire Resistance"
+},
+"1421": {
+"stats": {
+"firRes": 23
+},
+"suffix": "of Fire Resistance"
+},
+"1422": {
+"stats": {
+"firRes": 24
+},
+"suffix": "of Fire Resistance"
+},
+"1423": {
+"stats": {
+"firRes": 25
+},
+"suffix": "of Fire Resistance"
+},
+"1424": {
+"stats": {
+"firRes": 26
+},
+"suffix": "of Fire Resistance"
+},
+"1425": {
+"stats": {
+"firRes": 27
+},
+"suffix": "of Fire Resistance"
+},
+"1426": {
+"stats": {
+"firRes": 28
+},
+"suffix": "of Fire Resistance"
+},
+"1427": {
+"stats": {
+"firRes": 29
+},
+"suffix": "of Fire Resistance"
+},
+"1428": {
+"stats": {
+"firRes": 30
+},
+"suffix": "of Fire Resistance"
+},
+"1429": {
+"stats": {
+"firRes": 31
+},
+"suffix": "of Fire Resistance"
+},
+"1430": {
+"stats": {
+"firRes": 32
+},
+"suffix": "of Fire Resistance"
+},
+"1431": {
+"stats": {
+"firRes": 33
+},
+"suffix": "of Fire Resistance"
+},
+"1432": {
+"stats": {
+"firRes": 34
+},
+"suffix": "of Fire Resistance"
+},
+"1433": {
+"stats": {
+"firRes": 35
+},
+"suffix": "of Fire Resistance"
+},
+"1434": {
+"stats": {
+"firRes": 36
+},
+"suffix": "of Fire Resistance"
+},
+"1435": {
+"stats": {
+"firRes": 37
+},
+"suffix": "of Fire Resistance"
+},
+"1436": {
+"stats": {
+"firRes": 38
+},
+"suffix": "of Fire Resistance"
+},
+"1437": {
+"stats": {
+"firRes": 39
+},
+"suffix": "of Fire Resistance"
+},
+"1438": {
+"stats": {
+"firRes": 40
+},
+"suffix": "of Fire Resistance"
+},
+"1439": {
+"stats": {
+"firRes": 41
+},
+"suffix": "of Fire Resistance"
+},
+"1440": {
+"stats": {
+"firRes": 42
+},
+"suffix": "of Fire Resistance"
+},
+"1441": {
+"stats": {
+"firRes": 43
+},
+"suffix": "of Fire Resistance"
+},
+"1442": {
+"stats": {
+"firRes": 44
+},
+"suffix": "of Fire Resistance"
+},
+"1443": {
+"stats": {
+"firRes": 45
+},
+"suffix": "of Fire Resistance"
+},
+"1444": {
+"stats": {
+"firRes": 46
+},
+"suffix": "of Fire Resistance"
+},
+"1445": {
+"stats": {
+"shaRes": 1
+},
+"suffix": "of Shadow Resistance"
+},
+"1446": {
+"stats": {
+"shaRes": 2
+},
+"suffix": "of Shadow Resistance"
+},
+"1447": {
+"stats": {
+"shaRes": 3
+},
+"suffix": "of Shadow Resistance"
+},
+"1448": {
+"stats": {
+"shaRes": 4
+},
+"suffix": "of Shadow Resistance"
+},
+"1449": {
+"stats": {
+"shaRes": 5
+},
+"suffix": "of Shadow Resistance"
+},
+"1450": {
+"stats": {
+"shaRes": 6
+},
+"suffix": "of Shadow Resistance"
+},
+"1451": {
+"stats": {
+"shaRes": 7
+},
+"suffix": "of Shadow Resistance"
+},
+"1452": {
+"stats": {
+"shaRes": 8
+},
+"suffix": "of Shadow Resistance"
+},
+"1453": {
+"stats": {
+"shaRes": 9
+},
+"suffix": "of Shadow Resistance"
+},
+"1454": {
+"stats": {
+"shaRes": 10
+},
+"suffix": "of Shadow Resistance"
+},
+"1455": {
+"stats": {
+"shaRes": 11
+},
+"suffix": "of Shadow Resistance"
+},
+"1456": {
+"stats": {
+"shaRes": 12
+},
+"suffix": "of Shadow Resistance"
+},
+"1457": {
+"stats": {
+"shaRes": 13
+},
+"suffix": "of Shadow Resistance"
+},
+"1458": {
+"stats": {
+"shaRes": 14
+},
+"suffix": "of Shadow Resistance"
+},
+"1459": {
+"stats": {
+"shaRes": 15
+},
+"suffix": "of Shadow Resistance"
+},
+"1460": {
+"stats": {
+"shaRes": 16
+},
+"suffix": "of Shadow Resistance"
+},
+"1461": {
+"stats": {
+"shaRes": 17
+},
+"suffix": "of Shadow Resistance"
+},
+"1462": {
+"stats": {
+"shaRes": 18
+},
+"suffix": "of Shadow Resistance"
+},
+"1463": {
+"stats": {
+"shaRes": 19
+},
+"suffix": "of Shadow Resistance"
+},
+"1464": {
+"stats": {
+"shaRes": 20
+},
+"suffix": "of Shadow Resistance"
+},
+"1465": {
+"stats": {
+"shaRes": 21
+},
+"suffix": "of Shadow Resistance"
+},
+"1466": {
+"stats": {
+"shaRes": 22
+},
+"suffix": "of Shadow Resistance"
+},
+"1467": {
+"stats": {
+"shaRes": 23
+},
+"suffix": "of Shadow Resistance"
+},
+"1468": {
+"stats": {
+"shaRes": 24
+},
+"suffix": "of Shadow Resistance"
+},
+"1469": {
+"stats": {
+"shaRes": 25
+},
+"suffix": "of Shadow Resistance"
+},
+"147": {
+"stats": {
+"def": 5
+},
+"suffix": "of Proficiency"
+},
+"1471": {
+"stats": {
+"shaRes": 27
+},
+"suffix": "of Shadow Resistance"
+},
+"1472": {
+"stats": {
+"shaRes": 28
+},
+"suffix": "of Shadow Resistance"
+},
+"1473": {
+"stats": {
+"shaRes": 29
+},
+"suffix": "of Shadow Resistance"
+},
+"1474": {
+"stats": {
+"shaRes": 30
+},
+"suffix": "of Shadow Resistance"
+},
+"1475": {
+"stats": {
+"shaRes": 31
+},
+"suffix": "of Shadow Resistance"
+},
+"1476": {
+"stats": {
+"shaRes": 32
+},
+"suffix": "of Shadow Resistance"
+},
+"1477": {
+"stats": {
+"shaRes": 33
+},
+"suffix": "of Shadow Resistance"
+},
+"1478": {
+"stats": {
+"shaRes": 34
+},
+"suffix": "of Shadow Resistance"
+},
+"1479": {
+"stats": {
+"shaRes": 35
+},
+"suffix": "of Shadow Resistance"
+},
+"1480": {
+"stats": {
+"shaRes": 36
+},
+"suffix": "of Shadow Resistance"
+},
+"1481": {
+"stats": {
+"shaRes": 37
+},
+"suffix": "of Shadow Resistance"
+},
+"1482": {
+"stats": {
+"shaRes": 38
+},
+"suffix": "of Shadow Resistance"
+},
+"1483": {
+"stats": {
+"shaRes": 39
+},
+"suffix": "of Shadow Resistance"
+},
+"1484": {
+"stats": {
+"shaRes": 40
+},
+"suffix": "of Shadow Resistance"
+},
+"1485": {
+"stats": {
+"shaRes": 41
+},
+"suffix": "of Shadow Resistance"
+},
+"1486": {
+"stats": {
+"shaRes": 42
+},
+"suffix": "of Shadow Resistance"
+},
+"1487": {
+"stats": {
+"shaRes": 43
+},
+"suffix": "of Shadow Resistance"
+},
+"1488": {
+"stats": {
+"shaRes": 44
+},
+"suffix": "of Shadow Resistance"
+},
+"1489": {
+"stats": {
+"shaRes": 45
+},
+"suffix": "of Shadow Resistance"
+},
+"1490": {
+"stats": {
+"shaRes": 46
+},
+"suffix": "of Shadow Resistance"
+},
+"1491": {
+"stats": {
+"natRes": 1
+},
+"suffix": "of Nature Resistance"
+},
+"1492": {
+"stats": {
+"natRes": 2
+},
+"suffix": "of Nature Resistance"
+},
+"1493": {
+"stats": {
+"natRes": 3
+},
+"suffix": "of Nature Resistance"
+},
+"1494": {
+"stats": {
+"natRes": 4
+},
+"suffix": "of Nature Resistance"
+},
+"1495": {
+"stats": {
+"natRes": 5
+},
+"suffix": "of Nature Resistance"
+},
+"1496": {
+"stats": {
+"natRes": 6
+},
+"suffix": "of Nature Resistance"
+},
+"1497": {
+"stats": {
+"natRes": 7
+},
+"suffix": "of Nature Resistance"
+},
+"1498": {
+"stats": {
+"natRes": 8
+},
+"suffix": "of Nature Resistance"
+},
+"1499": {
+"stats": {
+"natRes": 9
+},
+"suffix": "of Nature Resistance"
+},
+"15": {
+"stats": {
+"sta": 1
+},
+"suffix": "of Stamina"
+},
+"1500": {
+"stats": {
+"natRes": 10
+},
+"suffix": "of Nature Resistance"
+},
+"1501": {
+"stats": {
+"natRes": 11
+},
+"suffix": "of Nature Resistance"
+},
+"1502": {
+"stats": {
+"natRes": 12
+},
+"suffix": "of Nature Resistance"
+},
+"1503": {
+"stats": {
+"natRes": 13
+},
+"suffix": "of Nature Resistance"
+},
+"1504": {
+"stats": {
+"natRes": 14
+},
+"suffix": "of Nature Resistance"
+},
+"1505": {
+"stats": {
+"natRes": 15
+},
+"suffix": "of Nature Resistance"
+},
+"1506": {
+"stats": {
+"natRes": 16
+},
+"suffix": "of Nature Resistance"
+},
+"1507": {
+"stats": {
+"natRes": 17
+},
+"suffix": "of Nature Resistance"
+},
+"1508": {
+"stats": {
+"natRes": 18
+},
+"suffix": "of Nature Resistance"
+},
+"1509": {
+"stats": {
+"natRes": 19
+},
+"suffix": "of Nature Resistance"
+},
+"151": {
+"stats": {
+"agi": 7
+},
+"suffix": "of Agility"
+},
+"1510": {
+"stats": {
+"natRes": 20
+},
+"suffix": "of Nature Resistance"
+},
+"1511": {
+"stats": {
+"natRes": 21
+},
+"suffix": "of Nature Resistance"
+},
+"1512": {
+"stats": {
+"natRes": 22
+},
+"suffix": "of Nature Resistance"
+},
+"1513": {
+"stats": {
+"natRes": 23
+},
+"suffix": "of Nature Resistance"
+},
+"1514": {
+"stats": {
+"natRes": 24
+},
+"suffix": "of Nature Resistance"
+},
+"1515": {
+"stats": {
+"natRes": 25
+},
+"suffix": "of Nature Resistance"
+},
+"1516": {
+"stats": {
+"natRes": 26
+},
+"suffix": "of Nature Resistance"
+},
+"1517": {
+"stats": {
+"natRes": 27
+},
+"suffix": "of Nature Resistance"
+},
+"1518": {
+"stats": {
+"natRes": 28
+},
+"suffix": "of Nature Resistance"
+},
+"1519": {
+"stats": {
+"natRes": 29
+},
+"suffix": "of Nature Resistance"
+},
+"152": {
+"stats": {
+"int": 7
+},
+"suffix": "of Intellect"
+},
+"1520": {
+"stats": {
+"natRes": 30
+},
+"suffix": "of Nature Resistance"
+},
+"1521": {
+"stats": {
+"natRes": 31
+},
+"suffix": "of Nature Resistance"
+},
+"1522": {
+"stats": {
+"natRes": 32
+},
+"suffix": "of Nature Resistance"
+},
+"1523": {
+"stats": {
+"natRes": 33
+},
+"suffix": "of Nature Resistance"
+},
+"1524": {
+"stats": {
+"natRes": 34
+},
+"suffix": "of Nature Resistance"
+},
+"1525": {
+"stats": {
+"natRes": 35
+},
+"suffix": "of Nature Resistance"
+},
+"1526": {
+"stats": {
+"natRes": 36
+},
+"suffix": "of Nature Resistance"
+},
+"1527": {
+"stats": {
+"natRes": 37
+},
+"suffix": "of Nature Resistance"
+},
+"1528": {
+"stats": {
+"natRes": 38
+},
+"suffix": "of Nature Resistance"
+},
+"1529": {
+"stats": {
+"natRes": 39
+},
+"suffix": "of Nature Resistance"
+},
+"153": {
+"stats": {
+"spi": 7
+},
+"suffix": "of Spirit"
+},
+"1530": {
+"stats": {
+"natRes": 40
+},
+"suffix": "of Nature Resistance"
+},
+"1531": {
+"stats": {
+"natRes": 41
+},
+"suffix": "of Nature Resistance"
+},
+"1532": {
+"stats": {
+"natRes": 42
+},
+"suffix": "of Nature Resistance"
+},
+"1533": {
+"stats": {
+"natRes": 43
+},
+"suffix": "of Nature Resistance"
+},
+"1534": {
+"stats": {
+"natRes": 44
+},
+"suffix": "of Nature Resistance"
+},
+"1535": {
+"stats": {
+"natRes": 45
+},
+"suffix": "of Nature Resistance"
+},
+"1536": {
+"stats": {
+"natRes": 46
+},
+"suffix": "of Nature Resistance"
+},
+"154": {
+"stats": {
+"sta": 7
+},
+"suffix": "of Stamina"
+},
+"1547": {
+"stats": {
+"ap": 2
+},
+"suffix": "of Power"
+},
+"1548": {
+"stats": {
+"ap": 4
+},
+"suffix": "of Power"
+},
+"1549": {
+"stats": {
+"ap": 6
+},
+"suffix": "of Power"
+},
+"155": {
+"stats": {
+"str": 7
+},
+"suffix": "of Strength"
+},
+"1550": {
+"stats": {
+"ap": 8
+},
+"suffix": "of Power"
+},
+"1551": {
+"stats": {
+"ap": 10
+},
+"suffix": "of Power"
+},
+"1552": {
+"stats": {
+"ap": 12
+},
+"suffix": "of Power"
+},
+"1553": {
+"stats": {
+"ap": 14
+},
+"suffix": "of Power"
+},
+"1554": {
+"stats": {
+"ap": 16
+},
+"suffix": "of Power"
+},
+"1555": {
+"stats": {
+"ap": 18
+},
+"suffix": "of Power"
+},
+"1556": {
+"stats": {
+"ap": 20
+},
+"suffix": "of Power"
+},
+"1557": {
+"stats": {
+"ap": 22
+},
+"suffix": "of Power"
+},
+"1558": {
+"stats": {
+"ap": 24
+},
+"suffix": "of Power"
+},
+"1559": {
+"stats": {
+"ap": 26
+},
+"suffix": "of Power"
+},
+"1560": {
+"stats": {
+"ap": 28
+},
+"suffix": "of Power"
+},
+"1561": {
+"stats": {
+"ap": 30
+},
+"suffix": "of Power"
+},
+"1562": {
+"stats": {
+"ap": 32
+},
+"suffix": "of Power"
+},
+"1563": {
+"stats": {
+"ap": 34
+},
+"suffix": "of Power"
+},
+"1564": {
+"stats": {
+"ap": 36
+},
+"suffix": "of Power"
+},
+"1565": {
+"stats": {
+"ap": 38
+},
+"suffix": "of Power"
+},
+"1566": {
+"stats": {
+"ap": 40
+},
+"suffix": "of Power"
+},
+"1567": {
+"stats": {
+"ap": 42
+},
+"suffix": "of Power"
+},
+"1568": {
+"stats": {
+"ap": 44
+},
+"suffix": "of Power"
+},
+"1569": {
+"stats": {
+"ap": 46
+},
+"suffix": "of Power"
+},
+"1570": {
+"stats": {
+"ap": 48
+},
+"suffix": "of Power"
+},
+"1571": {
+"stats": {
+"ap": 50
+},
+"suffix": "of Power"
+},
+"1572": {
+"stats": {
+"ap": 52
+},
+"suffix": "of Power"
+},
+"1573": {
+"stats": {
+"ap": 54
+},
+"suffix": "of Power"
+},
+"1574": {
+"stats": {
+"ap": 56
+},
+"suffix": "of Power"
+},
+"1575": {
+"stats": {
+"ap": 58
+},
+"suffix": "of Power"
+},
+"1576": {
+"stats": {
+"ap": 60
+},
+"suffix": "of Power"
+},
+"1577": {
+"stats": {
+"ap": 62
+},
+"suffix": "of Power"
+},
+"1578": {
+"stats": {
+"ap": 64
+},
+"suffix": "of Power"
+},
+"1579": {
+"stats": {
+"ap": 66
+},
+"suffix": "of Power"
+},
+"1580": {
+"stats": {
+"ap": 68
+},
+"suffix": "of Power"
+},
+"1581": {
+"stats": {
+"ap": 70
+},
+"suffix": "of Power"
+},
+"1582": {
+"stats": {
+"ap": 72
+},
+"suffix": "of Power"
+},
+"1583": {
+"stats": {
+"ap": 74
+},
+"suffix": "of Power"
+},
+"1584": {
+"stats": {
+"ap": 76
+},
+"suffix": "of Power"
+},
+"1585": {
+"stats": {
+"ap": 78
+},
+"suffix": "of Power"
+},
+"1586": {
+"stats": {
+"ap": 80
+},
+"suffix": "of Power"
+},
+"1587": {
+"stats": {
+"ap": 82
+},
+"suffix": "of Power"
+},
+"1588": {
+"stats": {
+"ap": 84
+},
+"suffix": "of Power"
+},
+"1589": {
+"stats": {
+"ap": 86
+},
+"suffix": "of Power"
+},
+"1590": {
+"stats": {
+"ap": 88
+},
+"suffix": "of Power"
+},
+"1591": {
+"stats": {
+"ap": 90
+},
+"suffix": "of Power"
+},
+"1592": {
+"stats": {
+"ap": 92
+},
+"suffix": "of Power"
+},
+"16": {
+"stats": {
+"spi": 1
+},
+"suffix": "of Spirit"
+},
+"1607": {
+"stats": {
+"def": 8
+},
+"suffix": ""
+},
+"1608": {
+"stats": {
+"def": 5
+},
+"suffix": "of Defense"
+},
+"1609": {
+"stats": {
+"def": 6
+},
+"suffix": "of Defense"
+},
+"1610": {
+"stats": {
+"def": 7
+},
+"suffix": "of Defense"
+},
+"1611": {
+"stats": {
+"def": 7
+},
+"suffix": "of Defense"
+},
+"1612": {
+"stats": {
+"def": 9
+},
+"suffix": "of Defense"
+},
+"1613": {
+"stats": {
+"def": 9
+},
+"suffix": "of Defense"
+},
+"1614": {
+"stats": {
+"def": 10
+},
+"suffix": "of Defense"
+},
+"1615": {
+"stats": {
+"def": 11
+},
+"suffix": "of Defense"
+},
+"1616": {
+"stats": {
+"def": 13
+},
+"suffix": "of Defense"
+},
+"1617": {
+"stats": {
+"def": 15
+},
+"suffix": "of Defense"
+},
+"1618": {
+"stats": {
+"def": 17
+},
+"suffix": "of Defense"
+},
+"1619": {
+"stats": {
+"def": 21
+},
+"suffix": "of Defense"
+},
+"1620": {
+"stats": {
+"def": 11
+},
+"suffix": "of Defense"
+},
+"1621": {
+"stats": {
+"def": 12
+},
+"suffix": "of Defense"
+},
+"1622": {
+"stats": {
+"def": 13
+},
+"suffix": "of Defense"
+},
+"1623": {
+"stats": {
+"def": 14
+},
+"suffix": "of Defense"
+},
+"1624": {
+"stats": {
+"def": 15
+},
+"suffix": "of Defense"
+},
+"1625": {
+"stats": {
+"def": 16
+},
+"suffix": "of Defense"
+},
+"1626": {
+"stats": {
+"def": 17
+},
+"suffix": "of Defense"
+},
+"1627": {
+"stats": {
+"def": 18
+},
+"suffix": "of Defense"
+},
+"1628": {
+"stats": {
+"def": 19
+},
+"suffix": "of Defense"
+},
+"1629": {
+"stats": {
+"def": 19
+},
+"suffix": "of Defense"
+},
+"1630": {
+"stats": {
+"def": 20
+},
+"suffix": "of Defense"
+},
+"1631": {
+"stats": {
+"def": 21
+},
+"suffix": "of Defense"
+},
+"1632": {
+"stats": {
+"def": 22
+},
+"suffix": "of Defense"
+},
+"1633": {
+"stats": {
+"def": 23
+},
+"suffix": "of Defense"
+},
+"1634": {
+"stats": {
+"def": 23
+},
+"suffix": "of Defense"
+},
+"1635": {
+"stats": {
+"def": 24
+},
+"suffix": "of Defense"
+},
+"1636": {
+"stats": {
+"def": 25
+},
+"suffix": "of Defense"
+},
+"1637": {
+"stats": {
+"def": 25
+},
+"suffix": "of Defense"
+},
+"1648": {
+"stats": {
+"str": 1
+},
+"suffix": "of Blocking"
+},
+"1649": {
+"stats": {
+"str": 1
+},
+"suffix": "of Blocking"
+},
+"1650": {
+"stats": {
+"str": 2
+},
+"suffix": "of Blocking"
+},
+"1651": {
+"stats": {
+"str": 2
+},
+"suffix": "of Blocking"
+},
+"1652": {
+"stats": {
+"str": 3
+},
+"suffix": "of Blocking"
+},
+"1653": {
+"stats": {
+"str": 3
+},
+"suffix": "of Blocking"
+},
+"1654": {
+"stats": {
+"str": 4
+},
+"suffix": "of Blocking"
+},
+"1655": {
+"stats": {
+"str": 4
+},
+"suffix": "of Blocking"
+},
+"1656": {
+"stats": {
+"str": 5
+},
+"suffix": "of Blocking"
+},
+"1657": {
+"stats": {
+"str": 5
+},
+"suffix": "of Blocking"
+},
+"1658": {
+"stats": {
+"str": 6
+},
+"suffix": "of Blocking"
+},
+"1659": {
+"stats": {
+"str": 6
+},
+"suffix": "of Blocking"
+},
+"1660": {
+"stats": {
+"str": 7
+},
+"suffix": "of Blocking"
+},
+"1661": {
+"stats": {
+"str": 7
+},
+"suffix": "of Blocking"
+},
+"1662": {
+"stats": {
+"str": 8
+},
+"suffix": "of Blocking"
+},
+"1663": {
+"stats": {
+"str": 8
+},
+"suffix": "of Blocking"
+},
+"1664": {
+"stats": {
+"str": 9
+},
+"suffix": "of Blocking"
+},
+"1665": {
+"stats": {
+"str": 9
+},
+"suffix": "of Blocking"
+},
+"1666": {
+"stats": {
+"str": 9
+},
+"suffix": "of Blocking"
+},
+"1667": {
+"stats": {
+"str": 9
+},
+"suffix": "of Blocking"
+},
+"1668": {
+"stats": {
+"str": 10
+},
+"suffix": "of Blocking"
+},
+"1669": {
+"stats": {
+"str": 10
+},
+"suffix": "of Blocking"
+},
+"167": {
+"stats": {
+"agi": 8
+},
+"suffix": ""
+},
+"1670": {
+"stats": {
+"str": 10
+},
+"suffix": "of Blocking"
+},
+"1671": {
+"stats": {
+"str": 10
+},
+"suffix": "of Blocking"
+},
+"1672": {
+"stats": {
+"str": 11
+},
+"suffix": "of Blocking"
+},
+"1673": {
+"stats": {
+"str": 11
+},
+"suffix": "of Blocking"
+},
+"1674": {
+"stats": {
+"str": 12
+},
+"suffix": "of Blocking"
+},
+"1675": {
+"stats": {
+"str": 12
+},
+"suffix": "of Blocking"
+},
+"1676": {
+"stats": {
+"str": 12
+},
+"suffix": "of Blocking"
+},
+"1677": {
+"stats": {
+"str": 12
+},
+"suffix": "of Blocking"
+},
+"1678": {
+"stats": {
+"str": 12
+},
+"suffix": "of Blocking"
+},
+"1679": {
+"stats": {
+"str": 12
+},
+"suffix": "of Blocking"
+},
+"168": {
+"stats": {
+"agi": 9
+},
+"suffix": ""
+},
+"1680": {
+"stats": {
+"str": 12
+},
+"suffix": "of Blocking"
+},
+"1681": {
+"stats": {
+"str": 12
+},
+"suffix": "of Blocking"
+},
+"1682": {
+"stats": {
+"str": 13
+},
+"suffix": "of Blocking"
+},
+"1683": {
+"stats": {
+"str": 13
+},
+"suffix": "of Blocking"
+},
+"1684": {
+"stats": {
+"str": 14
+},
+"suffix": "of Blocking"
+},
+"1685": {
+"stats": {
+"str": 14
+},
+"suffix": "of Blocking"
+},
+"1686": {
+"stats": {
+"str": 14
+},
+"suffix": "of Blocking"
+},
+"1687": {
+"stats": {
+"str": 14
+},
+"suffix": "of Blocking"
+},
+"1688": {
+"stats": {
+"str": 15
+},
+"suffix": "of Blocking"
+},
+"1689": {
+"stats": {
+"str": 15
+},
+"suffix": "of Blocking"
+},
+"1690": {
+"stats": {
+"str": 16
+},
+"suffix": "of Blocking"
+},
+"1691": {
+"stats": {
+"str": 16
+},
+"suffix": "of Blocking"
+},
+"1692": {
+"stats": {
+"str": 16
+},
+"suffix": "of Blocking"
+},
+"1693": {
+"stats": {
+"str": 16
+},
+"suffix": "of Blocking"
+},
+"1694": {
+"stats": {
+"str": 17
+},
+"suffix": "of Blocking"
+},
+"1695": {
+"stats": {
+"str": 17
+},
+"suffix": "of Blocking"
+},
+"1696": {
+"stats": {
+"str": 18
+},
+"suffix": "of Blocking"
+},
+"1697": {
+"stats": {
+"str": 18
+},
+"suffix": "of Blocking"
+},
+"1698": {
+"stats": {
+"str": 18
+},
+"suffix": "of Blocking"
+},
+"1699": {
+"stats": {
+"str": 18
+},
+"suffix": "of Blocking"
+},
+"17": {
+"stats": {
+"agi": 2
+},
+"suffix": "of Agility"
+},
+"1700": {
+"stats": {
+"str": 19
+},
+"suffix": "of Blocking"
+},
+"1701": {
+"stats": {
+"str": 19
+},
+"suffix": "of Blocking"
+},
+"1702": {
+"stats": {
+"str": 20
+},
+"suffix": "of Blocking"
+},
+"1703": {
+"stats": {
+"str": 20
+},
+"suffix": "of Blocking"
+},
+"171": {
+"stats": {
+"agi": 10
+},
+"suffix": ""
+},
+"172": {
+"stats": {
+"agi": 11
+},
+"suffix": ""
+},
+"173": {
+"stats": {
+"agi": 12
+},
+"suffix": ""
+},
+"174": {
+"stats": {
+"int": 8
+},
+"suffix": ""
+},
+"1748": {
+"stats": {
+"agi": 1
+},
+"suffix": "of Eluding"
+},
+"1749": {
+"stats": {
+"agi": 1
+},
+"suffix": "of Eluding"
+},
+"175": {
+"stats": {
+"int": 9
+},
+"suffix": ""
+},
+"1750": {
+"stats": {
+"agi": 1
+},
+"suffix": "of Eluding"
+},
+"1751": {
+"stats": {
+"agi": 2
+},
+"suffix": "of Eluding"
+},
+"1752": {
+"stats": {
+"agi": 2
+},
+"suffix": "of Eluding"
+},
+"1753": {
+"stats": {
+"agi": 2
+},
+"suffix": "of Eluding"
+},
+"1754": {
+"stats": {
+"agi": 3
+},
+"suffix": "of Eluding"
+},
+"1755": {
+"stats": {
+"agi": 3
+},
+"suffix": "of Eluding"
+},
+"1756": {
+"stats": {
+"agi": 3
+},
+"suffix": "of Eluding"
+},
+"1757": {
+"stats": {
+"agi": 4
+},
+"suffix": "of Eluding"
+},
+"1758": {
+"stats": {
+"agi": 4
+},
+"suffix": "of Eluding"
+},
+"1759": {
+"stats": {
+"agi": 4
+},
+"suffix": "of Eluding"
+},
+"176": {
+"stats": {
+"int": 10
+},
+"suffix": ""
+},
+"1760": {
+"stats": {
+"agi": 5
+},
+"suffix": "of Eluding"
+},
+"1761": {
+"stats": {
+"agi": 5
+},
+"suffix": "of Eluding"
+},
+"1762": {
+"stats": {
+"agi": 5
+},
+"suffix": "of Eluding"
+},
+"1763": {
+"stats": {
+"agi": 6
+},
+"suffix": "of Eluding"
+},
+"1764": {
+"stats": {
+"agi": 6
+},
+"suffix": "of Eluding"
+},
+"1765": {
+"stats": {
+"agi": 6
+},
+"suffix": "of Eluding"
+},
+"1766": {
+"stats": {
+"agi": 7
+},
+"suffix": "of Eluding"
+},
+"1767": {
+"stats": {
+"agi": 7
+},
+"suffix": "of Eluding"
+},
+"1768": {
+"stats": {
+"agi": 7
+},
+"suffix": "of Eluding"
+},
+"1769": {
+"stats": {
+"agi": 8
+},
+"suffix": "of Eluding"
+},
+"177": {
+"stats": {
+"int": 11
+},
+"suffix": ""
+},
+"1770": {
+"stats": {
+"agi": 8
+},
+"suffix": "of Eluding"
+},
+"1771": {
+"stats": {
+"agi": 8
+},
+"suffix": "of Eluding"
+},
+"1772": {
+"stats": {
+"agi": 9
+},
+"suffix": "of Eluding"
+},
+"1773": {
+"stats": {
+"agi": 9
+},
+"suffix": "of Eluding"
+},
+"1774": {
+"stats": {
+"agi": 9
+},
+"suffix": "of Eluding"
+},
+"1775": {
+"stats": {
+"agi": 9
+},
+"suffix": "of Eluding"
+},
+"1776": {
+"stats": {
+"agi": 9
+},
+"suffix": "of Eluding"
+},
+"1777": {
+"stats": {
+"agi": 9
+},
+"suffix": "of Eluding"
+},
+"1778": {
+"stats": {
+"agi": 9
+},
+"suffix": "of Eluding"
+},
+"1779": {
+"stats": {
+"agi": 9
+},
+"suffix": "of Eluding"
+},
+"178": {
+"stats": {
+"int": 12
+},
+"suffix": ""
+},
+"1780": {
+"stats": {
+"agi": 10
+},
+"suffix": "of Eluding"
+},
+"1781": {
+"stats": {
+"agi": 10
+},
+"suffix": "of Eluding"
+},
+"1782": {
+"stats": {
+"agi": 10
+},
+"suffix": "of Eluding"
+},
+"1783": {
+"stats": {
+"agi": 11
+},
+"suffix": "of Eluding"
+},
+"1784": {
+"stats": {
+"agi": 11
+},
+"suffix": "of Eluding"
+},
+"1785": {
+"stats": {
+"agi": 11
+},
+"suffix": "of Eluding"
+},
+"1786": {
+"stats": {
+"agi": 12
+},
+"suffix": "of Eluding"
+},
+"1787": {
+"stats": {
+"agi": 12
+},
+"suffix": "of Eluding"
+},
+"1788": {
+"stats": {
+"agi": 12
+},
+"suffix": "of Eluding"
+},
+"1789": {
+"stats": {
+"agi": 12
+},
+"suffix": "of Eluding"
+},
+"179": {
+"stats": {
+"spi": 8
+},
+"suffix": ""
+},
+"1790": {
+"stats": {
+"agi": 13
+},
+"suffix": "of Eluding"
+},
+"1791": {
+"stats": {
+"agi": 13
+},
+"suffix": "of Eluding"
+},
+"1792": {
+"stats": {
+"agi": 13
+},
+"suffix": "of Eluding"
+},
+"1793": {
+"stats": {
+"agi": 14
+},
+"suffix": "of Eluding"
+},
+"1794": {
+"stats": {
+"agi": 14
+},
+"suffix": "of Eluding"
+},
+"1795": {
+"stats": {
+"agi": 14
+},
+"suffix": "of Eluding"
+},
+"1796": {
+"stats": {
+"agi": 14
+},
+"suffix": "of Eluding"
+},
+"1797": {
+"stats": {
+"agi": 15
+},
+"suffix": "of Eluding"
+},
+"1798": {
+"stats": {
+"agi": 15
+},
+"suffix": "of Eluding"
+},
+"18": {
+"stats": {
+"agi": 3
+},
+"suffix": "of Agility"
+},
+"180": {
+"stats": {
+"spi": 9
+},
+"suffix": ""
+},
+"181": {
+"stats": {
+"spi": 10
+},
+"suffix": ""
+},
+"182": {
+"stats": {
+"spi": 11
+},
+"suffix": ""
+},
+"183": {
+"stats": {
+"spi": 12
+},
+"suffix": ""
+},
+"184": {
+"stats": {
+"sta": 8
+},
+"suffix": ""
+},
+"185": {
+"stats": {
+"sta": 9
+},
+"suffix": ""
+},
+"186": {
+"stats": {
+"sta": 10
+},
+"suffix": ""
+},
+"187": {
+"stats": {
+"sta": 11
+},
+"suffix": ""
+},
+"188": {
+"stats": {
+"sta": 12
+},
+"suffix": ""
+},
+"189": {
+"stats": {
+"str": 8
+},
+"suffix": ""
+},
+"19": {
+"stats": {
+"sta": 2
+},
+"suffix": "of Stamina"
+},
+"190": {
+"stats": {
+"str": 9
+},
+"suffix": ""
+},
+"191": {
+"stats": {
+"str": 10
+},
+"suffix": ""
+},
+"192": {
+"stats": {
+"str": 11
+},
+"suffix": ""
+},
+"193": {
+"stats": {
+"str": 12
+},
+"suffix": ""
+},
+"2027": {
+"stats": {
+"heal": 2
+},
+"suffix": "of Healing"
+},
+"2028": {
+"stats": {
+"heal": 4
+},
+"suffix": "of Healing"
+},
+"2029": {
+"stats": {
+"heal": 7
+},
+"suffix": "of Healing"
+},
+"2030": {
+"stats": {
+"heal": 9
+},
+"suffix": "of Healing"
+},
+"2031": {
+"stats": {
+"heal": 11
+},
+"suffix": "of Healing"
+},
+"2032": {
+"stats": {
+"heal": 13
+},
+"suffix": "of Healing"
+},
+"2033": {
+"stats": {
+"heal": 15
+},
+"suffix": "of Healing"
+},
+"2034": {
+"stats": {
+"heal": 18
+},
+"suffix": "of Healing"
+},
+"2035": {
+"stats": {
+"heal": 20
+},
+"suffix": "of Healing"
+},
+"2036": {
+"stats": {
+"heal": 22
+},
+"suffix": "of Healing"
+},
+"2037": {
+"stats": {
+"heal": 24
+},
+"suffix": "of Healing"
+},
+"2038": {
+"stats": {
+"heal": 26
+},
+"suffix": "of Healing"
+},
+"2039": {
+"stats": {
+"heal": 29
+},
+"suffix": "of Healing"
+},
+"2040": {
+"stats": {
+"heal": 31
+},
+"suffix": "of Healing"
+},
+"2041": {
+"stats": {
+"heal": 33
+},
+"suffix": "of Healing"
+},
+"2042": {
+"stats": {
+"heal": 35
+},
+"suffix": "of Healing"
+},
+"2043": {
+"stats": {
+"heal": 37
+},
+"suffix": "of Healing"
+},
+"2044": {
+"stats": {
+"heal": 40
+},
+"suffix": "of Healing"
+},
+"2045": {
+"stats": {
+"heal": 42
+},
+"suffix": "of Healing"
+},
+"2046": {
+"stats": {
+"heal": 44
+},
+"suffix": "of Healing"
+},
+"2047": {
+"stats": {
+"heal": 46
+},
+"suffix": "of Healing"
+},
+"2048": {
+"stats": {
+"heal": 48
+},
+"suffix": "of Healing"
+},
+"2049": {
+"stats": {
+"heal": 51
+},
+"suffix": "of Healing"
+},
+"2050": {
+"stats": {
+"heal": 53
+},
+"suffix": "of Healing"
+},
+"2051": {
+"stats": {
+"heal": 55
+},
+"suffix": "of Healing"
+},
+"2052": {
+"stats": {
+"heal": 57
+},
+"suffix": "of Healing"
+},
+"2053": {
+"stats": {
+"heal": 59
+},
+"suffix": "of Healing"
+},
+"2054": {
+"stats": {
+"heal": 62
+},
+"suffix": "of Healing"
+},
+"2055": {
+"stats": {
+"heal": 64
+},
+"suffix": "of Healing"
+},
+"2056": {
+"stats": {
+"heal": 66
+},
+"suffix": "of Healing"
+},
+"2057": {
+"stats": {
+"heal": 68
+},
+"suffix": "of Healing"
+},
+"2058": {
+"stats": {
+"heal": 70
+},
+"suffix": "of Healing"
+},
+"2059": {
+"stats": {
+"heal": 73
+},
+"suffix": "of Healing"
+},
+"2060": {
+"stats": {
+"heal": 75
+},
+"suffix": "of Healing"
+},
+"2061": {
+"stats": {
+"heal": 77
+},
+"suffix": "of Healing"
+},
+"2062": {
+"stats": {
+"heal": 79
+},
+"suffix": "of Healing"
+},
+"2063": {
+"stats": {
+"heal": 81
+},
+"suffix": "of Healing"
+},
+"2064": {
+"stats": {
+"heal": 84
+},
+"suffix": "of Healing"
+},
+"211": {
+"stats": {
+"agi": 13
+},
+"suffix": ""
+},
+"212": {
+"stats": {
+"agi": 14
+},
+"suffix": ""
+},
+"213": {
+"stats": {
+"int": 13
+},
+"suffix": ""
+},
+"214": {
+"stats": {
+"int": 14
+},
+"suffix": ""
+},
+"2143": {
+"stats": {
+"int": 10,
+"sp": 12,
+"sta": 11
+},
+"suffix": ""
+},
+"2144": {
+"stats": {
+"int": 10,
+"sp": 12,
+"sta": 11
+},
+"suffix": ""
+},
+"2145": {
+"stats": {
+"int": 10,
+"sp": 13,
+"sta": 10
+},
+"suffix": ""
+},
+"2146": {
+"stats": {
+"heal": 22,
+"sta": 10
+},
+"suffix": ""
+},
+"2147": {
+"stats": {
+"heal": 22,
+"sta": 11
+},
+"suffix": ""
+},
+"2148": {
+"stats": {
+"heal": 24,
+"sta": 10
+},
+"suffix": ""
+},
+"2149": {
+"stats": {
+"agi": 10,
+"sta": 10,
+"str": 11
+},
+"suffix": ""
+},
+"215": {
+"stats": {
+"spi": 13
+},
+"suffix": ""
+},
+"2150": {
+"stats": {
+"agi": 11,
+"sta": 10,
+"str": 10
+},
+"suffix": ""
+},
+"2151": {
+"stats": {
+"agi": 10,
+"sta": 11,
+"str": 10
+},
+"suffix": ""
+},
+"2152": {
+"stats": {
+"int": 11,
+"sp": 13,
+"sta": 11
+},
+"suffix": ""
+},
+"2153": {
+"stats": {
+"heal": 24,
+"sta": 11
+},
+"suffix": ""
+},
+"2154": {
+"stats": {
+"agi": 11,
+"sta": 11,
+"str": 11
+},
+"suffix": ""
+},
+"2155": {
+"stats": {
+"int": 15,
+"sp": 18,
+"sta": 15
+},
+"suffix": ""
+},
+"2156": {
+"stats": {
+"heal": 33,
+"sta": 15
+},
+"suffix": ""
+},
+"2157": {
+"stats": {
+"agi": 15,
+"sta": 15,
+"str": 15
+},
+"suffix": ""
+},
+"2158": {
+"stats": {
+"agi": 13,
+"sta": 13,
+"str": 13
+},
+"suffix": ""
+},
+"2159": {
+"stats": {
+"int": 13,
+"sp": 15,
+"sta": 13
+},
+"suffix": ""
+},
+"216": {
+"stats": {
+"spi": 14
+},
+"suffix": ""
+},
+"2160": {
+"stats": {
+"heal": 29,
+"sta": 13
+},
+"suffix": ""
+},
+"2161": {
+"stats": {
+"int": 11,
+"sp": 14,
+"sta": 11
+},
+"suffix": ""
+},
+"2162": {
+"stats": {
+"heal": 26,
+"sta": 11
+},
+"suffix": ""
+},
+"2163": {
+"stats": {
+"agi": 11,
+"sta": 12,
+"str": 11
+},
+"suffix": ""
+},
+"217": {
+"stats": {
+"sta": 13
+},
+"suffix": ""
+},
+"218": {
+"stats": {
+"sta": 14
+},
+"suffix": ""
+},
+"219": {
+"stats": {
+"str": 13
+},
+"suffix": ""
+},
+"22": {
+"stats": {
+"sta": 3
+},
+"suffix": "of Stamina"
+},
+"220": {
+"stats": {
+"str": 14
+},
+"suffix": ""
+},
+"227": {
+"stats": {
+"agi": 1,
+"int": 1
+},
+"suffix": ""
+},
+"228": {
+"stats": {
+"agi": 1,
+"spi": 1
+},
+"suffix": ""
+},
+"229": {
+"stats": {
+"agi": 2,
+"int": 1
+},
+"suffix": ""
+},
+"23": {
+"stats": {
+"str": 2
+},
+"suffix": "of Strength"
+},
+"231": {
+"stats": {
+"agi": 1,
+"int": 2
+},
+"suffix": ""
+},
+"232": {
+"stats": {
+"agi": 2,
+"int": 3
+},
+"suffix": ""
+},
+"233": {
+"stats": {
+"agi": 3,
+"int": 2
+},
+"suffix": ""
+},
+"234": {
+"stats": {
+"agi": 3,
+"int": 3
+},
+"suffix": ""
+},
+"235": {
+"stats": {
+"agi": 4,
+"int": 3
+},
+"suffix": ""
+},
+"236": {
+"stats": {
+"agi": 3,
+"int": 4
+},
+"suffix": ""
+},
+"237": {
+"stats": {
+"agi": 4,
+"int": 5
+},
+"suffix": ""
+},
+"238": {
+"stats": {
+"agi": 2,
+"int": 2
+},
+"suffix": ""
+},
+"24": {
+"stats": {
+"str": 3
+},
+"suffix": "of Strength"
+},
+"247": {
+"stats": {
+"agi": 5,
+"int": 5
+},
+"suffix": ""
+},
+"248": {
+"stats": {
+"agi": 4,
+"int": 4
+},
+"suffix": ""
+},
+"249": {
+"stats": {
+"agi": 5,
+"int": 4
+},
+"suffix": ""
+},
+"25": {
+"stats": {
+"int": 2
+},
+"suffix": "of Intellect"
+},
+"250": {
+"stats": {
+"agi": 5,
+"int": 6
+},
+"suffix": ""
+},
+"251": {
+"stats": {
+"agi": 6,
+"int": 6
+},
+"suffix": ""
+},
+"252": {
+"stats": {
+"agi": 6,
+"int": 5
+},
+"suffix": ""
+},
+"253": {
+"stats": {
+"agi": 6,
+"int": 7
+},
+"suffix": ""
+},
+"254": {
+"stats": {
+"agi": 7,
+"int": 7
+},
+"suffix": ""
+},
+"255": {
+"stats": {
+"agi": 7,
+"int": 6
+},
+"suffix": ""
+},
+"256": {
+"stats": {
+"agi": 1,
+"spi": 2
+},
+"suffix": ""
+},
+"26": {
+"stats": {
+"int": 3
+},
+"suffix": "of Intellect"
+},
+"267": {
+"stats": {
+"agi": 15
+},
+"suffix": ""
+},
+"27": {
+"stats": {
+"spi": 2
+},
+"suffix": "of Spirit"
+},
+"28": {
+"stats": {
+"spi": 3
+},
+"suffix": "of Spirit"
+},
+"287": {
+"stats": {
+"sta": 15
+},
+"suffix": "of Stamina"
+},
+"307": {
+"stats": {
+"str": 15
+},
+"suffix": "of Strength"
+},
+"308": {
+"stats": {
+"str": 16
+},
+"suffix": "of Strength"
+},
+"309": {
+"stats": {
+"str": 17
+},
+"suffix": "of Strength"
+},
+"310": {
+"stats": {
+"str": 18
+},
+"suffix": "of Strength"
+},
+"311": {
+"stats": {
+"str": 19
+},
+"suffix": "of Strength"
+},
+"312": {
+"stats": {
+"str": 20
+},
+"suffix": "of Strength"
+},
+"313": {
+"stats": {
+"str": 21
+},
+"suffix": "of Strength"
+},
+"314": {
+"stats": {
+"str": 22
+},
+"suffix": "of Strength"
+},
+"315": {
+"stats": {
+"str": 23
+},
+"suffix": "of Strength"
+},
+"316": {
+"stats": {
+"str": 24
+},
+"suffix": "of Strength"
+},
+"317": {
+"stats": {
+"str": 25
+},
+"suffix": "of Strength"
+},
+"318": {
+"stats": {
+"str": 26
+},
+"suffix": "of Strength"
+},
+"319": {
+"stats": {
+"str": 27
+},
+"suffix": "of Strength"
+},
+"320": {
+"stats": {
+"str": 28
+},
+"suffix": "of Strength"
+},
+"321": {
+"stats": {
+"str": 29
+},
+"suffix": "of Strength"
+},
+"322": {
+"stats": {
+"str": 30
+},
+"suffix": "of Strength"
+},
+"323": {
+"stats": {
+"str": 31
+},
+"suffix": "of Strength"
+},
+"324": {
+"stats": {
+"str": 32
+},
+"suffix": "of Strength"
+},
+"325": {
+"stats": {
+"str": 33
+},
+"suffix": "of Strength"
+},
+"326": {
+"stats": {
+"str": 34
+},
+"suffix": "of Strength"
+},
+"327": {
+"stats": {
+"str": 35
+},
+"suffix": "of Strength"
+},
+"328": {
+"stats": {
+"str": 36
+},
+"suffix": "of Strength"
+},
+"329": {
+"stats": {
+"str": 37
+},
+"suffix": "of Strength"
+},
+"330": {
+"stats": {
+"str": 38
+},
+"suffix": "of Strength"
+},
+"331": {
+"stats": {
+"str": 39
+},
+"suffix": "of Strength"
+},
+"332": {
+"stats": {
+"str": 40
+},
+"suffix": "of Strength"
+},
+"333": {
+"stats": {
+"sta": 16
+},
+"suffix": "of Stamina"
+},
+"334": {
+"stats": {
+"sta": 17
+},
+"suffix": "of Stamina"
+},
+"335": {
+"stats": {
+"sta": 18
+},
+"suffix": "of Stamina"
+},
+"336": {
+"stats": {
+"sta": 19
+},
+"suffix": "of Stamina"
+},
+"337": {
+"stats": {
+"sta": 20
+},
+"suffix": "of Stamina"
+},
+"338": {
+"stats": {
+"sta": 21
+},
+"suffix": "of Stamina"
+},
+"339": {
+"stats": {
+"sta": 22
+},
+"suffix": "of Stamina"
+},
+"340": {
+"stats": {
+"sta": 23
+},
+"suffix": "of Stamina"
+},
+"341": {
+"stats": {
+"sta": 24
+},
+"suffix": "of Stamina"
+},
+"342": {
+"stats": {
+"sta": 25
+},
+"suffix": "of Stamina"
+},
+"343": {
+"stats": {
+"sta": 26
+},
+"suffix": "of Stamina"
+},
+"344": {
+"stats": {
+"sta": 27
+},
+"suffix": "of Stamina"
+},
+"345": {
+"stats": {
+"sta": 28
+},
+"suffix": "of Stamina"
+},
+"346": {
+"stats": {
+"sta": 29
+},
+"suffix": "of Stamina"
+},
+"347": {
+"stats": {
+"sta": 30
+},
+"suffix": "of Stamina"
+},
+"348": {
+"stats": {
+"sta": 31
+},
+"suffix": "of Stamina"
+},
+"349": {
+"stats": {
+"sta": 32
+},
+"suffix": "of Stamina"
+},
+"350": {
+"stats": {
+"sta": 33
+},
+"suffix": "of Stamina"
+},
+"351": {
+"stats": {
+"sta": 34
+},
+"suffix": "of Stamina"
+},
+"352": {
+"stats": {
+"sta": 35
+},
+"suffix": "of Stamina"
+},
+"353": {
+"stats": {
+"sta": 36
+},
+"suffix": "of Stamina"
+},
+"354": {
+"stats": {
+"sta": 37
+},
+"suffix": "of Stamina"
+},
+"355": {
+"stats": {
+"sta": 38
+},
+"suffix": "of Stamina"
+},
+"356": {
+"stats": {
+"sta": 39
+},
+"suffix": "of Stamina"
+},
+"357": {
+"stats": {
+"sta": 40
+},
+"suffix": "of Stamina"
+},
+"358": {
+"stats": {
+"agi": 16
+},
+"suffix": "of Agility"
+},
+"359": {
+"stats": {
+"agi": 17
+},
+"suffix": "of Agility"
+},
+"360": {
+"stats": {
+"agi": 18
+},
+"suffix": "of Agility"
+},
+"361": {
+"stats": {
+"agi": 19
+},
+"suffix": "of Agility"
+},
+"362": {
+"stats": {
+"agi": 20
+},
+"suffix": "of Agility"
+},
+"363": {
+"stats": {
+"agi": 21
+},
+"suffix": "of Agility"
+},
+"364": {
+"stats": {
+"agi": 22
+},
+"suffix": "of Agility"
+},
+"365": {
+"stats": {
+"agi": 23
+},
+"suffix": "of Agility"
+},
+"366": {
+"stats": {
+"agi": 24
+},
+"suffix": "of Agility"
+},
+"367": {
+"stats": {
+"agi": 25
+},
+"suffix": "of Agility"
+},
+"368": {
+"stats": {
+"agi": 26
+},
+"suffix": "of Agility"
+},
+"369": {
+"stats": {
+"agi": 27
+},
+"suffix": "of Agility"
+},
+"370": {
+"stats": {
+"agi": 28
+},
+"suffix": "of Agility"
+},
+"371": {
+"stats": {
+"agi": 29
+},
+"suffix": "of Agility"
+},
+"372": {
+"stats": {
+"agi": 30
+},
+"suffix": "of Agility"
+},
+"373": {
+"stats": {
+"agi": 31
+},
+"suffix": "of Agility"
+},
+"374": {
+"stats": {
+"agi": 32
+},
+"suffix": "of Agility"
+},
+"375": {
+"stats": {
+"agi": 33
+},
+"suffix": "of Agility"
+},
+"376": {
+"stats": {
+"agi": 34
+},
+"suffix": "of Agility"
+},
+"377": {
+"stats": {
+"agi": 35
+},
+"suffix": "of Agility"
+},
+"378": {
+"stats": {
+"agi": 36
+},
+"suffix": "of Agility"
+},
+"379": {
+"stats": {
+"agi": 37
+},
+"suffix": "of Agility"
+},
+"380": {
+"stats": {
+"agi": 38
+},
+"suffix": "of Agility"
+},
+"381": {
+"stats": {
+"agi": 39
+},
+"suffix": "of Agility"
+},
+"382": {
+"stats": {
+"agi": 40
+},
+"suffix": "of Agility"
+},
+"383": {
+"stats": {
+"int": 15
+},
+"suffix": "of Intellect"
+},
+"384": {
+"stats": {
+"int": 16
+},
+"suffix": "of Intellect"
+},
+"385": {
+"stats": {
+"int": 17
+},
+"suffix": "of Intellect"
+},
+"386": {
+"stats": {
+"int": 18
+},
+"suffix": "of Intellect"
+},
+"387": {
+"stats": {
+"int": 19
+},
+"suffix": "of Intellect"
+},
+"388": {
+"stats": {
+"int": 20
+},
+"suffix": "of Intellect"
+},
+"389": {
+"stats": {
+"int": 21
+},
+"suffix": "of Intellect"
+},
+"390": {
+"stats": {
+"int": 22
+},
+"suffix": "of Intellect"
+},
+"391": {
+"stats": {
+"int": 23
+},
+"suffix": "of Intellect"
+},
+"392": {
+"stats": {
+"int": 24
+},
+"suffix": "of Intellect"
+},
+"393": {
+"stats": {
+"int": 25
+},
+"suffix": "of Intellect"
+},
+"394": {
+"stats": {
+"int": 26
+},
+"suffix": "of Intellect"
+},
+"395": {
+"stats": {
+"int": 27
+},
+"suffix": "of Intellect"
+},
+"396": {
+"stats": {
+"int": 28
+},
+"suffix": "of Intellect"
+},
+"397": {
+"stats": {
+"int": 29
+},
+"suffix": "of Intellect"
+},
+"398": {
+"stats": {
+"int": 30
+},
+"suffix": "of Intellect"
+},
+"399": {
+"stats": {
+"int": 31
+},
+"suffix": "of Intellect"
+},
+"400": {
+"stats": {
+"int": 32
+},
+"suffix": "of Intellect"
+},
+"401": {
+"stats": {
+"int": 33
+},
+"suffix": "of Intellect"
+},
+"402": {
+"stats": {
+"int": 34
+},
+"suffix": "of Intellect"
+},
+"403": {
+"stats": {
+"int": 35
+},
+"suffix": "of Intellect"
+},
+"404": {
+"stats": {
+"int": 36
+},
+"suffix": "of Intellect"
+},
+"405": {
+"stats": {
+"int": 37
+},
+"suffix": "of Intellect"
+},
+"406": {
+"stats": {
+"int": 38
+},
+"suffix": "of Intellect"
+},
+"407": {
+"stats": {
+"int": 39
+},
+"suffix": "of Intellect"
+},
+"408": {
+"stats": {
+"int": 40
+},
+"suffix": "of Intellect"
+},
+"409": {
+"stats": {
+"spi": 15
+},
+"suffix": "of Spirit"
+},
+"410": {
+"stats": {
+"spi": 16
+},
+"suffix": "of Spirit"
+},
+"411": {
+"stats": {
+"spi": 17
+},
+"suffix": "of Spirit"
+},
+"412": {
+"stats": {
+"spi": 18
+},
+"suffix": "of Spirit"
+},
+"413": {
+"stats": {
+"spi": 19
+},
+"suffix": "of Spirit"
+},
+"414": {
+"stats": {
+"spi": 20
+},
+"suffix": "of Spirit"
+},
+"415": {
+"stats": {
+"spi": 21
+},
+"suffix": "of Spirit"
+},
+"416": {
+"stats": {
+"spi": 22
+},
+"suffix": "of Spirit"
+},
+"417": {
+"stats": {
+"spi": 23
+},
+"suffix": "of Spirit"
+},
+"418": {
+"stats": {
+"spi": 24
+},
+"suffix": "of Spirit"
+},
+"419": {
+"stats": {
+"spi": 25
+},
+"suffix": "of Spirit"
+},
+"420": {
+"stats": {
+"spi": 26
+},
+"suffix": "of Spirit"
+},
+"421": {
+"stats": {
+"spi": 27
+},
+"suffix": "of Spirit"
+},
+"422": {
+"stats": {
+"spi": 28
+},
+"suffix": "of Spirit"
+},
+"423": {
+"stats": {
+"spi": 29
+},
+"suffix": "of Spirit"
+},
+"424": {
+"stats": {
+"spi": 30
+},
+"suffix": "of Spirit"
+},
+"425": {
+"stats": {
+"spi": 31
+},
+"suffix": "of Spirit"
+},
+"426": {
+"stats": {
+"spi": 32
+},
+"suffix": "of Spirit"
+},
+"427": {
+"stats": {
+"spi": 33
+},
+"suffix": "of Spirit"
+},
+"428": {
+"stats": {
+"spi": 34
+},
+"suffix": "of Spirit"
+},
+"429": {
+"stats": {
+"spi": 36
+},
+"suffix": "of Spirit"
+},
+"430": {
+"stats": {
+"spi": 37
+},
+"suffix": "of Spirit"
+},
+"431": {
+"stats": {
+"spi": 38
+},
+"suffix": "of Spirit"
+},
+"432": {
+"stats": {
+"spi": 39
+},
+"suffix": "of Spirit"
+},
+"433": {
+"stats": {
+"spi": 40
+},
+"suffix": "of Spirit"
+},
+"434": {
+"stats": {
+"spi": 35
+},
+"suffix": "of Spirit"
+},
+"435": {
+"stats": {
+"agi": 8,
+"int": 7
+},
+"suffix": "of the Falcon"
+},
+"436": {
+"stats": {
+"agi": 7,
+"int": 8
+},
+"suffix": "of the Falcon"
+},
+"437": {
+"stats": {
+"agi": 8,
+"int": 8
+},
+"suffix": "of the Falcon"
+},
+"438": {
+"stats": {
+"agi": 9,
+"int": 8
+},
+"suffix": "of the Falcon"
+},
+"439": {
+"stats": {
+"agi": 8,
+"int": 9
+},
+"suffix": "of the Falcon"
+},
+"440": {
+"stats": {
+"agi": 9,
+"int": 9
+},
+"suffix": "of the Falcon"
+},
+"441": {
+"stats": {
+"agi": 10,
+"int": 9
+},
+"suffix": "of the Falcon"
+},
+"442": {
+"stats": {
+"agi": 9,
+"int": 10
+},
+"suffix": "of the Falcon"
+},
+"443": {
+"stats": {
+"agi": 10,
+"int": 10
+},
+"suffix": "of the Falcon"
+},
+"444": {
+"stats": {
+"agi": 11,
+"int": 10
+},
+"suffix": "of the Falcon"
+},
+"445": {
+"stats": {
+"agi": 10,
+"int": 11
+},
+"suffix": "of the Falcon"
+},
+"446": {
+"stats": {
+"agi": 11,
+"int": 11
+},
+"suffix": "of the Falcon"
+},
+"447": {
+"stats": {
+"agi": 12,
+"int": 11
+},
+"suffix": "of the Falcon"
+},
+"448": {
+"stats": {
+"agi": 11,
+"int": 12
+},
+"suffix": "of the Falcon"
+},
+"449": {
+"stats": {
+"agi": 12,
+"int": 12
+},
+"suffix": "of the Falcon"
+},
+"450": {
+"stats": {
+"agi": 13,
+"int": 12
+},
+"suffix": "of the Falcon"
+},
+"451": {
+"stats": {
+"agi": 12,
+"int": 13
+},
+"suffix": "of the Falcon"
+},
+"452": {
+"stats": {
+"agi": 13,
+"int": 13
+},
+"suffix": "of the Falcon"
+},
+"453": {
+"stats": {
+"agi": 14,
+"int": 13
+},
+"suffix": "of the Falcon"
+},
+"454": {
+"stats": {
+"agi": 13,
+"int": 14
+},
+"suffix": "of the Falcon"
+},
+"455": {
+"stats": {
+"agi": 14,
+"int": 14
+},
+"suffix": "of the Falcon"
+},
+"456": {
+"stats": {
+"agi": 15,
+"int": 14
+},
+"suffix": "of the Falcon"
+},
+"457": {
+"stats": {
+"agi": 14,
+"int": 15
+},
+"suffix": "of the Falcon"
+},
+"458": {
+"stats": {
+"agi": 15,
+"int": 15
+},
+"suffix": "of the Falcon"
+},
+"459": {
+"stats": {
+"agi": 16,
+"int": 15
+},
+"suffix": "of the Falcon"
+},
+"460": {
+"stats": {
+"agi": 15,
+"int": 16
+},
+"suffix": "of the Falcon"
+},
+"461": {
+"stats": {
+"agi": 16,
+"int": 16
+},
+"suffix": "of the Falcon"
+},
+"462": {
+"stats": {
+"agi": 17,
+"int": 16
+},
+"suffix": "of the Falcon"
+},
+"463": {
+"stats": {
+"agi": 16,
+"int": 17
+},
+"suffix": "of the Falcon"
+},
+"464": {
+"stats": {
+"agi": 17,
+"int": 17
+},
+"suffix": "of the Falcon"
+},
+"465": {
+"stats": {
+"agi": 18,
+"int": 17
+},
+"suffix": "of the Falcon"
+},
+"466": {
+"stats": {
+"agi": 17,
+"int": 18
+},
+"suffix": "of the Falcon"
+},
+"467": {
+"stats": {
+"agi": 18,
+"int": 18
+},
+"suffix": "of the Falcon"
+},
+"468": {
+"stats": {
+"agi": 19,
+"int": 18
+},
+"suffix": "of the Falcon"
+},
+"469": {
+"stats": {
+"agi": 18,
+"int": 19
+},
+"suffix": "of the Falcon"
+},
+"470": {
+"stats": {
+"agi": 19,
+"int": 19
+},
+"suffix": "of the Falcon"
+},
+"471": {
+"stats": {
+"agi": 20,
+"int": 19
+},
+"suffix": "of the Falcon"
+},
+"472": {
+"stats": {
+"agi": 19,
+"int": 20
+},
+"suffix": "of the Falcon"
+},
+"473": {
+"stats": {
+"agi": 20,
+"int": 20
+},
+"suffix": "of the Falcon"
+},
+"474": {
+"stats": {
+"agi": 21,
+"int": 20
+},
+"suffix": "of the Falcon"
+},
+"475": {
+"stats": {
+"agi": 20,
+"int": 21
+},
+"suffix": "of the Falcon"
+},
+"476": {
+"stats": {
+"agi": 21,
+"int": 21
+},
+"suffix": "of the Falcon"
+},
+"477": {
+"stats": {
+"agi": 22,
+"int": 21
+},
+"suffix": "of the Falcon"
+},
+"478": {
+"stats": {
+"agi": 21,
+"int": 22
+},
+"suffix": "of the Falcon"
+},
+"479": {
+"stats": {
+"agi": 22,
+"int": 22
+},
+"suffix": "of the Falcon"
+},
+"48": {
+"stats": {
+"def": 1
+},
+"suffix": "of Defense"
+},
+"480": {
+"stats": {
+"agi": 23,
+"int": 22
+},
+"suffix": "of the Falcon"
+},
+"481": {
+"stats": {
+"agi": 22,
+"int": 23
+},
+"suffix": "of the Falcon"
+},
+"482": {
+"stats": {
+"agi": 23,
+"int": 23
+},
+"suffix": "of the Falcon"
+},
+"483": {
+"stats": {
+"agi": 24,
+"int": 23
+},
+"suffix": "of the Falcon"
+},
+"484": {
+"stats": {
+"agi": 23,
+"int": 24
+},
+"suffix": "of the Falcon"
+},
+"485": {
+"stats": {
+"agi": 24,
+"int": 24
+},
+"suffix": "of the Falcon"
+},
+"486": {
+"stats": {
+"agi": 25,
+"int": 24
+},
+"suffix": "of the Falcon"
+},
+"487": {
+"stats": {
+"agi": 24,
+"int": 25
+},
+"suffix": "of the Falcon"
+},
+"488": {
+"stats": {
+"agi": 25,
+"int": 25
+},
+"suffix": "of the Falcon"
+},
+"489": {
+"stats": {
+"agi": 26,
+"int": 25
+},
+"suffix": "of the Falcon"
+},
+"490": {
+"stats": {
+"agi": 25,
+"int": 26
+},
+"suffix": "of the Falcon"
+},
+"491": {
+"stats": {
+"agi": 26,
+"int": 26
+},
+"suffix": "of the Falcon"
+},
+"492": {
+"stats": {
+"agi": 27,
+"int": 26
+},
+"suffix": "of the Falcon"
+},
+"493": {
+"stats": {
+"agi": 26,
+"int": 27
+},
+"suffix": "of the Falcon"
+},
+"494": {
+"stats": {
+"agi": 27,
+"int": 27
+},
+"suffix": "of the Falcon"
+},
+"495": {
+"stats": {
+"agi": 28,
+"int": 27
+},
+"suffix": "of the Falcon"
+},
+"496": {
+"stats": {
+"agi": 27,
+"int": 28
+},
+"suffix": "of the Falcon"
+},
+"497": {
+"stats": {
+"agi": 28,
+"int": 28
+},
+"suffix": "of the Falcon"
+},
+"498": {
+"stats": {
+"agi": 29,
+"int": 28
+},
+"suffix": "of the Falcon"
+},
+"499": {
+"stats": {
+"agi": 28,
+"int": 29
+},
+"suffix": "of the Falcon"
+},
+"5": {
+"stats": {
+"int": 1
+},
+"suffix": "of Intellect"
+},
+"500": {
+"stats": {
+"agi": 29,
+"int": 29
+},
+"suffix": "of the Falcon"
+},
+"501": {
+"stats": {
+"agi": 2,
+"spi": 1
+},
+"suffix": "of the Wolf"
+},
+"502": {
+"stats": {
+"agi": 2,
+"spi": 2
+},
+"suffix": "of the Wolf"
+},
+"503": {
+"stats": {
+"agi": 3,
+"spi": 2
+},
+"suffix": "of the Wolf"
+},
+"504": {
+"stats": {
+"agi": 2,
+"spi": 3
+},
+"suffix": "of the Wolf"
+},
+"505": {
+"stats": {
+"agi": 3,
+"spi": 3
+},
+"suffix": "of the Wolf"
+},
+"506": {
+"stats": {
+"agi": 4,
+"spi": 3
+},
+"suffix": "of the Wolf"
+},
+"507": {
+"stats": {
+"agi": 3,
+"spi": 4
+},
+"suffix": "of the Wolf"
+},
+"508": {
+"stats": {
+"agi": 4,
+"spi": 4
+},
+"suffix": "of the Wolf"
+},
+"509": {
+"stats": {
+"agi": 5,
+"spi": 4
+},
+"suffix": "of the Wolf"
+},
+"510": {
+"stats": {
+"agi": 4,
+"spi": 5
+},
+"suffix": "of the Wolf"
+},
+"511": {
+"stats": {
+"agi": 5,
+"spi": 5
+},
+"suffix": "of the Wolf"
+},
+"512": {
+"stats": {
+"agi": 6,
+"spi": 5
+},
+"suffix": "of the Wolf"
+},
+"513": {
+"stats": {
+"agi": 5,
+"spi": 6
+},
+"suffix": "of the Wolf"
+},
+"514": {
+"stats": {
+"agi": 6,
+"spi": 6
+},
+"suffix": "of the Wolf"
+},
+"515": {
+"stats": {
+"agi": 7,
+"spi": 6
+},
+"suffix": "of the Wolf"
+},
+"516": {
+"stats": {
+"agi": 6,
+"spi": 7
+},
+"suffix": "of the Wolf"
+},
+"517": {
+"stats": {
+"agi": 7,
+"spi": 7
+},
+"suffix": "of the Wolf"
+},
+"518": {
+"stats": {
+"agi": 8,
+"spi": 7
+},
+"suffix": "of the Wolf"
+},
+"519": {
+"stats": {
+"agi": 7,
+"spi": 8
+},
+"suffix": "of the Wolf"
+},
+"520": {
+"stats": {
+"agi": 8,
+"spi": 8
+},
+"suffix": "of the Wolf"
+},
+"521": {
+"stats": {
+"agi": 9,
+"spi": 8
+},
+"suffix": "of the Wolf"
+},
+"522": {
+"stats": {
+"agi": 8,
+"spi": 9
+},
+"suffix": "of the Wolf"
+},
+"523": {
+"stats": {
+"agi": 9,
+"spi": 9
+},
+"suffix": "of the Wolf"
+},
+"524": {
+"stats": {
+"agi": 10,
+"spi": 9
+},
+"suffix": "of the Wolf"
+},
+"525": {
+"stats": {
+"agi": 9,
+"spi": 10
+},
+"suffix": "of the Wolf"
+},
+"526": {
+"stats": {
+"agi": 10,
+"spi": 10
+},
+"suffix": "of the Wolf"
+},
+"527": {
+"stats": {
+"agi": 11,
+"spi": 10
+},
+"suffix": "of the Wolf"
+},
+"528": {
+"stats": {
+"agi": 10,
+"spi": 11
+},
+"suffix": "of the Wolf"
+},
+"529": {
+"stats": {
+"agi": 11,
+"spi": 11
+},
+"suffix": "of the Wolf"
+},
+"530": {
+"stats": {
+"agi": 12,
+"spi": 11
+},
+"suffix": "of the Wolf"
+},
+"531": {
+"stats": {
+"agi": 11,
+"spi": 12
+},
+"suffix": "of the Wolf"
+},
+"532": {
+"stats": {
+"agi": 12,
+"spi": 12
+},
+"suffix": "of the Wolf"
+},
+"533": {
+"stats": {
+"agi": 13,
+"spi": 12
+},
+"suffix": "of the Wolf"
+},
+"534": {
+"stats": {
+"agi": 12,
+"spi": 13
+},
+"suffix": "of the Wolf"
+},
+"535": {
+"stats": {
+"agi": 13,
+"spi": 13
+},
+"suffix": "of the Wolf"
+},
+"536": {
+"stats": {
+"agi": 14,
+"spi": 13
+},
+"suffix": "of the Wolf"
+},
+"537": {
+"stats": {
+"agi": 13,
+"spi": 14
+},
+"suffix": "of the Wolf"
+},
+"538": {
+"stats": {
+"agi": 14,
+"spi": 14
+},
+"suffix": "of the Wolf"
+},
+"539": {
+"stats": {
+"agi": 15,
+"spi": 14
+},
+"suffix": "of the Wolf"
+},
+"540": {
+"stats": {
+"agi": 14,
+"spi": 15
+},
+"suffix": "of the Wolf"
+},
+"541": {
+"stats": {
+"agi": 15,
+"spi": 15
+},
+"suffix": "of the Wolf"
+},
+"542": {
+"stats": {
+"agi": 16,
+"spi": 15
+},
+"suffix": "of the Wolf"
+},
+"543": {
+"stats": {
+"agi": 15,
+"spi": 16
+},
+"suffix": "of the Wolf"
+},
+"544": {
+"stats": {
+"agi": 16,
+"spi": 16
+},
+"suffix": "of the Wolf"
+},
+"545": {
+"stats": {
+"agi": 17,
+"spi": 16
+},
+"suffix": "of the Wolf"
+},
+"546": {
+"stats": {
+"agi": 16,
+"spi": 17
+},
+"suffix": "of the Wolf"
+},
+"547": {
+"stats": {
+"agi": 17,
+"spi": 17
+},
+"suffix": "of the Wolf"
+},
+"548": {
+"stats": {
+"agi": 18,
+"spi": 17
+},
+"suffix": "of the Wolf"
+},
+"549": {
+"stats": {
+"agi": 17,
+"spi": 18
+},
+"suffix": "of the Wolf"
+},
+"550": {
+"stats": {
+"agi": 18,
+"spi": 18
+},
+"suffix": "of the Wolf"
+},
+"551": {
+"stats": {
+"agi": 19,
+"spi": 18
+},
+"suffix": "of the Wolf"
+},
+"552": {
+"stats": {
+"agi": 18,
+"spi": 19
+},
+"suffix": "of the Wolf"
+},
+"553": {
+"stats": {
+"agi": 19,
+"spi": 19
+},
+"suffix": "of the Wolf"
+},
+"554": {
+"stats": {
+"agi": 20,
+"spi": 19
+},
+"suffix": "of the Wolf"
+},
+"555": {
+"stats": {
+"agi": 19,
+"spi": 20
+},
+"suffix": "of the Wolf"
+},
+"556": {
+"stats": {
+"agi": 20,
+"spi": 20
+},
+"suffix": "of the Wolf"
+},
+"557": {
+"stats": {
+"agi": 21,
+"spi": 20
+},
+"suffix": "of the Wolf"
+},
+"558": {
+"stats": {
+"agi": 20,
+"spi": 21
+},
+"suffix": "of the Wolf"
+},
+"559": {
+"stats": {
+"agi": 21,
+"spi": 21
+},
+"suffix": "of the Wolf"
+},
+"560": {
+"stats": {
+"agi": 22,
+"spi": 21
+},
+"suffix": "of the Wolf"
+},
+"561": {
+"stats": {
+"agi": 21,
+"spi": 22
+},
+"suffix": "of the Wolf"
+},
+"562": {
+"stats": {
+"agi": 22,
+"spi": 22
+},
+"suffix": "of the Wolf"
+},
+"563": {
+"stats": {
+"agi": 23,
+"spi": 22
+},
+"suffix": "of the Wolf"
+},
+"564": {
+"stats": {
+"agi": 22,
+"spi": 23
+},
+"suffix": "of the Wolf"
+},
+"565": {
+"stats": {
+"agi": 23,
+"spi": 23
+},
+"suffix": "of the Wolf"
+},
+"566": {
+"stats": {
+"agi": 24,
+"spi": 23
+},
+"suffix": "of the Wolf"
+},
+"567": {
+"stats": {
+"agi": 23,
+"spi": 24
+},
+"suffix": "of the Wolf"
+},
+"568": {
+"stats": {
+"agi": 24,
+"spi": 24
+},
+"suffix": "of the Wolf"
+},
+"569": {
+"stats": {
+"agi": 25,
+"spi": 24
+},
+"suffix": "of the Wolf"
+},
+"570": {
+"stats": {
+"agi": 24,
+"spi": 25
+},
+"suffix": "of the Wolf"
+},
+"571": {
+"stats": {
+"agi": 25,
+"spi": 25
+},
+"suffix": "of the Wolf"
+},
+"572": {
+"stats": {
+"agi": 26,
+"spi": 25
+},
+"suffix": "of the Wolf"
+},
+"573": {
+"stats": {
+"agi": 25,
+"spi": 26
+},
+"suffix": "of the Wolf"
+},
+"574": {
+"stats": {
+"agi": 26,
+"spi": 26
+},
+"suffix": "of the Wolf"
+},
+"575": {
+"stats": {
+"agi": 27,
+"spi": 26
+},
+"suffix": "of the Wolf"
+},
+"576": {
+"stats": {
+"agi": 26,
+"spi": 27
+},
+"suffix": "of the Wolf"
+},
+"577": {
+"stats": {
+"agi": 27,
+"spi": 27
+},
+"suffix": "of the Wolf"
+},
+"578": {
+"stats": {
+"agi": 28,
+"spi": 27
+},
+"suffix": "of the Wolf"
+},
+"579": {
+"stats": {
+"agi": 27,
+"spi": 28
+},
+"suffix": "of the Wolf"
+},
+"580": {
+"stats": {
+"agi": 28,
+"spi": 28
+},
+"suffix": "of the Wolf"
+},
+"581": {
+"stats": {
+"agi": 29,
+"spi": 28
+},
+"suffix": "of the Wolf"
+},
+"582": {
+"stats": {
+"agi": 28,
+"spi": 29
+},
+"suffix": "of the Wolf"
+},
+"583": {
+"stats": {
+"agi": 29,
+"spi": 29
+},
+"suffix": "of the Wolf"
+},
+"584": {
+"stats": {
+"agi": 1,
+"sta": 1
+},
+"suffix": "of the Monkey"
+},
+"585": {
+"stats": {
+"agi": 2,
+"sta": 1
+},
+"suffix": "of the Monkey"
+},
+"586": {
+"stats": {
+"agi": 1,
+"sta": 2
+},
+"suffix": "of the Monkey"
+},
+"587": {
+"stats": {
+"agi": 2,
+"sta": 2
+},
+"suffix": "of the Monkey"
+},
+"588": {
+"stats": {
+"agi": 3,
+"sta": 2
+},
+"suffix": "of the Monkey"
+},
+"589": {
+"stats": {
+"agi": 2,
+"sta": 3
+},
+"suffix": "of the Monkey"
+},
+"590": {
+"stats": {
+"agi": 3,
+"sta": 3
+},
+"suffix": "of the Monkey"
+},
+"591": {
+"stats": {
+"agi": 4,
+"sta": 3
+},
+"suffix": "of the Monkey"
+},
+"592": {
+"stats": {
+"agi": 3,
+"sta": 4
+},
+"suffix": "of the Monkey"
+},
+"593": {
+"stats": {
+"agi": 4,
+"sta": 4
+},
+"suffix": "of the Monkey"
+},
+"594": {
+"stats": {
+"agi": 5,
+"sta": 4
+},
+"suffix": "of the Monkey"
+},
+"595": {
+"stats": {
+"agi": 4,
+"sta": 5
+},
+"suffix": "of the Monkey"
+},
+"596": {
+"stats": {
+"agi": 5,
+"sta": 5
+},
+"suffix": "of the Monkey"
+},
+"597": {
+"stats": {
+"agi": 6,
+"sta": 5
+},
+"suffix": "of the Monkey"
+},
+"598": {
+"stats": {
+"agi": 5,
+"sta": 6
+},
+"suffix": "of the Monkey"
+},
+"599": {
+"stats": {
+"agi": 6,
+"sta": 6
+},
+"suffix": "of the Monkey"
+},
+"6": {
+"stats": {
+"str": 1
+},
+"suffix": "of Strength"
+},
+"600": {
+"stats": {
+"agi": 7,
+"sta": 6
+},
+"suffix": "of the Monkey"
+},
+"601": {
+"stats": {
+"agi": 6,
+"sta": 7
+},
+"suffix": "of the Monkey"
+},
+"602": {
+"stats": {
+"agi": 7,
+"sta": 7
+},
+"suffix": "of the Monkey"
+},
+"603": {
+"stats": {
+"agi": 8,
+"sta": 7
+},
+"suffix": "of the Monkey"
+},
+"604": {
+"stats": {
+"agi": 7,
+"sta": 8
+},
+"suffix": "of the Monkey"
+},
+"605": {
+"stats": {
+"agi": 8,
+"sta": 8
+},
+"suffix": "of the Monkey"
+},
+"606": {
+"stats": {
+"agi": 9,
+"sta": 8
+},
+"suffix": "of the Monkey"
+},
+"607": {
+"stats": {
+"agi": 8,
+"sta": 9
+},
+"suffix": "of the Monkey"
+},
+"608": {
+"stats": {
+"agi": 9,
+"sta": 9
+},
+"suffix": "of the Monkey"
+},
+"609": {
+"stats": {
+"agi": 10,
+"sta": 9
+},
+"suffix": "of the Monkey"
+},
+"610": {
+"stats": {
+"agi": 9,
+"sta": 10
+},
+"suffix": "of the Monkey"
+},
+"611": {
+"stats": {
+"agi": 10,
+"sta": 10
+},
+"suffix": "of the Monkey"
+},
+"612": {
+"stats": {
+"agi": 11,
+"sta": 10
+},
+"suffix": "of the Monkey"
+},
+"613": {
+"stats": {
+"agi": 10,
+"sta": 11
+},
+"suffix": "of the Monkey"
+},
+"614": {
+"stats": {
+"agi": 11,
+"sta": 11
+},
+"suffix": "of the Monkey"
+},
+"615": {
+"stats": {
+"agi": 12,
+"sta": 11
+},
+"suffix": "of the Monkey"
+},
+"616": {
+"stats": {
+"agi": 11,
+"sta": 12
+},
+"suffix": "of the Monkey"
+},
+"617": {
+"stats": {
+"agi": 12,
+"sta": 12
+},
+"suffix": "of the Monkey"
+},
+"618": {
+"stats": {
+"agi": 13,
+"sta": 12
+},
+"suffix": "of the Monkey"
+},
+"619": {
+"stats": {
+"agi": 12,
+"sta": 13
+},
+"suffix": "of the Monkey"
+},
+"62": {
+"stats": {
+"def": 1
+},
+"suffix": "of Defense"
+},
+"620": {
+"stats": {
+"agi": 13,
+"sta": 13
+},
+"suffix": "of the Monkey"
+},
+"621": {
+"stats": {
+"agi": 14,
+"sta": 13
+},
+"suffix": "of the Monkey"
+},
+"622": {
+"stats": {
+"agi": 13,
+"sta": 14
+},
+"suffix": "of the Monkey"
+},
+"623": {
+"stats": {
+"agi": 14,
+"sta": 14
+},
+"suffix": "of the Monkey"
+},
+"624": {
+"stats": {
+"agi": 15,
+"sta": 14
+},
+"suffix": "of the Monkey"
+},
+"625": {
+"stats": {
+"agi": 14,
+"sta": 15
+},
+"suffix": "of the Monkey"
+},
+"626": {
+"stats": {
+"agi": 15,
+"sta": 15
+},
+"suffix": "of the Monkey"
+},
+"627": {
+"stats": {
+"agi": 16,
+"sta": 15
+},
+"suffix": "of the Monkey"
+},
+"628": {
+"stats": {
+"agi": 15,
+"sta": 16
+},
+"suffix": "of the Monkey"
+},
+"629": {
+"stats": {
+"agi": 16,
+"sta": 16
+},
+"suffix": "of the Monkey"
+},
+"630": {
+"stats": {
+"agi": 17,
+"sta": 16
+},
+"suffix": "of the Monkey"
+},
+"631": {
+"stats": {
+"agi": 16,
+"sta": 17
+},
+"suffix": "of the Monkey"
+},
+"632": {
+"stats": {
+"agi": 17,
+"sta": 17
+},
+"suffix": "of the Monkey"
+},
+"633": {
+"stats": {
+"agi": 18,
+"sta": 17
+},
+"suffix": "of the Monkey"
+},
+"634": {
+"stats": {
+"agi": 17,
+"sta": 18
+},
+"suffix": "of the Monkey"
+},
+"635": {
+"stats": {
+"agi": 18,
+"sta": 18
+},
+"suffix": "of the Monkey"
+},
+"636": {
+"stats": {
+"agi": 19,
+"sta": 18
+},
+"suffix": "of the Monkey"
+},
+"637": {
+"stats": {
+"agi": 18,
+"sta": 19
+},
+"suffix": "of the Monkey"
+},
+"638": {
+"stats": {
+"agi": 19,
+"sta": 19
+},
+"suffix": "of the Monkey"
+},
+"639": {
+"stats": {
+"agi": 20,
+"sta": 19
+},
+"suffix": "of the Monkey"
+},
+"640": {
+"stats": {
+"agi": 19,
+"sta": 20
+},
+"suffix": "of the Monkey"
+},
+"641": {
+"stats": {
+"agi": 20,
+"sta": 20
+},
+"suffix": "of the Monkey"
+},
+"642": {
+"stats": {
+"agi": 21,
+"sta": 20
+},
+"suffix": "of the Monkey"
+},
+"643": {
+"stats": {
+"agi": 20,
+"sta": 21
+},
+"suffix": "of the Monkey"
+},
+"644": {
+"stats": {
+"agi": 21,
+"sta": 21
+},
+"suffix": "of the Monkey"
+},
+"645": {
+"stats": {
+"agi": 22,
+"sta": 21
+},
+"suffix": "of the Monkey"
+},
+"646": {
+"stats": {
+"agi": 21,
+"sta": 22
+},
+"suffix": "of the Monkey"
+},
+"647": {
+"stats": {
+"agi": 22,
+"sta": 22
+},
+"suffix": "of the Monkey"
+},
+"648": {
+"stats": {
+"agi": 23,
+"sta": 22
+},
+"suffix": "of the Monkey"
+},
+"649": {
+"stats": {
+"agi": 22,
+"sta": 23
+},
+"suffix": "of the Monkey"
+},
+"650": {
+"stats": {
+"agi": 23,
+"sta": 23
+},
+"suffix": "of the Monkey"
+},
+"651": {
+"stats": {
+"agi": 24,
+"sta": 23
+},
+"suffix": "of the Monkey"
+},
+"652": {
+"stats": {
+"agi": 23,
+"sta": 24
+},
+"suffix": "of the Monkey"
+},
+"653": {
+"stats": {
+"agi": 24,
+"sta": 24
+},
+"suffix": "of the Monkey"
+},
+"654": {
+"stats": {
+"agi": 25,
+"sta": 24
+},
+"suffix": "of the Monkey"
+},
+"655": {
+"stats": {
+"agi": 24,
+"sta": 25
+},
+"suffix": "of the Monkey"
+},
+"656": {
+"stats": {
+"agi": 25,
+"sta": 25
+},
+"suffix": "of the Monkey"
+},
+"657": {
+"stats": {
+"agi": 26,
+"sta": 25
+},
+"suffix": "of the Monkey"
+},
+"658": {
+"stats": {
+"agi": 25,
+"sta": 26
+},
+"suffix": "of the Monkey"
+},
+"659": {
+"stats": {
+"agi": 26,
+"sta": 26
+},
+"suffix": "of the Monkey"
+},
+"660": {
+"stats": {
+"agi": 27,
+"sta": 26
+},
+"suffix": "of the Monkey"
+},
+"661": {
+"stats": {
+"agi": 26,
+"sta": 27
+},
+"suffix": "of the Monkey"
+},
+"662": {
+"stats": {
+"agi": 27,
+"sta": 27
+},
+"suffix": "of the Monkey"
+},
+"663": {
+"stats": {
+"agi": 28,
+"sta": 27
+},
+"suffix": "of the Monkey"
+},
+"664": {
+"stats": {
+"agi": 27,
+"sta": 28
+},
+"suffix": "of the Monkey"
+},
+"665": {
+"stats": {
+"agi": 28,
+"sta": 28
+},
+"suffix": "of the Monkey"
+},
+"666": {
+"stats": {
+"agi": 29,
+"sta": 28
+},
+"suffix": "of the Monkey"
+},
+"667": {
+"stats": {
+"agi": 28,
+"sta": 29
+},
+"suffix": "of the Monkey"
+},
+"668": {
+"stats": {
+"agi": 29,
+"sta": 29
+},
+"suffix": "of the Monkey"
+},
+"669": {
+"stats": {
+"agi": 1,
+"str": 1
+},
+"suffix": "of the Tiger"
+},
+"670": {
+"stats": {
+"agi": 2,
+"str": 1
+},
+"suffix": "of the Tiger"
+},
+"671": {
+"stats": {
+"agi": 1,
+"str": 2
+},
+"suffix": "of the Tiger"
+},
+"672": {
+"stats": {
+"agi": 2,
+"str": 2
+},
+"suffix": "of the Tiger"
+},
+"673": {
+"stats": {
+"agi": 3,
+"str": 2
+},
+"suffix": "of the Tiger"
+},
+"674": {
+"stats": {
+"agi": 2,
+"str": 3
+},
+"suffix": "of the Tiger"
+},
+"675": {
+"stats": {
+"agi": 3,
+"str": 3
+},
+"suffix": "of the Tiger"
+},
+"676": {
+"stats": {
+"agi": 4,
+"str": 3
+},
+"suffix": "of the Tiger"
+},
+"677": {
+"stats": {
+"agi": 3,
+"str": 4
+},
+"suffix": "of the Tiger"
+},
+"678": {
+"stats": {
+"agi": 4,
+"str": 4
+},
+"suffix": "of the Tiger"
+},
+"679": {
+"stats": {
+"agi": 5,
+"str": 4
+},
+"suffix": "of the Tiger"
+},
+"680": {
+"stats": {
+"agi": 4,
+"str": 5
+},
+"suffix": "of the Tiger"
+},
+"681": {
+"stats": {
+"agi": 5,
+"str": 5
+},
+"suffix": "of the Tiger"
+},
+"682": {
+"stats": {
+"agi": 6,
+"str": 5
+},
+"suffix": "of the Tiger"
+},
+"683": {
+"stats": {
+"agi": 5,
+"str": 6
+},
+"suffix": "of the Tiger"
+},
+"684": {
+"stats": {
+"agi": 6,
+"str": 6
+},
+"suffix": "of the Tiger"
+},
+"685": {
+"stats": {
+"agi": 7,
+"str": 6
+},
+"suffix": "of the Tiger"
+},
+"686": {
+"stats": {
+"agi": 6,
+"str": 7
+},
+"suffix": "of the Tiger"
+},
+"687": {
+"stats": {
+"agi": 7,
+"str": 7
+},
+"suffix": "of the Tiger"
+},
+"688": {
+"stats": {
+"agi": 8,
+"str": 7
+},
+"suffix": "of the Tiger"
+},
+"689": {
+"stats": {
+"agi": 7,
+"str": 8
+},
+"suffix": "of the Tiger"
+},
+"690": {
+"stats": {
+"agi": 8,
+"str": 8
+},
+"suffix": "of the Tiger"
+},
+"691": {
+"stats": {
+"agi": 9,
+"str": 8
+},
+"suffix": "of the Tiger"
+},
+"692": {
+"stats": {
+"agi": 8,
+"str": 9
+},
+"suffix": "of the Tiger"
+},
+"693": {
+"stats": {
+"agi": 9,
+"str": 9
+},
+"suffix": "of the Tiger"
+},
+"694": {
+"stats": {
+"agi": 10,
+"str": 9
+},
+"suffix": "of the Tiger"
+},
+"695": {
+"stats": {
+"agi": 9,
+"str": 10
+},
+"suffix": "of the Tiger"
+},
+"696": {
+"stats": {
+"agi": 10,
+"str": 10
+},
+"suffix": "of the Tiger"
+},
+"697": {
+"stats": {
+"agi": 11,
+"str": 10
+},
+"suffix": "of the Tiger"
+},
+"698": {
+"stats": {
+"agi": 10,
+"str": 11
+},
+"suffix": "of the Tiger"
+},
+"699": {
+"stats": {
+"agi": 11,
+"str": 11
+},
+"suffix": "of the Tiger"
+},
+"700": {
+"stats": {
+"agi": 12,
+"str": 11
+},
+"suffix": "of the Tiger"
+},
+"701": {
+"stats": {
+"agi": 11,
+"str": 12
+},
+"suffix": "of the Tiger"
+},
+"702": {
+"stats": {
+"agi": 12,
+"str": 12
+},
+"suffix": "of the Tiger"
+},
+"703": {
+"stats": {
+"agi": 13,
+"str": 12
+},
+"suffix": "of the Tiger"
+},
+"704": {
+"stats": {
+"agi": 12,
+"str": 13
+},
+"suffix": "of the Tiger"
+},
+"705": {
+"stats": {
+"agi": 13,
+"str": 13
+},
+"suffix": "of the Tiger"
+},
+"706": {
+"stats": {
+"agi": 14,
+"str": 13
+},
+"suffix": "of the Tiger"
+},
+"707": {
+"stats": {
+"agi": 13,
+"str": 14
+},
+"suffix": "of the Tiger"
+},
+"708": {
+"stats": {
+"agi": 14,
+"str": 14
+},
+"suffix": "of the Tiger"
+},
+"709": {
+"stats": {
+"agi": 15,
+"str": 14
+},
+"suffix": "of the Tiger"
+},
+"710": {
+"stats": {
+"agi": 14,
+"str": 15
+},
+"suffix": "of the Tiger"
+},
+"711": {
+"stats": {
+"agi": 15,
+"str": 15
+},
+"suffix": "of the Tiger"
+},
+"712": {
+"stats": {
+"agi": 16,
+"str": 15
+},
+"suffix": "of the Tiger"
+},
+"713": {
+"stats": {
+"agi": 15,
+"str": 16
+},
+"suffix": "of the Tiger"
+},
+"714": {
+"stats": {
+"agi": 16,
+"str": 16
+},
+"suffix": "of the Tiger"
+},
+"715": {
+"stats": {
+"agi": 17,
+"str": 16
+},
+"suffix": "of the Tiger"
+},
+"716": {
+"stats": {
+"agi": 16,
+"str": 17
+},
+"suffix": "of the Tiger"
+},
+"717": {
+"stats": {
+"agi": 17,
+"str": 17
+},
+"suffix": "of the Tiger"
+},
+"718": {
+"stats": {
+"agi": 18,
+"str": 17
+},
+"suffix": "of the Tiger"
+},
+"719": {
+"stats": {
+"agi": 17,
+"str": 18
+},
+"suffix": "of the Tiger"
+},
+"720": {
+"stats": {
+"agi": 18,
+"str": 18
+},
+"suffix": "of the Tiger"
+},
+"721": {
+"stats": {
+"agi": 19,
+"str": 18
+},
+"suffix": "of the Tiger"
+},
+"722": {
+"stats": {
+"agi": 18,
+"str": 19
+},
+"suffix": "of the Tiger"
+},
+"723": {
+"stats": {
+"agi": 19,
+"str": 19
+},
+"suffix": "of the Tiger"
+},
+"724": {
+"stats": {
+"agi": 20,
+"str": 19
+},
+"suffix": "of the Tiger"
+},
+"725": {
+"stats": {
+"agi": 19,
+"str": 20
+},
+"suffix": "of the Tiger"
+},
+"726": {
+"stats": {
+"agi": 20,
+"str": 20
+},
+"suffix": "of the Tiger"
+},
+"727": {
+"stats": {
+"agi": 21,
+"str": 20
+},
+"suffix": "of the Tiger"
+},
+"728": {
+"stats": {
+"agi": 20,
+"str": 21
+},
+"suffix": "of the Tiger"
+},
+"729": {
+"stats": {
+"agi": 21,
+"str": 21
+},
+"suffix": "of the Tiger"
+},
+"730": {
+"stats": {
+"agi": 22,
+"str": 21
+},
+"suffix": "of the Tiger"
+},
+"731": {
+"stats": {
+"agi": 21,
+"str": 22
+},
+"suffix": "of the Tiger"
+},
+"732": {
+"stats": {
+"agi": 22,
+"str": 22
+},
+"suffix": "of the Tiger"
+},
+"733": {
+"stats": {
+"agi": 23,
+"str": 22
+},
+"suffix": "of the Tiger"
+},
+"734": {
+"stats": {
+"agi": 22,
+"str": 23
+},
+"suffix": "of the Tiger"
+},
+"735": {
+"stats": {
+"agi": 23,
+"str": 23
+},
+"suffix": "of the Tiger"
+},
+"736": {
+"stats": {
+"agi": 24,
+"str": 23
+},
+"suffix": "of the Tiger"
+},
+"737": {
+"stats": {
+"agi": 23,
+"str": 24
+},
+"suffix": "of the Tiger"
+},
+"738": {
+"stats": {
+"agi": 24,
+"str": 24
+},
+"suffix": "of the Tiger"
+},
+"739": {
+"stats": {
+"agi": 25,
+"str": 24
+},
+"suffix": "of the Tiger"
+},
+"74": {
+"stats": {
+"def": 2
+},
+"suffix": "of Defense"
+},
+"740": {
+"stats": {
+"agi": 24,
+"str": 25
+},
+"suffix": "of the Tiger"
+},
+"741": {
+"stats": {
+"agi": 25,
+"str": 25
+},
+"suffix": "of the Tiger"
+},
+"742": {
+"stats": {
+"agi": 26,
+"str": 25
+},
+"suffix": "of the Tiger"
+},
+"743": {
+"stats": {
+"agi": 25,
+"str": 26
+},
+"suffix": "of the Tiger"
+},
+"744": {
+"stats": {
+"agi": 26,
+"str": 26
+},
+"suffix": "of the Tiger"
+},
+"745": {
+"stats": {
+"agi": 27,
+"str": 26
+},
+"suffix": "of the Tiger"
+},
+"746": {
+"stats": {
+"agi": 26,
+"str": 27
+},
+"suffix": "of the Tiger"
+},
+"747": {
+"stats": {
+"agi": 27,
+"str": 27
+},
+"suffix": "of the Tiger"
+},
+"748": {
+"stats": {
+"agi": 28,
+"str": 27
+},
+"suffix": "of the Tiger"
+},
+"749": {
+"stats": {
+"agi": 27,
+"str": 28
+},
+"suffix": "of the Tiger"
+},
+"750": {
+"stats": {
+"agi": 28,
+"str": 28
+},
+"suffix": "of the Tiger"
+},
+"751": {
+"stats": {
+"agi": 29,
+"str": 28
+},
+"suffix": "of the Tiger"
+},
+"752": {
+"stats": {
+"agi": 28,
+"str": 29
+},
+"suffix": "of the Tiger"
+},
+"753": {
+"stats": {
+"agi": 29,
+"str": 29
+},
+"suffix": "of the Tiger"
+},
+"754": {
+"stats": {
+"int": 1,
+"spi": 1
+},
+"suffix": "of the Owl"
+},
+"755": {
+"stats": {
+"int": 2,
+"spi": 1
+},
+"suffix": "of the Owl"
+},
+"756": {
+"stats": {
+"int": 1,
+"spi": 2
+},
+"suffix": "of the Owl"
+},
+"757": {
+"stats": {
+"int": 2,
+"spi": 2
+},
+"suffix": "of the Owl"
+},
+"758": {
+"stats": {
+"int": 3,
+"spi": 2
+},
+"suffix": "of the Owl"
+},
+"759": {
+"stats": {
+"int": 2,
+"spi": 3
+},
+"suffix": "of the Owl"
+},
+"760": {
+"stats": {
+"int": 3,
+"spi": 3
+},
+"suffix": "of the Owl"
+},
+"761": {
+"stats": {
+"int": 4,
+"spi": 3
+},
+"suffix": "of the Owl"
+},
+"762": {
+"stats": {
+"int": 3,
+"spi": 4
+},
+"suffix": "of the Owl"
+},
+"763": {
+"stats": {
+"int": 4,
+"spi": 4
+},
+"suffix": "of the Owl"
+},
+"764": {
+"stats": {
+"int": 5,
+"spi": 4
+},
+"suffix": "of the Owl"
+},
+"765": {
+"stats": {
+"int": 4,
+"spi": 5
+},
+"suffix": "of the Owl"
+},
+"766": {
+"stats": {
+"int": 5,
+"spi": 5
+},
+"suffix": "of the Owl"
+},
+"767": {
+"stats": {
+"int": 6,
+"spi": 5
+},
+"suffix": "of the Owl"
+},
+"768": {
+"stats": {
+"int": 5,
+"spi": 6
+},
+"suffix": "of the Owl"
+},
+"769": {
+"stats": {
+"int": 6,
+"spi": 6
+},
+"suffix": "of the Owl"
+},
+"770": {
+"stats": {
+"int": 7,
+"spi": 6
+},
+"suffix": "of the Owl"
+},
+"771": {
+"stats": {
+"int": 6,
+"spi": 7
+},
+"suffix": "of the Owl"
+},
+"772": {
+"stats": {
+"int": 7,
+"spi": 7
+},
+"suffix": "of the Owl"
+},
+"773": {
+"stats": {
+"int": 8,
+"spi": 7
+},
+"suffix": "of the Owl"
+},
+"774": {
+"stats": {
+"int": 7,
+"spi": 8
+},
+"suffix": "of the Owl"
+},
+"775": {
+"stats": {
+"int": 8,
+"spi": 8
+},
+"suffix": "of the Owl"
+},
+"776": {
+"stats": {
+"int": 9,
+"spi": 8
+},
+"suffix": "of the Owl"
+},
+"777": {
+"stats": {
+"int": 8,
+"spi": 9
+},
+"suffix": "of the Owl"
+},
+"778": {
+"stats": {
+"int": 9,
+"spi": 9
+},
+"suffix": "of the Owl"
+},
+"779": {
+"stats": {
+"int": 10,
+"spi": 9
+},
+"suffix": "of the Owl"
+},
+"780": {
+"stats": {
+"int": 9,
+"spi": 10
+},
+"suffix": "of the Owl"
+},
+"781": {
+"stats": {
+"int": 10,
+"spi": 10
+},
+"suffix": "of the Owl"
+},
+"782": {
+"stats": {
+"int": 11,
+"spi": 10
+},
+"suffix": "of the Owl"
+},
+"783": {
+"stats": {
+"int": 10,
+"spi": 11
+},
+"suffix": "of the Owl"
+},
+"784": {
+"stats": {
+"int": 11,
+"spi": 11
+},
+"suffix": "of the Owl"
+},
+"785": {
+"stats": {
+"int": 12,
+"spi": 11
+},
+"suffix": "of the Owl"
+},
+"786": {
+"stats": {
+"int": 11,
+"spi": 12
+},
+"suffix": "of the Owl"
+},
+"787": {
+"stats": {
+"int": 12,
+"spi": 12
+},
+"suffix": "of the Owl"
+},
+"788": {
+"stats": {
+"int": 13,
+"spi": 12
+},
+"suffix": "of the Owl"
+},
+"789": {
+"stats": {
+"int": 12,
+"spi": 13
+},
+"suffix": "of the Owl"
+},
+"790": {
+"stats": {
+"int": 13,
+"spi": 13
+},
+"suffix": "of the Owl"
+},
+"791": {
+"stats": {
+"int": 14,
+"spi": 13
+},
+"suffix": "of the Owl"
+},
+"792": {
+"stats": {
+"int": 13,
+"spi": 14
+},
+"suffix": "of the Owl"
+},
+"793": {
+"stats": {
+"int": 14,
+"spi": 14
+},
+"suffix": "of the Owl"
+},
+"794": {
+"stats": {
+"int": 15,
+"spi": 14
+},
+"suffix": "of the Owl"
+},
+"795": {
+"stats": {
+"int": 14,
+"spi": 15
+},
+"suffix": "of the Owl"
+},
+"796": {
+"stats": {
+"int": 15,
+"spi": 15
+},
+"suffix": "of the Owl"
+},
+"797": {
+"stats": {
+"int": 16,
+"spi": 15
+},
+"suffix": "of the Owl"
+},
+"798": {
+"stats": {
+"int": 15,
+"spi": 16
+},
+"suffix": "of the Owl"
+},
+"799": {
+"stats": {
+"int": 16,
+"spi": 16
+},
+"suffix": "of the Owl"
+},
+"800": {
+"stats": {
+"int": 17,
+"spi": 16
+},
+"suffix": "of the Owl"
+},
+"801": {
+"stats": {
+"int": 16,
+"spi": 17
+},
+"suffix": "of the Owl"
+},
+"802": {
+"stats": {
+"int": 17,
+"spi": 17
+},
+"suffix": "of the Owl"
+},
+"803": {
+"stats": {
+"int": 18,
+"spi": 17
+},
+"suffix": "of the Owl"
+},
+"804": {
+"stats": {
+"int": 17,
+"spi": 18
+},
+"suffix": "of the Owl"
+},
+"805": {
+"stats": {
+"int": 18,
+"spi": 18
+},
+"suffix": "of the Owl"
+},
+"806": {
+"stats": {
+"int": 19,
+"spi": 18
+},
+"suffix": "of the Owl"
+},
+"807": {
+"stats": {
+"int": 18,
+"spi": 19
+},
+"suffix": "of the Owl"
+},
+"808": {
+"stats": {
+"int": 19,
+"spi": 19
+},
+"suffix": "of the Owl"
+},
+"809": {
+"stats": {
+"int": 20,
+"spi": 19
+},
+"suffix": "of the Owl"
+},
+"810": {
+"stats": {
+"int": 19,
+"spi": 20
+},
+"suffix": "of the Owl"
+},
+"811": {
+"stats": {
+"int": 20,
+"spi": 20
+},
+"suffix": "of the Owl"
+},
+"812": {
+"stats": {
+"int": 21,
+"spi": 20
+},
+"suffix": "of the Owl"
+},
+"813": {
+"stats": {
+"int": 20,
+"spi": 21
+},
+"suffix": "of the Owl"
+},
+"814": {
+"stats": {
+"int": 21,
+"spi": 21
+},
+"suffix": "of the Owl"
+},
+"815": {
+"stats": {
+"int": 22,
+"spi": 21
+},
+"suffix": "of the Owl"
+},
+"816": {
+"stats": {
+"int": 21,
+"spi": 22
+},
+"suffix": "of the Owl"
+},
+"817": {
+"stats": {
+"int": 22,
+"spi": 22
+},
+"suffix": "of the Owl"
+},
+"818": {
+"stats": {
+"int": 23,
+"spi": 22
+},
+"suffix": "of the Owl"
+},
+"819": {
+"stats": {
+"int": 22,
+"spi": 23
+},
+"suffix": "of the Owl"
+},
+"820": {
+"stats": {
+"int": 23,
+"spi": 23
+},
+"suffix": "of the Owl"
+},
+"821": {
+"stats": {
+"int": 24,
+"spi": 23
+},
+"suffix": "of the Owl"
+},
+"822": {
+"stats": {
+"int": 23,
+"spi": 24
+},
+"suffix": "of the Owl"
+},
+"823": {
+"stats": {
+"int": 24,
+"spi": 24
+},
+"suffix": "of the Owl"
+},
+"824": {
+"stats": {
+"int": 25,
+"spi": 24
+},
+"suffix": "of the Owl"
+},
+"825": {
+"stats": {
+"int": 24,
+"spi": 25
+},
+"suffix": "of the Owl"
+},
+"826": {
+"stats": {
+"int": 25,
+"spi": 25
+},
+"suffix": "of the Owl"
+},
+"827": {
+"stats": {
+"int": 26,
+"spi": 25
+},
+"suffix": "of the Owl"
+},
+"828": {
+"stats": {
+"int": 25,
+"spi": 26
+},
+"suffix": "of the Owl"
+},
+"829": {
+"stats": {
+"int": 26,
+"spi": 26
+},
+"suffix": "of the Owl"
+},
+"830": {
+"stats": {
+"int": 27,
+"spi": 26
+},
+"suffix": "of the Owl"
+},
+"831": {
+"stats": {
+"int": 26,
+"spi": 27
+},
+"suffix": "of the Owl"
+},
+"832": {
+"stats": {
+"int": 27,
+"spi": 27
+},
+"suffix": "of the Owl"
+},
+"833": {
+"stats": {
+"int": 28,
+"spi": 27
+},
+"suffix": "of the Owl"
+},
+"834": {
+"stats": {
+"int": 27,
+"spi": 28
+},
+"suffix": "of the Owl"
+},
+"835": {
+"stats": {
+"int": 28,
+"spi": 28
+},
+"suffix": "of the Owl"
+},
+"836": {
+"stats": {
+"int": 29,
+"spi": 28
+},
+"suffix": "of the Owl"
+},
+"837": {
+"stats": {
+"int": 28,
+"spi": 29
+},
+"suffix": "of the Owl"
+},
+"838": {
+"stats": {
+"int": 29,
+"spi": 29
+},
+"suffix": "of the Owl"
+},
+"839": {
+"stats": {
+"int": 1,
+"sta": 1
+},
+"suffix": "of the Eagle"
+},
+"840": {
+"stats": {
+"int": 2,
+"sta": 1
+},
+"suffix": "of the Eagle"
+},
+"841": {
+"stats": {
+"int": 1,
+"sta": 2
+},
+"suffix": "of the Eagle"
+},
+"842": {
+"stats": {
+"int": 2,
+"sta": 2
+},
+"suffix": "of the Eagle"
+},
+"843": {
+"stats": {
+"int": 3,
+"sta": 2
+},
+"suffix": "of the Eagle"
+},
+"844": {
+"stats": {
+"int": 2,
+"sta": 3
+},
+"suffix": "of the Eagle"
+},
+"845": {
+"stats": {
+"int": 3,
+"sta": 3
+},
+"suffix": "of the Eagle"
+},
+"846": {
+"stats": {
+"int": 4,
+"sta": 3
+},
+"suffix": "of the Eagle"
+},
+"847": {
+"stats": {
+"int": 3,
+"sta": 4
+},
+"suffix": "of the Eagle"
+},
+"848": {
+"stats": {
+"int": 4,
+"sta": 4
+},
+"suffix": "of the Eagle"
+},
+"849": {
+"stats": {
+"int": 5,
+"sta": 4
+},
+"suffix": "of the Eagle"
+},
+"850": {
+"stats": {
+"int": 4,
+"sta": 5
+},
+"suffix": "of the Eagle"
+},
+"851": {
+"stats": {
+"int": 5,
+"sta": 5
+},
+"suffix": "of the Eagle"
+},
+"852": {
+"stats": {
+"int": 6,
+"sta": 5
+},
+"suffix": "of the Eagle"
+},
+"853": {
+"stats": {
+"int": 5,
+"sta": 6
+},
+"suffix": "of the Eagle"
+},
+"854": {
+"stats": {
+"int": 6,
+"sta": 6
+},
+"suffix": "of the Eagle"
+},
+"855": {
+"stats": {
+"int": 7,
+"sta": 6
+},
+"suffix": "of the Eagle"
+},
+"856": {
+"stats": {
+"int": 6,
+"sta": 7
+},
+"suffix": "of the Eagle"
+},
+"857": {
+"stats": {
+"int": 7,
+"sta": 7
+},
+"suffix": "of the Eagle"
+},
+"858": {
+"stats": {
+"int": 8,
+"sta": 7
+},
+"suffix": "of the Eagle"
+},
+"859": {
+"stats": {
+"int": 7,
+"sta": 8
+},
+"suffix": "of the Eagle"
+},
+"860": {
+"stats": {
+"int": 8,
+"sta": 8
+},
+"suffix": "of the Eagle"
+},
+"861": {
+"stats": {
+"int": 9,
+"sta": 8
+},
+"suffix": "of the Eagle"
+},
+"862": {
+"stats": {
+"int": 8,
+"sta": 9
+},
+"suffix": "of the Eagle"
+},
+"863": {
+"stats": {
+"int": 9,
+"sta": 9
+},
+"suffix": "of the Eagle"
+},
+"864": {
+"stats": {
+"int": 10,
+"sta": 9
+},
+"suffix": "of the Eagle"
+},
+"865": {
+"stats": {
+"int": 9,
+"sta": 10
+},
+"suffix": "of the Eagle"
+},
+"866": {
+"stats": {
+"int": 10,
+"sta": 10
+},
+"suffix": "of the Eagle"
+},
+"867": {
+"stats": {
+"int": 11,
+"sta": 10
+},
+"suffix": "of the Eagle"
+},
+"868": {
+"stats": {
+"int": 10,
+"sta": 11
+},
+"suffix": "of the Eagle"
+},
+"869": {
+"stats": {
+"int": 11,
+"sta": 11
+},
+"suffix": "of the Eagle"
+},
+"870": {
+"stats": {
+"int": 12,
+"sta": 11
+},
+"suffix": "of the Eagle"
+},
+"871": {
+"stats": {
+"int": 11,
+"sta": 12
+},
+"suffix": "of the Eagle"
+},
+"872": {
+"stats": {
+"int": 12,
+"sta": 12
+},
+"suffix": "of the Eagle"
+},
+"873": {
+"stats": {
+"int": 13,
+"sta": 12
+},
+"suffix": "of the Eagle"
+},
+"874": {
+"stats": {
+"int": 12,
+"sta": 13
+},
+"suffix": "of the Eagle"
+},
+"875": {
+"stats": {
+"int": 13,
+"sta": 13
+},
+"suffix": "of the Eagle"
+},
+"876": {
+"stats": {
+"int": 14,
+"sta": 13
+},
+"suffix": "of the Eagle"
+},
+"877": {
+"stats": {
+"int": 13,
+"sta": 14
+},
+"suffix": "of the Eagle"
+},
+"878": {
+"stats": {
+"int": 14,
+"sta": 14
+},
+"suffix": "of the Eagle"
+},
+"879": {
+"stats": {
+"int": 15,
+"sta": 14
+},
+"suffix": "of the Eagle"
+},
+"880": {
+"stats": {
+"int": 14,
+"sta": 15
+},
+"suffix": "of the Eagle"
+},
+"881": {
+"stats": {
+"int": 15,
+"sta": 15
+},
+"suffix": "of the Eagle"
+},
+"882": {
+"stats": {
+"int": 16,
+"sta": 15
+},
+"suffix": "of the Eagle"
+},
+"883": {
+"stats": {
+"int": 15,
+"sta": 16
+},
+"suffix": "of the Eagle"
+},
+"884": {
+"stats": {
+"int": 16,
+"sta": 16
+},
+"suffix": "of the Eagle"
+},
+"885": {
+"stats": {
+"int": 17,
+"sta": 16
+},
+"suffix": "of the Eagle"
+},
+"886": {
+"stats": {
+"int": 16,
+"sta": 17
+},
+"suffix": "of the Eagle"
+},
+"887": {
+"stats": {
+"int": 17,
+"sta": 17
+},
+"suffix": "of the Eagle"
+},
+"888": {
+"stats": {
+"int": 18,
+"sta": 17
+},
+"suffix": "of the Eagle"
+},
+"889": {
+"stats": {
+"int": 17,
+"sta": 18
+},
+"suffix": "of the Eagle"
+},
+"89": {
+"stats": {
+"def": 3
+},
+"suffix": "of Defense"
+},
+"890": {
+"stats": {
+"int": 18,
+"sta": 18
+},
+"suffix": "of the Eagle"
+},
+"891": {
+"stats": {
+"int": 19,
+"sta": 18
+},
+"suffix": "of the Eagle"
+},
+"892": {
+"stats": {
+"int": 18,
+"sta": 19
+},
+"suffix": "of the Eagle"
+},
+"893": {
+"stats": {
+"int": 19,
+"sta": 19
+},
+"suffix": "of the Eagle"
+},
+"894": {
+"stats": {
+"int": 20,
+"sta": 19
+},
+"suffix": "of the Eagle"
+},
+"895": {
+"stats": {
+"int": 19,
+"sta": 20
+},
+"suffix": "of the Eagle"
+},
+"896": {
+"stats": {
+"int": 20,
+"sta": 20
+},
+"suffix": "of the Eagle"
+},
+"897": {
+"stats": {
+"int": 21,
+"sta": 20
+},
+"suffix": "of the Eagle"
+},
+"898": {
+"stats": {
+"int": 20,
+"sta": 21
+},
+"suffix": "of the Eagle"
+},
+"899": {
+"stats": {
+"int": 21,
+"sta": 21
+},
+"suffix": "of the Eagle"
+},
+"900": {
+"stats": {
+"int": 22,
+"sta": 21
+},
+"suffix": "of the Eagle"
+},
+"901": {
+"stats": {
+"int": 21,
+"sta": 22
+},
+"suffix": "of the Eagle"
+},
+"902": {
+"stats": {
+"int": 22,
+"sta": 22
+},
+"suffix": "of the Eagle"
+},
+"903": {
+"stats": {
+"int": 23,
+"sta": 22
+},
+"suffix": "of the Eagle"
+},
+"904": {
+"stats": {
+"int": 22,
+"sta": 23
+},
+"suffix": "of the Eagle"
+},
+"905": {
+"stats": {
+"int": 23,
+"sta": 23
+},
+"suffix": "of the Eagle"
+},
+"906": {
+"stats": {
+"int": 24,
+"sta": 23
+},
+"suffix": "of the Eagle"
+},
+"907": {
+"stats": {
+"int": 23,
+"sta": 24
+},
+"suffix": "of the Eagle"
+},
+"908": {
+"stats": {
+"int": 24,
+"sta": 24
+},
+"suffix": "of the Eagle"
+},
+"909": {
+"stats": {
+"int": 25,
+"sta": 24
+},
+"suffix": "of the Eagle"
+},
+"910": {
+"stats": {
+"int": 24,
+"sta": 25
+},
+"suffix": "of the Eagle"
+},
+"911": {
+"stats": {
+"int": 25,
+"sta": 25
+},
+"suffix": "of the Eagle"
+},
+"912": {
+"stats": {
+"int": 26,
+"sta": 25
+},
+"suffix": "of the Eagle"
+},
+"913": {
+"stats": {
+"int": 25,
+"sta": 26
+},
+"suffix": "of the Eagle"
+},
+"914": {
+"stats": {
+"int": 26,
+"sta": 26
+},
+"suffix": "of the Eagle"
+},
+"915": {
+"stats": {
+"int": 27,
+"sta": 26
+},
+"suffix": "of the Eagle"
+},
+"916": {
+"stats": {
+"int": 26,
+"sta": 27
+},
+"suffix": "of the Eagle"
+},
+"917": {
+"stats": {
+"int": 27,
+"sta": 27
+},
+"suffix": "of the Eagle"
+},
+"918": {
+"stats": {
+"int": 28,
+"sta": 27
+},
+"suffix": "of the Eagle"
+},
+"919": {
+"stats": {
+"int": 27,
+"sta": 28
+},
+"suffix": "of the Eagle"
+},
+"920": {
+"stats": {
+"int": 28,
+"sta": 28
+},
+"suffix": "of the Eagle"
+},
+"921": {
+"stats": {
+"int": 29,
+"sta": 28
+},
+"suffix": "of the Eagle"
+},
+"922": {
+"stats": {
+"int": 28,
+"sta": 29
+},
+"suffix": "of the Eagle"
+},
+"923": {
+"stats": {
+"int": 29,
+"sta": 29
+},
+"suffix": "of the Eagle"
+},
+"924": {
+"stats": {
+"int": 1,
+"str": 1
+},
+"suffix": "of the Gorilla"
+},
+"925": {
+"stats": {
+"int": 2,
+"str": 1
+},
+"suffix": "of the Gorilla"
+},
+"926": {
+"stats": {
+"int": 1,
+"str": 2
+},
+"suffix": "of the Gorilla"
+},
+"927": {
+"stats": {
+"int": 2,
+"str": 2
+},
+"suffix": "of the Gorilla"
+},
+"928": {
+"stats": {
+"int": 3,
+"str": 2
+},
+"suffix": "of the Gorilla"
+},
+"929": {
+"stats": {
+"int": 2,
+"str": 3
+},
+"suffix": "of the Gorilla"
+},
+"93": {
+"stats": {
+"agi": 4
+},
+"suffix": "of Agility"
+},
+"930": {
+"stats": {
+"int": 3,
+"str": 3
+},
+"suffix": "of the Gorilla"
+},
+"931": {
+"stats": {
+"int": 4,
+"str": 3
+},
+"suffix": "of the Gorilla"
+},
+"932": {
+"stats": {
+"int": 3,
+"str": 4
+},
+"suffix": "of the Gorilla"
+},
+"933": {
+"stats": {
+"int": 4,
+"str": 4
+},
+"suffix": "of the Gorilla"
+},
+"934": {
+"stats": {
+"int": 5,
+"str": 4
+},
+"suffix": "of the Gorilla"
+},
+"935": {
+"stats": {
+"int": 4,
+"str": 5
+},
+"suffix": "of the Gorilla"
+},
+"936": {
+"stats": {
+"int": 5,
+"str": 5
+},
+"suffix": "of the Gorilla"
+},
+"937": {
+"stats": {
+"int": 6,
+"str": 5
+},
+"suffix": "of the Gorilla"
+},
+"938": {
+"stats": {
+"int": 5,
+"str": 6
+},
+"suffix": "of the Gorilla"
+},
+"939": {
+"stats": {
+"int": 6,
+"str": 6
+},
+"suffix": "of the Gorilla"
+},
+"94": {
+"stats": {
+"int": 4
+},
+"suffix": "of Intellect"
+},
+"940": {
+"stats": {
+"int": 7,
+"str": 6
+},
+"suffix": "of the Gorilla"
+},
+"941": {
+"stats": {
+"int": 6,
+"str": 7
+},
+"suffix": "of the Gorilla"
+},
+"942": {
+"stats": {
+"int": 7,
+"str": 7
+},
+"suffix": "of the Gorilla"
+},
+"943": {
+"stats": {
+"int": 8,
+"str": 7
+},
+"suffix": "of the Gorilla"
+},
+"944": {
+"stats": {
+"int": 7,
+"str": 8
+},
+"suffix": "of the Gorilla"
+},
+"945": {
+"stats": {
+"int": 8,
+"str": 8
+},
+"suffix": "of the Gorilla"
+},
+"946": {
+"stats": {
+"int": 9,
+"str": 8
+},
+"suffix": "of the Gorilla"
+},
+"947": {
+"stats": {
+"int": 8,
+"str": 9
+},
+"suffix": "of the Gorilla"
+},
+"948": {
+"stats": {
+"int": 9,
+"str": 9
+},
+"suffix": "of the Gorilla"
+},
+"949": {
+"stats": {
+"int": 10,
+"str": 9
+},
+"suffix": "of the Gorilla"
+},
+"95": {
+"stats": {
+"spi": 4
+},
+"suffix": "of Spirit"
+},
+"950": {
+"stats": {
+"int": 9,
+"str": 10
+},
+"suffix": "of the Gorilla"
+},
+"951": {
+"stats": {
+"int": 10,
+"str": 10
+},
+"suffix": "of the Gorilla"
+},
+"952": {
+"stats": {
+"int": 11,
+"str": 10
+},
+"suffix": "of the Gorilla"
+},
+"953": {
+"stats": {
+"int": 10,
+"str": 11
+},
+"suffix": "of the Gorilla"
+},
+"954": {
+"stats": {
+"int": 11,
+"str": 11
+},
+"suffix": "of the Gorilla"
+},
+"955": {
+"stats": {
+"int": 12,
+"str": 11
+},
+"suffix": "of the Gorilla"
+},
+"956": {
+"stats": {
+"int": 11,
+"str": 12
+},
+"suffix": "of the Gorilla"
+},
+"957": {
+"stats": {
+"int": 12,
+"str": 12
+},
+"suffix": "of the Gorilla"
+},
+"958": {
+"stats": {
+"int": 13,
+"str": 12
+},
+"suffix": "of the Gorilla"
+},
+"959": {
+"stats": {
+"int": 12,
+"str": 13
+},
+"suffix": "of the Gorilla"
+},
+"96": {
+"stats": {
+"sta": 4
+},
+"suffix": "of Stamina"
+},
+"960": {
+"stats": {
+"int": 13,
+"str": 13
+},
+"suffix": "of the Gorilla"
+},
+"961": {
+"stats": {
+"int": 14,
+"str": 13
+},
+"suffix": "of the Gorilla"
+},
+"962": {
+"stats": {
+"int": 13,
+"str": 14
+},
+"suffix": "of the Gorilla"
+},
+"963": {
+"stats": {
+"int": 14,
+"str": 14
+},
+"suffix": "of the Gorilla"
+},
+"964": {
+"stats": {
+"int": 15,
+"str": 14
+},
+"suffix": "of the Gorilla"
+},
+"965": {
+"stats": {
+"int": 14,
+"str": 15
+},
+"suffix": "of the Gorilla"
+},
+"966": {
+"stats": {
+"int": 15,
+"str": 15
+},
+"suffix": "of the Gorilla"
+},
+"967": {
+"stats": {
+"int": 16,
+"str": 15
+},
+"suffix": "of the Gorilla"
+},
+"968": {
+"stats": {
+"int": 15,
+"str": 16
+},
+"suffix": "of the Gorilla"
+},
+"969": {
+"stats": {
+"int": 16,
+"str": 16
+},
+"suffix": "of the Gorilla"
+},
+"97": {
+"stats": {
+"str": 4
+},
+"suffix": "of Strength"
+},
+"970": {
+"stats": {
+"int": 17,
+"str": 16
+},
+"suffix": "of the Gorilla"
+},
+"971": {
+"stats": {
+"int": 16,
+"str": 17
+},
+"suffix": "of the Gorilla"
+},
+"972": {
+"stats": {
+"int": 17,
+"str": 17
+},
+"suffix": "of the Gorilla"
+},
+"973": {
+"stats": {
+"int": 18,
+"str": 17
+},
+"suffix": "of the Gorilla"
+},
+"974": {
+"stats": {
+"int": 17,
+"str": 18
+},
+"suffix": "of the Gorilla"
+},
+"975": {
+"stats": {
+"int": 18,
+"str": 18
+},
+"suffix": "of the Gorilla"
+},
+"976": {
+"stats": {
+"int": 19,
+"str": 18
+},
+"suffix": "of the Gorilla"
+},
+"977": {
+"stats": {
+"int": 18,
+"str": 19
+},
+"suffix": "of the Gorilla"
+},
+"978": {
+"stats": {
+"int": 19,
+"str": 19
+},
+"suffix": "of the Gorilla"
+},
+"979": {
+"stats": {
+"int": 20,
+"str": 19
+},
+"suffix": "of the Gorilla"
+},
+"980": {
+"stats": {
+"int": 19,
+"str": 20
+},
+"suffix": "of the Gorilla"
+},
+"981": {
+"stats": {
+"int": 20,
+"str": 20
+},
+"suffix": "of the Gorilla"
+},
+"982": {
+"stats": {
+"int": 21,
+"str": 20
+},
+"suffix": "of the Gorilla"
+},
+"983": {
+"stats": {
+"int": 20,
+"str": 21
+},
+"suffix": "of the Gorilla"
+},
+"984": {
+"stats": {
+"int": 21,
+"str": 21
+},
+"suffix": "of the Gorilla"
+},
+"985": {
+"stats": {
+"int": 22,
+"str": 21
+},
+"suffix": "of the Gorilla"
+},
+"986": {
+"stats": {
+"int": 21,
+"str": 22
+},
+"suffix": "of the Gorilla"
+},
+"987": {
+"stats": {
+"int": 22,
+"str": 22
+},
+"suffix": "of the Gorilla"
+},
+"988": {
+"stats": {
+"int": 23,
+"str": 22
+},
+"suffix": "of the Gorilla"
+},
+"989": {
+"stats": {
+"int": 22,
+"str": 23
+},
+"suffix": "of the Gorilla"
+},
+"990": {
+"stats": {
+"int": 23,
+"str": 23
+},
+"suffix": "of the Gorilla"
+},
+"991": {
+"stats": {
+"int": 24,
+"str": 23
+},
+"suffix": "of the Gorilla"
+},
+"992": {
+"stats": {
+"int": 23,
+"str": 24
+},
+"suffix": "of the Gorilla"
+},
+"993": {
+"stats": {
+"int": 24,
+"str": 24
+},
+"suffix": "of the Gorilla"
+},
+"994": {
+"stats": {
+"int": 25,
+"str": 24
+},
+"suffix": "of the Gorilla"
+},
+"995": {
+"stats": {
+"int": 24,
+"str": 25
+},
+"suffix": "of the Gorilla"
+},
+"996": {
+"stats": {
+"int": 25,
+"str": 25
+},
+"suffix": "of the Gorilla"
+},
+"997": {
+"stats": {
+"int": 26,
+"str": 25
+},
+"suffix": "of the Gorilla"
+},
+"998": {
+"stats": {
+"int": 25,
+"str": 26
+},
+"suffix": "of the Gorilla"
+},
+"999": {
+"stats": {
+"int": 26,
+"str": 26
+},
+"suffix": "of the Gorilla"
+}
+}
