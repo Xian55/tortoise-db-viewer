@@ -1,7 +1,10 @@
 import {
   QUALITY, ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, STAT_TYPE,
   BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, ITEM_SOURCE, REP_STANDING, POWER_TYPE, classRestrictions, money,
+  PROFESSION_LABEL,
 } from "./constants.js";
+// skill_id -> name for item equip requirements (professions + a few non-profession skills).
+const REQ_SKILL_LABEL = { ...PROFESSION_LABEL, 762: "Riding", 433: "Cooking", 129: "First Aid" };
 
 const SRC_LABEL = Object.fromEntries(ITEM_SOURCE);
 const SRC_ORDER = ITEM_SOURCE.map(([k]) => k);
@@ -205,6 +208,8 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, se
   const cls = classRestrictions(it.allowable_class);
   if (cls) reqs.push(`Classes: ${cls.join(", ")}`);
   if (it.required_level) reqs.push(`Requires Level ${it.required_level}`);
+  // profession/skill needed to equip or use (e.g. Requires Engineering (100))
+  if (it.required_skill) reqs.push(`Requires ${REQ_SKILL_LABEL[it.required_skill] || "Skill"}${it.required_skill_rank ? ` (${it.required_skill_rank})` : ""}`);
   for (const r of reqs) line(esc(r), "tt-req");
   // reputation requirement renders as a faction link (raw HTML, not escaped)
   if (it.required_reputation_faction) {
