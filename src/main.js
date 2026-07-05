@@ -5,7 +5,7 @@ import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, faction
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
-import { showCharacters, showCharacter } from "./character.js";
+import { showCharacters, showCharacter, showSharedLoadout } from "./character.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
 import { ASSETS_BASE, resolveOrigins } from "./config.js";
@@ -123,6 +123,7 @@ function route() {
   else if (params.get("guides") !== null) return showLeveling();
   else if (params.get("guide")) return showGuide(params.get("guide"));
   else if (params.get("talents") !== null) return showTalents(params.get("talents"));
+  else if (params.get("loadout")) return showSharedLoadout(params.get("loadout"), navigate);
   else if (params.get("character")) return showCharacter(params.get("character"), navigate);
   else if (params.get("characters") !== null) return showCharacters(navigate);
   else if (term) { searchInput.value = term; return showSearch(term); }

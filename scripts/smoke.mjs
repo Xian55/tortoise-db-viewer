@@ -245,10 +245,23 @@ async function testCharacterLoadout() {
     const c = JSON.parse(localStorage.getItem("tw_characters") || "[]")[0];
     return !!(c && c.race === 1 && c.cls === 2 && c.level === 36 && c.slots.MainHand?.enchantId === 805 && c.slots.Chest?.suffixId === 1199 && c.id);
   });
-  console.log(`character loadout: title=${sheet.title} items=${sheet.itemLinks} stats=${sheet.statRows} unobt=${sheet.unobtained} ench=${sheet.enchant} class=${sheet.classPicker} lvl=${sheet.levelPicker} | up rows=${up.rows} diffs=${up.diffs} src=${up.sources} noStaff=${up.noStaff} noTest=${up.noTest} roundTrip=${roundTrip}`);
+  // share link: encodes the loadout into ?loadout=, opens without localStorage
+  await page.click("#charShare");
+  const shareUrl = await page.evaluate(() => window.__copied);
+  await page.goto(shareUrl || `${BASE}?characters`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".char-view", { timeout: T }).catch(() => {});
+  const share = await page.evaluate(() => ({
+    isLoadout: /\?loadout=/.test(location.href),
+    banner: !!document.querySelector(".char-shared-note"),
+    saveBtn: !!document.querySelector("#charSave"),
+    noDelete: !document.querySelector("#charDelete"),
+    slots: document.querySelectorAll(".char-slot a.ilink[href*='item=']").length,
+  }));
+  console.log(`character loadout: title=${sheet.title} items=${sheet.itemLinks} stats=${sheet.statRows} unobt=${sheet.unobtained} ench=${sheet.enchant} class=${sheet.classPicker} lvl=${sheet.levelPicker} | up rows=${up.rows} diffs=${up.diffs} src=${up.sources} noStaff=${up.noStaff} noTest=${up.noTest} roundTrip=${roundTrip} | share=${share.isLoadout} banner=${share.banner} save=${share.saveBtn} slots=${share.slots}`);
   return sheet.title === "Smoke Gear" && sheet.itemLinks >= 5 && sheet.statRows > 0 && sheet.unobtained === 1
     && sheet.enchant && sheet.classPicker === "2" && sheet.levelPicker === "36" && sheet.hasExport
-    && up.rows > 0 && up.diffs > 0 && up.sources > 0 && up.noStaff && up.noTest && roundTrip;
+    && up.rows > 0 && up.diffs > 0 && up.sources > 0 && up.noStaff && up.noTest && roundTrip
+    && share.isLoadout && share.banner && share.saveBtn && share.noDelete && share.slots >= 5;
 }
 
 // Items that roll a random suffix (item.random_property) show a "🎲 Random suffix"

@@ -468,10 +468,14 @@ export function showCharacters(navigate) {
 }
 
 // ---- gear sheet: ?character=<id> ----
-export async function showCharacter(id, navigate) {
+export async function showCharacter(idOrChar, navigate) {
   const app = document.getElementById("app");
-  const ch = getChar(id);
-  if (!ch) { app.innerHTML = `<div class="chars"><h1>Character not found</h1><p><a class="nav" href="?characters">← All characters</a></p></div>`; return; }
+  // idOrChar is a localStorage id, or a decoded shared loadout object (?loadout=).
+  const shared = idOrChar && typeof idOrChar === "object";
+  const ch = shared ? idOrChar : getChar(idOrChar);
+  const id = shared ? null : idOrChar;
+  if (!ch) { app.innerHTML = `<div class="chars"><h1>Character not found</h1><p class="muted">Saved characters live only in the browser they were made in. Ask for a share link (📤 Share) instead.</p><p><a class="nav" href="?characters">← All characters</a></p></div>`; return; }
+  const save = () => { if (!shared) upsert(ch); }; // shared loadouts are transient until "Save to my characters"
   document.title = `${ch.name} - Tortoise-WoW DB`;
   app.innerHTML = `<div class="loading">Loading ${esc(ch.name)}…</div>`;
 
@@ -544,11 +548,15 @@ export async function showCharacter(id, navigate) {
     <h1 class="char-title">${esc(ch.name)}</h1>
     <div class="char-toolbar">
       <a class="nav" href="?characters">← All characters</a>
-      <button type="button" class="btn" id="charRename">Rename</button>
+      ${shared
+        ? `<button type="button" class="btn" id="charSave">★ Save to my characters</button>`
+        : `<button type="button" class="btn" id="charRename">Rename</button>
+           <button type="button" class="btn" id="charShare">📤 Share</button>
+           <button type="button" class="btn danger" id="charDelete">Delete</button>`}
       <button type="button" class="btn" id="charExport">Export JSON</button>
-      <button type="button" class="btn danger" id="charDelete">Delete</button>
       <span class="muted" id="charMsg"></span>
     </div>
+    ${shared ? `<p class="muted char-shared-note">Viewing a shared build. Edits won't stick — click <b>★ Save to my characters</b> to keep it.</p>` : ""}
     <div class="char-sheet"><div class="char-col">${col("l")}</div><div class="char-col">${col("r")}</div></div>
     <div class="char-weapons">${col("w")}</div>
     ${summary}
@@ -571,20 +579,31 @@ export async function showCharacter(id, navigate) {
     </div>
   </div>`;
 
-  const reload = () => showCharacter(id, navigate);
+  const reload = () => showCharacter(shared ? ch : id, navigate);
   // inline rename (no prompt())
-  app.querySelector("#charRename").onclick = () => {
+  app.querySelector("#charRename")?.addEventListener("click", () => {
     const h1 = app.querySelector(".char-title");
     h1.innerHTML = `<input type="text" class="rename-input" value="${esc(ch.name)}"> <button type="button" class="btn-sm rename-save">✓ Save</button>`;
     const input = h1.querySelector(".rename-input"); input.focus(); input.select();
-    const save = () => { const v = input.value.trim(); if (v) ch.name = v; upsert(ch); reload(); };
-    input.onkeydown = (e) => { if (e.key === "Enter") save(); else if (e.key === "Escape") reload(); };
-    h1.querySelector(".rename-save").onclick = save;
-  };
+    const doRename = () => { const v = input.value.trim(); if (v) ch.name = v; save(); reload(); };
+    input.onkeydown = (e) => { if (e.key === "Enter") doRename(); else if (e.key === "Escape") reload(); };
+    h1.querySelector(".rename-save").onclick = doRename;
+  });
+  // share: encode the loadout into a self-contained ?loadout= link (no localStorage)
+  app.querySelector("#charShare")?.addEventListener("click", () => {
+    const url = `${location.origin}${location.pathname}?loadout=${encodeLoadout(ch)}`;
+    const msg = app.querySelector("#charMsg");
+    Promise.resolve(navigator.clipboard?.writeText(url)).then(() => { if (msg) { msg.textContent = "Share link copied!"; setTimeout(() => { msg.textContent = ""; }, 2500); } }).catch(() => { if (msg) msg.textContent = "Copy failed"; });
+  });
+  // save a shared loadout into this browser's characters
+  app.querySelector("#charSave")?.addEventListener("click", () => {
+    const copy = { ...ch, id: newId() }; delete copy._shared;
+    upsert(copy); navigate(`?character=${copy.id}`);
+  });
   // two-click delete (no confirm())
   {
     const delBtn = app.querySelector("#charDelete"); let armed = false, t = 0;
-    delBtn.onclick = () => {
+    if (delBtn) delBtn.onclick = () => {
       if (!armed) { armed = true; delBtn.textContent = "Click again to delete"; delBtn.classList.add("armed"); t = setTimeout(() => { armed = false; delBtn.textContent = "Delete"; delBtn.classList.remove("armed"); }, 3000); }
       else { clearTimeout(t); remove(id); navigate("?characters"); }
     };
@@ -612,7 +631,7 @@ export async function showCharacter(id, navigate) {
     if (specId === "custom") ch.customWeights = readCustom(customBox);
     ch.spec = specId; ch.level = level; ch.lookAhead = lookAhead; ch.slotFilter = slot;
     ch.race = raceSel.value ? Number(raceSel.value) : null;
-    ch.cls = classSel.value ? Number(classSel.value) : null; upsert(ch);
+    ch.cls = classSel.value ? Number(classSel.value) : null; save();
     note.textContent = `Ranks obtainable items you could equip by level ${level + lookAhead} (your level + look-ahead).`;
     // show the active preset's weights (transparency) + a Customize shortcut
     specWeights.innerHTML = specWeightsHtml(specId);
@@ -655,7 +674,7 @@ export async function showCharacter(id, navigate) {
     const iid = Number(String(v).trim());
     ch.slots = ch.slots || {};
     if (iid) ch.slots[k] = { itemId: iid, obtained: true }; else delete ch.slots[k];
-    upsert(ch); reload();
+    save(); reload();
   };
   app.querySelectorAll(".slot-set").forEach((b) => { b.onclick = () => {
     const k = b.dataset.slot;
@@ -689,5 +708,26 @@ export async function showCharacter(id, navigate) {
     results.onclick = (e) => { const rb = e.target.closest(".slot-result"); if (rb) saveSlot(k, rb.dataset.id); };
     cell.querySelector(".slot-cancel").onclick = () => reload();
   }; });
-  app.querySelectorAll(".slot-clr").forEach((b) => { b.onclick = () => { if (ch.slots) delete ch.slots[b.dataset.slot]; upsert(ch); reload(); }; });
+  app.querySelectorAll(".slot-clr").forEach((b) => { b.onclick = () => { if (ch.slots) delete ch.slots[b.dataset.slot]; save(); reload(); }; });
+}
+
+// ---- shareable loadout links (?loadout=<b64url>) ----
+// Encode the loadout (name/race/class/level/slots) into a compact URL param so a
+// build is shareable without localStorage. race/class kept as internal bits.
+function b64urlEncode(str) { return btoa(unescape(encodeURIComponent(str))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+function b64urlDecode(s) { return decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/")))); }
+function encodeLoadout(ch) {
+  const p = { n: ch.name, r: ch.race || undefined, c: ch.cls || undefined, l: ch.level || undefined, s: ch.slots || {} };
+  return b64urlEncode(JSON.stringify(p));
+}
+export function showSharedLoadout(encoded, navigate) {
+  let ch;
+  try {
+    const p = JSON.parse(b64urlDecode(encoded));
+    ch = { id: "shared", _shared: true, name: String(p.n || "Shared build").slice(0, 60), race: p.r || null, cls: p.c || null, level: p.l || null, slots: p.s || {} };
+  } catch {
+    document.getElementById("app").innerHTML = `<div class="chars"><h1>Invalid share link</h1><p><a class="nav" href="?characters">← All characters</a></p></div>`;
+    return;
+  }
+  return showCharacter(ch, navigate);
 }

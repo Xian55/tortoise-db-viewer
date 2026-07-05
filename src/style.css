@@ -818,6 +818,8 @@ a.ext { color: var(--gold); }
 .char-import-actions { margin-top: 8px; display: flex; gap: 10px; align-items: center; }
 
 .char-title { margin-bottom: 4px; }
+.char-shared-note { margin: -4px 0 10px; padding: 6px 10px; border: 1px solid #8c7a3a;
+  border-radius: 6px; background: rgba(150, 130, 60, .12); }
 .char-sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; margin-top: 8px; }
 .char-weapons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 18px; margin-top: 12px; }
 .char-slot { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
