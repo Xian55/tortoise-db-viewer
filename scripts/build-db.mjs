@@ -985,6 +985,29 @@ console.log("Deriving item_sources...");
   // Ardent Custodian) doesn't mislabel a drop as crafted.
   insSrc(`SELECT DISTINCT item, 'crafted'    FROM spell_creates WHERE skill IN (171,164,185,333,202,129,356,182,755,165,186,393,142,197)`);
   insSrc(`SELECT entry, 'pvp'                FROM items WHERE required_honor_rank > 0`);
+  // Battleground reputation-reward gear: equippable items (class 2 weapon / 4 armor)
+  // sold by vendors of BG rep factions -> also 'pvp'. Resolve the Faction.dbc rep id
+  // -> its faction_template ids -> the vendor creatures -> their npc_vendor(_template)
+  // gear. Currently the Warsong Gulch quartermasters (Warsong Outriders 889 /
+  // Silverwing Sentinels 890); extend PVP_REP_FACTIONS for other battlegrounds.
+  {
+    const PVP_REP_FACTIONS = new Set([889, 890]);
+    const ftCols = srcColumns("faction_template", "tw_world_faction_template.sql");
+    const iFtId = ftCols.indexOf("id"), iFaction = ftCols.indexOf("faction_id");
+    const pvpFts = [];
+    for (const r of srcRows("faction_template", "tw_world_faction_template.sql")) {
+      if (PVP_REP_FACTIONS.has(clean(r[iFaction]))) pvpFts.push(clean(r[iFtId]));
+    }
+    if (pvpFts.length) {
+      const inFts = pvpFts.join(",");
+      insSrc(`SELECT DISTINCT nv.item, 'pvp' FROM npc_vendor nv
+        JOIN creatures c ON c.entry = nv.entry AND c.faction IN (${inFts})
+        JOIN items i ON i.entry = nv.item AND i.class IN (2, 4)`);
+      insSrc(`SELECT DISTINCT vt.item, 'pvp' FROM npc_vendor_template vt
+        JOIN creatures c ON c.vendor_id = vt.entry AND c.faction IN (${inFts})
+        JOIN items i ON i.entry = vt.item AND i.class IN (2, 4)`);
+    }
+  }
   insSrc(`SELECT entry, 'worlddrop'          FROM items WHERE world_drop = 1`);
   // 'unobtainable' = dev artifacts (test/deprecated/placeholder items) detected by
   // name convention; hidden by default in the item browse. Name-pattern, NOT
