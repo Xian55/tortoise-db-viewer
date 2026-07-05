@@ -95,12 +95,15 @@ function hide() {
   if (card) card.style.display = "none";
 }
 
-async function showFor(kind, id) {
+async function showFor(kind, id, extra) {
   if (!id) return;
-  const key = `${kind}:${id}`;
+  const key = `${kind}:${id}${extra ? "|" + extra : ""}`;
   if (key === currentKey) return;
   currentKey = key;
-  const html = await getHtml(kind, id);
+  let html = await getHtml(kind, id);
+  // extra = per-slot enchant/suffix lines (character sheet); appended inside the
+  // tooltip so an icon-only gear tile still shows what's on the item.
+  if (html && extra) { const i = html.lastIndexOf("</div>"); if (i >= 0) html = html.slice(0, i) + extra + html.slice(i); }
   if (currentKey !== key) return;      // pointer moved away during the query
   if (!html) { hide(); return; }
   const c = ensureCard();
@@ -117,7 +120,14 @@ export function initHovercards() {
     const a = e.target.closest('a.ilink[href^="?item="], a.ilink[href^="?quest="], a.ilink[href^="?spell="], a.ilink[href^="?npc="]');
     if (a) {
       const p = new URLSearchParams(a.getAttribute("href").slice(1));
-      if (p.get("item")) showFor("item", Number(p.get("item")));
+      if (p.get("item")) {
+        // gear tiles carry the slot's enchant/suffix -> fold into the tooltip
+        const ench = a.getAttribute("data-tt-ench"), suf = a.getAttribute("data-tt-suffix"), sufStats = a.getAttribute("data-tt-suffix-stats");
+        let extra = "";
+        if (ench) extra += `<div class="tt-line tt-ench">⚚ ${esc(ench)}</div>`;
+        if (suf) extra += `<div class="tt-line tt-suffix">✦ ${esc(suf)}${sufStats ? ` <span class="muted">(${esc(sufStats)})</span>` : ""}</div>`;
+        showFor("item", Number(p.get("item")), extra || undefined);
+      }
       else if (p.get("quest")) showFor("quest", Number(p.get("quest")));
       else if (p.get("spell")) showFor("spell", Number(p.get("spell")));
       else if (p.get("npc")) showFor("npc", Number(p.get("npc")));

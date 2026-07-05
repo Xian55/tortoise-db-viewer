@@ -217,29 +217,29 @@ async function testCharacterLoadout() {
   await page.waitForSelector("#charJson", { timeout: T });
   await page.evaluate((json) => { document.querySelector("#charJson").value = json; }, JSON.stringify(loadout));
   await page.click("#charImport");
-  await page.waitForSelector(".char-sheet .char-slot", { timeout: T });
+  await page.waitForSelector(".char-sheet .gear-tile", { timeout: T });
   const sheet = await page.evaluate(() => ({
     title: document.querySelector(".char-title")?.textContent?.trim(),
-    itemLinks: document.querySelectorAll(".char-view .char-slot a.ilink[href*='item=']").length,
-    statRows: document.querySelectorAll(".char-summary .cmp-table tbody tr").length,
-    unobtained: document.querySelectorAll(".char-view .char-unobt").length,
+    itemLinks: document.querySelectorAll(".char-view .gear-icon[href*='item=']").length,
+    statRows: document.querySelectorAll(".char-summary .stat-pill").length,
+    unobtained: document.querySelectorAll(".char-view .gt-unobt").length,
     enchant: !!document.querySelector(".char-ench a.ilink.spell"),         // enchantId -> spell label
     classPicker: document.querySelector("#charClass")?.value,               // inherited from import
     levelPicker: document.querySelector("#charLevel")?.value,
     hasExport: !!document.querySelector("#charExport"),
   }));
-  // upgrade finder: rank + gains/losses + source
+  // upgrade finder: ranked table per slot (item, score, gain, stat change, source)
   await page.click("#charFindUp");
-  await page.waitForSelector(".up-block .up-row", { timeout: T });
+  await page.waitForSelector(".up-table tbody tr:not(.up-eq)", { timeout: T });
   const up = await page.evaluate(() => ({
-    rows: document.querySelectorAll(".up-row").length,
+    rows: document.querySelectorAll(".up-table tbody tr:not(.up-eq)").length,
     diffs: document.querySelectorAll(".up-diff .dstat").length,
     sources: document.querySelectorAll(".up-src .tagx, .up-src a.ilink.quest").length,
-    noStaff: ![...document.querySelectorAll(".up-block")].some((bl) =>
-      bl.querySelector(".up-slot-name")?.textContent === "Main Hand" &&
-      [...bl.querySelectorAll(".up-main a.ilink")].some((a) => /staff|gnarled staff/i.test(a.textContent))),
+    noStaff: ![...document.querySelectorAll(".up-table")].some((tb) =>
+      tb.querySelector("thead th")?.textContent === "Main Hand" &&
+      [...tb.querySelectorAll(".up-item a.ilink")].some((a) => /staff|gnarled staff/i.test(a.textContent))),
     // test/deprecated items must never be suggested
-    noTest: ![...document.querySelectorAll(".up-row a.ilink[href*='item=']")].some((a) => /\btest\b|deprecated/i.test(a.textContent)),
+    noTest: ![...document.querySelectorAll(".up-item a.ilink[href*='item=']")].some((a) => /\btest\b|deprecated/i.test(a.textContent)),
   }));
   const roundTrip = await page.evaluate(() => {
     const c = JSON.parse(localStorage.getItem("tw_characters") || "[]")[0];
@@ -255,7 +255,7 @@ async function testCharacterLoadout() {
     banner: !!document.querySelector(".char-shared-note"),
     saveBtn: !!document.querySelector("#charSave"),
     noDelete: !document.querySelector("#charDelete"),
-    slots: document.querySelectorAll(".char-slot a.ilink[href*='item=']").length,
+    slots: document.querySelectorAll(".gear-icon[href*='item=']").length,
   }));
   console.log(`character loadout: title=${sheet.title} items=${sheet.itemLinks} stats=${sheet.statRows} unobt=${sheet.unobtained} ench=${sheet.enchant} class=${sheet.classPicker} lvl=${sheet.levelPicker} | up rows=${up.rows} diffs=${up.diffs} src=${up.sources} noStaff=${up.noStaff} noTest=${up.noTest} roundTrip=${roundTrip} | share=${share.isLoadout} banner=${share.banner} save=${share.saveBtn} slots=${share.slots}`);
   return sheet.title === "Smoke Gear" && sheet.itemLinks >= 5 && sheet.statRows > 0 && sheet.unobtained === 1

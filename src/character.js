@@ -330,24 +330,23 @@ function upgradesHtml(list, itemMap) {
   if (!list.length) return `<p class="muted">No higher-scoring upgrades found for this spec.</p>`;
   return list.map(({ slot, equippedId, base, ups }) => {
     const eq = equippedId && itemMap.get(equippedId);
-    const head = `<div class="up-head"><span class="up-slot-name">${esc(slot.label)}</span>` +
-      (eq ? `<span class="muted">have ${itemLink(eq.entry, eq.name, eq.quality, eq.icon)} · ${round1(base)}</span>`
-          : `<span class="muted">empty slot</span>`) + `</div>`;
+    // equipped baseline row at the top of each slot's table
+    const eqRow = `<tr class="up-eq">
+      <td class="up-item">${eq ? `${itemLink(eq.entry, eq.name, eq.quality, eq.icon)} <span class="up-tag">equipped</span>` : `<span class="muted">— empty —</span>`}</td>
+      <td class="up-num">${round1(base)}</td><td class="up-num">—</td><td></td><td></td></tr>`;
     const rows = ups.map((c) => {
       const quests = (c.quests || []).map((q) => questLink(q.entry, q.title)).join(" ");
-      const src = `${sourceTags(c.srcKeys)}${quests}`;
-      return `<div class="up-row">
-        <div class="up-main">
-          ${itemLink(c.entry, c.name, c.quality, c.icon)}
-          <span class="up-score" title="Gear score">${round1(c.score)}</span>
-          <span class="up-delta" title="Score gain vs equipped">+${round1(c.score - base)}</span>
-          ${c.avail ? `<span class="muted up-req" title="Available at level">lvl ${c.avail}</span>` : ""}
-        </div>
-        ${diffHtml(c.diff)}
-        ${src ? `<div class="up-src">${src}</div>` : ""}
-      </div>`;
+      return `<tr>
+        <td class="up-item">${itemLink(c.entry, c.name, c.quality, c.icon)}${c.avail ? ` <span class="up-lvl" title="Available at level">lvl ${c.avail}</span>` : ""}</td>
+        <td class="up-num">${round1(c.score)}</td>
+        <td class="up-num"><span class="up-gain">+${round1(c.score - base)}</span></td>
+        <td class="up-change">${diffHtml(c.diff)}</td>
+        <td class="up-src">${sourceTags(c.srcKeys)}${quests}</td>
+      </tr>`;
     }).join("");
-    return `<div class="up-block">${head}<div class="up-list">${rows}</div></div>`;
+    return `<div class="up-table-wrap"><table class="up-table">
+      <thead><tr><th>${esc(slot.label)}</th><th class="up-num">Score</th><th class="up-num">Gain</th><th>Stat change</th><th>Source</th></tr></thead>
+      <tbody>${eqRow}${rows}</tbody></table></div>`;
   }).join("");
 }
 
@@ -511,36 +510,43 @@ export async function showCharacter(idOrChar, navigate) {
     }
   }
 
-  const slotHtml = (s) => {
+  // compact icon tile per slot: item icon (quality border) + tiny enchant/suffix
+  // badges; name on hover (tooltip). ✎/✕ appear on hover.
+  const tileHtml = (s) => {
     const slot = ch.slots?.[s.k];
     const it = slot && itemMap.get(slot.itemId);
-    // random suffix ("of the Bear") appended to the item name, when resolved
     const suf = slot?.suffixId ? suffixMap.get(slot.suffixId) : null;
-    const sufName = slot?.suffixId ? (suf?.name ? ` <span class="char-suffix">${esc(suf.name)}</span>` : ` <span class="char-suffix muted" title="Random suffix #${slot.suffixId} — run extract-random-suffix.py to resolve">(random)</span>`) : "";
-    const name = it
-      ? `${itemLink(it.entry, it.name, it.quality, it.icon)}${sufName}${it.item_level ? ` <span class="char-ilvl" title="Item level">iLvl ${it.item_level}</span>` : ""}${slot.obtained === false ? ` <span class="char-unobt" title="Not yet obtained">◇</span>` : ""}`
-      : slot?.itemId ? `<span class="muted">Item #${slot.itemId} — not in DB</span>`
-        : `<span class="char-empty">empty</span>`;
-    // enchant label (from the addon's enchantId)
     const ench = slot?.enchantId ? enchMap.get(slot.enchantId) : null;
-    const enchLine = slot?.enchantId
-      ? `<span class="char-ench" title="Enchant">⚚ ${ench ? spellLink(ench.spell, ench.name) : `Enchant #${slot.enchantId}`}</span>`
-      : "";
-    return `<div class="char-slot${slot?.itemId ? "" : " is-empty"}">
-      <span class="char-slot-label">${esc(s.label)}</span>
-      <span class="char-slot-item">${name}${enchLine}</span>
-      <span class="char-slot-edit">
-        <button type="button" class="slot-set" data-slot="${s.k}" title="Set item id">✎</button>
-        ${slot?.itemId ? `<button type="button" class="slot-clr" data-slot="${s.k}" title="Clear slot">✕</button>` : ""}
-      </span>
+    const badges = [
+      slot?.enchantId ? `<span class="gt-badge gt-ench" title="Enchant: ${esc(ench?.name || `#${slot.enchantId}`)}">⚚</span>` : "",
+      slot?.suffixId ? `<span class="gt-badge gt-suf" title="Suffix: ${esc(suf?.name || `#${slot.suffixId}`)}">✦</span>` : "",
+      slot?.obtained === false ? `<span class="gt-badge gt-unobt" title="Not yet obtained">◇</span>` : "",
+    ].join("");
+    const sufStatStr = suf?.stats ? Object.entries(suf.stats).map(([k, v]) => `+${v} ${GEAR_STAT_LABEL[k] || k}`).join(", ") : "";
+    const ttData = [
+      slot?.enchantId ? `data-tt-ench="${esc(ench?.name || `Enchant #${slot.enchantId}`)}"` : "",
+      slot?.suffixId ? `data-tt-suffix="${esc(suf?.name || `Random suffix #${slot.suffixId}`)}"` : "",
+      sufStatStr ? `data-tt-suffix-stats="${esc(sufStatStr)}"` : "",
+    ].filter(Boolean).join(" ");
+    const icon = it
+      ? `<a class="ilink gear-icon" href="?item=${it.entry}" style="border-color:${qualityColor(it.quality)}" ${ttData}>${iconImg(it.icon, "gt-img")}</a>`
+      : slot?.itemId
+        ? `<span class="gear-icon miss" title="Item #${slot.itemId} — not in DB">?</span>`
+        : `<span class="gear-icon empty"></span>`;
+    return `<div class="gear-tile${slot?.itemId ? "" : " is-empty"}" data-slot="${s.k}">
+      <div class="gt-wrap">${icon}${badges ? `<span class="gt-badges">${badges}</span>` : ""}
+        <span class="gt-actions">
+          <button type="button" class="slot-set gt-btn" data-slot="${s.k}" title="Change ${esc(s.label)}">✎</button>
+          ${slot?.itemId ? `<button type="button" class="slot-clr gt-btn" data-slot="${s.k}" title="Clear">✕</button>` : ""}
+        </span></div>
+      <span class="gt-label">${esc(s.label)}</span>
     </div>`;
   };
-  const col = (c) => SLOTS.filter((s) => s.col === c).map(slotHtml).join("");
   const statOrder = Object.keys(GEAR_STAT_LABEL).filter((k) => statTotals[k]);
   const summary = statOrder.length
-    ? `<div class="char-summary"><h2>Total stats</h2><table class="cmp-table"><tbody>
-        ${statOrder.map((k) => `<tr><th>${esc(GEAR_STAT_LABEL[k])}</th><td>${statTotals[k].toLocaleString()}</td></tr>`).join("")}
-      </tbody></table></div>`
+    ? `<div class="char-summary"><h2>Total stats</h2><div class="stat-pills">
+        ${statOrder.map((k) => `<span class="stat-pill">${esc(GEAR_STAT_LABEL[k])} <b>${statTotals[k].toLocaleString()}</b></span>`).join("")}
+      </div></div>`
     : `<p class="muted char-nostats">No stat data for the equipped items.</p>`;
 
   const defaultSpec = ch.spec || guessSpec(statTotals, ch.level || 60);
@@ -557,9 +563,8 @@ export async function showCharacter(idOrChar, navigate) {
       <span class="muted" id="charMsg"></span>
     </div>
     ${shared ? `<p class="muted char-shared-note">Viewing a shared build. Edits won't stick — click <b>★ Save to my characters</b> to keep it.</p>` : ""}
-    <div class="char-sheet"><div class="char-col">${col("l")}</div><div class="char-col">${col("r")}</div></div>
-    <div class="char-weapons">${col("w")}</div>
     ${summary}
+    <div class="char-sheet">${SLOTS.map(tileHtml).join("")}</div>
     <div class="char-upgrades">
       <h2>Suggested upgrades</h2>
       <div class="up-controls">
@@ -676,16 +681,20 @@ export async function showCharacter(idOrChar, navigate) {
     if (iid) ch.slots[k] = { itemId: iid, obtained: true }; else delete ch.slots[k];
     save(); reload();
   };
+  const closePop = () => app.querySelector(".slot-pop")?.remove();
   app.querySelectorAll(".slot-set").forEach((b) => { b.onclick = () => {
     const k = b.dataset.slot;
-    const slotDiv = b.closest(".char-slot");
-    const cell = slotDiv.querySelector(".char-slot-item");
-    cell.innerHTML = `<span class="slot-edit-row">
-      <input type="text" class="slot-search" placeholder="Search ${esc(SLOTS.find((s) => s.k === k)?.label || "item")}…" autocomplete="off">
-      <button type="button" class="slot-cancel" title="Cancel">✕</button></span>`;
-    slotDiv.insertAdjacentHTML("beforeend", `<div class="slot-results" hidden></div>`);
-    const input = cell.querySelector(".slot-search");
-    const results = slotDiv.querySelector(".slot-results");
+    const tile = b.closest(".gear-tile");
+    closePop();
+    const pop = document.createElement("div");
+    pop.className = "slot-pop";
+    pop.innerHTML = `<div class="slot-edit-row">
+        <input type="text" class="slot-search" placeholder="Search ${esc(SLOTS.find((s) => s.k === k)?.label || "item")}…" autocomplete="off">
+        <button type="button" class="slot-cancel" title="Cancel">✕</button></div>
+      <div class="slot-results" hidden></div>`;
+    tile.appendChild(pop);
+    const input = pop.querySelector(".slot-search");
+    const results = pop.querySelector(".slot-results");
     input.focus();
     const invCsv = SLOT_INV[k].join(",");
     let timer = 0, token = 0;
@@ -704,9 +713,9 @@ export async function showCharacter(idOrChar, navigate) {
         : `<div class="sr-empty muted">No matching items</div>`;
     };
     input.oninput = () => { clearTimeout(timer); timer = setTimeout(doSearch, 180); };
-    input.onkeydown = (e) => { if (e.key === "Escape") reload(); };
+    input.onkeydown = (e) => { if (e.key === "Escape") closePop(); };
     results.onclick = (e) => { const rb = e.target.closest(".slot-result"); if (rb) saveSlot(k, rb.dataset.id); };
-    cell.querySelector(".slot-cancel").onclick = () => reload();
+    pop.querySelector(".slot-cancel").onclick = closePop;
   }; });
   app.querySelectorAll(".slot-clr").forEach((b) => { b.onclick = () => { if (ch.slots) delete ch.slots[b.dataset.slot]; save(); reload(); }; });
 }
