@@ -222,32 +222,49 @@ function renderRoute() {
 // ---- views ----
 function showHome() {
   document.title = "Tortoise-WoW Database";
+  const card = (href, icon, title, desc, cls = "") =>
+    `<a class="nav home-card ${cls}" href="${href}"><span class="hc-icon">${iconImg(icon, "hc-img")}</span>
+      <span class="hc-body"><span class="hc-title">${title}</span><span class="hc-desc">${desc}</span></span></a>`;
+  const section = (title, cards) => `<section class="home-section"><h2>${title}</h2><div class="home-grid">${cards.join("")}</div></section>`;
+
   app.innerHTML = `<div class="home">
-    <h1>Tortoise-WoW Database</h1>
-    <p>Search above, or browse <a class="nav" href="?browse=items">items</a> /
-       <a class="nav" href="?browse=itemsets">item sets</a> /
-       <a class="nav" href="?browse=npcs">NPCs</a> /
-       <a class="nav" href="?browse=quests">quests</a> /
-       <a class="nav" href="?browse=spells">spells</a> /
-       <a class="nav" href="?browse=factions">factions</a> /
-       <a class="nav" href="?browse=zones">zones</a> /
-       <a class="nav" href="?dungeons">dungeons &amp; raids</a> /
-       <a class="nav" href="?guides">leveling guides</a> /
-       <a class="nav" href="?talents">talent calculator</a> /
-       <a class="nav" href="?characters">characters</a> /
-       <a class="nav" href="?weights">gear-score presets</a> /
-       <a class="nav" href="?browse=objects">objects</a> /
-       <a class="nav" href="?worldmap">world map</a> /
-       <a class="nav" href="?flights">flight paths</a> /
-       <a class="nav" href="?icons">icons</a>.
-       Open directly with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?zone=ID</code>.</p>
-    <p class="muted">Examples:
-      <a class="ilink" href="?item=2770">Copper Ore</a> ·
-      <a class="ilink" href="?item=7909">Aquamarine</a> ·
-      <a class="ilink" href="?npc=2376">Torn Fin Oracle</a></p>
+    <div class="home-hero">
+      <h1>Tortoise-WoW Database</h1>
+      <p class="home-tag">Everything in Turtle-WoW's world — items, NPCs, quests, spells, zones — queried right in your browser. Plus planners for your gear and talents.</p>
+    </div>
+
+    ${section("Plan your character", [
+      card("?characters", "inv_shield_06", "Character Planner", "Import your gear (GearExport), see set bonuses, and get slot-by-slot upgrades ranked for your spec. Share builds by link.", "feature"),
+      card("?weights", "ability_marksmanship", "Gear-Score Presets", "Build, share, and reuse stat-weight sets — 22 class/spec starters, or make your own.", "feature"),
+      card("?talents", "inv_misc_book_11", "Talent Calculator", "Plan any class's 51-point build; the link saves it.", "feature"),
+    ])}
+
+    ${section("Browse the database", [
+      card("?browse=items", "inv_sword_27", "Items", "Filter by slot, stat, and source; rank by gear score."),
+      card("?browse=itemsets", "inv_chest_plate01", "Item Sets", "Tier & dungeon sets with their bonuses."),
+      card("?browse=npcs", "inv_misc_head_dragon_01", "NPCs", "Creatures, loot, locations."),
+      card("?browse=quests", "inv_scroll_03", "Quests", "Objectives, rewards, chains."),
+      card("?browse=spells", "spell_holy_magicalsentry", "Spells & Abilities", "Class skills and professions."),
+      card("?browse=crafting", "trade_blacksmithing", "Crafting & Professions", "Recipes, reagents, learnable skills."),
+      card("?browse=factions", "inv_bannerpvp_02", "Factions", "Reputation rewards and rep grinds."),
+      card("?browse=zones", "inv_misc_map_01", "Zones", "Spawns, drops, and quests per zone."),
+      card("?browse=objects", "inv_crate_02", "Objects", "Gather nodes, chests, and more."),
+    ])}
+
+    ${section("Maps & travel", [
+      card("?dungeons", "inv_misc_key_11", "Dungeons & Raids", "Instance maps, bosses, and loot."),
+      card("?worldmap", "inv_misc_spyglass_02", "World Map", "Seamless continent minimap with spawns."),
+      card("?flights", "ability_mount_gryphon_01", "Flight Paths", "Every flight master and route."),
+      card("?guides", "inv_misc_book_09", "Leveling Guides", "Step-by-step zone routes."),
+      card("?random", "inv_misc_orb_04", "Random Item", "Roll the dice on a random item."),
+      card("?icons", "inv_misc_gem_variety_01", "Icons", "Every item & spell icon."),
+    ])}
+
+    <p class="muted home-hint">Jump straight to anything with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?zone=ID</code> —
+      e.g. <a class="ilink" href="?item=2770">Copper Ore</a> · <a class="ilink" href="?item=7909">Aquamarine</a> · <a class="ilink" href="?npc=2376">Torn Fin Oracle</a>.</p>
     <p class="muted">Embedding elsewhere? Drop our
       <a class="nav-ext" href="${import.meta.env.BASE_URL}embed/tw-power.js">tooltip widget</a>
-      on any page for Wowhead-style hover tooltips on links to this database —
+      on any page for Wowhead-style hover tooltips —
       <a class="nav-ext" href="${import.meta.env.BASE_URL}embed/demo.html" target="_blank" rel="noopener">see the demo</a>.</p>
   </div>`;
 }

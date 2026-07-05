@@ -120,6 +120,32 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
    viewport and shows a permanent scrollbar even on short pages. */
 #app { max-width: 1100px; margin: 22px auto; padding: 0 18px; min-height: calc(100vh - 180px); }
 .loading, .home, .results { padding: 8px 2px; }
+
+/* home landing: feature card grid */
+.home { max-width: 960px; }
+.home-hero { margin: 6px 0 26px; }
+.home-hero h1 { margin-bottom: 8px; }
+.home-tag { color: var(--muted); max-width: 64ch; font-size: 15px; line-height: 1.5; }
+.home-section { margin-bottom: 26px; }
+.home-section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+  font-weight: 700; margin: 0 0 12px; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.home-card { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--panel); text-decoration: none; color: var(--text);
+  transition: border-color .12s ease, transform .12s ease, background .12s ease; }
+.home-card:hover { border-color: var(--gold); background: var(--panel2); transform: translateY(-1px); }
+.home-card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.hc-icon { flex: none; }
+.hc-img { width: 34px; height: 34px; display: block; border-radius: 5px; border: 1px solid #000; background: #000; }
+.home-card.feature .hc-img { width: 40px; height: 40px; }
+.hc-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.hc-title { font-weight: 600; font-size: 15px; }
+.hc-desc { color: var(--muted); font-size: 13px; line-height: 1.4; }
+.home-card.feature { border-color: color-mix(in srgb, var(--gold) 32%, var(--border)); }
+.home-card.feature:hover { background: color-mix(in srgb, var(--gold) 7%, var(--panel)); }
+.home-card.feature .hc-icon { filter: saturate(1.2); }
+.home-hint { margin-top: 6px; }
+@media (prefers-reduced-motion: reduce) { .home-card { transition: none; } .home-card:hover { transform: none; } }
 .muted { color: var(--muted); }
 .error { color: #ff6b6b; padding: 12px; border: 1px solid #5a2530; border-radius: 8px; background: #1d1216; }
 .zone-empty { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); max-width: 60ch; line-height: 1.5; }
