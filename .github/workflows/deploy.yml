@@ -202,7 +202,39 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: https://xian55.github.io/tortoise-db-viewer/
     steps:
-      - id: deploy
+      # GitHub Pages' deploy file sync ("syncing_files") is flaky for large sites --
+      # this one ships ~95k OG-unfurl stub files, and Pages returns a terminal
+      # "Deployment failed, try again later" on roughly half of attempts (the SAME
+      # artifact deploys fine on a retry: e8b4fec succeeded, 9e5d23d failed on an
+      # identical stub set). Retry up to 5×, spaced to skip transient backend
+      # hiccups. Each tN is gated on the previous attempt failing, so the chain stops
+      # at the first success; the final attempt has no continue-on-error, so if every
+      # attempt fails the job fails. Each attempt just re-syncs the uploaded artifact.
+      - id: t1
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - if: steps.t1.outcome == 'failure'
+        run: sleep 20
+      - id: t2
+        if: steps.t1.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - if: steps.t2.outcome == 'failure'
+        run: sleep 40
+      - id: t3
+        if: steps.t2.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - if: steps.t3.outcome == 'failure'
+        run: sleep 60
+      - id: t4
+        if: steps.t3.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - if: steps.t4.outcome == 'failure'
+        run: sleep 90
+      - id: t5
+        if: steps.t4.outcome == 'failure'
         uses: actions/deploy-pages@v4
