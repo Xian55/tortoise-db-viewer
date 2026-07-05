@@ -239,7 +239,8 @@ export const Q_CREATED_BY = `
   LEFT JOIN craft_source cs ON cs.spell = sc.spell
   LEFT JOIN items rc ON rc.entry = cs.recipe_item
   LEFT JOIN item_display_info rcdi ON rcdi.ID = rc.display_id
-  WHERE sc.item = ?1 ORDER BY s.entry`;
+  WHERE sc.item = ?1 AND sc.skill IN (171,164,185,333,202,129,356,182,755,165,186,393,142,197)
+  ORDER BY s.entry`;
 
 export const Q_REAGENT_FOR = `
   SELECT s.entry AS spell, s.name AS spell_name, s.icon AS spell_icon, ci.entry AS created, ci.name AS created_name, ci.quality, di.icon AS created_icon

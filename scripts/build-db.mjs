@@ -979,7 +979,11 @@ console.log("Deriving item_sources...");
   insSrc(`SELECT DISTINCT item, 'disenchant' FROM drops WHERE src='e'`);
   insSrc(`SELECT DISTINCT item, 'vendor'     FROM npc_vendor`);
   insSrc(`SELECT DISTINCT item, 'quest'      FROM quest_item WHERE role IN ('reward','choice')`);
-  insSrc(`SELECT DISTINCT item, 'crafted'    FROM spell_creates`);
+  // 'crafted' = made by a profession recipe (matches the Crafting browse). Restrict
+  // to profession skill lines so a class/talent spell that spuriously references an
+  // item as its effectItemType (e.g. the warlock talent "Emberstorm" -> item 868
+  // Ardent Custodian) doesn't mislabel a drop as crafted.
+  insSrc(`SELECT DISTINCT item, 'crafted'    FROM spell_creates WHERE skill IN (171,164,185,333,202,129,356,182,755,165,186,393,142,197)`);
   insSrc(`SELECT entry, 'pvp'                FROM items WHERE required_honor_rank > 0`);
   insSrc(`SELECT entry, 'worlddrop'          FROM items WHERE world_drop = 1`);
   // 'unobtainable' = dev artifacts (test/deprecated/placeholder items) detected by
