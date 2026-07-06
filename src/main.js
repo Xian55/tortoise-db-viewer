@@ -3,7 +3,7 @@ import { query, queryOne, preconnect, getMeta } from "./db.js";
 import * as Q from "./queries.js";
 import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, questZoneLabel, classRestrictions, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { showCharacters, showCharacter, showSharedLoadout } from "./character.js";
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
@@ -315,6 +315,7 @@ async function showSearch(term) {
   ];
   const itemsetCols = [
     { label: "Name", cell: (r) => `<a class="ilink" href="?itemset=${r.id}">${esc(r.name)}</a>`, value: (r) => r.name },
+    { label: "Class", cls: "muted", cell: (r) => (classRestrictions(r.clsmask) || []).join(", "), value: (r) => (classRestrictions(r.clsmask) || []).join(", ") },
   ];
 
   const itemsets = res.itemsets || [];
@@ -348,8 +349,11 @@ function renderItemSet(set, members, bonuses, currentEntry, linkName = true) {
     const body = b.spell ? `<a class="ilink set-bonus-link" href="?spell=${b.spell}">${esc(txt)}</a>` : `<span class="set-bonus-link">${esc(txt)}</span>`;
     return `<div class="set-bonus"><span class="set-thr">${b.threshold} pieces:</span> ${body}</div>`;
   }).join("");
+  const setCls = classRestrictions(setClassMask(members));
+  const clsLine = setCls ? `<div class="set-class dim">Classes: ${esc(setCls.join(", "))}</div>` : "";
   return `<div class="panel item-set">
     <div class="set-name">${head} <span class="dim">(${members.length} pieces)</span></div>
+    ${clsLine}
     <div class="set-members">${mem}</div>
     ${bon}
   </div>`;

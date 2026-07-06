@@ -9,7 +9,7 @@ import { loadSets, resolveWeights } from "./weightsets.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
   CREATURE_TYPE, CREATURE_RANK, GEAR_CRITERIA, GEAR_STAT_LABEL, ITEM_SOURCE,
-  BONDING, CLASS_MASK, PROFESSION, PROFESSION_LABEL, RACE_ALLIANCE, RACE_HORDE,
+  BONDING, CLASS_MASK, classRestrictions, PROFESSION, PROFESSION_LABEL, RACE_ALLIANCE, RACE_HORDE,
   QUEST_TYPE, CONTINENT, SPELL_SCHOOL, SPELL_CATEGORIES, GAMEOBJECT_TYPE, questZoneLabel,
   STAT_WEIGHT_PRESETS, STAT_WEIGHT_PRESET_MAP, GATHERING_SKILLS, SKILL_RANK_ORDER,
 } from "./constants.js";
@@ -805,6 +805,7 @@ async function browseItemsets(p) {
   const lvl = (r) => (r.maxlvl ? (r.minlvl === r.maxlvl ? `${r.minlvl}` : `${r.minlvl}-${r.maxlvl}`) : "");
   const cols = [
     { key: "name", label: "Item Set", cell: (r) => `<a class="ilink" href="?itemset=${r.id}">${esc(r.name)}</a>`, value: (r) => r.name || "" },
+    { key: "class", label: "Class", cls: "muted", groupable: true, cell: (r) => (classRestrictions(r.clsmask) || []).join(", "), value: (r) => (classRestrictions(r.clsmask) || []).join(", ") || "", group: (r) => (classRestrictions(r.clsmask) || ["Any class"]).join(", ") },
     { key: "pieces", label: "Pieces", num: true, cls: "muted", cell: (r) => r.pieces || "", value: (r) => r.pieces || 0 },
     { key: "level", label: "Req Level", num: true, cls: "muted", cell: (r) => lvl(r), value: (r) => r.maxlvl || 0 },
   ];

@@ -190,6 +190,18 @@ export function classRestrictions(mask) {
   return out;
 }
 
+// Representative class mask for an item set: the smallest positive member mask
+// (the real class bit; skips all-classes shared pieces like a set trinket).
+// Returns 0 when no member is class-restricted. Pair with classRestrictions().
+export function setClassMask(members) {
+  let m = 0;
+  for (const x of members || []) {
+    const a = x.ac;
+    if (a > 0 && (m === 0 || a < m)) m = a;
+  }
+  return m;
+}
+
 // allowable_race bitmask (1.12). Goblin (256) isn't playable.
 export const RACE_MASK = [
   [1, "Human"], [2, "Orc"], [4, "Dwarf"], [8, "Night Elf"],

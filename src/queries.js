@@ -69,10 +69,13 @@ export const Q_BROWSE_ITEMSETS = `
   SELECT s.id, s.name,
     (SELECT COUNT(*) FROM items i WHERE i.set_id = s.id AND i.hidden = 0) AS pieces,
     (SELECT MIN(i.required_level) FROM items i WHERE i.set_id = s.id AND i.hidden = 0) AS minlvl,
-    (SELECT MAX(i.required_level) FROM items i WHERE i.set_id = s.id AND i.hidden = 0) AS maxlvl
+    (SELECT MAX(i.required_level) FROM items i WHERE i.set_id = s.id AND i.hidden = 0) AS maxlvl,
+    -- representative class mask: smallest positive member mask (the real class bit;
+    -- skips all-classes shared pieces). NULL => not class-restricted.
+    (SELECT MIN(i.allowable_class) FROM items i WHERE i.set_id = s.id AND i.hidden = 0 AND i.allowable_class > 0) AS clsmask
   FROM item_sets s WHERE s.name <> '' ORDER BY s.name`;
 export const Q_ITEMSET_MEMBERS = `
-  SELECT i.entry, i.name, i.quality, di.icon
+  SELECT i.entry, i.name, i.quality, i.allowable_class AS ac, di.icon
   FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE i.set_id = ?1 AND i.hidden = 0 ORDER BY i.required_level, i.name`;
 // bonuses with the bonus spell's text (s1..d3 let the viewer resolve $s tokens).
@@ -146,9 +149,11 @@ export const Q_SEARCH_ZONES = `
   LIMIT ?3`;
 
 export const Q_SEARCH_ITEMSETS = `
-  SELECT id, name FROM item_sets
-  WHERE name <> '' AND name LIKE ?1
-  ORDER BY (name = ?2) DESC, name
+  SELECT s.id, s.name,
+    (SELECT MIN(i.allowable_class) FROM items i WHERE i.set_id = s.id AND i.hidden = 0 AND i.allowable_class > 0) AS clsmask
+  FROM item_sets s
+  WHERE s.name <> '' AND s.name LIKE ?1
+  ORDER BY (s.name = ?2) DESC, s.name
   LIMIT ?3`;
 
 // Objects (interactive gameobjects) via LIKE over the small object_browse table.

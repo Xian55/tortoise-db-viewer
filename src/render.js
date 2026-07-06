@@ -1,6 +1,6 @@
 import {
   QUALITY, ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, STAT_TYPE,
-  BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, ITEM_SOURCE, REP_STANDING, POWER_TYPE, classRestrictions, money,
+  BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, ITEM_SOURCE, REP_STANDING, POWER_TYPE, classRestrictions, setClassMask, money,
   PROFESSION_LABEL,
 } from "./constants.js";
 // skill_id -> name for item equip requirements (professions + a few non-profession skills).
@@ -236,6 +236,8 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, se
   if (set && set.members && set.members.length) {
     const setName = set.id ? `<a class="ilink" href="?itemset=${set.id}">${esc(set.name)}</a>` : esc(set.name);
     let s = `<div class="tt-set"><div class="tt-set-name">${setName} <span class="dim">(${set.members.length})</span></div>`;
+    const setCls = classRestrictions(setClassMask(set.members));
+    if (setCls) s += `<div class="tt-set-class dim">Classes: ${esc(setCls.join(", "))}</div>`;
     for (const m of set.members) {
       s += `<div class="tt-set-member">${m.entry === set.currentEntry
         ? `<b>${esc(m.name)}</b>`

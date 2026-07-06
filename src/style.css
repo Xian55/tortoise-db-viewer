@@ -153,7 +153,9 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 /* item view layout */
 /* item set panel (set bonuses) */
 .item-set { margin-bottom: 16px; padding: 12px 16px; }
-.item-set .set-name { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+.item-set .set-name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+.item-set .set-class { font-size: 13px; margin-bottom: 8px; }
+.tt-set-class { font-size: 11px; padding-bottom: 2px; }
 .set-members { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-bottom: 8px; }
 .set-member { white-space: nowrap; }
 .set-bonus { line-height: 1.55; }
