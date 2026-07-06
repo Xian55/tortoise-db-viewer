@@ -265,6 +265,47 @@ export const Q_TEACHES = `
 
 export const Q_ITEM_SOURCES = `SELECT source FROM item_sources WHERE item = ?1`;
 
+// Dungeon/raid drop sources for a set of items (character upgrade finder): each item
+// that drops from a creature living in a dungeon/raid map (type 1=dungeon, 2=raid),
+// with the instance + creature name, so a suggested-upgrade row can say where to farm
+// it. Two sources, UNION-ed:
+//   1. Spawn-backed: the creature has a `spawns` row on the instance map. It qualifies
+//      if it's a boss (unique spawn, cnt=1 -- the repo's boss convention) OR its drop
+//      chance is meaningful (>= 1%). The chance floor is what keeps out the noise:
+//      shared/reference loot pools sprinkle an item across dozens of dungeon trash mobs
+//      at ~0.00-0.06% each (a named mob's real drop is >= ~1.3%), so without it a single
+//      item resolves to 50-200+ trash "sources"; cnt=1 still lets a genuine but
+//      low-chance boss through.
+//   2. Script-spawned: bosses placed by the instance's C++ script carry NO spawn row,
+//      so part 1 misses them (e.g. Tuten'kash -> Razorfen Downs). `creature_instance`
+//      (built from scripts/data/instance-bosses.json) maps such an entry to its map.
+// creature_instance holds only spawn-less creatures, so the two parts never overlap ->
+// UNION ALL needs no dedup. Best chance per (item, creature, map); ordered so the
+// frontend keeps the top few. Bind the item id list TWICE (parts 1 and 2).
+export const qInstanceDropsIn = (n) => {
+  const ph = (off) => Array.from({ length: n }, (_, k) => `?${off + k + 1}`).join(",");
+  return `
+  SELECT * FROM (
+    SELECT d.item AS item, c.entry AS npc, c.name AS npc_name,
+           m.id AS map_id, m.name AS dungeon, m.type AS map_type, MAX(d.chance) AS chance
+    FROM drops d
+    JOIN creatures c ON c.loot_id = d.owner AND d.src = 'c'
+    JOIN spawns sp ON sp.id = c.entry
+    JOIN maps m ON m.id = sp.map AND m.type IN (1,2) AND m.hidden = 0 AND m.name <> ''
+    WHERE d.item IN (${ph(0)}) AND (sp.cnt = 1 OR d.chance >= 1)
+    GROUP BY d.item, c.entry, m.id
+    UNION ALL
+    SELECT d.item AS item, c.entry AS npc, c.name AS npc_name,
+           m.id AS map_id, m.name AS dungeon, m.type AS map_type, MAX(d.chance) AS chance
+    FROM drops d
+    JOIN creatures c ON c.loot_id = d.owner AND d.src = 'c'
+    JOIN creature_instance ci ON ci.entry = c.entry
+    JOIN maps m ON m.id = ci.map AND m.type IN (1,2) AND m.hidden = 0 AND m.name <> ''
+    WHERE d.item IN (${ph(n)}) AND d.chance >= 1
+    GROUP BY d.item, c.entry, m.id
+  ) ORDER BY chance DESC`;
+};
+
 // Every spawn point of the gathering object(s) that yield this item (herb/ore
 // nodes etc.), for the per-zone farm breakdown. Grouped into zones client-side.
 // CROSS JOIN pins the join order to the selective driver (drops.item) instead of

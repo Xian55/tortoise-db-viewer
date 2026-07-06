@@ -241,6 +241,8 @@ async function testCharacterLoadout() {
     rows: document.querySelectorAll(".up-table tbody tr:not(.up-eq)").length,
     diffs: document.querySelectorAll(".up-diff .dstat").length,
     sources: document.querySelectorAll(".up-src .tagx, .up-src a.ilink.quest").length,
+    // dungeon/raid-drop upgrades name their instance + creature (not every upgrade is one)
+    bosses: document.querySelectorAll(".up-loc .up-loc-row").length,
     noStaff: ![...document.querySelectorAll(".up-table")].some((tb) =>
       tb.querySelector("thead th")?.textContent === "Main Hand" &&
       [...tb.querySelectorAll(".up-item a.ilink")].some((a) => /staff|gnarled staff/i.test(a.textContent))),
@@ -263,7 +265,7 @@ async function testCharacterLoadout() {
     noDelete: !document.querySelector("#charDelete"),
     slots: document.querySelectorAll(".gear-icon[href*='item=']").length,
   }));
-  console.log(`character loadout: title=${sheet.title} items=${sheet.itemLinks} stats=${sheet.statRows} unobt=${sheet.unobtained} ench=${sheet.enchant} class=${sheet.classPicker} lvl=${sheet.levelPicker} | detail rows=${detail.rows} enchLink=${detail.enchLink} | up rows=${up.rows} diffs=${up.diffs} src=${up.sources} noStaff=${up.noStaff} noTest=${up.noTest} roundTrip=${roundTrip} | share=${share.isLoadout} banner=${share.banner} save=${share.saveBtn} slots=${share.slots}`);
+  console.log(`character loadout: title=${sheet.title} items=${sheet.itemLinks} stats=${sheet.statRows} unobt=${sheet.unobtained} ench=${sheet.enchant} class=${sheet.classPicker} lvl=${sheet.levelPicker} | detail rows=${detail.rows} enchLink=${detail.enchLink} | up rows=${up.rows} diffs=${up.diffs} src=${up.sources} boss=${up.bosses} noStaff=${up.noStaff} noTest=${up.noTest} roundTrip=${roundTrip} | share=${share.isLoadout} banner=${share.banner} save=${share.saveBtn} slots=${share.slots}`);
   return sheet.title === "Smoke Gear" && sheet.itemLinks >= 5 && sheet.statRows > 0 && sheet.unobtained === 1
     && sheet.enchant && sheet.classPicker === "2" && sheet.levelPicker === "36" && sheet.hasExport
     && detail.rows > 0 && detail.enchLink

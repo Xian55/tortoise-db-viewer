@@ -4,8 +4,8 @@
 // { itemId, obtained } } }. Everything persists to localStorage -- there is no
 // backend -- so loadouts survive reloads on this browser.
 import { query, queryOne } from "./db.js";
-import { qItemsIn, qItemStatsIn, qEnchantsIn, qRandomSuffixIn, qItemSearchInv, Q_ITEM_SET, Q_ITEMSET_BONUSES, Q_ITEMSET_MEMBERS } from "./queries.js";
-import { itemLink, questLink, spellLink, sourceTags, iconImg, qualityColor, resolveSpellText, esc } from "./render.js";
+import { qItemsIn, qItemStatsIn, qEnchantsIn, qRandomSuffixIn, qItemSearchInv, qInstanceDropsIn, Q_ITEM_SET, Q_ITEMSET_BONUSES, Q_ITEMSET_MEMBERS } from "./queries.js";
+import { itemLink, questLink, spellLink, sourceTags, dungeonLink, npcLink, pct, iconImg, qualityColor, resolveSpellText, esc } from "./render.js";
 import { ftsQuery, trigramQuery } from "./search.js";
 import { loadSets, resolveWeights } from "./weightsets.js";
 import { GEAR_STAT_LABEL, STAT_WEIGHT_PRESETS, STAT_WEIGHT_PRESET_MAP, CLASS_MASK } from "./constants.js";
@@ -246,15 +246,22 @@ async function attachSources(list) {
   const ids = [...new Set(list.flatMap((b) => b.ups.map((c) => c.entry)))];
   if (!ids.length) return;
   const ph = ids.map((_, i) => `?${i + 1}`).join(",");
-  const [srcs, quests] = await Promise.all([
+  const [srcs, quests, instDrops] = await Promise.all([
     query(`SELECT item, GROUP_CONCAT(DISTINCT source) s FROM item_sources WHERE item IN (${ph}) GROUP BY item`, ids),
     query(`SELECT qi.item, q.entry, q.title FROM quest_item qi JOIN quests q ON q.entry = qi.quest
            WHERE qi.role IN ('reward','choice') AND q.hidden = 0 AND qi.item IN (${ph})`, ids),
+    query(qInstanceDropsIn(ids.length), [...ids, ...ids]),
   ]);
   const srcMap = new Map(srcs.map((r) => [r.item, r.s]));
   const qMap = new Map();
   for (const r of quests) { let a = qMap.get(r.item); if (!a) { a = []; qMap.set(r.item, a); } a.push(r); }
-  for (const b of list) for (const c of b.ups) { c.srcKeys = srcMap.get(c.entry) || ""; c.quests = (qMap.get(c.entry) || []).slice(0, 3); }
+  const iMap = new Map();
+  for (const r of instDrops) { let a = iMap.get(r.item); if (!a) { a = []; iMap.set(r.item, a); } a.push(r); }
+  for (const b of list) for (const c of b.ups) {
+    c.srcKeys = srcMap.get(c.entry) || "";
+    c.quests = (qMap.get(c.entry) || []).slice(0, 3);
+    c.instDrops = (iMap.get(c.entry) || []).slice(0, 3);
+  }
 }
 
 function specSelect(sel) {
@@ -350,6 +357,20 @@ function setsSection(sets) {
   }).join("")}</div>`;
 }
 
+// Where a dungeon/raid-drop upgrade comes from: "Dungeon · NPC (chance)" links (top
+// few by drop chance), shown under the source tags so the player knows the exact
+// instance + creature to farm. Populated for items that drop from a boss or a named
+// mob inside a dungeon/raid (see qInstanceDropsIn).
+function instanceSrcHtml(drops) {
+  if (!drops || !drops.length) return "";
+  return `<div class="up-loc">${drops.map((d) => {
+    const type = d.map_type === 2 ? "raid" : "dungeon";
+    return `<span class="up-loc-row" title="Drops in ${esc(d.dungeon)} (${type})">${
+      dungeonLink(d.map_id, d.dungeon)}<span class="up-loc-sep">·</span>${npcLink(d.npc, d.npc_name)}${
+      d.chance ? ` <span class="muted up-loc-pct">${pct(d.chance)}</span>` : ""}</span>`;
+  }).join("")}</div>`;
+}
+
 function upgradesHtml(list, itemMap) {
   if (!list.length) return `<p class="muted">No higher-scoring upgrades found for this spec.</p>`;
   return list.map(({ slot, equippedId, base, ups }) => {
@@ -369,7 +390,7 @@ function upgradesHtml(list, itemMap) {
         <td class="up-num">${round1(c.score)}</td>
         <td class="up-num"><span class="up-gain${c.score < base ? " down" : ""}">${c.score >= base ? "+" : ""}${round1(c.score - base)}</span></td>
         <td class="up-change">${diffHtml(c.diff)}</td>
-        <td class="up-src">${sourceTags(c.srcKeys)}${quests}</td>
+        <td class="up-src">${sourceTags(c.srcKeys)}${quests}${instanceSrcHtml(c.instDrops)}</td>
       </tr>`;
     }).join("");
     return `<div class="up-table-wrap"><table class="up-table">

@@ -116,6 +116,7 @@ python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/min
 python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc -> scripts/data/talents.json (talent-tree structure)
 python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
+bun scripts/extract-instance-bosses.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src) + built DB -> scripts/data/instance-bosses.json (script-spawned boss entry -> instance mapId; needs build-db first)
 bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
 ```
 
@@ -273,6 +274,15 @@ Re-run `extract-minimap.py` + commit on client map changes.
   widget `public/embed/tw-power.js`. Content-hashed like the OG stubs (HASH_ONLY=1);
   run AFTER `vite build` (it writes into `dist`, which vite wipes). deploy.yml
   regenerates + merges it (cache-gated). `public/embed/demo.html` is a demo/test page.
+- `scripts/extract-instance-bosses.mjs` — LOCAL: reads the server ScriptDev2 C++
+  (`../tortoise-wow/src/scripts/dungeons/<instance>/`) + the built DB → committed
+  `scripts/data/instance-bosses.json` (`[{e:creatureEntry, m:mapId}]`). Instance bosses
+  placed by C++ scripts have NO static `creature` spawn, so the SQL dump can't locate
+  them; this parses each folder's creature/GO enums, grounds the folder→mapId from the
+  built DB (gameobjects are placed inside the instance), and maps every spawn-less
+  creature there to that map. build-db loads it into `creature_instance`; the character
+  upgrade finder (`qInstanceDropsIn`) uses it to name e.g. "Razorfen Downs · Tuten'kash".
+  CI has no server `src/`, so the JSON is committed. Run: build-db → this → build-db.
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
 - `scripts/lib/sqlite.mjs` — Bun/Node SQLite wrapper.
@@ -370,7 +380,13 @@ Re-run `extract-minimap.py` + commit on client map changes.
   the "Stave of the Ancients" demons transform in place from a friendly NPC). Maps the
   spawn-less entry -> the entry whose `spawns`/`spawn_points` it inherits, so build-db
   can still map it. Committed (CI has no server `src/`); hand-maintained from the
-  scriptdev enums — extend when new transforms are found.
+  scriptdev enums — extend when new transforms are found. Plus script-spawned instance
+  bosses (`scripts/data/instance-bosses.json` via `extract-instance-bosses.mjs`): a
+  boss placed by a C++ instance script has no static `creature` spawn, so the SQL can't
+  tell which dungeon it's in. The extract parses each `src/scripts/dungeons/<instance>/`
+  folder → `creature_instance(entry, map)`, letting the character upgrade finder name
+  the instance for such a boss (e.g. Tuten'kash → Razorfen Downs). Committed (CI has no
+  server `src/`); re-run on scriptdev changes.
 - **Zone assignment is ADT-exact.** Each spawn's `spawn_points.zone` is precomputed
   in build-db from `scripts/data/subzone-bounds.json` (per-AreaTable bounding boxes
   extracted from the client ADT terrain chunks by `extract-area-bounds.py`): the

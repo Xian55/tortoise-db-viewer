@@ -230,6 +230,31 @@ console.log("Importing maps + spawns...");
   console.log(`  maps: ${nm} | spawns (distinct id,map): ${counts.size}`);
 }
 
+// ---- Script-spawned instance bosses -> their dungeon/raid map ----
+// Some instance bosses/adds are placed by the server's C++ instance scripts, not by a
+// static `creature` spawn row, so the SQL dump has no location for them (no `spawns`,
+// no `spawn_points`). extract-instance-bosses.mjs reads the ScriptDev2 source (LOCAL;
+// CI has no server src) and writes scripts/data/instance-bosses.json = [{e,m},...]
+// mapping such a creature entry to the instance map it's scripted into. Lets the
+// character upgrade finder (qInstanceDropsIn) still name "Razorfen Downs · Tuten'kash"
+// for a boss the spawn tables can't locate. Absent file => empty table (feature falls
+// back to spawn-based sources only).
+console.log("Loading instance bosses...");
+{
+  db.exec(`CREATE TABLE creature_instance (entry INTEGER, map INTEGER)`);
+  const f = join(ROOT, "scripts", "data", "instance-bosses.json");
+  let n = 0;
+  if (existsSync(f)) {
+    const rows = JSON.parse(readFileSync(f, "utf8"));
+    const ins = db.prepare(`INSERT INTO creature_instance VALUES (?,?)`);
+    db.transaction(() => {
+      for (const r of rows) { ins.run(r.e, r.m); n++; }
+    })();
+  }
+  db.exec(`CREATE INDEX idx_creature_instance_entry ON creature_instance(entry)`);
+  console.log(`  creature_instance: ${n}${n ? "" : " (scripts/data/instance-bosses.json absent)"}`);
+}
+
 // ---- Recommended level range per instance (dungeons/raids) ----
 // map_template carries no level field, so derive a band from each instance's elite
 // (rank>=1) creatures, weighted by spawn count: lo = 10th percentile of their min

@@ -1012,6 +1012,11 @@ a.ext { color: var(--gold); }
 .up-change .up-diff { display: flex; flex-wrap: wrap; gap: 3px 5px; }
 .up-src { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .up-src .tagx { margin-left: 0; }
+/* dungeon/raid drop location: full-width so it drops below the source tags, one row per source */
+.up-loc { flex-basis: 100%; display: flex; flex-direction: column; gap: 2px; margin-top: 2px; font-size: 12px; }
+.up-loc-row { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.up-loc-sep { color: var(--muted); }
+.up-loc-pct { font-size: 11px; }
 .dstat { padding: 0 6px; border-radius: 9px; border: 1px solid var(--border); font-variant-numeric: tabular-nums; font-size: 12px; }
 .dstat.gain { color: #74c98a; border-color: #3f7a4f; background: rgba(60, 130, 80, .12); }
 .dstat.loss { color: #e88; border-color: #8c3a3a; background: rgba(170, 60, 60, .12); }
