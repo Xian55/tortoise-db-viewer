@@ -1010,13 +1010,20 @@ console.log("Deriving item_sources...");
   // Ardent Custodian) doesn't mislabel a drop as crafted.
   insSrc(`SELECT DISTINCT item, 'crafted'    FROM spell_creates WHERE skill IN (171,164,185,333,202,129,356,182,755,165,186,393,142,197)`);
   insSrc(`SELECT entry, 'pvp'                FROM items WHERE required_honor_rank > 0`);
+  // Reputation-gated battleground/arena gear: an item whose required_reputation_faction
+  // is a PvP faction is a PvP reward (Arathi Basin League of Arathor 509 / Defilers 510,
+  // Alterac Valley Stormpike 730 / Frostwolf 729, Warsong 889 / Silverwing 890, and the
+  // Turtle Blood Ring arena 1008). Catches the rep-reward pieces even when they carry no
+  // honor-rank gate and aren't in a set.
+  insSrc(`SELECT DISTINCT entry, 'pvp'       FROM items WHERE required_reputation_faction IN (889, 890, 509, 510, 729, 730, 1008)`);
   // Battleground reputation-reward gear: equippable items (class 2 weapon / 4 armor)
   // sold by vendors of BG rep factions -> also 'pvp'. Resolve the Faction.dbc rep id
   // -> its faction_template ids -> the vendor creatures -> their npc_vendor(_template)
-  // gear. Currently the Warsong Gulch quartermasters (Warsong Outriders 889 /
-  // Silverwing Sentinels 890); extend PVP_REP_FACTIONS for other battlegrounds.
+  // gear. Covers all BG quartermasters: Warsong Gulch (Warsong Outriders 889 /
+  // Silverwing Sentinels 890), Arathi Basin (League of Arathor 509 / Defilers 510),
+  // Alterac Valley (Stormpike Guard 730 / Frostwolf Clan 729).
   {
-    const PVP_REP_FACTIONS = new Set([889, 890]);
+    const PVP_REP_FACTIONS = new Set([889, 890, 509, 510, 729, 730]);
     const ftCols = srcColumns("faction_template", "tw_world_faction_template.sql");
     const iFtId = ftCols.indexOf("id"), iFaction = ftCols.indexOf("faction_id");
     const pvpFts = [];
@@ -1089,6 +1096,37 @@ console.log("Importing item sets...");
   } else {
     console.log("  (no item-sets.json -- run scripts/extract-item-sets.py)");
   }
+}
+
+// ---- PvP item-set gear (extends item_sources 'pvp') ----
+// Every member of a PvP reward set is PvP-obtainable even when the row itself
+// carries no honor-rank/reputation gate (many pieces don't). Detect by set NAME
+// family, which is self-documenting and has no collision with PvE sets (verified
+// against the full ItemSet.dbc list). Families: the Classic rank sets -- Alliance
+// rare "Lieutenant Commander's" / epic "Field Marshal's", Horde rare "Champion's" /
+// epic "Warlord's" (each set mixes the lower rank titles too) -- the Arathi Basin
+// rep sets "The Highlander's" (League of Arathor) / "The Defiler's" (Defilers), and
+// the Turtle-custom PvP brackets (Bloody Gladiator's, Combatant's, Corpsman's,
+// Executor's, Field Medic's, Partisan's, Physician's, Strategist's, Tactician's,
+// Veteran's), which reuse the same per-class set-suffix scheme. Must run AFTER the
+// item_sets table is built. NOTE: "The Gladiator" (Dal'Rend's, a UBRS drop) is NOT
+// a PvP set and is deliberately excluded.
+console.log("Tagging PvP set gear...");
+{
+  const PVP_SET_FAMILIES = ["Champion's", "Lieutenant Commander's", "Warlord's",
+    "Field Marshal's", "The Highlander's", "The Defiler's", "Bloody Gladiator's",
+    "Combatant's", "Corpsman's", "Executor's", "Field Medic's", "Partisan's",
+    "Physician's", "Strategist's", "Tactician's", "Veteran's"];
+  const like = PVP_SET_FAMILIES.map(() => `s.name LIKE ?`).join(" OR ");
+  db.prepare(`INSERT INTO item_sources
+    SELECT DISTINCT i.entry, 'pvp' FROM items i JOIN item_sets s ON i.set_id = s.id
+    WHERE ${like}`).run(...PVP_SET_FAMILIES.map((f) => `${f} %`));
+  // An item can match more than one PvP rule (honor rank + rep + set); collapse any
+  // duplicate (item, source) rows so the browse Source cell doesn't show "pvp,pvp".
+  db.exec(`DELETE FROM item_sources WHERE rowid NOT IN
+    (SELECT MIN(rowid) FROM item_sources GROUP BY item, source)`);
+  const np = db.prepare(`SELECT COUNT(DISTINCT item) c FROM item_sources WHERE source='pvp'`).get().c;
+  console.log(`  item_sources pvp: ${np} items`);
 }
 
 // ---- Reputation per kill (grind calculator) ----
