@@ -14,8 +14,10 @@
 // effectApplyAuraName id -> stat key. (Synonymous duplicate auras are intentionally
 // omitted to avoid double counting: ranged AP 124 ~ melee AP 99; ranged/spell haste
 // 140/65 ~ melee haste 138; block VALUE 158 vs reference's Block% 51.)
+// NOTE: aura 13 (MOD_DAMAGE_DONE) is handled separately in statsFromAuras -- its misc
+// value is a spell-school mask, so school-specific spell power (+Fire dmg, +Shadow dmg)
+// is split from generic "sp" (see SP_SCHOOL) instead of all lumping into `sp`.
 export const AURA_STAT = {
-  13: "sp",     // MOD_DAMAGE_DONE (any school mask) -> spell power
   135: "heal",  // MOD_HEALING_DONE
   99: "ap",     // MOD_ATTACK_POWER
   85: "mp5",    // MOD_POWER_REGEN ("Restores N mana per 5 sec")
@@ -44,6 +46,14 @@ export const SKILL_STAT = {
   55: "w2hSwords", 172: "w2hAxes", 160: "w2hMaces", 45: "wBows", 46: "wGuns", 226: "wCrossbows",
 };
 
+// aura 13 (MOD_DAMAGE_DONE) misc = spell-school MASK. A single school bit -> that
+// school's spell-power key; a multi-school mask (126 = all magic, 127 = +physical)
+// -> generic "sp". This lets the gear scorer ignore off-school spell power (e.g.
+// +Fire damage is dead weight for a Frost mage). School bits: 2 holy, 4 fire,
+// 8 nature, 16 frost, 32 shadow, 64 arcane (1 = physical, not spell power).
+const SCHOOL_MAGIC = 126; // 2|4|8|16|32|64
+const SP_SCHOOL = { 2: "spHoly", 4: "spFire", 8: "spNature", 16: "spFrost", 32: "spShadow", 64: "spArcane" };
+
 // item_template stat_type id -> base stat key (see STAT_TYPE in src/constants.js).
 const STAT_TYPE_KEY = { 4: "str", 3: "agi", 7: "sta", 5: "int", 6: "spi" };
 // resistance column -> stat key (no holy: the reference has no Holy Resistance option).
@@ -70,11 +80,18 @@ export function statsFromColumns(it, out = {}) {
 }
 
 // Stats contributed by one equip spell's effects. `effects`: [{aura, misc, base}].
-export function statsFromAuras(effects, out = {}) {
+// `spellName` is used to recognise the Turtle-custom "Vampirism" family (a dummy
+// aura 4 whose $s value is a life-leech %; the name is the only reliable marker).
+export function statsFromAuras(effects, out = {}, spellName = "") {
+  const isVampirism = /^vampirism\b/i.test(spellName || ""); // "Vampirism 1".."Vampirism 5"
   for (const e of effects) {
     const v = (e.base || 0) + 1; // $sN convention: basePoints + 1
     if (e.aura === MOD_SKILL_AURA) add(out, SKILL_STAT[e.misc], v);
-    else add(out, AURA_STAT[e.aura], v);
+    else if (e.aura === 4) { if (isVampirism) add(out, "leech", v); } // % damage dealt -> healing
+    else if (e.aura === 13) { // MOD_DAMAGE_DONE: split school-specific vs generic sp
+      const school = e.misc & SCHOOL_MAGIC;   // magic-school bits only
+      if (school) add(out, SP_SCHOOL[school] || "sp", v); // single school -> spX, multi/all -> sp
+    } else add(out, AURA_STAT[e.aura], v);
   }
   return out;
 }

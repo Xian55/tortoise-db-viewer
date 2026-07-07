@@ -98,7 +98,11 @@ export const GEAR_CRITERIA = [
   { group: "Base Stats", options: [["str", "Strength"], ["agi", "Agility"], ["sta", "Stamina"], ["int", "Intellect"], ["spi", "Spirit"]] },
   { group: "Defense", options: [["armor", "Armor"], ["def", "Defense"], ["dodge", "Dodge %"], ["parry", "Parry %"], ["block", "Block %"], ["firRes", "Fire Res"], ["natRes", "Nature Res"], ["froRes", "Frost Res"], ["shaRes", "Shadow Res"], ["arcRes", "Arcane Res"]] },
   { group: "Offensive", options: [["ap", "Attack Power"], ["sp", "Spell Power"], ["heal", "Healing Power"], ["crit", "Crit %"], ["spCrit", "Spell Crit %"], ["hit", "Hit %"], ["spHit", "Spell Hit %"], ["dps", "Weapon DPS"]] },
-  { group: "Utility", options: [["mp5", "Mana per 5"], ["hp5", "Health per 5"], ["haste", "Haste %"]] },
+  // School-specific spell power (aura 13, single-school mask). Generic "Spell Power"
+  // above is the all-schools bonus; these only help spells of that school, so the
+  // gear scorer counts them for matching specs only (e.g. Fire Dmg for a Fire mage).
+  { group: "Spell School", options: [["spHoly", "Holy Dmg"], ["spFire", "Fire Dmg"], ["spFrost", "Frost Dmg"], ["spShadow", "Shadow Dmg"], ["spNature", "Nature Dmg"], ["spArcane", "Arcane Dmg"]] },
+  { group: "Utility", options: [["mp5", "Mana per 5"], ["hp5", "Health per 5"], ["haste", "Haste %"], ["leech", "Vampirism %"]] },
   { group: "Weapon Skill", options: [["wSwords", "Swords"], ["wAxes", "Axes"], ["wMaces", "Maces"], ["wDaggers", "Daggers"], ["wPolearms", "Polearms"], ["w2hSwords", "2H Swords"], ["w2hAxes", "2H Axes"], ["w2hMaces", "2H Maces"], ["wBows", "Bows"], ["wGuns", "Guns"], ["wCrossbows", "Crossbows"]] },
 ];
 
@@ -120,27 +124,29 @@ export const STAT_WEIGHT_PRESETS = [
   { id: "paladin-holy", group: "Max level", label: "Paladin · Holy", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.4, spCrit: 6, spi: 0.2 } },
   { id: "hunter-dps", group: "Max level", label: "Hunter · Ranged", weights: { agi: 2, ap: 1, crit: 12, hit: 12, dps: 2, int: 0.5 } },
   { id: "rogue-dps", group: "Max level", label: "Rogue · Combat/Assassination", weights: { agi: 2, ap: 1, crit: 14, hit: 12, dps: 3 } },
-  { id: "priest-shadow", group: "Max level", label: "Priest · Shadow", weights: { sp: 1, spCrit: 8, spHit: 10, int: 0.3, mp5: 0.3, sta: 0.5 } },
+  { id: "priest-shadow", group: "Max level", label: "Priest · Shadow", weights: { sp: 1, spShadow: 1, spCrit: 8, spHit: 10, int: 0.3, mp5: 0.3, sta: 0.5 } },
   { id: "priest-heal", group: "Max level", label: "Priest · Holy/Discipline", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.4, spi: 0.3 } },
   { id: "shaman-enh", group: "Max level", label: "Shaman · Enhancement", weights: { ap: 1, str: 1.5, agi: 1, crit: 10, hit: 12, dps: 3, int: 0.3 } },
-  { id: "shaman-ele", group: "Max level", label: "Shaman · Elemental", weights: { sp: 1, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3 } },
+  { id: "shaman-ele", group: "Max level", label: "Shaman · Elemental", weights: { sp: 1, spNature: 1, spFire: 0.5, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3 } },
   { id: "shaman-resto", group: "Max level", label: "Shaman · Restoration", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.3, spi: 0.2 } },
-  { id: "mage-fire", group: "Max level", label: "Mage · Fire", weights: { sp: 1, spCrit: 12, spHit: 10, int: 0.4, mp5: 0.3 } },
-  { id: "mage-frost", group: "Max level", label: "Mage · Frost/Arcane", weights: { sp: 1, spCrit: 8, spHit: 10, int: 0.5, mp5: 0.3 } },
-  { id: "warlock-dps", group: "Max level", label: "Warlock · DPS", weights: { sp: 1, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3, sta: 0.5 } },
-  { id: "druid-balance", group: "Max level", label: "Druid · Balance", weights: { sp: 1, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3 } },
-  { id: "feral-dps", group: "Max level", label: "Druid · Feral DPS", weights: { agi: 2, str: 1.5, ap: 1, crit: 12, hit: 10 } },
+  { id: "mage-fire", group: "Max level", label: "Mage · Fire", weights: { sp: 1, spFire: 1, spCrit: 12, spHit: 10, int: 0.4, mp5: 0.3 } },
+  { id: "mage-frost", group: "Max level", label: "Mage · Frost/Arcane", weights: { sp: 1, spFrost: 1, spArcane: 0.5, spCrit: 8, spHit: 10, int: 0.5, mp5: 0.3 } },
+  { id: "warlock-dps", group: "Max level", label: "Warlock · DPS", weights: { sp: 1, spShadow: 1, spFire: 1, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3, sta: 0.5, leech: 2 } },
+  { id: "druid-balance", group: "Max level", label: "Druid · Balance", weights: { sp: 1, spNature: 1, spArcane: 1, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3 } },
+  { id: "feral-dps", group: "Max level", label: "Druid · Feral DPS", weights: { agi: 2, str: 1.5, ap: 1, crit: 12, hit: 10, leech: 2 } },
   { id: "druid-feral-tank", group: "Max level", label: "Druid · Feral Tank", weights: { sta: 2, agi: 1.5, armor: 0.06, def: 8, dodge: 8 } },
   { id: "druid-resto", group: "Max level", label: "Druid · Restoration", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.3, spi: 0.2 } },
-  { id: "caster-dps", group: "Max level", label: "Caster · DPS (generic)", weights: { sp: 1, spCrit: 14, spHit: 10, int: 0.3, mp5: 0.4 } },
+  // Generic caster/leveling-caster don't know the school, so they weight every school
+  // (behaves like the old all-schools "sp"); pick a specific spec for school filtering.
+  { id: "caster-dps", group: "Max level", label: "Caster · DPS (generic)", weights: { sp: 1, spHoly: 1, spFire: 1, spFrost: 1, spShadow: 1, spNature: 1, spArcane: 1, spCrit: 14, spHit: 10, int: 0.3, mp5: 0.4 } },
   { id: "healer", group: "Max level", label: "Healer (generic)", weights: { heal: 1, mp5: 0.6, sp: 0.5, int: 0.3, spi: 0.2 } },
   { id: "tank-avoid", group: "Max level", label: "Tank · Avoidance (generic)", weights: { def: 12, dodge: 10, parry: 10, sta: 1.5, armor: 0.05, block: 5 } },
   // Leveling: survival (Stamina) + primary stat + weapon throughput dominate; hit/crit
   // matter less than at 60, and mana regen (spi/mp5) keeps casters killing between drinks.
-  { id: "lvl-melee", group: "Leveling", label: "Leveling · Melee (Str)", weights: { sta: 2, str: 2, ap: 1, dps: 4, crit: 5 } },
-  { id: "lvl-melee-agi", group: "Leveling", label: "Leveling · Melee (Agi)", weights: { sta: 2, agi: 2, ap: 1, dps: 4, crit: 5 } },
+  { id: "lvl-melee", group: "Leveling", label: "Leveling · Melee (Str)", weights: { sta: 2, str: 2, ap: 1, dps: 4, crit: 5, leech: 2 } },
+  { id: "lvl-melee-agi", group: "Leveling", label: "Leveling · Melee (Agi)", weights: { sta: 2, agi: 2, ap: 1, dps: 4, crit: 5, leech: 2 } },
   { id: "lvl-hunter", group: "Leveling", label: "Leveling · Hunter", weights: { agi: 2, sta: 1.5, ap: 1, dps: 3, int: 0.4 } },
-  { id: "lvl-caster", group: "Leveling", label: "Leveling · Caster", weights: { sta: 1.5, sp: 1, int: 0.6, spi: 0.6, spCrit: 5 } },
+  { id: "lvl-caster", group: "Leveling", label: "Leveling · Caster", weights: { sta: 1.5, sp: 1, spHoly: 1, spFire: 1, spFrost: 1, spShadow: 1, spNature: 1, spArcane: 1, int: 0.6, spi: 0.6, spCrit: 5, leech: 2 } },
   { id: "lvl-healer", group: "Leveling", label: "Leveling · Healer", weights: { sta: 1, heal: 1, int: 0.6, spi: 0.6, mp5: 0.6 } },
   { id: "lvl-tank", group: "Leveling", label: "Leveling · Tank", weights: { sta: 3, armor: 0.06, str: 1, def: 6, dodge: 5, block: 4 } },
   // Paladin tank: leveling tank base, but a NEGATIVE weapon-speed weight favours

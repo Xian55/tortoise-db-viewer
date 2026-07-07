@@ -568,7 +568,7 @@ console.log("Importing spells + crafting graph...");
       ns++;
       // derive gear stats from this spell's effect auras (for item_stats)
       const effects = effIdx.map((f) => ({ aura: clean(row[f.a]) || 0, misc: clean(row[f.m]) || 0, base: clean(row[f.b]) || 0 }));
-      const st = statsFromAuras(effects);
+      const st = statsFromAuras(effects, {}, clean(row[iName]));
       if (Object.keys(st).length) spellStats.set(e, st);
       let madeItem = false;
       for (const ci of creates) {
