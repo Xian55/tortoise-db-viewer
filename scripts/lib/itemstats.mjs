@@ -33,6 +33,7 @@ export const AURA_STAT = {
   138: "haste", // attack/casting speed %
   31: "runSpeed",  // MOD_INCREASE_SPEED -> movement/run speed % (boots, Highlander sets)
   58: "swimSpeed", // MOD_INCREASE_SWIM_SPEED -> swim speed %
+  130: "mountSpeed", // MOD_INCREASE_MOUNTED_SPEED -> mount speed % (Carrot on a Stick, etc.)
 };
 
 // MOD_SKILL (aura 30) misc value = skill-line id -> stat key. Fishing (356) is
