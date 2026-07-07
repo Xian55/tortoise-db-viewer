@@ -104,6 +104,10 @@ const CLASS_PROF = {
   256:  { armor: [0, 1],                weap: [7, 10, 15, 19] },                                   // Warlock
   1024: { armor: [0, 1, 2, 8],          weap: [4, 5, 6, 10, 13, 15] },                             // Druid
 };
+// Classes that can equip a WEAPON in the off-hand (dual wield). Others can only put
+// a shield or a held-in-off-hand item there -- so a caster's "off-hand upgrade" must
+// be a shield/tome/orb, never a second 1H weapon.
+const DUAL_WIELD = new Set([1, 4, 8, 64]); // Warrior, Hunter, Rogue, Shaman
 // every stat the scoring fetch needs: preset keys + all gear stats (so a Custom
 // spec can weight any of them). GEAR_STAT_LABEL keys are the item_stats stat keys.
 const SCORE_KEYS = [...new Set([...Object.keys(GEAR_STAT_LABEL), ...STAT_WEIGHT_PRESETS.flatMap((p) => Object.keys(p.weights))])];
@@ -171,9 +175,17 @@ function weightsFor(ch, specId) {
 
 const mergeStats = (a, b) => { const r = { ...a }; for (const k in b) r[k] = (r[k] || 0) + b[k]; return r; };
 
-async function computeUpgrades(ch, specId, { level = 60, lookAhead = 3, slot = "", topN, eqInv = {}, eqBonus = {}, includeDowngrades = false } = {}) {
+async function computeUpgrades(ch, specId, { level = 60, lookAhead = 3, slots = [], topN, eqInv = {}, eqBonus = {}, includeDowngrades = false, weaponPref = "auto" } = {}) {
   const weights = weightsFor(ch, specId);
-  const n = topN ?? (slot ? 15 : 5); // a single-slot search shows a deeper list
+  const slotSet = slots && slots.length ? new Set(slots) : null; // null = all slots
+  const n = topN ?? (slotSet ? 15 : 5); // a narrowed slot search shows a deeper list
+  // Weapon-layout preference: 'auto' shows both, '1h' targets 1H+off-hand, '2h' targets
+  // a two-hander. In auto we still DON'T suggest dropping a shield for a 2H (a shield is
+  // survival, not captured by raw score) -- only an explicit '2h' pick overrides that.
+  const wants1H = weaponPref !== "2h"; // consider 1H main-hands + off-hands
+  const wants2H = weaponPref !== "1h"; // consider two-handers
+  const ohIsShield = eqInv.OffHand === 14;
+  const suggest2H = wants2H && (weaponPref === "2h" || !ohIsShield); // keep the shield in auto
   const maxReq = level + lookAhead;
   // required_level alone doesn't gate content: most raid gear has required_level 0
   // but item_level 80-92. So also cap item level -- dungeon blues run ~8 ilvl over
@@ -204,14 +216,24 @@ async function computeUpgrades(ch, specId, { level = 60, lookAhead = 3, slot = "
   const { statMap, byInv } = await gearData();
   const scoreOf = (id) => (id ? scoreWith(statMap.get(id) || {}, weights) : 0);
   const out = [];
+  const twoHEquipped = eqInv.MainHand === 17; // a staff/polearm/2H fills both weapon slots
   for (const s of SLOTS) {
-    if (slot && s.k !== slot) continue;
+    if (slotSet && !slotSet.has(s.k)) continue;
+    // With a 2H equipped the off-hand is empty but NOT independently fillable (you'd
+    // have to drop the 2H for a 1H first) -- scoring off-hands against an empty slot
+    // shows fake gains. The MainHand section below covers it via a 1H+off-hand combo.
+    // Also hidden when the user is targeting a two-hander (no off-hand at all).
+    if (s.k === "OffHand" && (twoHEquipped || weaponPref === "2h")) continue;
     const equippedId = ch.slots?.[s.k]?.itemId || null;
     // fold the equipped item's random-suffix stats into its baseline
     const eqStats = eqBonus[s.k] ? mergeStats(statMap.get(equippedId) || {}, eqBonus[s.k]) : (statMap.get(equippedId) || {});
     const base = equippedId ? scoreWith(eqStats, weights) : 0;
     const seen = new Set([equippedId]);
-    const pool = slotInvFor(s.k, eqInv[s.k]).flatMap((t) => byInv.get(t) || []);
+    // MainHand pool honours the weapon preference: drop 2H when targeting 1H, drop 1H
+    // when targeting 2H (the fair 2H-vs-combined comparison is added by the block below).
+    let poolTypes = slotInvFor(s.k, eqInv[s.k]);
+    if (s.k === "MainHand") poolTypes = poolTypes.filter((t) => (t === 17 ? wants2H : wants1H));
+    const pool = poolTypes.flatMap((t) => byInv.get(t) || []);
     // effective "available at" level: the item's own required_level, or -- for a
     // quest reward with a lower/zero req -- the min level to accept that quest.
     const availAt = (c) => Math.max(c.req || 0, c.qml || 0);
@@ -228,12 +250,67 @@ async function computeUpgrades(ch, specId, { level = 60, lookAhead = 3, slot = "
     };
     // upgrades only (> equipped), unless "include lower-score" is on -> any candidate
     const gainFloor = includeDowngrades ? -Infinity : 0.05;
-    const ups = pool
+    let ups = pool
       .filter((c) => availAt(c) <= maxReq && (c.ilvl || 0) <= ilvlCap && allowed(c))
       .map((c) => ({ ...c, score: scoreWith(statMap.get(c.entry) || {}, weights), avail: availAt(c), diff: diffVs(c) }))
       .filter((c) => c.score > base + gainFloor && !seen.has(c.entry))
       .sort((a, b) => b.score - a.score)
       .slice(0, n);
+    // Cross-slot two-handers: a 2H frees the off-hand, so for a 1H main-hand with a
+    // filled off-hand also rank 2H weapons (staff/polearm/2H) against the COMBINED
+    // main+off score -- otherwise a caster with sword+off-hand is never shown a staff.
+    // Skipped when the off-hand is a shield (don't tell a tank to drop it) unless the
+    // user explicitly asked for a two-hander -> suggest2H.
+    if (s.k === "MainHand" && suggest2H && (eqInv.MainHand === 13 || eqInv.MainHand === 21) && ch.slots?.OffHand?.itemId) {
+      const ohId = ch.slots.OffHand.itemId;
+      const ohStats = eqBonus.OffHand ? mergeStats(statMap.get(ohId) || {}, eqBonus.OffHand) : (statMap.get(ohId) || {});
+      const combinedBase = base + scoreWith(ohStats, weights);
+      const combStats = mergeStats(eqStats, ohStats);
+      const diffVs2H = (c) => {
+        const cs = statMap.get(c.entry) || {};
+        const diff = {};
+        for (const k of new Set([...Object.keys(cs), ...Object.keys(combStats)])) {
+          if (k === "speed") continue;
+          const d = (cs[k] || 0) - (combStats[k] || 0);
+          if (d) diff[k] = d;
+        }
+        return diff;
+      };
+      const twoH = (byInv.get(17) || [])
+        .filter((c) => availAt(c) <= maxReq && (c.ilvl || 0) <= ilvlCap && allowed(c))
+        .map((c) => ({ ...c, score: scoreWith(statMap.get(c.entry) || {}, weights), avail: availAt(c), diff: diffVs2H(c), twoHand: true, vsBase: combinedBase }))
+        .filter((c) => c.score > combinedBase + gainFloor && !seen.has(c.entry));
+      if (twoH.length) ups = [...ups, ...twoH].sort((a, b) => b.score - a.score).slice(0, n);
+    }
+    // Reverse of the above: a 2H is equipped, so compare the best 1H main-hand + best
+    // off-hand (shield/held for non-dual-wielders, or a 2nd weapon for dual-wielders)
+    // as ONE combined setup against the 2H. Weapon slots are independent, so the best
+    // of each IS the optimal pair -> a single honest "1H + off-hand" suggestion.
+    if (s.k === "MainHand" && twoHEquipped && wants1H) {
+      const okCand = (c) => availAt(c) <= maxReq && (c.ilvl || 0) <= ilvlCap && allowed(c) && !seen.has(c.entry);
+      const bestOf = (types) => types.flatMap((t) => byInv.get(t) || []).filter(okCand)
+        .reduce((b, c) => { const sc = scoreWith(statMap.get(c.entry) || {}, weights); return sc > (b ? b.score : -Infinity) ? { ...c, score: sc } : b; }, null);
+      const best1H = bestOf([13, 21]);                                  // 1H main-hand
+      const offTypes = DUAL_WIELD.has(cls) ? [13, 14, 22, 23] : [14, 23]; // weapon vs shield/held
+      const bestOff = bestOf(offTypes);
+      if (best1H) {
+        const comboScore = best1H.score + (bestOff ? bestOff.score : 0);
+        if (comboScore > base + gainFloor) {
+          const cs = mergeStats(statMap.get(best1H.entry) || {}, bestOff ? statMap.get(bestOff.entry) || {} : {});
+          const diff = {};
+          for (const k of new Set([...Object.keys(cs), ...Object.keys(eqStats)])) {
+            if (k === "speed") continue;
+            const d = (cs[k] || 0) - (eqStats[k] || 0);
+            if (d) diff[k] = d;
+          }
+          const pairRow = { entry: best1H.entry, pair: true, main: best1H, off: bestOff || null,
+            name: best1H.name, quality: best1H.quality, icon: best1H.icon,
+            score: comboScore, vsBase: base, diff,
+            avail: Math.max(availAt(best1H), bestOff ? availAt(bestOff) : 0) };
+          ups = [...ups, pairRow].sort((a, b) => b.score - a.score).slice(0, n);
+        }
+      }
+    }
     if (ups.length) out.push({ slot: s, equippedId, base, ups });
   }
   return out;
@@ -243,7 +320,8 @@ async function computeUpgrades(ch, specId, { level = 60, lookAhead = 3, slot = "
 // tags (drop/vendor/quest/craft/...) + the quests that reward them. Fetched only
 // for the ~topN×slots items actually shown, so it's a lean pair of IN queries.
 async function attachSources(list) {
-  const ids = [...new Set(list.flatMap((b) => b.ups.map((c) => c.entry)))];
+  // include the off-hand of any combined "1H + off-hand" row so it gets source tags too
+  const ids = [...new Set(list.flatMap((b) => b.ups.flatMap((c) => [c.entry, c.off?.entry].filter(Boolean))))];
   if (!ids.length) return;
   const ph = ids.map((_, i) => `?${i + 1}`).join(",");
   const [srcs, quests, instDrops] = await Promise.all([
@@ -257,10 +335,10 @@ async function attachSources(list) {
   for (const r of quests) { let a = qMap.get(r.item); if (!a) { a = []; qMap.set(r.item, a); } a.push(r); }
   const iMap = new Map();
   for (const r of instDrops) { let a = iMap.get(r.item); if (!a) { a = []; iMap.set(r.item, a); } a.push(r); }
+  const tagsFor = (id) => ({ srcKeys: srcMap.get(id) || "", quests: (qMap.get(id) || []).slice(0, 3), instDrops: (iMap.get(id) || []).slice(0, 3) });
   for (const b of list) for (const c of b.ups) {
-    c.srcKeys = srcMap.get(c.entry) || "";
-    c.quests = (qMap.get(c.entry) || []).slice(0, 3);
-    c.instDrops = (iMap.get(c.entry) || []).slice(0, 3);
+    Object.assign(c, tagsFor(c.entry));
+    if (c.pair && c.off) c.offTags = tagsFor(c.off.entry); // off-hand's own source tags
   }
 }
 
@@ -274,9 +352,23 @@ function specSelect(sel) {
     <option value="custom"${sel === "custom" ? " selected" : ""}>Custom…</option></select>`;
 }
 
-function slotSelect(sel) {
-  return `<select id="charSlot"><option value=""${sel ? "" : " selected"}>All slots</option>${
-    SLOTS.map((s) => `<option value="${s.k}"${s.k === sel ? " selected" : ""}>${esc(s.label)}</option>`).join("")}</select>`;
+// slot filter: multi-select checkbox dropdown (CSV of slot keys; empty = all slots).
+// Reuses the shared .multi/.multi-panel checkbox-dropdown styling from browse.
+function slotFilterLabel(sel) { return sel.size ? `${sel.size} slot${sel.size > 1 ? "s" : ""}` : "All slots"; }
+function slotSelect(csv) {
+  const sel = new Set((csv || "").split(",").filter(Boolean));
+  const boxes = SLOTS.map((s) => `<label class="multi-opt"><input type="checkbox" class="charSlotCb" value="${s.k}"${sel.has(s.k) ? " checked" : ""}> ${esc(s.label)}</label>`).join("");
+  return `<span class="up-slot-fld">Slot
+    <span class="multi" data-multi="charSlot">
+      <button type="button" class="multi-btn" id="charSlotBtn">${esc(slotFilterLabel(sel))} ▾</button>
+      <div class="multi-panel">${boxes}</div>
+    </span></span>`;
+}
+
+// weapon-layout preference: keep both, or force 1H+off-hand / two-handed suggestions.
+function weaponSelect(sel) {
+  const opts = [["auto", "Auto (both)"], ["1h", "1H + off-hand"], ["2h", "Two-handed"]];
+  return `<select id="charWeapon">${opts.map(([v, l]) => `<option value="${v}"${v === (sel || "auto") ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
 }
 
 function raceSelect(sel) {
@@ -385,10 +477,24 @@ function upgradesHtml(list, itemMap) {
         <td class="up-item">${itemLink(c.entry, c.name, c.quality, c.icon)} <span class="up-tag">equipped</span></td>
         <td class="up-num">${round1(base)}</td><td class="up-num">—</td><td></td><td></td></tr>`;
       const quests = (c.quests || []).map((q) => questLink(q.entry, q.title)).join(" ");
+      const rowBase = c.vsBase ?? base; // 2H / combined rows compare against a different baseline
+      const lvlTag = c.avail ? ` <span class="up-lvl" title="Available at level">lvl ${c.avail}</span>` : "";
+      // combined "1H + off-hand" setup that replaces the equipped two-hander
+      if (c.pair) {
+        const offSrc = c.off ? `<span class="up-src-off">${sourceTags(c.offTags?.srcKeys)}${(c.offTags?.quests || []).map((q) => questLink(q.entry, q.title)).join(" ")}${instanceSrcHtml(c.offTags?.instDrops)}</span>` : "";
+        const item = `${itemLink(c.main.entry, c.main.name, c.main.quality, c.main.icon)} <span class="up-plus">+</span> ${c.off ? itemLink(c.off.entry, c.off.name, c.off.quality, c.off.icon) : `<span class="muted">(no off-hand)</span>`} <span class="up-tag" title="Replaces your two-hander with a one-hand + off-hand set">1H + off-hand</span>${lvlTag}`;
+        return `<tr>
+          <td class="up-item">${item}</td>
+          <td class="up-num">${round1(c.score)}</td>
+          <td class="up-num"><span class="up-gain${c.score < rowBase ? " down" : ""}">${c.score >= rowBase ? "+" : ""}${round1(c.score - rowBase)}</span></td>
+          <td class="up-change">${diffHtml(c.diff)}</td>
+          <td class="up-src">${sourceTags(c.srcKeys)}${quests}${instanceSrcHtml(c.instDrops)}${offSrc}</td>
+        </tr>`;
+      }
       return `<tr>
-        <td class="up-item">${itemLink(c.entry, c.name, c.quality, c.icon)}${c.avail ? ` <span class="up-lvl" title="Available at level">lvl ${c.avail}</span>` : ""}</td>
+        <td class="up-item">${itemLink(c.entry, c.name, c.quality, c.icon)}${c.twoHand ? ` <span class="up-tag" title="Two-hander — score compared against your main-hand + off-hand combined">2H · frees off-hand</span>` : ""}${lvlTag}</td>
         <td class="up-num">${round1(c.score)}</td>
-        <td class="up-num"><span class="up-gain${c.score < base ? " down" : ""}">${c.score >= base ? "+" : ""}${round1(c.score - base)}</span></td>
+        <td class="up-num"><span class="up-gain${c.score < rowBase ? " down" : ""}">${c.score >= rowBase ? "+" : ""}${round1(c.score - rowBase)}</span></td>
         <td class="up-change">${diffHtml(c.diff)}</td>
         <td class="up-src">${sourceTags(c.srcKeys)}${quests}${instanceSrcHtml(c.instDrops)}</td>
       </tr>`;
@@ -668,7 +774,8 @@ export async function showCharacter(idOrChar, navigate) {
         <label>Spec ${specSelect(defaultSpec)}</label>
         <label>Class ${classSelect(ch.cls || "")}</label>
         <label>Race ${raceSelect(ch.race || "")}</label>
-        <label>Slot ${slotSelect(ch.slotFilter || "")}</label>
+        ${slotSelect(ch.slotFilter || "")}
+        <label>Weapon ${weaponSelect(ch.weaponPref)}</label>
         <label>My level <input type="number" id="charLevel" min="1" max="60" value="${ch.level || 60}"></label>
         <label>Look ahead <input type="number" id="charAhead" min="0" max="20" value="${ch.lookAhead ?? 3}"></label>
         <label>Show <input type="number" id="charTopN" min="1" max="30" value="${ch.topN ?? 5}"> / slot</label>
@@ -719,7 +826,10 @@ export async function showCharacter(idOrChar, navigate) {
   const specSel = app.querySelector("#charSpec");
   const classSel = app.querySelector("#charClass");
   const raceSel = app.querySelector("#charRace");
-  const slotSel = app.querySelector("#charSlot");
+  const slotBtn = app.querySelector("#charSlotBtn");
+  const slotPanel = app.querySelector('[data-multi="charSlot"] .multi-panel');
+  const slotCbs = () => [...app.querySelectorAll(".charSlotCb")];
+  const weaponSel = app.querySelector("#charWeapon");
   const lvlIn = app.querySelector("#charLevel");
   const aheadIn = app.querySelector("#charAhead");
   const topNIn = app.querySelector("#charTopN");
@@ -736,10 +846,12 @@ export async function showCharacter(idOrChar, navigate) {
     const lookAhead = clamp(aheadIn.value, 0, 20, 3);
     const topN = clamp(topNIn.value, 1, 30, 5);
     const includeDowngrades = downIn.checked;
-    const slot = slotSel.value;
+    const slots = slotCbs().filter((cb) => cb.checked).map((cb) => cb.value);
+    if (slotBtn) slotBtn.textContent = `${slotFilterLabel(new Set(slots))} ▾`;
+    const weaponPref = weaponSel.value;
     lvlIn.value = level; aheadIn.value = lookAhead; topNIn.value = topN;
     if (specId === "custom") ch.customWeights = readCustom(customBox);
-    ch.spec = specId; ch.level = level; ch.lookAhead = lookAhead; ch.topN = topN; ch.showDowngrades = includeDowngrades; ch.slotFilter = slot;
+    ch.spec = specId; ch.level = level; ch.lookAhead = lookAhead; ch.topN = topN; ch.showDowngrades = includeDowngrades; ch.slotFilter = slots.join(","); ch.weaponPref = weaponPref;
     ch.race = raceSel.value ? Number(raceSel.value) : null;
     ch.cls = classSel.value ? Number(classSel.value) : null; save();
     note.textContent = `Ranks obtainable items you could equip by level ${level + lookAhead} (your level + look-ahead).`;
@@ -757,7 +869,7 @@ export async function showCharacter(idOrChar, navigate) {
     const eqInv = {}, eqBonus = {};
     for (const s of SLOTS) { const it = itemMap.get(ch.slots?.[s.k]?.itemId); if (it) eqInv[s.k] = it.inv; const bo = slotBonus(s.k); if (bo) eqBonus[s.k] = bo; }
     try {
-      const list = await computeUpgrades(ch, specId, { level, lookAhead, slot, topN, eqInv, eqBonus, includeDowngrades });
+      const list = await computeUpgrades(ch, specId, { level, lookAhead, slots, topN, eqInv, eqBonus, includeDowngrades, weaponPref });
       await attachSources(list);
       upList.innerHTML = upgradesHtml(list, itemMap);
       upMsg.textContent = list.length ? `${list.reduce((n, b) => n + b.ups.length, 0)} across ${list.length} slots` : "none found";
@@ -767,7 +879,12 @@ export async function showCharacter(idOrChar, navigate) {
   specSel.onchange = () => { customBox.hidden = specSel.value !== "custom"; runUpgrades(); };
   classSel.onchange = runUpgrades;
   raceSel.onchange = runUpgrades;
-  slotSel.onchange = runUpgrades;
+  // slot multi-select: button toggles the panel, each checkbox re-scores, an outside
+  // click closes it (kept open while ticking several slots).
+  if (slotBtn) slotBtn.onclick = (e) => { e.stopPropagation(); slotPanel.classList.toggle("open"); };
+  slotCbs().forEach((cb) => { cb.onchange = runUpgrades; });
+  document.addEventListener("click", (e) => { if (slotPanel && !e.target.closest('[data-multi="charSlot"]')) slotPanel.classList.remove("open"); });
+  weaponSel.onchange = runUpgrades;
   lvlIn.onchange = runUpgrades;
   aheadIn.onchange = runUpgrades;
   topNIn.onchange = runUpgrades;
@@ -809,9 +926,10 @@ export async function showCharacter(idOrChar, navigate) {
       const term = input.value.trim();
       const fts = ftsQuery(term);
       if (term.length < 2 || !fts) { results.hidden = true; results.innerHTML = ""; return; }
+      const idNum = /^\d+$/.test(term) ? Number(term) : -1; // paste an item id -> direct match
       const my = ++token;
       let rows;
-      try { rows = await query(qItemSearchInv(invCsv), [fts, trigramQuery(term), `${term}%`]); }
+      try { rows = await query(qItemSearchInv(invCsv), [fts, trigramQuery(term), `${term}%`, idNum]); }
       catch { return; }
       if (my !== token) return; // a newer keystroke superseded this
       results.hidden = false;

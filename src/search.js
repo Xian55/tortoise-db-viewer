@@ -2,7 +2,7 @@
 // autocomplete dropdown wired onto the top-bar input. Items/NPCs/quests are
 // FTS5-backed; dungeons use LIKE over the ~39 maps. All in-memory (no network).
 import { query } from "./db.js";
-import { Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES, Q_SEARCH_FACTIONS, Q_SEARCH_ITEMSETS, Q_SEARCH_OBJECTS } from "./queries.js";
+import { Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES, Q_SEARCH_FACTIONS, Q_SEARCH_ITEMSETS, Q_SEARCH_OBJECTS, Q_ID_ITEM, Q_ID_NPC, Q_ID_QUEST, Q_ID_SPELL, Q_ID_OBJECT } from "./queries.js";
 import { itemLink, npcLink, questLink, spellLink, dungeonLink, zoneLink, factionLink, objectLink, esc } from "./render.js";
 
 // FTS5 prefix MATCH: prefix-match each alnum token ("fire bl" -> "fire* bl*").
@@ -20,6 +20,28 @@ export function trigramQuery(term) {
   return toks.length ? toks.map((t) => `"${t}"`).join(" AND ") : TG_SENTINEL;
 }
 
+// A pure-numeric term is also treated as an entity id -> direct-match rows that
+// rank above name matches (mark _id so rankFlat pins them to the top).
+async function idMatches(t) {
+  if (!/^\d+$/.test(t)) return {};
+  const id = Number(t);
+  const [item, npc, quest, spell, object] = await Promise.all([
+    query(Q_ID_ITEM, [id]), query(Q_ID_NPC, [id]), query(Q_ID_QUEST, [id]), query(Q_ID_SPELL, [id]), query(Q_ID_OBJECT, [id]),
+  ]);
+  const flag = (rows) => rows.map((r) => ({ ...r, _id: true }));
+  return { items: flag(item), npcs: flag(npc), quests: flag(quest), spells: flag(spell), objects: flag(object) };
+}
+
+// merge id-match rows to the FRONT of their type array, de-duped by entry
+function mergeId(base, ids) {
+  for (const k of ["items", "npcs", "quests", "spells", "objects"]) {
+    const extra = ids[k]; if (!extra || !extra.length) continue;
+    const have = new Set(base[k].map((r) => r.entry));
+    base[k] = [...extra.filter((r) => !have.has(r.entry)), ...base[k]];
+  }
+  return base;
+}
+
 // Run all entity searches in parallel; `limit` rows per entity.
 export async function runSearch(term, limit) {
   const t = (term || "").trim();
@@ -28,7 +50,7 @@ export async function runSearch(term, limit) {
   const fts = ftsQuery(t);
   const tg = trigramQuery(t);
   const like = `%${t}%`;
-  const [items, npcs, quests, spells, dungeons, zones, factions, itemsets, objects] = await Promise.all([
+  const [items, npcs, quests, spells, dungeons, zones, factions, itemsets, objects, ids] = await Promise.all([
     fts ? query(Q_SEARCH_ITEMS, [fts, t, limit, tg]) : [],
     fts ? query(Q_SEARCH_NPCS, [fts, t, limit, tg]) : [],
     fts ? query(Q_SEARCH_QUESTS, [fts, t, limit, tg]) : [],
@@ -38,24 +60,26 @@ export async function runSearch(term, limit) {
     query(Q_SEARCH_FACTIONS, [like, t, limit]),
     query(Q_SEARCH_ITEMSETS, [like, t, limit]),
     query(Q_SEARCH_OBJECTS, [like, t, limit]),
+    idMatches(t),
   ]);
-  return { items, npcs, quests, spells, dungeons, zones, factions, itemsets, objects };
+  return mergeId({ items, npcs, quests, spells, dungeons, zones, factions, itemsets, objects }, ids);
 }
 
 // Flatten the per-type results into one ranked list (exact > prefix > other,
 // then a small per-type weight, then name) and keep the best `n`.
 function rankFlat(res, term, n) {
   const tl = term.toLowerCase();
-  const tier = (name) => { const s = (name || "").toLowerCase(); return s === tl ? 0 : s.startsWith(tl) ? 1 : 2; };
+  // an id-matched row (_id) wins outright (tier -1); otherwise exact > prefix > other
+  const tier = (name, row) => { if (row && row._id) return -1; const s = (name || "").toLowerCase(); return s === tl ? 0 : s.startsWith(tl) ? 1 : 2; };
   const all = [];
-  for (const it of res.items) all.push({ type: "item", w: 0, name: it.name, tier: tier(it.name), html: itemLink(it.entry, it.name, it.quality, it.icon), href: `?item=${it.entry}` });
-  for (const c of res.npcs) all.push({ type: "npc", w: 1, name: c.name, tier: tier(c.name), html: npcLink(c.entry, c.name) + (c.subname ? ` <span class="muted">&lt;${esc(c.subname)}&gt;</span>` : ""), href: `?npc=${c.entry}` });
-  for (const q of res.quests) all.push({ type: "quest", w: 2, name: q.title, tier: tier(q.title), html: questLink(q.entry, q.title), href: `?quest=${q.entry}` });
-  for (const s of res.spells) all.push({ type: "spell", w: 3, name: s.name, tier: tier(s.name), html: spellLink(s.entry, s.name, s.icon), href: `?spell=${s.entry}` });
+  for (const it of res.items) all.push({ type: it._id ? "item #" + it.entry : "item", w: 0, name: it.name, tier: tier(it.name, it), html: itemLink(it.entry, it.name, it.quality, it.icon), href: `?item=${it.entry}` });
+  for (const c of res.npcs) all.push({ type: c._id ? "npc #" + c.entry : "npc", w: 1, name: c.name, tier: tier(c.name, c), html: npcLink(c.entry, c.name) + (c.subname ? ` <span class="muted">&lt;${esc(c.subname)}&gt;</span>` : ""), href: `?npc=${c.entry}` });
+  for (const q of res.quests) all.push({ type: q._id ? "quest #" + q.entry : "quest", w: 2, name: q.title, tier: tier(q.title, q), html: questLink(q.entry, q.title), href: `?quest=${q.entry}` });
+  for (const s of res.spells) all.push({ type: s._id ? "spell #" + s.entry : "spell", w: 3, name: s.name, tier: tier(s.name, s), html: spellLink(s.entry, s.name, s.icon), href: `?spell=${s.entry}` });
   for (const f of res.factions) all.push({ type: "faction", w: 4, name: f.name, tier: tier(f.name), html: factionLink(f.id, f.name), href: `?faction=${f.id}` });
   for (const s of res.itemsets || []) all.push({ type: "item set", w: 5, name: s.name, tier: tier(s.name), html: `<a class="ilink" href="?itemset=${s.id}">${esc(s.name)}</a>`, href: `?itemset=${s.id}` });
   for (const d of res.dungeons) all.push({ type: "dungeon", w: 6, name: d.name, tier: tier(d.name), html: dungeonLink(d.id, d.name), href: `?dungeon=${d.id}` });
-  for (const o of res.objects || []) all.push({ type: "object", w: 7, name: o.name, tier: tier(o.name), html: objectLink(o.entry, o.name), href: `?object=${o.entry}` });
+  for (const o of res.objects || []) all.push({ type: o._id ? "object #" + o.entry : "object", w: 7, name: o.name, tier: tier(o.name, o), html: objectLink(o.entry, o.name), href: `?object=${o.entry}` });
   for (const z of res.zones) all.push({ type: "zone", w: 8, name: z.name, tier: tier(z.name), html: zoneLink(z.areaid, z.name), href: `?zone=${z.areaid}` });
   all.sort((a, b) => a.tier - b.tier || a.w - b.w || (a.name || "").localeCompare(b.name || ""));
   return all.slice(0, n);
