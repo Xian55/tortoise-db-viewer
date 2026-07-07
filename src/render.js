@@ -399,3 +399,13 @@ export function pct(v) {
   if (v >= 0.01) return `${v.toFixed(2)}%`;
   return v > 0 ? "<0.01%" : "0%"; // tiny world-drop chances: avoid a misleading "0.00%"
 }
+
+// Stack-size badge for a loot drop that yields more than one of an item (e.g. a gem
+// that drops 1-2, cloth that drops 2). Empty when max <= 1 (the common single case),
+// so it only clutters rows where the quantity is actually noteworthy.
+export function dropQty(min, max) {
+  const hi = max || 0;
+  if (hi <= 1) return "";
+  const lo = min && min > 0 ? min : 1;
+  return ` <span class="drop-qty" title="Drops ${lo === hi ? hi : `${lo}-${hi}`} at a time">×${lo === hi ? hi : `${lo}-${hi}`}</span>`;
+}

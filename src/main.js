@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect, getMeta } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -445,10 +445,13 @@ async function showItem(id) {
   const dropLoc = await resolveNpcLocations(dropped.map((d) => d.entry));
   const dchance = (d) => d.drop_chance ?? d.skin_chance ?? d.pick_chance;
   const srcTag = (d) => (d.skin_chance != null ? ' <span class="muted">(skin)</span>' : d.pick_chance != null ? ' <span class="muted">(pickpocket)</span>' : "");
+  // Qty = stack size dropped (blank for the usual single); value sorts by max count.
+  const qtyText = (d) => ((d.maxcount || 0) > 1 ? (d.mincount > 0 && d.mincount < d.maxcount ? `${d.mincount}-${d.maxcount}` : `${d.maxcount}`) : "");
   const droppedCols = [
     { label: "NPC", cell: (d) => npcLink(d.entry, d.name) + srcTag(d), value: (d) => d.name },
     { label: "Level", num: true, cls: "muted", cell: (d) => lvlRange(d), value: (d) => d.level_max || d.level_min || 0 },
     { label: "Location", cls: "muted", cell: (d) => (dropLoc.get(d.entry) || {}).html || "", value: (d) => (dropLoc.get(d.entry) || {}).text || "" },
+    { label: "Qty", num: true, cls: "muted", hideEmpty: true, cell: (d) => qtyText(d), value: (d) => d.maxcount || 0 },
     { label: "Chance", num: true, cell: (d) => pct(dchance(d)), value: (d) => dchance(d) || 0 },
   ];
   // Found-in-object: one row per object × zone (grouped by object) with the spawn
@@ -466,7 +469,7 @@ async function showItem(id) {
     { label: "Stock", num: true, cls: "muted", cell: (s) => (s.maxcount > 0 ? s.maxcount : "∞"), value: (s) => (s.maxcount > 0 ? s.maxcount : Infinity) },
   ];
   const itemChanceCols = [
-    { label: "Item", cell: (c) => itemLink(c.entry, c.name, c.quality, c.icon), value: (c) => c.name },
+    { label: "Item", cell: (c) => itemLink(c.entry, c.name, c.quality, c.icon) + dropQty(c.mincount, c.maxcount), value: (c) => c.name },
     { label: "Chance", num: true, cell: (c) => pct(c.chance), value: (c) => c.chance || 0 },
   ];
   const disenCols = [
@@ -939,7 +942,7 @@ async function showNpc(id) {
   const rankClass = npc.rank === 3 ? "npc-boss" : (npc.rank === 2 || npc.rank === 4) ? "npc-rare" : npc.rank === 1 ? "npc-elite" : "";
 
   const lootCols = [
-    { label: "Item", cell: (d) => itemLink(d.entry, d.name, d.quality, d.icon), value: (d) => d.name },
+    { label: "Item", cell: (d) => itemLink(d.entry, d.name, d.quality, d.icon) + dropQty(d.mincount, d.maxcount), value: (d) => d.name },
     { label: "Chance", num: true, cell: (d) => pct(d.chance), value: (d) => d.chance || 0 },
   ];
   const sellCols = [
@@ -1068,7 +1071,7 @@ async function showObject(id) {
   const activeZone = (fz && (objZones.find((z) => z.zone.areaid === fz) || {}).zone) || (objZones.length ? objZones[0].zone : null);
 
   const lootCols = [
-    { label: "Item", cell: (d) => itemLink(d.entry, d.name, d.quality, d.icon), value: (d) => d.name },
+    { label: "Item", cell: (d) => itemLink(d.entry, d.name, d.quality, d.icon) + dropQty(d.mincount, d.maxcount), value: (d) => d.name },
     { label: "Chance", num: true, cell: (d) => pct(d.chance), value: (d) => d.chance || 0 },
   ];
   const questCols = [
@@ -1833,7 +1836,7 @@ async function showZone(id, gatherItem = null) {
   ];
   const bossCols = [
     { label: "Boss", cell: (r) => npcLink(r.boss, r.boss_name), value: (r) => r.boss_name },
-    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon) + dropQty(r.mincount, r.maxcount), value: (r) => r.name },
     { label: "Chance", num: true, cell: (r) => pct(r.chance), value: (r) => r.chance || 0 },
   ];
   const questCols = [
@@ -2087,7 +2090,7 @@ async function showDungeon(id) {
 
   const bossCols = [
     { label: "Boss", cell: (r) => npcLink(r.boss, r.boss_name), value: (r) => r.boss_name },
-    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+    { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon) + dropQty(r.mincount, r.maxcount), value: (r) => r.name },
     { label: "Chance", num: true, cell: (r) => pct(r.chance), value: (r) => r.chance || 0 },
   ];
   const npcCols = [

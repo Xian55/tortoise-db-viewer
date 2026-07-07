@@ -44,14 +44,19 @@ export const qRandomSuffixIn = (n) => `SELECT id, name, stats FROM random_suffix
 // Name search for the character sheet's per-slot item picker: FTS prefix (?1) OR
 // trigram substring (?2), restricted to the slot's inventory types (inlined ints),
 // exact-prefix (?3) ranked first. Excludes obvious test/placeholder items.
+// ?4 = the term as a numeric item id (or -1 when the term isn't numeric): a direct
+// id paste matches i.entry exactly (bypassing the test/deprecated name filters) but
+// still honours the slot's inventory_type so you can't drop a chest into the head slot.
 export const qItemSearchInv = (invCsv) => `
   SELECT i.entry, i.name, i.quality, i.item_level, i.inventory_type AS inv, di.icon
   FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
-  WHERE (i.entry IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?1)
-      OR i.entry IN (SELECT rowid FROM items_tg WHERE items_tg MATCH ?2))
-    AND i.name <> '' AND i.inventory_type IN (${invCsv})
-    AND i.name NOT LIKE '%(test)%' AND i.name NOT LIKE 'Test %' AND i.name NOT LIKE 'Deprecated %'
-  ORDER BY (i.name LIKE ?3) DESC, i.quality DESC, i.item_level DESC
+  WHERE i.inventory_type IN (${invCsv}) AND (
+      i.entry = ?4
+      OR (i.name <> ''
+          AND (i.entry IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?1)
+            OR i.entry IN (SELECT rowid FROM items_tg WHERE items_tg MATCH ?2))
+          AND i.name NOT LIKE '%(test)%' AND i.name NOT LIKE 'Test %' AND i.name NOT LIKE 'Deprecated %'))
+  ORDER BY (i.entry = ?4) DESC, (i.name LIKE ?3) DESC, i.quality DESC, i.item_level DESC
   LIMIT 12`;
 
 // compact NPC info for the hover tooltip (name/subname/level/rank/type).
@@ -163,12 +168,23 @@ export const Q_SEARCH_OBJECTS = `
   ORDER BY (name = ?2) DESC, name
   LIMIT ?3`;
 
+// Direct entry-id lookups: pasting a numeric id into search jumps straight to the
+// matching entity (item/NPC/quest/spell/object). One row max each; ?1 = the id.
+export const Q_ID_ITEM = `
+  SELECT i.entry, i.name, i.quality, di.icon FROM items i
+  LEFT JOIN item_display_info di ON di.ID = i.display_id WHERE i.entry = ?1`;
+export const Q_ID_NPC = `SELECT entry, name, subname FROM creatures WHERE entry = ?1`;
+export const Q_ID_QUEST = `SELECT entry, title FROM quests WHERE entry = ?1`;
+export const Q_ID_SPELL = `SELECT entry, name, icon FROM spells WHERE entry = ?1`;
+export const Q_ID_OBJECT = `SELECT entry, name FROM object_browse WHERE entry = ?1`;
+
 // Dropped by NPCs (creature loot / skinning / pickpocket).
 export const Q_DROPPED_BY = `
 SELECT c.entry, c.name, c.level_min, c.level_max, c.rank,
        MAX(CASE WHEN d.src='c' THEN d.chance END) AS drop_chance,
        MAX(CASE WHEN d.src='s' THEN d.chance END) AS skin_chance,
        MAX(CASE WHEN d.src='p' THEN d.chance END) AS pick_chance,
+       MIN(d.mincount) AS mincount, MAX(d.maxcount) AS maxcount,
        (SELECT m.name FROM spawns sp JOIN maps m ON m.id=sp.map WHERE sp.id=c.entry AND m.type IN (1,2) ORDER BY m.type DESC LIMIT 1) AS dungeon,
        (SELECT m.id   FROM spawns sp JOIN maps m ON m.id=sp.map WHERE sp.id=c.entry AND m.type IN (1,2) ORDER BY m.type DESC LIMIT 1) AS dungeon_id
 FROM drops d
@@ -212,14 +228,14 @@ export const Q_SOLD_BY = `
   ORDER BY c.name LIMIT 100`;
 
 export const Q_CONTAINED_IN = `
-  SELECT i.entry, i.name, i.quality, di.icon, d.chance
+  SELECT i.entry, i.name, i.quality, di.icon, d.chance, d.mincount, d.maxcount
   FROM drops d JOIN items i ON i.entry = d.owner
   LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE d.src='i' AND d.item = ?1 ORDER BY d.chance DESC LIMIT 50`;
 
 // Items this container/lockbox yields when opened (the inverse of CONTAINED_IN).
 export const Q_CONTAINS = `
-  SELECT i.entry, i.name, i.quality, di.icon, d.chance
+  SELECT i.entry, i.name, i.quality, di.icon, d.chance, d.mincount, d.maxcount
   FROM drops d JOIN items i ON i.entry = d.item
   LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE d.src='i' AND d.owner = ?1 ORDER BY d.chance DESC LIMIT 100`;
@@ -452,7 +468,7 @@ export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, rank, school, m
 export const Q_NPC = `SELECT entry, name, subname, level_min, level_max, rank, type, faction, health_min, health_max, npc_flags, display_id FROM creatures WHERE entry = ?1`;
 
 const npcLoot = (src, ownerCol) => `
-  SELECT i.entry, i.name, i.quality, di.icon, d.chance, i.world_drop
+  SELECT i.entry, i.name, i.quality, di.icon, d.chance, d.mincount, d.maxcount, i.world_drop
   FROM creatures c JOIN drops d ON d.src='${src}' AND d.owner = c.${ownerCol}
   JOIN items i ON i.entry = d.item LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE c.entry = ?1 ORDER BY d.chance DESC LIMIT 500`;
@@ -546,7 +562,8 @@ export const Q_OBJECT = `SELECT entry, name, type, displayId, data1 FROM gameobj
 export const Q_OBJECT_SIBLINGS = `SELECT entry, data1 FROM gameobjects WHERE name = ?1`;
 // Items looted from a set of object loot-ids (data1), highest chance kept per item.
 export const qObjectLoot = (n) => `
-  SELECT i.entry, i.name, i.quality, di.icon, MAX(d.chance) AS chance
+  SELECT i.entry, i.name, i.quality, di.icon, MAX(d.chance) AS chance,
+         MIN(d.mincount) AS mincount, MAX(d.maxcount) AS maxcount
   FROM drops d JOIN items i ON i.entry = d.item
   LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE d.src='o' AND d.owner IN (${inList(n)})
@@ -617,7 +634,7 @@ export const Q_DUNGEON_LOOT = `
 
 // boss loot: items dropped by unique-spawn (cnt=1) creatures in the map
 export const Q_DUNGEON_BOSS_LOOT = `
-  SELECT c.entry AS boss, c.name AS boss_name, i.entry, i.name, i.quality, di.icon, d.chance
+  SELECT c.entry AS boss, c.name AS boss_name, i.entry, i.name, i.quality, di.icon, d.chance, d.mincount, d.maxcount
   FROM spawns s JOIN creatures c ON c.entry = s.id AND s.cnt = 1
   JOIN drops d ON d.src='c' AND d.owner = c.loot_id
   JOIN items i ON i.entry = d.item LEFT JOIN item_display_info di ON di.ID = i.display_id

@@ -297,7 +297,7 @@ console.log("Resolving loot chances...");
   const REF_THRESHOLD = 30; // a reference resolving to more items than this = world-drop pool
   const load = (t) => {
     const m = new Map();
-    for (const r of db.prepare(`SELECT entry, item, chance, groupid, mincountOrRef FROM ${t}`).all()) {
+    for (const r of db.prepare(`SELECT entry, item, chance, groupid, mincountOrRef, maxcount FROM ${t}`).all()) {
       let a = m.get(r.entry); if (!a) m.set(r.entry, a = []); a.push(r);
     }
     return m;
@@ -333,14 +333,23 @@ console.log("Resolving loot chances...");
   // (1-∏(1-p)), never a sum -- a creature drawing the same item from several
   // reference pools must not exceed 100% (e.g. Colossus of Zora was 166%).
   const orProb = (a, b) => 1 - (1 - a) * (1 - b);
+  // Merge a drop into `result` (item -> {p, min, max}): probability OR-combines, the
+  // stack range widens (min = smallest, max = largest count seen across sources).
+  function combine(result, item, p, min, max) {
+    const cur = result.get(item);
+    if (!cur) result.set(item, { p, min, max });
+    else { cur.p = orProb(cur.p, p); cur.min = Math.min(cur.min, min); cur.max = Math.max(cur.max, max); }
+  }
   function addRow(result, row, prob) {
     if (prob <= 0) return;
     if (row.mincountOrRef < 0) {
       const refId = -row.mincountOrRef;
       if (refSize(refId) > REF_THRESHOLD) return; // skip world-drop pools
-      for (const [item, p] of resolveRef(refId)) result.set(item, orProb(result.get(item) || 0, p * prob));
+      for (const [item, r] of resolveRef(refId)) combine(result, item, r.p * prob, r.min, r.max);
     } else if (row.item > 0) {
-      result.set(row.item, orProb(result.get(row.item) || 0, prob));
+      const min = row.mincountOrRef > 0 ? row.mincountOrRef : 1;      // stack size (1 if unset)
+      const max = row.maxcount > 0 ? Math.max(min, row.maxcount) : min;
+      combine(result, row.item, prob, min, max);
     }
   }
   function resolveRows(rows) {
@@ -364,15 +373,15 @@ console.log("Resolving loot chances...");
     return result;
   }
 
-  db.exec(`CREATE TABLE drops (src TEXT, owner INTEGER, item INTEGER, chance REAL)`);
-  const ins = db.prepare(`INSERT INTO drops VALUES (?,?,?,?)`);
+  db.exec(`CREATE TABLE drops (src TEXT, owner INTEGER, item INTEGER, chance REAL, mincount INTEGER, maxcount INTEGER)`);
+  const ins = db.prepare(`INSERT INTO drops VALUES (?,?,?,?,?,?)`);
   const sources = [["c", "loot_creature"], ["s", "loot_skinning"], ["p", "loot_pickpocket"],
     ["o", "loot_object"], ["i", "loot_item"], ["e", "loot_disenchant"]];
   let nd = 0;
   db.transaction(() => {
     for (const [src, table] of sources) {
       for (const [owner, rows] of load(table)) {
-        for (const [item, prob] of resolveRows(rows)) { ins.run(src, owner, item, prob * 100); nd++; }
+        for (const [item, r] of resolveRows(rows)) { ins.run(src, owner, item, r.p * 100, r.min, r.max); nd++; }
       }
     }
   })();
