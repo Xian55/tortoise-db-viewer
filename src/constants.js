@@ -102,7 +102,7 @@ export const GEAR_CRITERIA = [
   // above is the all-schools bonus; these only help spells of that school, so the
   // gear scorer counts them for matching specs only (e.g. Fire Dmg for a Fire mage).
   { group: "Spell School", options: [["spHoly", "Holy Dmg"], ["spFire", "Fire Dmg"], ["spFrost", "Frost Dmg"], ["spShadow", "Shadow Dmg"], ["spNature", "Nature Dmg"], ["spArcane", "Arcane Dmg"]] },
-  { group: "Utility", options: [["mp5", "Mana per 5"], ["hp5", "Health per 5"], ["haste", "Haste %"], ["leech", "Vampirism %"]] },
+  { group: "Utility", options: [["mp5", "Mana per 5"], ["hp5", "Health per 5"], ["haste", "Haste %"], ["leech", "Vampirism %"], ["runSpeed", "Run Speed %"], ["swimSpeed", "Swim Speed %"]] },
   { group: "Weapon Skill", options: [["wSwords", "Swords"], ["wAxes", "Axes"], ["wMaces", "Maces"], ["wDaggers", "Daggers"], ["wPolearms", "Polearms"], ["w2hSwords", "2H Swords"], ["w2hAxes", "2H Axes"], ["w2hMaces", "2H Maces"], ["wBows", "Bows"], ["wGuns", "Guns"], ["wCrossbows", "Crossbows"]] },
 ];
 
