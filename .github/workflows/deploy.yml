@@ -101,7 +101,17 @@ jobs:
         run: bunx --bun vite build
         env:
           VITE_DATA_BASE: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/data/
+          # Dev-dataset DB (server 1181dev branch), served at the /dev/ path. The
+          # bundle picks this base when location is under /dev/ (src/config.js).
+          VITE_DATA_BASE_DEV: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/data-dev/
           VITE_ASSETS_BASE: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/
+
+      # The dev dataset is served at /dev/. Query-param routing means the only path
+      # we must serve is dev/index.html (deep URLs are /dev/?item=...). It's a copy
+      # of the app shell -- the JS/CSS it references are base-absolute, so both share
+      # the same R2-served bundle; the bundle reads the /dev/ path to pick the dev DB.
+      - name: Emit /dev app shell
+        run: mkdir -p dist/dev && cp dist/index.html dist/dev/index.html
 
       # Per-icon custom webp for link-unfurl og:image. Turtle-custom icons aren't on
       # Blizzard's CDN and ship only as the packed atlas sprite, which can't be an

@@ -1,0 +1,43 @@
+name: Watch upstream 1181dev branch
+
+# Penqle/tortoise-wow is a third-party repo we cannot add workflows to, so we poll
+# its 1181dev feature branch on a schedule and re-run deploy-dev.yml when its commit
+# SHA changes (the dev build pulls that branch's SQL dumps). Separate cache key from
+# watch-upstream.yml so the two branch watchers don't clobber each other.
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # hourly (UTC)
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get upstream 1181dev SHA
+        id: up
+        run: |
+          sha=$(gh api repos/Penqle/tortoise-wow/commits/1181dev --jq .sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Restore last-seen SHA
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: .upstream-dev-sha
+          key: upstream-dev-sha-${{ steps.up.outputs.sha }}
+
+      - name: Trigger dev deploy if changed
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          echo "${{ steps.up.outputs.sha }}" > .upstream-dev-sha
+          echo "1181dev changed to ${{ steps.up.outputs.sha }} -- triggering dev deploy"
+          gh workflow run deploy-dev.yml --repo "${{ github.repository }}" --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}

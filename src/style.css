@@ -25,8 +25,28 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
   padding: 10px 18px; background: var(--panel);
   border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10;
 }
-.brand { font-size: 18px; font-weight: 700; color: var(--gold); white-space: nowrap; }
+.brand { font-size: 18px; font-weight: 700; color: var(--gold); white-space: nowrap; position: relative; }
 .brand:hover { text-decoration: none; }
+
+/* Data-source toggle (main | dev) — segmented pill in the top bar. */
+.ds-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 6px;
+  overflow: hidden; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.ds-toggle .ds-btn { padding: 4px 10px; color: var(--muted); background: var(--panel2); line-height: 1.4; }
+.ds-toggle .ds-btn:hover { color: var(--text); text-decoration: none; }
+.ds-toggle .ds-btn + .ds-btn { border-left: 1px solid var(--border); }
+.ds-toggle .ds-btn.on { color: #0d0e12; background: var(--gold); }
+.ds-toggle .ds-btn[data-ds="dev"].on { color: #fff; background: #ff4d4d; }
+
+/* On the dev dataset: tint the brand red + drop a rotated "dev" badge over it so
+   it's unmistakable you're on preview data. */
+.ds-dev .brand { color: #ff4d4d; }
+.ds-dev .brand::after {
+  content: "dev"; position: absolute; top: -7px; left: -11px;
+  transform: rotate(-45deg); transform-origin: center;
+  font-size: 10px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;
+  color: #fff; background: #ff4d4d; padding: 0 4px; border-radius: 2px;
+  pointer-events: none; box-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+}
 .topnav { display: flex; }
 .topnav .nav { color: var(--text); font-weight: 500; }
 /* mega-menu: horizontal bar + nested hover flyouts (see src/nav.js) */

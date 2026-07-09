@@ -1,0 +1,68 @@
+name: Deploy dev dataset (1181dev)
+
+# Builds ONLY the dev-dataset DB (server `1181dev` branch) and uploads it to R2
+# under the data-dev/ prefix. The site frontend + shared assets (maps/icons/
+# minimap/OG/tt) are owned by deploy.yml; the dev app shell (/dev/index.html) ships
+# with the main deploy. A new dev DB with a new content hash auto-invalidates the
+# client on the next visit, so no Pages redeploy is needed here.
+#
+# Triggered by watch-dev.yml (hourly, on a 1181dev commit) or manually.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout site
+        uses: actions/checkout@v4
+
+      - name: Checkout server SQL dumps (sparse, 1181dev)
+        uses: actions/checkout@v4
+        with:
+          repository: Penqle/tortoise-wow
+          ref: 1181dev
+          path: server-dev
+          # base data + the incremental world migrations the build applies on top
+          sparse-checkout: |
+            sql/base
+            sql/database_updates
+          sparse-checkout-cone-mode: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Build SQLite database (dev)
+        run: bun scripts/build-db.mjs
+        env:
+          SQL_DIR: ${{ github.workspace }}/server-dev/sql/base
+          DATA_SUBDIR: data-dev
+
+      # Same brotli + R2 layout as the main deploy, retargeted to the data-dev/
+      # prefix. The DB is immutable (cache-busted by ?v=); version.json is no-store.
+      - name: Upload dev DB to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          bun -e 'import {brotliCompressSync,constants} from "node:zlib"; import {readFileSync,writeFileSync} from "node:fs"; const i=readFileSync("public/data-dev/tortoise.sqlite"); const o=brotliCompressSync(i,{params:{[constants.BROTLI_PARAM_QUALITY]:11,[constants.BROTLI_PARAM_SIZE_HINT]:i.length}}); writeFileSync("public/data-dev/tortoise.sqlite.br",o); console.log("brotli",i.length,"->",o.length);'
+          aws s3 cp public/data-dev/tortoise.sqlite.br s3://tortoise-db-viewer/data-dev/tortoise.sqlite \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/octet-stream \
+            --content-encoding br
+          aws s3 cp public/data-dev/version.json s3://tortoise-db-viewer/data-dev/version.json \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json --cache-control "no-store"

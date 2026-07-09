@@ -43,18 +43,21 @@ function acquireOpfsLock() {
   });
 }
 
-async function open(version, urls) {
+async function open(version, dataset, urls) {
   const sqlite3 = await sqlite3InitModule();
   let poolErr = null;
-  // Preferred: durable OPFS SAHPool, keyed by version so a new deploy refreshes.
-  // Skipped in secondary tabs (see acquireOpfsLock) to avoid handle contention.
+  // Preferred: durable OPFS SAHPool, keyed by dataset + version so a new deploy
+  // refreshes and the two datasets (main/dev) cache side-by-side without evicting
+  // each other. Skipped in secondary tabs (see acquireOpfsLock) to avoid contention.
+  const prefix = `/tortoise-${dataset}-`;
   if (await acquireOpfsLock()) {
     try {
       const pool = await sqlite3.installOpfsSAHPoolVfs({ name: OPFS_POOL });
-      const file = `/tortoise-${version}.sqlite`;
+      const file = `${prefix}${version}.sqlite`;
       if (!pool.getFileNames().includes(file)) {
+        // Drop only this dataset's stale versions; leave the other dataset's copy.
         for (const f of pool.getFileNames()) {
-          if (f.startsWith("/tortoise-") && f.endsWith(".sqlite")) { try { pool.unlink(f); } catch { /* ignore */ } }
+          if (f.startsWith(prefix) && f.endsWith(".sqlite")) { try { pool.unlink(f); } catch { /* ignore */ } }
         }
         pool.importDb(file, await fetchBytes(urls));
       }
@@ -76,10 +79,10 @@ async function open(version, urls) {
 }
 
 self.onmessage = async (ev) => {
-  const { id, type, sql, params, version, urls } = ev.data;
+  const { id, type, sql, params, version, dataset, urls } = ev.data;
   try {
     if (type === "open") {
-      const result = await open(version, urls);
+      const result = await open(version, dataset || "main", urls);
       // Read-only tuning: a 32 MB page cache keeps the hot b-tree resident (faster
       // repeat zone/search queries), temp b-trees (ORDER BY / GROUP BY) build in
       // RAM, and query_only guards against accidental writes. Best-effort.
