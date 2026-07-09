@@ -129,6 +129,19 @@ export const IMPORTS = [
     indexes: [],
   },
   {
+    // Readable book/letter/plaque text (page_text.entry -> text, chained via
+    // next_page). items.page_text and type-9 gameobjects' data0 point at the first
+    // page; the viewer walks the chain to show the prose. Staged so migration-added
+    // pages (patch books/plaques) flow in; shipped whole (small, ~1.5k rows).
+    file: "tw_world_page_text.sql",
+    table: "page_text",
+    target: "page_text",
+    columns: ["entry", "text", "next_page"],
+    text: ["text"],
+    pk: "entry",
+    indexes: [],
+  },
+  {
     // GameObjects that start a quest (e.g. a book/altar).
     file: "tw_world_gameobject_questrelation.sql",
     table: "gameobject_questrelation",

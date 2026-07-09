@@ -559,7 +559,20 @@ export const qQuestStartNpcs = (n) => `
 // the many per-zone copies of e.g. "Copper Vein" collapse to one row) -> instant read.
 export const Q_BROWSE_OBJECTS = `SELECT entry, name, type, has_loot, spawns FROM object_browse ORDER BY name`;
 // Single object header (by entry).
-export const Q_OBJECT = `SELECT entry, name, type, displayId, data1 FROM gameobjects WHERE entry = ?1`;
+export const Q_OBJECT = `SELECT entry, name, type, displayId, data0, data1 FROM gameobjects WHERE entry = ?1`;
+
+// Readable "book" text, followed page-by-page down the next_page linked list.
+// ?1 = the first page id (items.page_text, or a type-9 gameobject's data0).
+// depth guard prevents an infinite walk on a malformed self-referential chain.
+export const Q_PAGE_TEXT = `
+  WITH RECURSIVE chain(entry, text, next_page, depth) AS (
+    SELECT entry, text, next_page, 0 FROM page_text WHERE entry = ?1
+    UNION ALL
+    SELECT p.entry, p.text, p.next_page, chain.depth + 1
+    FROM page_text p JOIN chain ON p.entry = chain.next_page
+    WHERE chain.next_page <> 0 AND chain.depth < 50
+  )
+  SELECT text, depth FROM chain ORDER BY depth`;
 // All entries sharing a name (the group the detail page aggregates over).
 export const Q_OBJECT_SIBLINGS = `SELECT entry, data1 FROM gameobjects WHERE name = ?1`;
 // Items looted from a set of object loot-ids (data1), highest chance kept per item.

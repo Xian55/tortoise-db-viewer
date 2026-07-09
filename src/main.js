@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect, getMeta } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, readableText } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -404,6 +404,9 @@ async function showItem(id) {
   if (!it) { app.innerHTML = `<div class="home"><p>No item with ID ${id}.</p></div>`; return; }
   document.title = `${it.name} - Tortoise-WoW DB`;
 
+  // Readable items (books, letters, documents) carry a page_text chain to show.
+  const readablePages = it.page_text > 0 ? await query(Q.Q_PAGE_TEXT, [it.page_text]) : [];
+
   const spellIds = [1, 2, 3, 4, 5].map((i) => it[`spellid_${i}`]).filter(Boolean);
   const spellMap = new Map();
   await Promise.all(spellIds.map(async (sid) => {
@@ -575,6 +578,7 @@ async function showItem(id) {
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}${it.world_drop ? ' · <span class="tagx">World Drop</span>' : ""}${it.rolls_suffix ? ' · <span class="tagx" title="Can drop with a random suffix">🎲 Random suffix</span>' : ""}</div>
         ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}
         ${suffixSection(suffixes)}
+        ${readableText(readablePages)}
       </div>
       <div class="item-rel">${tabs(tabDefs)}</div>
     </div>`;
@@ -1054,6 +1058,10 @@ async function showObject(id) {
   if (!obj) { app.innerHTML = `<div class="home"><p>No object with ID ${id}.</p></div>`; return; }
   document.title = `${obj.name} - Tortoise-WoW DB`;
 
+  // A type-9 (GAMEOBJECT_TYPE_TEXT) plaque/monument/statue stores its readable
+  // inscription in a page_text chain keyed by data0.
+  const readablePages = obj.type === 9 && obj.data0 > 0 ? await query(Q.Q_PAGE_TEXT, [obj.data0]) : [];
+
   const siblings = await query(Q.Q_OBJECT_SIBLINGS, [obj.name]);
   const entryIds = [...new Set(siblings.map((s) => s.entry))];
   const lootIds = [...new Set(siblings.map((s) => s.data1).filter(Boolean))];
@@ -1125,6 +1133,7 @@ async function showObject(id) {
         <h1>${esc(obj.name)}</h1>
         <div class="npc-meta muted">${meta.join(" · ")} <span class="dim">· Object #${obj.entry}</span></div>
       </div>
+      ${readableText(readablePages, { title: "Inscription" })}
       ${activeZone ? zoneSwitch + `<div id="zonemap"></div>` : noMapNote}
       ${tabDefs.length ? tabs(tabDefs) : ""}
     </div>`;

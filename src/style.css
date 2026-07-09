@@ -216,6 +216,13 @@ a.set-bonus-link:hover { text-decoration: underline; }
 /* relation panels */
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
 .panel h2 { margin: 0; padding: 10px 14px; font-size: 14px; background: var(--panel2); border-bottom: 1px solid var(--border); }
+/* Readable book/letter/plaque prose (page_text). Warm parchment tint + serif body. */
+.readable .readable-body { padding: 14px 18px; max-width: 70ch;
+  font-family: Georgia, "Times New Roman", serif; line-height: 1.6; color: #e6ddc4;
+  background: linear-gradient(180deg, color-mix(in srgb, #3a2f1c 22%, var(--panel)), var(--panel)); }
+.readable .readable-page + .readable-page { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+.readable .readable-pageno { font-family: system-ui, sans-serif; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 7px 14px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }

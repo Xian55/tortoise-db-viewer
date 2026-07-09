@@ -483,6 +483,26 @@ async function testVendorRestock(id) {
   return stock.length > 0 && hasRestock;
 }
 
+// readable item (book/letter/document) renders its page_text prose in a .readable
+// panel. Marshal McBride's Documents (745) chains four report pages.
+async function testReadableItem(id, expect) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-main .readable .readable-body", { timeout: T });
+  const txt = await page.$eval(".item-main .readable .readable-body", (e) => e.textContent);
+  console.log(`readable-item ${id}: expect="${expect}" found=${txt.includes(expect)} len=${txt.length}`);
+  return txt.includes(expect);
+}
+
+// a type-9 plaque/statue reads its inscription from page_text via data0. Uther the
+// Lightbringer's statue (#2082) shows the memorial text.
+async function testReadableObject(id, expect) {
+  await page.goto(`${BASE}?object=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-page .readable .readable-body", { timeout: T });
+  const txt = await page.$eval(".npc-page .readable .readable-body", (e) => e.textContent);
+  console.log(`readable-object ${id}: expect="${expect}" found=${txt.includes(expect)} len=${txt.length}`);
+  return txt.includes(expect);
+}
+
 // recipe/pattern/plans item shows a "Teaches" tab with the craft it unlocks
 async function testTeaches(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 30000 });
@@ -1938,6 +1958,8 @@ run(() => testCriteriaOr());           // multi-criteria match=any (OR) vs defau
 run(() => testRandom());               // ?random redirects to a random entity page
 run(() => testContainer(16882, "Junkbox"));  // lockbox -> Contains tab
 run(() => testVendorRestock(2319));  // limited vendor stock shows restock cadence (↻ 2h)
+run(() => testReadableItem(745, "REPORT: Kobolds"));  // book/document page_text prose
+run(() => testReadableObject(2082, "Uther"));  // type-9 statue inscription
 run(() => testTeaches(70204, "Shadowforged"));  // recipe -> Teaches tab
 run(() => testCustomIcon(9376, "Jang"));
 run(() => testSearch("thunder"));

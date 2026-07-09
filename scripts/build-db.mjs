@@ -56,6 +56,7 @@ const STAGE_PK = {
   gameobject_template: "entry", item_template: "entry", quest_template: "entry",
   map_template: "entry", item_display_info: "ID", faction: "entry",
   area_template: "entry", spell_template: "entry", creature_onkill_reputation: "creature_id",
+  page_text: "entry",
 };
 const STAGE_SPECS = (() => {
   const seen = new Set(), specs = [];

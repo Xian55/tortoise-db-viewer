@@ -288,6 +288,22 @@ export function panel(title, bodyHtml) {
   return `<section class="panel"><h2>${esc(title)}</h2>${bodyHtml}</section>`;
 }
 
+// Readable book/letter/plaque prose (a page_text chain). Each page keeps its own
+// line breaks; "Missing Text" placeholder pages and blanks are dropped. Returns ""
+// when nothing readable remains, so the caller can omit the whole section.
+export function readableText(pages, { title = "Text" } = {}) {
+  const clean = (pages || [])
+    .map((p) => String(p.text || "").replace(/\r\n?/g, "\n").trim())
+    .filter((t) => t && t.toLowerCase() !== "missing text");
+  if (!clean.length) return "";
+  const multi = clean.length > 1;
+  const body = clean.map((t, i) => {
+    const pageNo = multi ? `<div class="readable-pageno">Page ${i + 1}</div>` : "";
+    return `<div class="readable-page">${pageNo}${esc(t).replace(/\n/g, "<br>")}</div>`;
+  }).join("");
+  return `<section class="panel readable"><h2>📖 ${esc(title)}</h2><div class="readable-body">${body}</div></section>`;
+}
+
 export function table(headers, body) {
   const html = Array.isArray(body) ? body.join("") : body;
   if (!html || !html.trim()) return ""; // no rows -> panel() drops the whole section
