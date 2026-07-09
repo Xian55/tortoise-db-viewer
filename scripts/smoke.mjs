@@ -44,7 +44,9 @@ const errors = [];
 // break (wrong base -> ALL tiles 404) is still caught by testWorldMap's tiles>0
 // assertion. `vite dev` hid this by SPA-falling-back missing files to 200; a
 // correct static server (nginx) 404s them.
-const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|minimap\/.+\.webp$/;
+// changelog.json 404s by design on the main dataset (dev-only feature); the
+// ?changelog view handles res.ok===false gracefully.
+const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|minimap\/.+\.webp$|changelog\.json/;
 page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 page.on("requestfailed", (r) => { if (!BENIGN.test(r.url())) errors.push("reqfail: " + r.url() + " " + r.failure()?.errorText); });
 page.on("response", (r) => { if (r.status() >= 400 && !BENIGN.test(r.url())) errors.push(`http ${r.status()}: ${r.url()}`); });
@@ -134,8 +136,11 @@ async function testHomeEmbed() {
   await page.waitForSelector(".home", { timeout: T });
   const demo = await page.$$eval('.home a[href*="embed/demo.html"]', (e) => e.length);
   const talents = await page.$$eval('.home a[href="?talents"]', (e) => e.length);
-  console.log(`home-embed: demoLink=${demo} talentsLink=${talents}`);
-  return demo > 0 && talents > 0;
+  // static JSON endpoints note + its per-entity tooltip example link
+  const api = await page.$$eval(".home-api .api-list li", (e) => e.length);
+  const ttLink = await page.$$eval('.home-api a[href*="tt/i/2770.json"]', (e) => e.length);
+  console.log(`home-embed: demoLink=${demo} talentsLink=${talents} apiRows=${api} ttLink=${ttLink}`);
+  return demo > 0 && talents > 0 && api >= 3 && ttLink > 0;
 }
 
 // ?random rolls a random entity and replaces the URL with its detail page.
@@ -1627,6 +1632,21 @@ async function testDatasetToggle() {
     && /\/dev\/\?item=2770$/.test(r.devHref) && r.bodyDev === false;
 }
 
+// "What's new" changelog (?changelog). On the main dataset there's no
+// data/changelog.json, so the page renders the dev-pointer empty state (with a
+// link to the Dev view) -- assert it renders cleanly without a page error.
+async function testChangelog() {
+  await page.goto(`${BASE}?changelog`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".changelog h1", { timeout: T });
+  const r = await page.evaluate(() => ({
+    heading: document.querySelector(".changelog h1")?.textContent || "",
+    empty: (document.querySelector(".changelog .cl-empty")) !== null,
+    devLink: (document.querySelector('.changelog a[href*="dev/?changelog"]')) !== null,
+  }));
+  console.log(`changelog: heading="${r.heading}" empty=${r.empty} devLink=${r.devLink}`);
+  return /What's new/.test(r.heading) && r.empty && r.devLink;
+}
+
 // Item sets are searchable: the results page has an "Item Sets" tab with links.
 async function testSearchItemSet(term) {
   await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
@@ -2130,6 +2150,7 @@ run(() => testFishingPoleCols());                           // fishing poles: +N
 run(() => testBrowse("zones", "&cont=0", "Zone"));          // Zones continent filter
 run(() => testFooter());      // site footer: load time + "Updated" stamp + source link
 run(() => testDatasetToggle());  // main|dev source toggle pill: active state + /dev/ href
+run(() => testChangelog());      // ?changelog: dev-pointer empty state on main dataset
 run(() => testMobileTable());  // shared data table -> stacked cards on mobile (no overflow)
 run(() => testMobileNav());   // responsive top bar (run last; resets viewport)
 

@@ -43,11 +43,39 @@ jobs:
 
       - run: bun install
 
+      # Pull the CURRENTLY-deployed dev DB + changelog from R2 *before* we overwrite
+      # them, so build-changelog can diff new-vs-previous. Both are optional (first
+      # deploy / wiped bucket) -> the diff falls back to a baseline. The DB object is
+      # stored brotli (Content-Encoding: br); aws cp fetches the raw bytes, so we
+      # brotli-decompress it here.
+      - name: Fetch previous dev DB + changelog from R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          aws s3 cp s3://tortoise-db-viewer/data-dev/tortoise.sqlite prev.sqlite.br \
+            --endpoint-url "$R2_ENDPOINT" || echo "no previous dev DB (baseline)"
+          if [ -f prev.sqlite.br ]; then
+            bun -e 'import {brotliDecompressSync} from "node:zlib"; import {readFileSync,writeFileSync} from "node:fs"; writeFileSync("prev.sqlite", brotliDecompressSync(readFileSync("prev.sqlite.br"))); console.log("prev.sqlite ready");'
+          fi
+          aws s3 cp s3://tortoise-db-viewer/data-dev/changelog.json changelog-prev.json \
+            --endpoint-url "$R2_ENDPOINT" || echo "no previous changelog"
+
       - name: Build SQLite database (dev)
         run: bun scripts/build-db.mjs
         env:
           SQL_DIR: ${{ github.workspace }}/server-dev/sql/base
           DATA_SUBDIR: data-dev
+
+      # Diff new-vs-previous shipped DB -> prepend a dated section to changelog.json
+      # (served per-dataset at ${DATA_BASE}changelog.json, rendered at ?changelog).
+      - name: Generate changelog
+        run: |
+          DB=public/data-dev/tortoise.sqlite PREV=prev.sqlite PREV_LOG=changelog-prev.json \
+            OUT=public/data-dev/changelog.json VERSION=public/data-dev/version.json \
+            bun scripts/build-changelog.mjs
 
       # Same brotli + R2 layout as the main deploy, retargeted to the data-dev/
       # prefix. The DB is immutable (cache-busted by ?v=); version.json is no-store.
@@ -64,5 +92,9 @@ jobs:
             --content-type application/octet-stream \
             --content-encoding br
           aws s3 cp public/data-dev/version.json s3://tortoise-db-viewer/data-dev/version.json \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json --cache-control "no-store"
+          # per-deploy changelog (built above); no-store so ?changelog is always fresh
+          aws s3 cp public/data-dev/changelog.json s3://tortoise-db-viewer/data-dev/changelog.json \
             --endpoint-url "$R2_ENDPOINT" \
             --content-type application/json --cache-control "no-store"

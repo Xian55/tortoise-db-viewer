@@ -37,6 +37,32 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .ds-toggle .ds-btn.on { color: #0d0e12; background: var(--gold); }
 .ds-toggle .ds-btn[data-ds="dev"].on { color: #fff; background: #ff4d4d; }
 
+/* Home: static JSON endpoints note. */
+.home-api { margin-top: 20px; }
+.home-api .api-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.home-api .api-list li { padding: 4px 0; color: var(--muted); line-height: 1.6; }
+.home-api .api-list code { color: var(--text); }
+.home-api .api-list .dim { opacity: .7; }
+
+/* "What's new" changelog page (?changelog). */
+.changelog .cl-section { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 12px 16px; margin: 14px 0; }
+.changelog .cl-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.changelog .cl-date { font-weight: 700; }
+.changelog .cl-ver { color: var(--muted); font-size: 12px; }
+.changelog .cl-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 20px; }
+.changelog .cl-col > h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+.changelog .cl-added { color: #74c98a; }
+.changelog .cl-removed { color: #e06b6b; }
+.changelog .cl-group { margin-bottom: 10px; }
+.changelog .cl-group h4 { margin: 0 0 3px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.changelog .cl-n { color: var(--gold); }
+.changelog .cl-list { list-style: none; margin: 0; padding: 0; }
+.changelog .cl-list li { padding: 1px 0; }
+.changelog .cl-more { color: var(--muted); font-style: italic; }
+.changelog .cl-delta.up { color: #74c98a; }
+.changelog .cl-delta.down { color: #e06b6b; }
+.changelog .cl-empty { color: var(--muted); }
+
 /* On the dev dataset: tint the brand red + drop a rotated "dev" badge over it so
    it's unmistakable you're on preview data. */
 .ds-dev .brand { color: #ff4d4d; }
@@ -290,6 +316,8 @@ tbody tr:hover { background: var(--panel2); }
   color: var(--text); background: var(--panel2); border: 1px solid var(--border);
   border-radius: 6px; }
 .share-btn:hover { border-color: var(--gold); color: var(--gold); }
+.share-btn.json-btn { margin-left: 6px; font-family: ui-monospace, monospace; text-decoration: none; }
+.share-btn.json-btn:hover { text-decoration: none; }
 /* "Compare" toggle on the item meta line + the floating cross-page compare tray */
 .cmp-add { margin-left: 10px; padding: 2px 9px; font-size: 12px; font-weight: 600; cursor: pointer;
   color: var(--text); background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; }

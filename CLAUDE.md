@@ -462,3 +462,12 @@ branch-independent and shared (owned by the main deploy). Mechanics:
 - **Rollout:** enabling the toggle needs one normal `main` deploy first (ships the
   frontend + `VITE_DATA_BASE_DEV` + `/dev/index.html`), then one `deploy-dev` run
   (populates `data-dev/`). After that, dev refreshes are pure R2 uploads.
+- **Changelog (`?changelog`):** each `deploy-dev` run diffs the freshly-built DB
+  against the previous one (downloaded from R2) via `scripts/build-changelog.mjs`
+  (`ATTACH` + anti-joins over content tables + `spawn_points` deltas — NOT `sqldiff`,
+  which drowns in VACUUM/FTS/stat noise), then prepends a dated section to an
+  accumulated `data-dev/changelog.json`. The `?changelog` view (`showChangelog` in
+  `main.js`) fetches `${DATA_BASE}changelog.json` (dataset-aware) and links each
+  entity. Dev-only for now; the main dataset has no file and shows a pointer to the
+  Dev view (the 404 is benign — the view handles it). A footer "What's new" link
+  (relative, so it stays on the active dataset) opens it.
