@@ -2092,7 +2092,8 @@ async function showChangelog() {
       removed ? `<div class="cl-col"><h3 class="cl-removed">Removed</h3>${removed}</div>` : "",
       spawnLis ? `<div class="cl-col"><h3 class="cl-added">Spawns</h3><div class="cl-group"><ul class="cl-list">${spawnLis}</ul></div></div>` : "",
     ].join("");
-    return `<section class="cl-section"><div class="cl-head"><span class="cl-date">${fmtDate(s.builtAt)}</span><code class="cl-ver">${esc(s.version || "")}</code></div><div class="cl-cols">${cols}</div></section>`;
+    const badge = s.baseline ? `<span class="cl-baseline" title="Everything this dataset adds over the main branch">baseline · dev vs main</span>` : "";
+    return `<section class="cl-section"><div class="cl-head"><span class="cl-date">${fmtDate(s.builtAt)}</span><code class="cl-ver">${esc(s.version || "")}</code>${badge}</div><div class="cl-cols">${cols}</div></section>`;
   }).join("");
 
   app.innerHTML = `<div class="results changelog"><h1>${heading}</h1>${sections}</div>`;
