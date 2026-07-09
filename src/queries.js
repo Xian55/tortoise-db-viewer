@@ -221,7 +221,9 @@ export const qItemReagents = (n) => `
 export const Q_SOLD_BY = `
   SELECT DISTINCT c.entry, c.name, c.level_min, c.level_max,
     COALESCE((SELECT maxcount FROM npc_vendor WHERE entry = c.entry AND item = ?1),
-             (SELECT maxcount FROM npc_vendor_template WHERE entry = c.vendor_id AND item = ?1)) AS maxcount
+             (SELECT maxcount FROM npc_vendor_template WHERE entry = c.vendor_id AND item = ?1)) AS maxcount,
+    COALESCE((SELECT incrtime FROM npc_vendor WHERE entry = c.entry AND item = ?1),
+             (SELECT incrtime FROM npc_vendor_template WHERE entry = c.vendor_id AND item = ?1)) AS incrtime
   FROM creatures c
   WHERE c.entry IN (SELECT entry FROM npc_vendor WHERE item = ?1)
      OR c.vendor_id IN (SELECT entry FROM npc_vendor_template WHERE item = ?1)
@@ -479,11 +481,11 @@ export const Q_NPC_PICK = npcLoot("p", "pickpocket_loot_id");
 // Items an NPC sells: per-entry npc_vendor rows + the shared npc_vendor_template
 // referenced by creature_template.vendor_id (UNION dedups overlaps).
 export const Q_NPC_SELLS = `
-  SELECT i.entry, i.name, i.quality, di.icon, v.maxcount
+  SELECT i.entry, i.name, i.quality, di.icon, v.maxcount, v.incrtime
   FROM (
-    SELECT item, maxcount FROM npc_vendor WHERE entry = ?1
+    SELECT item, maxcount, incrtime FROM npc_vendor WHERE entry = ?1
     UNION
-    SELECT vt.item, vt.maxcount FROM npc_vendor_template vt
+    SELECT vt.item, vt.maxcount, vt.incrtime FROM npc_vendor_template vt
       JOIN creatures c ON c.entry = ?1 AND c.vendor_id = vt.entry
   ) v
   JOIN items i ON i.entry = v.item

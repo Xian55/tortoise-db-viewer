@@ -470,6 +470,19 @@ async function testItemSlots(id, expect) {
   return has;
 }
 
+// vendor items with limited stock show a restock cadence (↻ 2h) beside the cap;
+// unlimited stock shows ∞. Medium Leather (2319) restocks up to 5 every 2h at Lhara.
+async function testVendorRestock(id) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".item-rel .tab")].find((t) => /Sold by/.test(t.textContent)); if (b) b.click(); });
+  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
+  const stock = await page.$$eval(".item-rel .tabpane:not(.hidden) tbody tr td:last-child", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const hasRestock = stock.some((s) => /↻/.test(s));
+  console.log(`vendor-restock ${id}: stock=[${stock.join(" | ")}] hasRestock=${hasRestock}`);
+  return stock.length > 0 && hasRestock;
+}
+
 // recipe/pattern/plans item shows a "Teaches" tab with the craft it unlocks
 async function testTeaches(id, expectName) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: 30000 });
@@ -1924,6 +1937,7 @@ run(() => testGearScore());            // stat-weight Score column + score-desc 
 run(() => testCriteriaOr());           // multi-criteria match=any (OR) vs default AND
 run(() => testRandom());               // ?random redirects to a random entity page
 run(() => testContainer(16882, "Junkbox"));  // lockbox -> Contains tab
+run(() => testVendorRestock(2319));  // limited vendor stock shows restock cadence (↻ 2h)
 run(() => testTeaches(70204, "Shadowforged"));  // recipe -> Teaches tab
 run(() => testCustomIcon(9376, "Jang"));
 run(() => testSearch("thunder"));

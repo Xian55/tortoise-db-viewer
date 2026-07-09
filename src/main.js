@@ -23,6 +23,20 @@ const searchInput = document.getElementById("search");
 
 const lvlRange = (r) => (r.level_max && r.level_max !== r.level_min ? `${r.level_min}-${r.level_max}` : (r.level_min || ""));
 
+// Compact "2h" / "3h" / "12h" / "7d" / "2h13m" from a seconds value (vendor restock).
+const fmtDuration = (s) => {
+  if (!s || s <= 0) return "";
+  if (s % 86400 === 0) return `${s / 86400}d`;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return (h ? `${h}h` : "") + (m ? `${m}m` : "") + (!h && !m && sec ? `${sec}s` : "");
+};
+// Vendor stock cell: a limited item shows its cap + restock cadence (mangos regens
+// 1 unit per `incrtime`); unlimited stock (maxcount 0) shows ∞.
+const stockCell = (s) => (s.maxcount > 0
+  ? `${s.maxcount}${s.incrtime > 0 ? ` <span class="dim" title="Restocks 1 every ${fmtDuration(s.incrtime)}">↻&nbsp;${fmtDuration(s.incrtime)}</span>` : ""}`
+  : "∞");
+const stockCol = { label: "Stock", num: true, cls: "muted", cell: stockCell, value: (s) => (s.maxcount > 0 ? s.maxcount : Infinity) };
+
 // ---- sortable-table registry (mounted after innerHTML) ----
 let pendingTables = [];
 function regTable(columns, rows, opts = {}) {
@@ -466,7 +480,7 @@ async function showItem(id) {
   const soldCols = [
     { label: "Vendor", cell: (s) => npcLink(s.entry, s.name), value: (s) => s.name },
     { label: "Level", num: true, cls: "muted", cell: (s) => lvlRange(s), value: (s) => s.level_max || s.level_min || 0 },
-    { label: "Stock", num: true, cls: "muted", cell: (s) => (s.maxcount > 0 ? s.maxcount : "∞"), value: (s) => (s.maxcount > 0 ? s.maxcount : Infinity) },
+    stockCol,
   ];
   const itemChanceCols = [
     { label: "Item", cell: (c) => itemLink(c.entry, c.name, c.quality, c.icon) + dropQty(c.mincount, c.maxcount), value: (c) => c.name },
@@ -947,7 +961,7 @@ async function showNpc(id) {
   ];
   const sellCols = [
     { label: "Item", cell: (s) => itemLink(s.entry, s.name, s.quality, s.icon), value: (s) => s.name },
-    { label: "Stock", num: true, cls: "muted", cell: (s) => (s.maxcount > 0 ? s.maxcount : "∞"), value: (s) => (s.maxcount > 0 ? s.maxcount : Infinity) },
+    stockCol,
   ];
   const questCols = [
     { label: "Quest", cell: (q) => questLink(q.entry, q.title), value: (q) => q.title },
