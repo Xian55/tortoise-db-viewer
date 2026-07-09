@@ -9,7 +9,7 @@ import { showCharacters, showCharacter, showSharedLoadout } from "./character.js
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
-import { ASSETS_BASE, resolveOrigins, DATASET } from "./config.js";
+import { ASSETS_BASE, DATA_BASE, resolveOrigins, DATASET } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
@@ -84,17 +84,14 @@ document.addEventListener("click", (e) => {
 
 // Data-source toggle (main <-> dev). Dev lives at the /dev/ path; these are plain
 // cross-path <a> links (not .nav/.ilink, so the SPA interceptor above leaves them
-// to a real navigation). Carry the current query so flipping keeps the same entity.
-// A `ds-dev` class on <body> drives the "dev" corner ribbon over the brand.
+// to a real navigation). syncDsToggle() re-points them at the *current* query on
+// every render (SPA nav mutates location.search without reload), so flipping always
+// keeps the entity you're on. A `ds-dev` class on <body> drives the "dev" ribbon.
 {
   const ds = document.getElementById("dsToggle");
-  if (ds) {
-    const qs = location.search;
-    ds.querySelector('[data-ds="main"]').href = `${import.meta.env.BASE_URL}${qs}`;
-    ds.querySelector('[data-ds="dev"]').href = `${import.meta.env.BASE_URL}dev/${qs}`;
-    ds.querySelector(`[data-ds="${DATASET}"]`)?.classList.add("on");
-  }
+  if (ds) ds.querySelector(`[data-ds="${DATASET}"]`)?.classList.add("on"); // active side (fixed per load)
   if (DATASET === "dev") document.body.classList.add("ds-dev");
+  syncDsToggle();
 }
 
 // Top-bar mega-menu (data-driven flyout) + mobile hamburger.
@@ -149,6 +146,7 @@ function route() {
   else if (params.get("flights") !== null) return showFlights(params.get("cont") ? Number(params.get("cont")) : 0);
   else if (params.get("worldmap") !== null) return showWorldMap(params.get("worldmap") ? Number(params.get("worldmap")) : 0);
   else if (params.get("dungeons") !== null) return showDungeons();
+  else if (params.get("changelog") !== null) return showChangelog();
   else if (params.get("random") !== null) return showRandom();
   else if (params.get("guides") !== null) return showLeveling();
   else if (params.get("guide")) return showGuide(params.get("guide"));
@@ -166,6 +164,9 @@ function route() {
 // Sharing that /<prefix>/<id> link (not the ?param= URL) is what unfurls in
 // Discord/Twitter, so detail pages get a "Share" button that copies it.
 const SHARE_PREFIX = { item: "i", npc: "n", quest: "q", spell: "s", object: "o", zone: "z", faction: "f", itemset: "is" };
+// Entities that have a static tooltip-JSON endpoint (scripts/build-tooltips.mjs
+// only emits i/n/q/s). Drives the "{ } JSON" button next to Share.
+const TT_PREFIX = { item: "i", npc: "n", quest: "q", spell: "s" };
 function addShareButton() {
   const params = new URLSearchParams(location.search);
   let param = null, id = null;
@@ -189,6 +190,19 @@ function addShareButton() {
     } catch { btn.textContent = "Copy failed"; }
   });
   anchor.insertAdjacentElement("afterend", btn);
+  // "{ } JSON" — open the entity's static tooltip-JSON endpoint (item/npc/quest/
+  // spell only). Cross-origin (R2) / not .nav|.ilink, so the SPA interceptor leaves
+  // it; opens in a new tab. 404s for dev-only entities (tt is built for main).
+  if (TT_PREFIX[param]) {
+    const j = document.createElement("a");
+    j.className = "share-btn json-btn";
+    j.href = `${ASSETS_BASE}tt/${TT_PREFIX[param]}/${id}.json`;
+    j.target = "_blank";
+    j.rel = "noopener";
+    j.title = "View this entity's raw JSON (static tooltip endpoint)";
+    j.textContent = "{ } JSON";
+    btn.insertAdjacentElement("afterend", j);
+  }
 }
 
 // ---- compare tray (a small localStorage-backed basket of items) ----
@@ -240,8 +254,26 @@ function addCompareButton() {
   anchor.appendChild(btn);
 }
 
+// Re-point the main/dev toggle links at the CURRENT query (SPA nav changes
+// location.search without reload, so boot-time hrefs go stale). Strip `db` — the
+// path decides the dataset, and a leftover `?db=dev` on the Main link would bounce
+// you back to dev.
+function syncDsToggle() {
+  const ds = document.getElementById("dsToggle");
+  if (!ds) return;
+  const p = new URLSearchParams(location.search);
+  p.delete("db");
+  const qs = p.toString();
+  const suffix = qs ? `?${qs}` : "";
+  const B = import.meta.env.BASE_URL;
+  ds.querySelector('[data-ds="main"]').href = `${B}${suffix}`;
+  ds.querySelector('[data-ds="dev"]').href = `${B}dev/${suffix}`;
+}
+
 // route() then drop the Share + compare buttons onto the rendered detail page.
 function renderRoute() {
+  syncDsToggle(); // reflect the new URL immediately -- location.search is already
+                  // updated, so don't wait for a slow async render to finish
   const p = Promise.resolve(route());
   const after = () => { addShareButton(); addCompareButton(); renderCompareTray(); };
   p.then(after, after);
@@ -295,6 +327,17 @@ function showHome() {
       <a class="nav-ext" href="${import.meta.env.BASE_URL}embed/tw-power.js">tooltip widget</a>
       on any page for Wowhead-style hover tooltips —
       <a class="nav-ext" href="${import.meta.env.BASE_URL}embed/demo.html" target="_blank" rel="noopener">see the demo</a>.</p>
+
+    <section class="home-section home-api">
+      <h2>Static JSON endpoints</h2>
+      <p class="muted">No backend — the data ships as plain static files you can <code>fetch()</code> directly (CORS-open, served from the CDN). Handy for bots, addons, or your own tools:</p>
+      <ul class="api-list">
+        <li><code>tt/&lt;i|n|q|s&gt;/&lt;id&gt;.json</code> — per-entity tooltip data (item / npc / quest / spell); this is what powers the embed widget above. <a class="nav-ext" href="${ASSETS_BASE}tt/i/2770.json" target="_blank" rel="noopener">example: i/2770</a></li>
+        <li><code>data/version.json</code> — current build hash + timestamp. <a class="nav-ext" href="${DATA_BASE}version.json" target="_blank" rel="noopener">open</a></li>
+        <li><code>data-dev/changelog.json</code> — per-deploy "What's new" for the <b>dev</b> dataset. <a class="nav" href="${import.meta.env.BASE_URL}dev/?changelog">view</a></li>
+        <li><code>data/tortoise.sqlite</code> — the whole indexed database (Brotli on the wire), queryable with any SQLite tool. <span class="dim">dev copy at <code>data-dev/</code>.</span></li>
+      </ul>
+    </section>
   </div>`;
 }
 
@@ -1993,6 +2036,66 @@ async function showDungeons() {
   const t = regTable(cols, rows);
   app.innerHTML = `<div class="results"><h1>Dungeons &amp; Raids</h1>${t.html}</div>`;
   mountTables();
+}
+
+// "What's new" (?changelog): per-deploy diff sections built by
+// scripts/build-changelog.mjs, served per-dataset at ${DATA_BASE}changelog.json
+// (dev only for now). Main dataset has no file -> a pointer to the Dev view.
+async function showChangelog() {
+  document.title = "What's new - Tortoise-WoW DB";
+  app.innerHTML = `<div class="loading">Loading…</div>`;
+  let log = null;
+  try {
+    const res = await fetch(`${DATA_BASE}changelog.json`, { cache: "no-store" });
+    if (res.ok) log = await res.json();
+  } catch { /* fall through to the empty state */ }
+
+  const heading = `What's new${DATASET === "dev" ? " · dev" : ""}`;
+  if (!Array.isArray(log) || !log.length) {
+    const devUrl = `${import.meta.env.BASE_URL}dev/?changelog`;
+    const note = DATASET === "dev"
+      ? `No changes recorded yet — the changelog fills in as new <b>1181dev</b> builds deploy.`
+      : `The changelog tracks the <b>Dev</b> dataset (server <code>1181dev</code>). <a class="nav" href="${devUrl}">View it on Dev →</a>`;
+    app.innerHTML = `<div class="results changelog"><h1>${heading}</h1><p class="cl-empty">${note}</p></div>`;
+    return;
+  }
+
+  const fmtDate = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); };
+  const linkers = {
+    npcs: (it) => npcLink(it.id, it.name),
+    items: (it) => itemLink(it.id, it.name, it.quality),
+    quests: (it) => questLink(it.id, it.name),
+    objects: (it) => objectLink(it.id, it.name),
+    spells: (it) => spellLink(it.id, it.name),
+    sets: (it) => `<a class="ilink" href="?itemset=${it.id}">${esc(it.name)}</a>`,
+  };
+  const GROUPS = [["npcs", "NPCs"], ["items", "Items"], ["quests", "Quests"], ["objects", "Objects"], ["spells", "Spells"], ["sets", "Item sets"]];
+
+  // one Added/Removed group list; `total` is the pre-cap count so we can show "+N more"
+  const group = (label, items, total, linkFn, linked = true) => {
+    if (!items || !items.length) return "";
+    const more = total > items.length ? `<li class="cl-more">…and ${total - items.length} more</li>` : "";
+    const lis = items.map((it) => `<li>${linked ? linkFn(it) : esc(it.name)}</li>`).join("");
+    return `<div class="cl-group"><h4>${label} <span class="cl-n">${total}</span></h4><ul class="cl-list">${lis}${more}</ul></div>`;
+  };
+
+  const sections = log.map((s) => {
+    const added = GROUPS.map(([k, l]) => group(l, s.added?.[k], s.counts?.added?.[k] ?? (s.added?.[k]?.length || 0), linkers[k])).join("");
+    const removed = GROUPS.map(([k, l]) => group(l, s.removed?.[k], s.counts?.removed?.[k] ?? (s.removed?.[k]?.length || 0), linkers[k], false)).join("");
+    const spawnLis = (s.spawns || []).map((x) => {
+      const link = x.kind === "o" ? objectLink(x.id, x.name) : npcLink(x.id, x.name);
+      const sign = x.delta > 0 ? `+${x.delta}` : `${x.delta}`;
+      return `<li>${link} → ${esc(x.mapName)} <span class="cl-delta ${x.delta > 0 ? "up" : "down"}">${sign}</span></li>`;
+    }).join("");
+    const cols = [
+      added ? `<div class="cl-col"><h3 class="cl-added">Added</h3>${added}</div>` : "",
+      removed ? `<div class="cl-col"><h3 class="cl-removed">Removed</h3>${removed}</div>` : "",
+      spawnLis ? `<div class="cl-col"><h3 class="cl-added">Spawns</h3><div class="cl-group"><ul class="cl-list">${spawnLis}</ul></div></div>` : "",
+    ].join("");
+    return `<section class="cl-section"><div class="cl-head"><span class="cl-date">${fmtDate(s.builtAt)}</span><code class="cl-ver">${esc(s.version || "")}</code></div><div class="cl-cols">${cols}</div></section>`;
+  }).join("");
+
+  app.innerHTML = `<div class="results changelog"><h1>${heading}</h1>${sections}</div>`;
 }
 
 // Flight-path world map: a continent parchment with every flight master (faction-
