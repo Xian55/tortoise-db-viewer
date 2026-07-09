@@ -20,9 +20,12 @@ const SQL_DIR = process.env.SQL_DIR || join(ROOT, "..", "tortoise-wow", "sql", "
 // does at runtime). Sibling of SQL_DIR; override with UPDATES_DIR. Absent = the
 // build falls back to base-only (older server repos without database_updates).
 const UPDATES_DIR = process.env.UPDATES_DIR || join(SQL_DIR, "..", "database_updates");
+// Output subdir under public/ (default "data"). The dev-dataset build sets
+// DATA_SUBDIR=data-dev so the 1181dev DB lands beside the main one on R2.
+const DATA_SUBDIR = process.env.DATA_SUBDIR || "data";
 // Single DB file, fetched whole by the browser and loaded into sqlite-wasm.
 // GitHub Pages gzips it on the wire (~27 MB -> ~8.6 MB), decompressed by the browser.
-const OUT = join(ROOT, "public", "data", "tortoise.sqlite");
+const OUT = join(ROOT, "public", DATA_SUBDIR, "tortoise.sqlite");
 
 if (!existsSync(SQL_DIR)) {
   console.error(`SQL_DIR not found: ${SQL_DIR}\nSet SQL_DIR to the server repo's sql/base folder.`);
@@ -1586,7 +1589,7 @@ db.close();
 // content hash -> version.json (drives client cache invalidation)
 const buf = readFileSync(OUT);
 const version = createHash("sha256").update(buf).digest("hex").slice(0, 12);
-writeFileSync(join(ROOT, "public", "data", "version.json"), JSON.stringify({ version, builtAt: new Date().toISOString() }));
+writeFileSync(join(ROOT, "public", DATA_SUBDIR, "version.json"), JSON.stringify({ version, builtAt: new Date().toISOString() }));
 
 const mb = (buf.length / 1048576).toFixed(1);
 console.log(`\nDone in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${OUT} (${mb} MB, version ${version})`);

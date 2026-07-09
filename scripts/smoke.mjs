@@ -1604,6 +1604,29 @@ async function testMobileNav() {
   return toggleVisible && hiddenBefore && shownAfter;
 }
 
+// Data-source toggle (main | dev): the top bar shows a two-link segmented pill.
+// On the main site the "Main" side is active, the body is NOT flagged dev, and the
+// "Dev" link points at the /dev/ path (carrying the current query). DOM-only so it
+// doesn't need the dev DB built/served.
+async function testDatasetToggle() {
+  await page.goto(`${BASE}?item=2770`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector("#dsToggle .ds-btn", { timeout: T });
+  const r = await page.evaluate(() => {
+    const main = document.querySelector('#dsToggle [data-ds="main"]');
+    const dev = document.querySelector('#dsToggle [data-ds="dev"]');
+    return {
+      count: document.querySelectorAll("#dsToggle .ds-btn").length,
+      mainOn: main?.classList.contains("on"),
+      devOn: dev?.classList.contains("on"),
+      devHref: dev?.getAttribute("href") || "",
+      bodyDev: document.body.classList.contains("ds-dev"),
+    };
+  });
+  console.log(`dataset-toggle: count=${r.count} mainOn=${r.mainOn} devOn=${r.devOn} devHref="${r.devHref}" bodyDev=${r.bodyDev}`);
+  return r.count === 2 && r.mainOn === true && r.devOn === false
+    && /\/dev\/\?item=2770$/.test(r.devHref) && r.bodyDev === false;
+}
+
 // Item sets are searchable: the results page has an "Item Sets" tab with links.
 async function testSearchItemSet(term) {
   await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
@@ -2106,6 +2129,7 @@ run(() => testSubclassMulti());                             // Subtype multi-sel
 run(() => testFishingPoleCols());                           // fishing poles: +N Fishing column, no DPS/Speed
 run(() => testBrowse("zones", "&cont=0", "Zone"));          // Zones continent filter
 run(() => testFooter());      // site footer: load time + "Updated" stamp + source link
+run(() => testDatasetToggle());  // main|dev source toggle pill: active state + /dev/ href
 run(() => testMobileTable());  // shared data table -> stacked cards on mobile (no overflow)
 run(() => testMobileNav());   // responsive top bar (run last; resets viewport)
 

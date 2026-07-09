@@ -57,6 +57,8 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
   (item comparison), `?talents=<class>` (talent calculator), `?random`. `route()`
   checks `?browse=` (and `?compare=`) **before** the singular entity params (browse
   URLs carry filter params like `faction=a` that collide otherwise). See `src/main.js`.
+  The **dataset** (main vs dev DB) is orthogonal to `route()` — it's chosen from the
+  path (`/dev/…`) in `src/config.js`, not a `route()` branch (see "Two datasets").
 - **Item browse gear features** (`src/browse.js`): the multi-criteria stat filter
   (`stats=key,op,val|…`, `match=all|any` for AND/OR) and **stat-weight ranking**
   (`weights=key:w|…` + `STAT_WEIGHT_PRESETS`) add a computed, sortable **Score**
@@ -425,3 +427,38 @@ Cloudflare R2" step `aws s3 sync`s them to `s3://tortoise-db-viewer/minimap`. Th
 frontend reads `${VITE_ASSETS_BASE}minimap/<map>/{z}/{x}/{y}.webp`; the committed
 `scripts/data/minimap.json` (bundled by Vite) supplies the transform. Re-run
 `extract-minimap.py` + commit on client map changes; the next deploy pushes them.
+
+### Two datasets: `main` + `dev` (server `1181dev` branch)
+
+The site serves **two** copies of the DB and lets the visitor toggle the source
+(`Main | Dev` pill in the top bar):
+
+- **main** — built from the server repo's default branch, at `/` (R2 prefix
+  `data/`). Unchanged behaviour.
+- **dev** — built from the `1181dev` feature branch, served at the **`/dev/`**
+  path (R2 prefix `data-dev/`). Refreshed **hourly** when `1181dev` gets a commit.
+
+**Only the DB + `version.json` differ per dataset** — maps/icons/minimap/tt/OG are
+branch-independent and shared (owned by the main deploy). Mechanics:
+
+- **Build:** `build-db.mjs` takes `DATA_SUBDIR` (default `data`); the dev build
+  runs `SQL_DIR=…/1181dev/sql/base DATA_SUBDIR=data-dev`.
+- **Frontend dataset pick** (`src/config.js`): `DATASET` is `dev` when the path is
+  under `<base>/dev/` (or `?db=dev`, the local-dev override — the vite dev server
+  has no `/dev/` file); it selects `VITE_DATA_BASE_DEV` vs `VITE_DATA_BASE`. Dev is
+  **R2-only** (no Pages mirror — a mirror flip would silently serve *main's* DB).
+- **Path-based, sticky-by-relative-link:** query routing means the only path we
+  must serve is `dev/index.html` (a build-time copy of the app shell — deploy.yml
+  "Emit /dev app shell"). Internal links are relative (`href="?item=…"`) and
+  `navigate()` feeds that to `pushState`, so every click under `/dev/` stays under
+  `/dev/`. No per-link threading, no localStorage.
+- **OPFS cache** (`src/db-worker.js`) is keyed `/tortoise-<dataset>-<version>.sqlite`
+  so both datasets persist side-by-side (switching is download-free) without
+  evicting each other.
+- **CI:** `deploy-dev.yml` (manual/`workflow_dispatch`) builds ONLY the dev DB and
+  `aws s3 cp`s it to `data-dev/` on R2 — no Pages redeploy (a new content hash
+  auto-invalidates clients). `watch-dev.yml` polls `1181dev` **hourly** (distinct
+  cache key from `watch-upstream.yml`) and dispatches `deploy-dev.yml` on a new SHA.
+- **Rollout:** enabling the toggle needs one normal `main` deploy first (ships the
+  frontend + `VITE_DATA_BASE_DEV` + `/dev/index.html`), then one `deploy-dev` run
+  (populates `data-dev/`). After that, dev refreshes are pure R2 uploads.

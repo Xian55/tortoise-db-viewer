@@ -9,7 +9,7 @@ import { showCharacters, showCharacter, showSharedLoadout } from "./character.js
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
-import { ASSETS_BASE, resolveOrigins } from "./config.js";
+import { ASSETS_BASE, resolveOrigins, DATASET } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
@@ -81,6 +81,21 @@ document.addEventListener("click", (e) => {
     navigate(a.getAttribute("href"));
   }
 });
+
+// Data-source toggle (main <-> dev). Dev lives at the /dev/ path; these are plain
+// cross-path <a> links (not .nav/.ilink, so the SPA interceptor above leaves them
+// to a real navigation). Carry the current query so flipping keeps the same entity.
+// A `ds-dev` class on <body> drives the "dev" corner ribbon over the brand.
+{
+  const ds = document.getElementById("dsToggle");
+  if (ds) {
+    const qs = location.search;
+    ds.querySelector('[data-ds="main"]').href = `${import.meta.env.BASE_URL}${qs}`;
+    ds.querySelector('[data-ds="dev"]').href = `${import.meta.env.BASE_URL}dev/${qs}`;
+    ds.querySelector(`[data-ds="${DATASET}"]`)?.classList.add("on");
+  }
+  if (DATASET === "dev") document.body.classList.add("ds-dev");
+}
 
 // Top-bar mega-menu (data-driven flyout) + mobile hamburger.
 const topbar = document.querySelector(".topbar");
@@ -2180,8 +2195,8 @@ async function showFooterMeta(loadMs) {
     if (!builtAt) return;
     const d = new Date(builtAt);
     if (isNaN(d)) return;
-    upd.textContent = `Updated ${d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`;
-    upd.title = d.toLocaleString();
+    upd.textContent = `Updated ${d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}${DATASET === "dev" ? " · dev" : ""}`;
+    upd.title = d.toLocaleString() + (DATASET === "dev" ? " (1181dev dataset)" : "");
   } catch { /* no build stamp -> omit */ }
 }
 
