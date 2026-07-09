@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # push the `cdn-dev` mirror branch + per-version tags
 
 concurrency:
   group: deploy-dev
@@ -106,3 +106,27 @@ jobs:
           aws s3 cp public/data-dev/changelog.json s3://tortoise-db-viewer/data-dev/changelog.json \
             --endpoint-url "$R2_ENDPOINT" \
             --content-type application/json --cache-control "no-store"
+
+      # Mirror the dev DB (+ version.json, changelog.json, icon atlas) to the CDN
+      # fallback routes, exactly like the main deploy but on the `cdn-dev` branch /
+      # `cdn-dev-v<version>` tags (dataset-isolated). See src/config.js.
+      - name: Publish CDN mirror (jsDelivr + raw)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(jq -r .version public/data-dev/version.json)
+          bun -e 'import {gzipSync} from "node:zlib"; import {readFileSync,writeFileSync,mkdirSync,statSync} from "node:fs"; mkdirSync("cdn/data",{recursive:true}); mkdirSync("cdn/icons",{recursive:true}); const i=readFileSync("public/data-dev/tortoise.sqlite"); writeFileSync("cdn/data/tortoise.sqlite.gz", gzipSync(i,{level:9})); console.log("gzip",i.length,"->",statSync("cdn/data/tortoise.sqlite.gz").size);'
+          cp public/data-dev/version.json cdn/data/version.json
+          cp public/data-dev/changelog.json cdn/data/changelog.json
+          cp public/icons/custom-atlas.webp cdn/icons/custom-atlas.webp
+          cp public/icons/custom-atlas.json cdn/icons/custom-atlas.json
+          REPO="${{ github.repository }}" CDN_BRANCH="cdn-dev" TAG="cdn-dev-v${VERSION}" \
+            PAYLOAD_DIR="cdn" bash scripts/publish-cdn.sh
+
+      - name: Prune old CDN-dev tags (keep newest 3)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch --tags --quiet origin || true
+          git for-each-ref --sort=-creatordate --format='%(refname:short)' 'refs/tags/cdn-dev-v*' \
+            | tail -n +4 | while read -r t; do echo "prune $t"; git push origin --delete "$t" || true; done

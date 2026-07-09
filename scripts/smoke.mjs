@@ -45,8 +45,10 @@ const errors = [];
 // assertion. `vite dev` hid this by SPA-falling-back missing files to 200; a
 // correct static server (nginx) 404s them.
 // changelog.json 404s by design on the main dataset (dev-only feature); the
-// ?changelog view handles res.ok===false gracefully.
-const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|minimap\/.+\.webp$|changelog\.json/;
+// ?changelog view handles res.ok===false gracefully. The CDN-mirror probes
+// (raw.githubusercontent / jsDelivr) 404 until CI pushes the `cdn` branch and are
+// only tried as fallbacks (config.js races them; the worker falls through) — benign.
+const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|minimap\/.+\.webp$|changelog\.json|raw\.githubusercontent\.com|cdn\.jsdelivr\.net/;
 page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 page.on("requestfailed", (r) => { if (!BENIGN.test(r.url())) errors.push("reqfail: " + r.url() + " " + r.failure()?.errorText); });
 page.on("response", (r) => { if (r.status() >= 400 && !BENIGN.test(r.url())) errors.push(`http ${r.status()}: ${r.url()}`); });
@@ -1647,6 +1649,17 @@ async function testChangelog() {
   return /What's new/.test(r.heading) && r.empty && r.devLink;
 }
 
+// The ?origin= override forces a specific asset origin (config.js resolveOrigins).
+// Forcing r2 must still load the DB + render (guards the origin-resolver/getDbUrls
+// path; the real jsDelivr/raw mirrors can only be exercised post-deploy).
+async function testOriginOverride() {
+  await page.goto(`${BASE}?origin=r2&item=2770`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".tooltip .tt-name", { timeout: T });
+  const name = await page.$eval(".tooltip .tt-name", (e) => e.textContent);
+  console.log(`origin-override r2: name="${name}"`);
+  return name.includes("Copper Ore");
+}
+
 // Item sets are searchable: the results page has an "Item Sets" tab with links.
 async function testSearchItemSet(term) {
   await page.goto(`${BASE}?search=${encodeURIComponent(term)}`, { waitUntil: WAIT, timeout: T });
@@ -2151,6 +2164,7 @@ run(() => testBrowse("zones", "&cont=0", "Zone"));          // Zones continent f
 run(() => testFooter());      // site footer: load time + "Updated" stamp + source link
 run(() => testDatasetToggle());  // main|dev source toggle pill: active state + /dev/ href
 run(() => testChangelog());      // ?changelog: dev-pointer empty state on main dataset
+run(() => testOriginOverride()); // ?origin= asset-origin override still loads the DB
 run(() => testMobileTable());  // shared data table -> stacked cards on mobile (no overflow)
 run(() => testMobileNav());   // responsive top bar (run last; resets viewport)
 

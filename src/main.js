@@ -9,7 +9,7 @@ import { showCharacters, showCharacter, showSharedLoadout } from "./character.js
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
-import { ASSETS_BASE, DATA_BASE, resolveOrigins, DATASET } from "./config.js";
+import { ASSETS_BASE, DATA_BASE, resolveOrigins, DATASET, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
@@ -2277,13 +2277,19 @@ function errorBox(e) {
 // Load the Turtle custom-icon sprite-sheet manifest, then resolve `url` against
 // the app base so render.js can draw custom icons (no-op if absent).
 async function loadIconAtlas() {
-  try {
-    const base = ASSETS_BASE;
-    const res = await fetch(`${base}icons/custom-atlas.json`);
-    if (!res.ok) return;
-    const m = await res.json();
-    setIconAtlas({ ...m, url: `${base}icons/custom-atlas.webp` });
-  } catch { /* fall back to CDN icons */ }
+  let version = "0";
+  try { version = (await getMeta()).version || "0"; } catch { /* no version yet */ }
+  // Try each reachable origin's atlas (R2, then the jsDelivr/Release mirrors, then
+  // Pages) so custom icons still resolve when R2 is blocked.
+  for (const a of getAtlasUrls(version)) {
+    try {
+      const res = await fetch(a.json);
+      if (!res.ok) continue;
+      const m = await res.json();
+      setIconAtlas({ ...m, url: a.webp });
+      return;
+    } catch { /* try the next origin */ }
+  }
 }
 
 // Footer: "Updated <build date>" (from version.json's builtAt) + how long the

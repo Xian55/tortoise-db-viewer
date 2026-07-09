@@ -9,8 +9,26 @@ const OPFS_POOL = "tortoise-db";
 const OPFS_LOCK = "tortoise-db-opfs-vfs";
 let db = null;
 
-// Try each URL in order (primary R2, then the Pages mirror). A per-attempt abort
-// keeps a throttled/stalled R2 transfer from hanging forever before we fall over.
+// Normalize a downloaded payload to raw SQLite bytes. Mirror CDNs (jsDelivr, GitHub
+// Release) serve a *gzip* copy with no Content-Encoding, so we decode it here; R2
+// serves brotli via Content-Encoding, which the browser has already decoded (bytes
+// arrive as SQLite). Sniff the magic: gzip = 1f 8b, SQLite = "SQLite". Anything else
+// (an HTML error page, a raw-brotli host) is rejected so the caller tries the next URL.
+async function toSqliteBytes(buf) {
+  const b = new Uint8Array(buf);
+  if (b[0] === 0x1f && b[1] === 0x8b) { // gzip -> DecompressionStream (native, worker-safe)
+    const stream = new Blob([b]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  // "SQLite format 3\0"
+  const isSqlite = b.length >= 16 && b[0] === 0x53 && b[1] === 0x51 && b[2] === 0x4c &&
+    b[3] === 0x69 && b[4] === 0x74 && b[5] === 0x65;
+  if (isSqlite) return b;
+  throw new Error("unrecognized DB payload (not gzip or SQLite)");
+}
+
+// Try each URL in order (reachable origin first, then the CDN mirrors). A per-attempt
+// abort keeps a throttled/stalled transfer from hanging forever before we fall over.
 async function fetchBytes(urls) {
   const list = Array.isArray(urls) ? urls : [urls];
   let lastErr;
@@ -21,7 +39,7 @@ async function fetchBytes(urls) {
       const res = await fetch(u, { signal: ctrl.signal });
       clearTimeout(t);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return new Uint8Array(await res.arrayBuffer());
+      return await toSqliteBytes(await res.arrayBuffer());
     } catch (e) { lastErr = e; }
   }
   throw new Error(`DB download failed: ${lastErr?.message || lastErr}`);
