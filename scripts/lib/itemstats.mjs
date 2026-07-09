@@ -85,7 +85,10 @@ export function statsFromColumns(it, out = {}) {
 // Stats contributed by one equip spell's effects. `effects`: [{aura, misc, base}].
 // `spellName` is used to recognise the Turtle-custom "Vampirism" family (a dummy
 // aura 4 whose $s value is a life-leech %; the name is the only reliable marker).
-export function statsFromAuras(effects, out = {}, spellName = "") {
+// `stances` is the spell's shapeshift-form mask: a non-zero mask means the whole
+// spell only applies while shapeshifted, so its attack power is druid-form-only
+// ("feral") AP that must NOT be scored as generic AP for other classes.
+export function statsFromAuras(effects, out = {}, spellName = "", stances = 0) {
   const isVampirism = /^vampirism\b/i.test(spellName || ""); // "Vampirism 1".."Vampirism 5"
   for (const e of effects) {
     const v = (e.base || 0) + 1; // $sN convention: basePoints + 1
@@ -94,7 +97,8 @@ export function statsFromAuras(effects, out = {}, spellName = "") {
     else if (e.aura === 13) { // MOD_DAMAGE_DONE: split school-specific vs generic sp
       const school = e.misc & SCHOOL_MAGIC;   // magic-school bits only
       if (school) add(out, SP_SCHOOL[school] || "sp", v); // single school -> spX, multi/all -> sp
-    } else add(out, AURA_STAT[e.aura], v);
+    } else if (e.aura === 99) add(out, stances ? "feralAp" : "ap", v); // form-gated AP = feral
+    else add(out, AURA_STAT[e.aura], v);
   }
   return out;
 }

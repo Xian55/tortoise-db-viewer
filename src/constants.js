@@ -97,7 +97,7 @@ export const RESISTANCES = [
 export const GEAR_CRITERIA = [
   { group: "Base Stats", options: [["str", "Strength"], ["agi", "Agility"], ["sta", "Stamina"], ["int", "Intellect"], ["spi", "Spirit"]] },
   { group: "Defense", options: [["armor", "Armor"], ["def", "Defense"], ["dodge", "Dodge %"], ["parry", "Parry %"], ["block", "Block %"], ["firRes", "Fire Res"], ["natRes", "Nature Res"], ["froRes", "Frost Res"], ["shaRes", "Shadow Res"], ["arcRes", "Arcane Res"]] },
-  { group: "Offensive", options: [["ap", "Attack Power"], ["sp", "Spell Power"], ["heal", "Healing Power"], ["crit", "Crit %"], ["spCrit", "Spell Crit %"], ["hit", "Hit %"], ["spHit", "Spell Hit %"], ["dps", "Weapon DPS"]] },
+  { group: "Offensive", options: [["ap", "Attack Power"], ["feralAp", "Feral Attack Power"], ["sp", "Spell Power"], ["heal", "Healing Power"], ["crit", "Crit %"], ["spCrit", "Spell Crit %"], ["hit", "Hit %"], ["spHit", "Spell Hit %"], ["dps", "Weapon DPS"]] },
   // School-specific spell power (aura 13, single-school mask). Generic "Spell Power"
   // above is the all-schools bonus; these only help spells of that school, so the
   // gear scorer counts them for matching specs only (e.g. Fire Dmg for a Fire mage).
@@ -133,8 +133,11 @@ export const STAT_WEIGHT_PRESETS = [
   { id: "mage-frost", group: "Max level", label: "Mage · Frost/Arcane", weights: { sp: 1, spFrost: 1, spArcane: 0.5, spCrit: 8, spHit: 10, int: 0.5, mp5: 0.3 } },
   { id: "warlock-dps", group: "Max level", label: "Warlock · DPS", weights: { sp: 1, spShadow: 1, spFire: 1, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3, sta: 0.5, leech: 2 } },
   { id: "druid-balance", group: "Max level", label: "Druid · Balance", weights: { sp: 1, spNature: 1, spArcane: 1, spCrit: 10, spHit: 10, int: 0.4, mp5: 0.3 } },
-  { id: "feral-dps", group: "Max level", label: "Druid · Feral DPS", weights: { agi: 2, str: 1.5, ap: 1, crit: 12, hit: 10, leech: 2 } },
-  { id: "druid-feral-tank", group: "Max level", label: "Druid · Feral Tank", weights: { sta: 2, agi: 1.5, armor: 0.06, def: 8, dodge: 8 } },
+  // Feral druids gain attack power from BOTH generic AP and druid-form-only ("feral")
+  // AP, so these are the only presets that weight `feralAp` (see itemstats.mjs). Every
+  // other spec omits it, so form-gated weapon AP no longer inflates their scores.
+  { id: "feral-dps", group: "Max level", label: "Druid · Feral DPS", weights: { agi: 2, str: 1.5, ap: 1, feralAp: 1, crit: 12, hit: 10, leech: 2 } },
+  { id: "druid-feral-tank", group: "Max level", label: "Druid · Feral Tank", weights: { sta: 2, agi: 1.5, feralAp: 0.5, armor: 0.06, def: 8, dodge: 8 } },
   { id: "druid-resto", group: "Max level", label: "Druid · Restoration", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.3, spi: 0.2 } },
   // Generic caster/leveling-caster don't know the school, so they weight every school
   // (behaves like the old all-schools "sp"); pick a specific spec for school filtering.
