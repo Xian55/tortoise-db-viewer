@@ -8,7 +8,7 @@
 #
 # Both read the SAME orphan-branch commit; the branch is force-pushed to a single
 # commit (no history bloat), the tag pins that commit immutably. The payload is
-# assembled by the caller in PAYLOAD_DIR (data/tortoise.sqlite.gz, data/version.json,
+# assembled by the caller in PAYLOAD_DIR (data/tortoise.sqlite.br, data/version.json,
 # [data/changelog.json,] icons/custom-atlas.{webp,json}).
 #
 # Env: REPO (owner/name), CDN_BRANCH, TAG, GH_TOKEN, PAYLOAD_DIR.

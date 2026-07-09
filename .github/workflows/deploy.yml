@@ -97,17 +97,18 @@ jobs:
             --endpoint-url "$R2_ENDPOINT" \
             --exclude "*" --include "*.json" --content-type application/json
 
-      # Extra DB delivery routes for networks where R2 is blocked or throttled:
-      # a gzip DB copy + version.json + icon atlas pushed to an orphan `cdn` branch
-      # (served by raw.githubusercontent, CORS-open) and an immutable per-version tag
-      # (served by jsDelivr). src/config.js races these when R2 is unreachable and
-      # db-worker.js decodes the gzip client-side. Small payload (~20 MB DB.gz).
+      # Extra DB delivery routes for networks where R2 is blocked or throttled: the
+      # brotli DB copy (built above for R2, ~15 MB) + version.json + icon atlas pushed
+      # to an orphan `cdn` branch (raw.githubusercontent, CORS-open) and an immutable
+      # per-version tag (jsDelivr, 20 MB file limit). src/config.js races these when R2
+      # is unreachable and db-worker.js decodes the brotli client-side (brotli-wasm).
       - name: Publish CDN mirror (jsDelivr + raw)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(jq -r .version public/data/version.json)
-          bun -e 'import {gzipSync} from "node:zlib"; import {readFileSync,writeFileSync,mkdirSync,statSync} from "node:fs"; mkdirSync("cdn/data",{recursive:true}); mkdirSync("cdn/icons",{recursive:true}); const i=readFileSync("public/data/tortoise.sqlite"); writeFileSync("cdn/data/tortoise.sqlite.gz", gzipSync(i,{level:9})); console.log("gzip",i.length,"->",statSync("cdn/data/tortoise.sqlite.gz").size);'
+          mkdir -p cdn/data cdn/icons
+          cp public/data/tortoise.sqlite.br cdn/data/tortoise.sqlite.br
           cp public/data/version.json cdn/data/version.json
           cp public/icons/custom-atlas.webp cdn/icons/custom-atlas.webp
           cp public/icons/custom-atlas.json cdn/icons/custom-atlas.json

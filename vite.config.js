@@ -10,6 +10,11 @@ export default defineConfig({
     // sqlite-wasm ships its own .wasm; let Vite handle it as an asset.
     exclude: ["@sqlite.org/sqlite-wasm"],
   },
+  // ES-format workers so db-worker.js can code-split its lazy `import("brotli-wasm")`
+  // (the brotli decoder is only pulled in on the CDN-mirror fallback path).
+  worker: {
+    format: "es",
+  },
   build: {
     target: "esnext",
     assetsInlineLimit: 0, // never inline the wasm
