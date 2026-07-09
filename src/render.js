@@ -16,7 +16,11 @@ export function sourceTags(csv) {
     .map((k) => `<span class="tagx src-${k}">${SRC_LABEL[k]}</span>`).join("");
 }
 
-const ICON_BASE = "https://render-us.worldofwarcraft.com/icons/56";
+// Post-redirect URL: render-us.worldofwarcraft.com 302s to render.worldofwarcraft.com/us/,
+// and that cross-origin redirect is what trips ORB / "CORS" console warnings on the
+// icon <img>. Pointing straight at the target skips the redirect (both hops send
+// Access-Control-Allow-Origin: *, so the image loaded either way -- this quiets it).
+const ICON_BASE = "https://render.worldofwarcraft.com/us/icons/56";
 const PLACEHOLDER = "inv_misc_questionmark";
 
 export function iconUrl(name) {

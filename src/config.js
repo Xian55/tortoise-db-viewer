@@ -54,7 +54,12 @@ const DATA_ORIGINS = [
 ];
 
 export let DATA_BASE   = R2_DATA;   // winner's version.json/changelog.json base (live binding)
-export let ASSETS_BASE = R2_ASSETS; // maps/minimap etc. (R2, or Pages if R2 dead)
+// Maps/minimap/class icons/poi/tt live ONLY on R2 (deploy.yml trims maps+minimap
+// from the Pages artifact), so this is R2-fixed. It must NOT follow the version.json
+// race winner: a non-R2 origin winning the race (faster version.json) does not mean
+// R2 is unreachable, and pointing maps at Pages there just 404s. If R2 is genuinely
+// blocked, these assets degrade (no mirror — the icon atlas has its own chain).
+export let ASSETS_BASE = R2_ASSETS;
 
 let winner = "r2";                  // which DATA_ORIGIN answered
 let probedMeta = null;              // version.json captured by the probe; reused by db.js getMeta
@@ -68,8 +73,7 @@ function writeSticky(name) { try { localStorage.setItem(STICKY_KEY, JSON.stringi
 function applyWinner(name) {
   winner = name;
   const o = DATA_ORIGINS.find((x) => x.name === name) || DATA_ORIGINS[0];
-  DATA_BASE = o.data;
-  ASSETS_BASE = name === "r2" ? R2_ASSETS : PAGES_ASSETS;
+  DATA_BASE = o.data; // ASSETS_BASE stays R2 (maps/minimap are R2-only) — see above
 }
 
 // DB byte URLs, tried in order by the worker. The reachable origin (from the race)
