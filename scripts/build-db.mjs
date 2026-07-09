@@ -496,6 +496,7 @@ console.log("Importing spells + crafting graph...");
   const c = srcColumns("spell_template", "tw_world_spell_template.sql");
   const at = (name) => c.indexOf(name);
   const iEntry = at("entry"), iName = at("name"), iDesc = at("description"), iAura = at("auraDescription"), iIcon = at("spellIconId");
+  const iStances = at("stances"); // shapeshift-form mask -> marks druid-form-only ("feral") AP
   const bp = [1, 2, 3].map((n) => at(`effectBasePoints${n}`));
   const ds = [1, 2, 3].map((n) => at(`effectDieSides${n}`));
   const effIdx = [1, 2, 3].map((n) => ({ a: at(`effectApplyAuraName${n}`), m: at(`effectMiscValue${n}`), b: at(`effectBasePoints${n}`) }));
@@ -581,7 +582,7 @@ console.log("Importing spells + crafting graph...");
       ns++;
       // derive gear stats from this spell's effect auras (for item_stats)
       const effects = effIdx.map((f) => ({ aura: clean(row[f.a]) || 0, misc: clean(row[f.m]) || 0, base: clean(row[f.b]) || 0 }));
-      const st = statsFromAuras(effects, {}, clean(row[iName]));
+      const st = statsFromAuras(effects, {}, clean(row[iName]), clean(row[iStances]) || 0);
       if (Object.keys(st).length) spellStats.set(e, st);
       let madeItem = false;
       for (const ci of creates) {

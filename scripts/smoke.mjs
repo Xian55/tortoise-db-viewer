@@ -157,6 +157,22 @@ async function testRandom() {
 
 // Multi-criteria OR: match=any OR-combines the stat criteria, so it must return
 // at least as many items as the default AND (agi≥20 OR int≥20 ⊇ agi≥20 AND int≥20).
+// Feral (druid-form) attack power is a stat distinct from generic AP: form-gated
+// "Attack Power in Cat/Bear/... forms only" derives to `feralAp`, not `ap`, so it
+// doesn't inflate non-druid weapon scores. Assert the derived stat is queryable
+// (feral weapons exist) and that plain AP still works separately.
+async function testFeralAp() {
+  const readCount = async (stats) => {
+    await page.goto(`${BASE}?browse=items&stats=${encodeURIComponent(stats)}`, { waitUntil: WAIT, timeout: T });
+    await page.waitForSelector(".browse-count", { timeout: T });
+    return parseInt((await page.$eval(".browse-count", (e) => e.textContent)).replace(/[^0-9]/g, ""), 10) || 0;
+  };
+  const feral = await readCount("feralAp,>=,50");
+  const ap = await readCount("ap,>=,50");
+  console.log(`feral-ap: feralAp>=50 items=${feral} | ap>=50 items=${ap}`);
+  return feral > 0 && ap > 0;
+}
+
 async function testCriteriaOr() {
   const stats = encodeURIComponent("agi,>=,20|int,>=,20");
   const readCount = async (m) => {
@@ -2015,6 +2031,7 @@ run(() => testCharacterLoadout());     // ?characters import -> gear sheet + exp
 run(() => testWeightSets());           // ?weights preset manager + browse integration
 run(() => testItemRandomSuffix(7457)); // item page random-suffix pool + badge
 run(() => testGearScore());            // stat-weight Score column + score-desc sort
+run(() => testFeralAp());              // feral (druid-form) AP split out of generic ap
 run(() => testCriteriaOr());           // multi-criteria match=any (OR) vs default AND
 run(() => testRandom());               // ?random redirects to a random entity page
 run(() => testContainer(16882, "Junkbox"));  // lockbox -> Contains tab
