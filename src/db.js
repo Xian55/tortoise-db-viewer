@@ -6,7 +6,7 @@
 // Cache invalidation: build-db.mjs writes data/version.json with a content hash;
 // the worker keys the OPFS filename by it and wipes stale copies.
 
-import { DATA_BASE, MIRROR_DATA_BASE, getProbedMeta, DATASET } from "./config.js";
+import { DATA_BASE, getProbedMeta, getDbUrls, DATASET } from "./config.js";
 
 let worker = null;
 let readyPromise = null;
@@ -54,13 +54,10 @@ async function init() {
     pending.clear();
   };
   const version = await getVersion();
-  // DATA_BASE is the origin resolveOrigins() picked; for the main dataset also list
-  // the Pages mirror as a second attempt for the case R2 serves version.json but
-  // throttles the DB. The dev dataset has no Pages copy of its DB (the mirror would
-  // be main's DB), so it's R2-only — no mirror URL.
-  const primary = `${DATA_BASE}tortoise.sqlite?v=${version}`;
-  const mirror = `${MIRROR_DATA_BASE}tortoise.sqlite?v=${version}`;
-  const urls = DATASET === "main" ? [...new Set([primary, mirror])] : [primary];
+  // Ordered DB byte URLs across every reachable origin (R2 br, then jsDelivr/Release
+  // gzip mirrors). The worker tries them in order and decodes gzip client-side, so a
+  // blocked/throttled R2 falls through to a CDN mirror.
+  const urls = getDbUrls(version);
   // OPFS filename is keyed by dataset + version so both datasets cache side-by-side
   // (switching main<->dev is download-free) without evicting each other.
   const mode = await send({ type: "open", version, dataset: DATASET, urls });
