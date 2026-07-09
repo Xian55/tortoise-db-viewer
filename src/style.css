@@ -49,6 +49,8 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .changelog .cl-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .changelog .cl-date { font-weight: 700; }
 .changelog .cl-ver { color: var(--muted); font-size: 12px; }
+.changelog .cl-baseline { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+  color: #0d0e12; background: var(--gold); padding: 1px 7px; border-radius: 10px; }
 .changelog .cl-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 20px; }
 .changelog .cl-col > h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
 .changelog .cl-added { color: #74c98a; }

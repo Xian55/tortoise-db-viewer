@@ -62,6 +62,13 @@ jobs:
           fi
           aws s3 cp s3://tortoise-db-viewer/data-dev/changelog.json changelog-prev.json \
             --endpoint-url "$R2_ENDPOINT" || echo "no previous changelog"
+          # main DB -> seed the FIRST changelog section as "dev vs main" so it isn't
+          # blank until 1181dev next changes.
+          aws s3 cp s3://tortoise-db-viewer/data/tortoise.sqlite main.sqlite.br \
+            --endpoint-url "$R2_ENDPOINT" || echo "no main DB (no seed)"
+          if [ -f main.sqlite.br ]; then
+            bun -e 'import {brotliDecompressSync} from "node:zlib"; import {readFileSync,writeFileSync} from "node:fs"; writeFileSync("main.sqlite", brotliDecompressSync(readFileSync("main.sqlite.br"))); console.log("main.sqlite ready");'
+          fi
 
       - name: Build SQLite database (dev)
         run: bun scripts/build-db.mjs
@@ -73,7 +80,8 @@ jobs:
       # (served per-dataset at ${DATA_BASE}changelog.json, rendered at ?changelog).
       - name: Generate changelog
         run: |
-          DB=public/data-dev/tortoise.sqlite PREV=prev.sqlite PREV_LOG=changelog-prev.json \
+          DB=public/data-dev/tortoise.sqlite PREV=prev.sqlite SEED=main.sqlite \
+            PREV_LOG=changelog-prev.json \
             OUT=public/data-dev/changelog.json VERSION=public/data-dev/version.json \
             bun scripts/build-changelog.mjs
 
