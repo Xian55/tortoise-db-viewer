@@ -1093,8 +1093,13 @@ async function testObjectsBrowse() {
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   const objLink = (await page.$('.browse a.ilink.object[href*="object="]')) !== null;
-  console.log(`objects browse: ${rows} rows headers=[${headers.join(",")}] objLink=${objLink}`);
-  return rows > 0 && headers.includes("Spawns") && objLink;
+  // type=9 (readable plaques/monuments) must return rows -- the object page links
+  // here via ?browse=objects&type=9, which was empty before they were browsable.
+  await page.goto(`${BASE}?browse=objects&type=9`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T }).catch(() => {});
+  const type9Rows = await page.$$eval(".browse table tbody tr", (r) => r.length).catch(() => 0);
+  console.log(`objects browse: ${rows} rows headers=[${headers.join(",")}] objLink=${objLink} type9Rows=${type9Rows}`);
+  return rows > 0 && headers.includes("Spawns") && objLink && type9Rows > 0;
 }
 // Object detail: aggregates same-name entries -> Contains tab links the looted item
 // (Copper Vein -> Copper Ore); a multi-zone node gets a zone switcher that re-draws

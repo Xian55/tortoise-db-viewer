@@ -1349,7 +1349,11 @@ console.log("Importing zones + spawn points...");
         EXISTS(SELECT 1 FROM drops d WHERE d.src='o' AND d.owner=g.data1)
      OR EXISTS(SELECT 1 FROM gameobject_quest_start q WHERE q.id=g.entry)
      OR EXISTS(SELECT 1 FROM gameobject_quest_end q WHERE q.id=g.entry)
-     OR EXISTS(SELECT 1 FROM quest_creature_objective o WHERE o.is_go=1 AND o.target=g.entry))
+     OR EXISTS(SELECT 1 FROM quest_creature_objective o WHERE o.is_go=1 AND o.target=g.entry)
+     -- readable type-9 plaques/monuments/statues (no loot/quest link, but they show
+     -- a page_text inscription on their page -- keep them browsable, incl. by type)
+     OR (g.type=9 AND EXISTS(SELECT 1 FROM page_text p
+           WHERE p.entry=g.data0 AND trim(p.text)<>'' AND lower(p.text)<>'missing text')))
     GROUP BY g.name`);
   db.exec(`CREATE INDEX idx_object_browse_name ON object_browse(name)`);
   console.log(`  object_browse: ${db.prepare("SELECT COUNT(*) n FROM object_browse").get().n}`);
