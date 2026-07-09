@@ -115,7 +115,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(jq -r .version public/data-dev/version.json)
-          bun -e 'import {gzipSync} from "node:zlib"; import {readFileSync,writeFileSync,mkdirSync,statSync} from "node:fs"; mkdirSync("cdn/data",{recursive:true}); mkdirSync("cdn/icons",{recursive:true}); const i=readFileSync("public/data-dev/tortoise.sqlite"); writeFileSync("cdn/data/tortoise.sqlite.gz", gzipSync(i,{level:9})); console.log("gzip",i.length,"->",statSync("cdn/data/tortoise.sqlite.gz").size);'
+          mkdir -p cdn/data cdn/icons
+          cp public/data-dev/tortoise.sqlite.br cdn/data/tortoise.sqlite.br
           cp public/data-dev/version.json cdn/data/version.json
           cp public/data-dev/changelog.json cdn/data/changelog.json
           cp public/icons/custom-atlas.webp cdn/icons/custom-atlas.webp

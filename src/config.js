@@ -8,15 +8,17 @@
 //
 //   version.json source (DATA_BASE):  R2  ->  raw.githubusercontent (Fastly)  ->  Pages
 //   DB bytes (tried in order):        R2 (.sqlite, brotli via header)
-//                                       ->  jsDelivr (@<tag>/data/tortoise.sqlite.gz)
-//                                       ->  raw.githubusercontent (cdn branch, .gz)
+//                                       ->  jsDelivr (@<tag>/data/tortoise.sqlite.br)
+//                                       ->  raw.githubusercontent (@<tag>, .br)
 //
-// jsDelivr/raw serve a *gzip* copy (no Content-Encoding); db-worker.js decodes it
-// client-side (DecompressionStream), so any dumb static host works as a mirror.
-// jsDelivr can't be a version.json source (its URL is pinned by the version we're
-// trying to discover), so it's a DB/atlas route only. raw + jsDelivr both read the
-// committed CI-pushed `cdn`/`cdn-dev` orphan branch — raw at branch HEAD (CORS-open,
-// ~5min cache), jsDelivr pinned to an immutable per-version tag for freshness.
+// jsDelivr/raw serve a raw *brotli* copy (no Content-Encoding, ~15 MB — under
+// jsDelivr's 20 MB file limit); db-worker.js decodes it client-side with brotli-wasm
+// (lazy-loaded only on this fallback path), so any dumb static host works as a
+// mirror. jsDelivr can't be a version.json source (its URL is pinned by the version
+// we're trying to discover), so it's a DB/atlas route only. Both read the CI-pushed
+// `cdn`/`cdn-dev` orphan branch: version.json discovery uses branch HEAD (CORS-open),
+// the DB/atlas use an immutable per-version tag (`cdn-v<version>`) so mirror bytes
+// always match the discovered version.
 //
 // Two datasets: "main" (/) and "dev" (/dev/, server 1181dev) — DATA_BASE + the
 // mirror branch/tag are dataset-aware. Maps/minimap stay on ASSETS_BASE (R2/Pages),
@@ -32,7 +34,9 @@ const REPO = import.meta.env.VITE_GH_REPO || "Xian55/tortoise-db-viewer";
 const CDN_BRANCH = IS_DEV ? "cdn-dev" : "cdn";           // orphan branch CI force-pushes
 const TAG = IS_DEV ? "cdn-dev-v" : "cdn-v";              // jsDelivr pin: `@${TAG}${version}`
 const JSDELIVR = `https://cdn.jsdelivr.net/gh/${REPO}`;
-const RAW = `https://raw.githubusercontent.com/${REPO}/${CDN_BRANCH}`;
+const RAW_ROOT = `https://raw.githubusercontent.com/${REPO}`;
+const RAW_BRANCH = `${RAW_ROOT}/${CDN_BRANCH}`;      // branch HEAD (version.json discovery)
+const rawTag = (v) => `${RAW_ROOT}/${TAG}${v}`;       // immutable per-version tag (DB/atlas)
 
 const R2_DATA = IS_DEV
   ? (import.meta.env.VITE_DATA_BASE_DEV || `${BASE}data-dev/`)
@@ -45,7 +49,7 @@ const PAGES_ASSETS = BASE;
 // AND a reachable data origin. Order = preference when several respond together.
 const DATA_ORIGINS = [
   { name: "r2", data: R2_DATA },
-  { name: "raw", data: `${RAW}/data/` },
+  { name: "raw", data: `${RAW_BRANCH}/data/` },
   { name: "pages", data: PAGES_DATA },
 ];
 
@@ -73,8 +77,8 @@ function applyWinner(name) {
 export function getDbUrls(version) {
   const list = [
     { n: "r2", url: `${R2_DATA}tortoise.sqlite?v=${version}` },
-    { n: "jsdelivr", url: `${JSDELIVR}@${TAG}${version}/data/tortoise.sqlite.gz` },
-    { n: "raw", url: `${RAW}/data/tortoise.sqlite.gz` },
+    { n: "jsdelivr", url: `${JSDELIVR}@${TAG}${version}/data/tortoise.sqlite.br` },
+    { n: "raw", url: `${rawTag(version)}/data/tortoise.sqlite.br` },
   ];
   list.sort((a, b) => (a.n === winner ? -1 : 0) - (b.n === winner ? -1 : 0));
   return list.map((x) => x.url);
@@ -85,7 +89,7 @@ export function getAtlasUrls(version) {
   const at = [
     { n: "r2", json: `${R2_ASSETS}icons/custom-atlas.json`, webp: `${R2_ASSETS}icons/custom-atlas.webp` },
     { n: "jsdelivr", json: `${JSDELIVR}@${TAG}${version}/icons/custom-atlas.json`, webp: `${JSDELIVR}@${TAG}${version}/icons/custom-atlas.webp` },
-    { n: "raw", json: `${RAW}/icons/custom-atlas.json`, webp: `${RAW}/icons/custom-atlas.webp` },
+    { n: "raw", json: `${rawTag(version)}/icons/custom-atlas.json`, webp: `${rawTag(version)}/icons/custom-atlas.webp` },
     { n: "pages", json: `${PAGES_ASSETS}icons/custom-atlas.json`, webp: `${PAGES_ASSETS}icons/custom-atlas.webp` },
   ];
   at.sort((a, b) => (a.n === winner ? -1 : 0) - (b.n === winner ? -1 : 0));

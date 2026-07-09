@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
+    "brotli-wasm": "^3.0.1",
     "leaflet": "^1.9.4",
     "leaflet-pixi-overlay": "^1.9.5",
     "pixi.js": "^7"

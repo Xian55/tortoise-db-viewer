@@ -54,9 +54,9 @@ async function init() {
     pending.clear();
   };
   const version = await getVersion();
-  // Ordered DB byte URLs across every reachable origin (R2 br, then jsDelivr/Release
-  // gzip mirrors). The worker tries them in order and decodes gzip client-side, so a
-  // blocked/throttled R2 falls through to a CDN mirror.
+  // Ordered DB byte URLs across every reachable origin (R2 br via header, then the
+  // jsDelivr/raw brotli mirrors). The worker tries them in order and decodes the
+  // brotli client-side, so a blocked/throttled R2 falls through to a CDN mirror.
   const urls = getDbUrls(version);
   // OPFS filename is keyed by dataset + version so both datasets cache side-by-side
   // (switching main<->dev is download-free) without evicting each other.

@@ -9,22 +9,29 @@ const OPFS_POOL = "tortoise-db";
 const OPFS_LOCK = "tortoise-db-opfs-vfs";
 let db = null;
 
-// Normalize a downloaded payload to raw SQLite bytes. Mirror CDNs (jsDelivr, GitHub
-// Release) serve a *gzip* copy with no Content-Encoding, so we decode it here; R2
-// serves brotli via Content-Encoding, which the browser has already decoded (bytes
-// arrive as SQLite). Sniff the magic: gzip = 1f 8b, SQLite = "SQLite". Anything else
-// (an HTML error page, a raw-brotli host) is rejected so the caller tries the next URL.
+// Normalize a downloaded payload to raw SQLite bytes. The CDN mirrors (jsDelivr,
+// raw.githubusercontent) serve a *brotli* copy with no Content-Encoding, which we
+// decode here with brotli-wasm (only pulled in when actually needed); R2 serves
+// brotli via Content-Encoding, already decoded by the browser (arrives as SQLite).
+// Sniff the magic: SQLite = "SQLite" -> pass through; gzip = 1f 8b -> native decode;
+// anything else is assumed brotli (brotli has no magic) and decoded, throwing on
+// invalid input so the caller falls through to the next URL.
+let brotliPromise = null;
+function getBrotli() {
+  if (!brotliPromise) brotliPromise = import("brotli-wasm").then((m) => m.default);
+  return brotliPromise;
+}
 async function toSqliteBytes(buf) {
   const b = new Uint8Array(buf);
+  // "SQLite format 3\0"
+  if (b.length >= 16 && b[0] === 0x53 && b[1] === 0x51 && b[2] === 0x4c &&
+      b[3] === 0x69 && b[4] === 0x74 && b[5] === 0x65) return b;
   if (b[0] === 0x1f && b[1] === 0x8b) { // gzip -> DecompressionStream (native, worker-safe)
     const stream = new Blob([b]).stream().pipeThrough(new DecompressionStream("gzip"));
     return new Uint8Array(await new Response(stream).arrayBuffer());
   }
-  // "SQLite format 3\0"
-  const isSqlite = b.length >= 16 && b[0] === 0x53 && b[1] === 0x51 && b[2] === 0x4c &&
-    b[3] === 0x69 && b[4] === 0x74 && b[5] === 0x65;
-  if (isSqlite) return b;
-  throw new Error("unrecognized DB payload (not gzip or SQLite)");
+  const brotli = await getBrotli(); // brotli (mirror .br) -> wasm decode
+  return brotli.decompress(b);
 }
 
 // Try each URL in order (reachable origin first, then the CDN mirrors). A per-attempt
