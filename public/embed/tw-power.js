@@ -1,19 +1,21 @@
 /* Tortoise-WoW DB — embeddable powered tooltips.
  *
- * Drop this on any page to turn links to the Tortoise-WoW database into hover
+ * Drop this on any page to turn links to the Tortoise-WoW database into rich hover
  * tooltips (like Wowhead's power.js), no backend required:
  *
  *   <script src="https://xian55.github.io/tortoise-db-viewer/embed/tw-power.js" defer></script>
  *
- * It scans for links of either form and, on hover, fetches a tiny JSON blob
- * (built by scripts/build-tooltips.mjs, served with permissive CORS):
+ * It scans for links of either form and, on hover, fetches the entity's JSON from
+ * the public API (scripts/build-api.mjs -> R2, permissive CORS) and injects the
+ * pre-rendered in-game `tooltipHtml` (the SAME tooltip the detail page shows —
+ * stats, sources, set bonuses, spell effects):
  *   ?item=123 / ?npc= / ?quest= / ?spell=      (SPA query links)
  *   /i/123    / /n/    / /q/     / /s/          (Open Graph stub links)
  *
  * Config (optional) via attributes on the <script> tag:
- *   data-tt-base="https://.../tortoise-db-viewer/"  override the data origin
- *   data-color="0"                                   don't recolor item links
- * The base is otherwise derived from this script's own src.
+ *   data-api-base="https://api.tortoiseclothing.org/"  override the API origin
+ *   data-color="0"                                      don't recolor item links
+ * The site base (for the Turtle custom-icon webp fallback) is derived from src.
  */
 (function () {
   "use strict";
@@ -22,39 +24,67 @@
     return s[s.length - 1];
   })();
 
-  // Base = everything up to and including the site path (…/tortoise-db-viewer/),
-  // derived from this script's own src. Used for the custom-icon webp fallback.
+  // Site base = everything up to and including the site path (…/tortoise-db-viewer/),
+  // derived from this script's own src. Used only for the custom-icon webp fallback.
   var base = "";
   if (script && script.src) base = script.src.replace(/embed\/[^/]*$/, "");
   if (base && base.slice(-1) !== "/") base += "/";
-  // The tooltip JSON (~74k tiny files) is served from the R2 asset bucket, not the
-  // Pages origin -- that many files overruns the Pages deploy's file sync. Default
-  // the data origin to R2; data-tt-base overrides it (e.g. a self-host mirror).
-  var ttBase = (script && script.getAttribute("data-tt-base"))
-    || "https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/";
-  if (ttBase.slice(-1) !== "/") ttBase += "/";
+
+  // The rich per-entity JSON is served from the public API custom domain (R2 +
+  // Cloudflare, CORS *). data-api-base overrides it (self-host mirror); the legacy
+  // data-tt-base attr is still honoured for back-compat.
+  var apiBase = (script && (script.getAttribute("data-api-base") || script.getAttribute("data-tt-base")))
+    || "https://api.tortoiseclothing.org/";
+  if (apiBase.slice(-1) !== "/") apiBase += "/";
   var RECOLOR = !(script && script.getAttribute("data-color") === "0");
 
-  var QUALITY = ["#9d9d9d", "#ffffff", "#1eff00", "#0070dd", "#a335ee", "#ff8000", "#e6cc80", "#e6cc80"];
   var KIND = { item: "i", npc: "n", quest: "q", spell: "s" };
+  var QUESTMARK = "https://render.worldofwarcraft.com/us/icons/56/inv_misc_questionmark.jpg";
 
   var cache = {};      // "i:123" -> {promise|data}
   var tip = null;      // the floating tooltip element
   var current = null;  // key currently shown
 
+  // Scoped copy of the app's tooltip CSS (src/style.css), so the injected
+  // `tooltipHtml` renders identically. Everything is under `.twp-tip` and the CSS
+  // vars are redefined locally so it can't clash with or depend on the host page.
   function css() {
     if (document.getElementById("twp-style")) return;
     var s = document.createElement("style");
     s.id = "twp-style";
     s.textContent =
-      ".twp-tip{position:fixed;z-index:2147483647;max-width:320px;pointer-events:none;" +
-      "background:#0b0d13;border:1px solid #2a2f3a;border-radius:8px;padding:9px 11px;" +
-      "font:13px/1.45 system-ui,Segoe UI,Arial,sans-serif;color:#fff;" +
-      "box-shadow:0 8px 30px rgba(0,0,0,.65);opacity:0;transition:opacity .08s}" +
-      ".twp-tip.on{opacity:1}.twp-name{font-weight:600;font-size:14px}" +
-      ".twp-head{display:flex;gap:8px;align-items:center;margin-bottom:4px}" +
-      ".twp-icon{width:36px;height:36px;border-radius:5px;border:1px solid #000;background:#000;flex:none}" +
-      ".twp-sub{color:#9aa0ad}.twp-green{color:#1eff00}.twp-gold{color:#ffd100}";
+      ".twp-tip{position:fixed;z-index:2147483647;max-width:360px;pointer-events:none;" +
+      "opacity:0;transition:opacity .08s;" +
+      "--text:#d6d6d6;--muted:#8a8f9c;--gold:#ffd100;--tooltip-bg:#06060a;--tooltip-border:#3a3f4b}" +
+      ".twp-tip.on{opacity:1}" +
+      ".twp-tip *{box-sizing:border-box}" +
+      ".twp-tip .tooltip{width:auto;background:var(--tooltip-bg);border:1px solid var(--tooltip-border);" +
+      "border-radius:8px;padding:12px 14px;color:var(--text);" +
+      "font:14px/1.5 'Segoe UI',system-ui,sans-serif}" +
+      ".twp-tip a{color:#4ea3ff;text-decoration:none}" +
+      ".twp-tip .tt-head{display:flex;gap:12px;align-items:center;margin-bottom:8px}" +
+      ".twp-tip .tt-icon{width:48px;height:48px;border-radius:6px;border:1px solid #000;background:#000;flex:none}" +
+      ".twp-tip .tt-name{font-size:17px;font-weight:600;line-height:1.2}" +
+      ".twp-tip .tt-rank{margin-left:auto;align-self:center;font-size:13px}" +
+      ".twp-tip .tt-line{color:#fff}" +
+      ".twp-tip .tt-split{display:flex;justify-content:space-between;gap:12px}" +
+      ".twp-tip .tt-l{text-align:left}.twp-tip .tt-r{color:var(--muted)}" +
+      ".twp-tip .tt-stat,.twp-tip .tt-req{color:#fff}" +
+      ".twp-tip .tt-set{margin-top:8px;border-top:1px solid var(--tooltip-border);padding-top:6px}" +
+      ".twp-tip .tt-set-name,.twp-tip .tt-set-name a{color:var(--gold);font-weight:600;margin-bottom:2px}" +
+      ".twp-tip .tt-set-member{padding-left:8px;line-height:1.45;color:var(--muted)}" +
+      ".twp-tip .tt-set-member a{color:var(--muted)}.twp-tip .tt-set-member b{color:var(--text);font-weight:600}" +
+      ".twp-tip .tt-set-bonus{padding-top:2px}" +
+      ".twp-tip .tt-spell{color:#1eff00}.twp-tip .tt-spell a{color:inherit}" +
+      ".twp-tip .tt-flavor{color:var(--gold);font-style:italic;margin-top:4px}" +
+      ".twp-tip .tt-buy,.twp-tip .tt-sell{color:var(--muted);margin-top:6px}" +
+      ".twp-tip .tt-buy+.tt-sell{margin-top:2px}" +
+      ".twp-tip .muted{color:var(--muted)}" +
+      ".twp-tip .il-icon{width:18px;height:18px;vertical-align:-4px;margin-right:6px;" +
+      "border-radius:3px;border:1px solid #000;background:#000}" +
+      ".twp-tip a.ilink.quest{color:var(--gold)}.twp-tip a.ilink.faction{color:#66c2cc}" +
+      ".twp-tip a.ilink.zone{color:#8fd18f}" +
+      ".twp-tip .spell-card{max-width:360px}.twp-tip .spell-card .tt-spell{color:var(--gold)}";
     document.head.appendChild(s);
   }
 
@@ -69,8 +99,8 @@
 
   function fetchData(key) {
     if (cache[key]) return cache[key];
-    var parts = key.split(":");
-    var p = fetch(ttBase + "tt/" + parts[0] + "/" + parts[1] + ".json", { mode: "cors" })
+    var parts = key.split(":");                       // ["i","19019"]
+    var p = fetch(apiBase + parts[0] + "/" + parts[1], { mode: "cors" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .catch(function () { return null; });
     cache[key] = p;
@@ -78,38 +108,24 @@
     return p;
   }
 
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
-    });
-  }
-
-  function render(d) {
-    if (!d) return "";
-    var name = '<div class="twp-name" style="color:' + (d.q != null ? QUALITY[d.q] || "#fff" : "#fff") + '">' + esc(d.n) + "</div>";
-    // items + spells carry an icon basename; try the WoW icon CDN, fall back to the
-    // site's custom-icon webp (Turtle icons that aren't on Blizzard's CDN).
-    var head = name;
-    if (d.ic) {
-      var cdn = "https://render-us.worldofwarcraft.com/icons/56/" + encodeURIComponent(String(d.ic).toLowerCase()) + ".jpg";
-      var alt = base + "icons/custom/" + encodeURIComponent(String(d.ic).toLowerCase()) + ".webp";
-      head = '<div class="twp-head"><img class="twp-icon" src="' + cdn + '" data-alt="' + esc(alt) + '" alt="">' + name + "</div>";
+  // The API's tooltipHtml <img>s point at the WoW icon CDN with an inline onerror
+  // to the "?" icon. Turtle custom icons aren't on that CDN, so re-chain each image:
+  // CDN -> the site's committed custom webp -> "?" -> hidden.
+  function fixIcons() {
+    var imgs = tip.querySelectorAll("img");
+    for (var i = 0; i < imgs.length; i++) {
+      (function (img) {
+        var m = /\/icons\/56\/([^/.]+)\.jpg/i.exec(img.getAttribute("src") || "");
+        var name = m && m[1];
+        var stage = 0;
+        img.onerror = function () {
+          stage++;
+          if (stage === 1 && name && base) { this.src = base + "icons/custom/" + name + ".webp"; return; }
+          if (stage <= 2) { this.src = QUESTMARK; return; }
+          this.style.visibility = "hidden";
+        };
+      })(imgs[i]);
     }
-    var lines = [];
-    if (d.k === "i") {
-      if (d.b) lines.push('<div class="twp-sub">' + esc(d.b) + "</div>");
-      if (d.il) lines.push('<div class="twp-sub">Item Level ' + d.il + "</div>");
-      if (d.rl) lines.push('<div class="twp-sub">Requires Level ' + d.rl + "</div>");
-    } else if (d.k === "n") {
-      if (d.s) lines.push('<div class="twp-sub">&lt;' + esc(d.s) + "&gt;</div>");
-      lines.push('<div class="twp-sub">Level ' + esc(d.l) + (d.r ? " " + esc(d.r) : "") + (d.t ? " " + esc(d.t) : "") + "</div>");
-    } else if (d.k === "q") {
-      lines.push('<div class="twp-gold">' + (d.l ? "Level " + d.l + " quest" : "Quest") + "</div>");
-      if (d.rl) lines.push('<div class="twp-sub">Requires level ' + d.rl + "</div>");
-    } else if (d.k === "s") {
-      if (d.d) lines.push('<div class="twp-green">' + esc(d.d) + "</div>");
-    }
-    return head + lines.join("");
   }
 
   function place(e) {
@@ -127,17 +143,13 @@
     if (!tip) { tip = document.createElement("div"); tip.className = "twp-tip"; document.body.appendChild(tip); }
     current = key;
     Promise.resolve(fetchData(key)).then(function (d) {
-      if (current !== key || !d) return;
-      tip.innerHTML = render(d);
-      var img = tip.querySelector(".twp-icon"); // CDN miss -> custom webp -> hide
-      if (img) img.onerror = function () {
-        if (this.dataset.alt && this.src !== this.dataset.alt) this.src = this.dataset.alt;
-        else this.style.display = "none";
-      };
+      if (current !== key || !d || !d.tooltipHtml) return;
+      tip.innerHTML = d.tooltipHtml;
+      fixIcons();
       tip.classList.add("on");
       place(e);
-      if (RECOLOR && d.k === "i" && d.q != null && !a.dataset.twpColored) {
-        a.style.color = QUALITY[d.q] || a.style.color;
+      if (RECOLOR && d.type === "item" && d.quality && d.quality.color && !a.dataset.twpColored) {
+        a.style.color = d.quality.color;
         a.dataset.twpColored = "1";
       }
     });
@@ -150,7 +162,7 @@
     var a = e.target.closest && e.target.closest("a[href]");
     if (!a) return;
     var key = idOf(a.getAttribute("href") || "");
-    if (!key || !base) return;
+    if (!key) return;
     show(a, key, e);
   });
   document.addEventListener("mousemove", function (e) { if (current) place(e); });
@@ -159,5 +171,5 @@
     if (a && idOf(a.getAttribute("href") || "")) hide();
   });
 
-  window.TWPower = { base: base, hide: hide };
+  window.TWPower = { base: base, apiBase: apiBase, hide: hide };
 })();
