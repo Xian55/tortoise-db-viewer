@@ -138,6 +138,8 @@ jobs:
           VITE_ASSETS_BASE: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/
           # repo slug for the jsDelivr/raw mirror URLs (src/config.js)
           VITE_GH_REPO: ${{ github.repository }}
+          # public JSON API origin (src/config.js API_BASE); override via repo var API_BASE_URL
+          VITE_API_BASE: ${{ vars.API_BASE_URL || 'https://api.tortoiseclothing.org' }}
 
       # The dev dataset is served at /dev/. Query-param routing means the only path
       # we must serve is dev/index.html (deep URLs are /dev/?item=...). It's a copy
