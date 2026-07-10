@@ -31,6 +31,8 @@ export const DATASET = relPath.startsWith("dev") || qs.get("db") === "dev" ? "de
 const IS_DEV = DATASET === "dev";
 
 const REPO = import.meta.env.VITE_GH_REPO || "Xian55/tortoise-db-viewer";
+// Public JSON API origin (scripts/build-api.mjs → R2). Rotatable via VITE_API_BASE.
+export const API_BASE = import.meta.env.VITE_API_BASE || "https://api.tortoiseclothing.org";
 const CDN_BRANCH = IS_DEV ? "cdn-dev" : "cdn";           // orphan branch CI force-pushes
 const TAG = IS_DEV ? "cdn-dev-v" : "cdn-v";              // jsDelivr pin: `@${TAG}${version}`
 const JSDELIVR = `https://cdn.jsdelivr.net/gh/${REPO}`;
