@@ -229,6 +229,50 @@ jobs:
             --content-type application/json --size-only --no-progress \
             --cache-control "public,max-age=86400" --delete
 
+      # Wowhead-style JSON API (scripts/build-api.mjs): richer per-entity JSON (full
+      # page data + rendered tooltipHtml) served from R2 at api.tortoiseclothing.org.
+      # Same content-hash cache gate + R2 hash-gate as the tt JSON above, so a
+      # code-only deploy restores from cache and skips the ~100k-file R2 sync. R2-only
+      # (never merged into dist -- would break Pages' syncing_files like tt).
+      - name: API JSON content hash
+        id: apihash
+        run: echo "hash=$(HASH_ONLY=1 bun scripts/build-api.mjs)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore API JSON
+        id: apicache
+        uses: actions/cache@v4
+        with:
+          path: api-json
+          key: api-${{ steps.apihash.outputs.hash }}
+
+      - name: Build API JSON (cache miss only)
+        if: steps.apicache.outputs.cache-hit != 'true'
+        run: OUT_DIR=api-json bun scripts/build-api.mjs
+
+      - name: Upload API JSON to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          # Hash-gate against the authoritative R2 manifest (S3 API, not the CDN) so an
+          # unchanged API skips the big sync. Self-healing on a missing R2 manifest.
+          LOCAL_HASH=$(jq -r .hash api-json/api/manifest.json 2>/dev/null || echo "")
+          R2_HASH=$(aws s3 cp s3://tortoise-db-viewer/api/manifest.json - \
+            --endpoint-url "$R2_ENDPOINT" 2>/dev/null | jq -r .hash 2>/dev/null || echo "")
+          if [ -n "$LOCAL_HASH" ] && [ "$LOCAL_HASH" = "$R2_HASH" ]; then
+            echo "api unchanged (hash=$LOCAL_HASH) -- skipping R2 sync"
+            exit 0
+          fi
+          echo "api changed (local=$LOCAL_HASH r2=${R2_HASH:-none}) -- syncing to R2"
+          aws configure set default.s3.max_concurrent_requests 64
+          aws configure set default.s3.max_queue_size 10000
+          aws s3 sync api-json/api s3://tortoise-db-viewer/api \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json --size-only --no-progress \
+            --cache-control "public,max-age=86400" --delete
+
       # The DB, zone maps and minimap tiles are all served from R2 (VITE_ASSETS_BASE)
       # in production, but Vite copies public/ into dist -- so they'd ship redundantly
       # in the Pages artifact (~75 MB DB + ~13 MB brotli + ~2700 tile files). Drop them

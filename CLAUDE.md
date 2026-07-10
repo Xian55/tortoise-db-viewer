@@ -120,6 +120,7 @@ python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
 bun scripts/extract-instance-bosses.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src) + built DB -> scripts/data/instance-bosses.json (script-spawned boss entry -> instance mapId; needs build-db first)
 bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
+bun scripts/build-api.mjs             # public JSON API: rich per-entity JSON + tooltipHtml -> dist/api/<i|n|q|s>/<id>.json (served from R2 at api.tortoiseclothing.org); API_LIMIT=N for a fast subset
 ```
 
 `SQL_DIR` defaults to `../tortoise-wow/sql/base`; `UPDATES_DIR` defaults to its
@@ -276,6 +277,19 @@ Re-run `extract-minimap.py` + commit on client map changes.
   widget `public/embed/tw-power.js`. Content-hashed like the OG stubs (HASH_ONLY=1);
   run AFTER `vite build` (it writes into `dist`, which vite wipes). deploy.yml
   regenerates + merges it (cache-gated). `public/embed/demo.html` is a demo/test page.
+- `scripts/build-api.mjs` — the **public JSON API** (Wowhead-style): one rich file per
+  entity at `dist/api/<i|n|q|s>/<id>.json` — the same data the detail page shows
+  (structured fields + stats + capped source lists + a rendered `tooltipHtml`), served
+  from R2 at **`api.tortoiseclothing.org`** (`/i/55057`, or `.json`). REUSES the app's
+  real SQL (`src/queries.js`) + tooltip renderer (`src/render.js` `renderTooltip`/
+  `spellTooltip` — both pure/Node-safe) so it can't drift from the page; tooltip links
+  are absolutized to the site. Source arrays capped to 25 (best-first) to bound size.
+  Content-hashed (`HASH_ONLY=1`) + `api/manifest.json` like the tt JSON; deploy.yml
+  builds it cache-gated and R2-syncs it hash-gated (R2-only, never in `dist`). Env:
+  `OUT_DIR`, `DB_PATH`, `API_ONLY` (i,n,q,s), `API_LIMIT`, `API_VERSION` (bump on schema
+  change). Serving needs a one-time Cloudflare setup: add `api.tortoiseclothing.org`
+  as an R2 custom domain on the `tortoise-db-viewer` bucket, set bucket CORS to `*`,
+  and a Transform Rule rewriting `/[inqs]/<id>` → `…/<id>.json`.
 - `scripts/extract-instance-bosses.mjs` — LOCAL: reads the server ScriptDev2 C++
   (`../tortoise-wow/src/scripts/dungeons/<instance>/`) + the built DB → committed
   `scripts/data/instance-bosses.json` (`[{e:creatureEntry, m:mapId}]`). Instance bosses
