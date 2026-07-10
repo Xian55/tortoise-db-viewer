@@ -101,14 +101,15 @@ async function testTalents() {
 }
 
 // Embeddable powered tooltip: the demo page loads embed/tw-power.js which, on hover
-// over a DB link, fetches tt/<p>/<id>.json and renders a floating tooltip.
+// over a DB link, fetches the entity's JSON from the public API and injects its
+// rendered `tooltipHtml` (the full in-game card) as a floating tooltip.
 async function testEmbedTooltip() {
   await page.goto(`${BASE}embed/demo.html`, { waitUntil: WAIT, timeout: T });
   await page.waitForSelector('a[href="../?item=2770"]', { timeout: T });
   await (await page.$('a[href="../?item=2770"]')).hover();
   await page.waitForSelector(".twp-tip.on", { timeout: T });
   const txt = await page.$eval(".twp-tip", (e) => e.textContent);
-  const iconSrc = await page.$eval(".twp-tip .twp-icon", (e) => e.getAttribute("src")).catch(() => null);
+  const iconSrc = await page.$eval(".twp-tip .tt-icon", (e) => e.getAttribute("src")).catch(() => null);
   // also prove a different entity kind (spell) tooltips + the stub-link form
   await (await page.$('a[href="../?spell=133"]')).hover();
   await page.waitForFunction(() => /Fireball/.test((document.querySelector(".twp-tip.on") || {}).textContent || ""), { timeout: T });

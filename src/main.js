@@ -164,9 +164,9 @@ function route() {
 // Sharing that /<prefix>/<id> link (not the ?param= URL) is what unfurls in
 // Discord/Twitter, so detail pages get a "Share" button that copies it.
 const SHARE_PREFIX = { item: "i", npc: "n", quest: "q", spell: "s", object: "o", zone: "z", faction: "f", itemset: "is" };
-// Entities that have a static tooltip-JSON endpoint (scripts/build-tooltips.mjs
-// only emits i/n/q/s). Drives the "{ } JSON" button next to Share.
-const TT_PREFIX = { item: "i", npc: "n", quest: "q", spell: "s" };
+// Entities exposed by the public JSON API (scripts/build-api.mjs emits i/n/q/s).
+// Drives the "{ } JSON" button next to Share.
+const API_PREFIX = { item: "i", npc: "n", quest: "q", spell: "s" };
 function addShareButton() {
   const params = new URLSearchParams(location.search);
   let param = null, id = null;
@@ -193,10 +193,10 @@ function addShareButton() {
   // "{ } JSON" — open the entity's rich JSON API endpoint (item/npc/quest/spell
   // only): the same data the page shows. Cross-origin / not .nav|.ilink, so the SPA
   // interceptor leaves it; opens in a new tab.
-  if (TT_PREFIX[param]) {
+  if (API_PREFIX[param]) {
     const j = document.createElement("a");
     j.className = "share-btn json-btn";
-    j.href = `${API_BASE}/${TT_PREFIX[param]}/${id}`;
+    j.href = `${API_BASE}/${API_PREFIX[param]}/${id}`;
     j.target = "_blank";
     j.rel = "noopener";
     j.title = "View this entity's data as JSON (public API)";
@@ -333,7 +333,7 @@ function showHome() {
       <p class="muted">No backend — the data ships as plain static files you can <code>fetch()</code> directly (CORS-open, served from the CDN). Handy for bots, addons, or your own tools:</p>
       <ul class="api-list">
         <li><code>${API_BASE.replace(/^https?:\/\//, "")}/&lt;i|n|q|s&gt;/&lt;id&gt;</code> — the <b>public API</b>: full per-entity data (item / npc / quest / spell) — stats, sources, and the rendered tooltip — as JSON. <a class="nav-ext" href="${API_BASE}/i/2770" target="_blank" rel="noopener">example: i/2770</a></li>
-        <li><code>tt/&lt;i|n|q|s&gt;/&lt;id&gt;.json</code> — compact tooltip data that powers the embed widget above. <a class="nav-ext" href="${ASSETS_BASE}tt/i/2770.json" target="_blank" rel="noopener">example</a></li>
+        <li><code>tt/&lt;i|n|q|s&gt;/&lt;id&gt;.json</code> — compact name/icon/level tooltip data (a lightweight subset of the API). <a class="nav-ext" href="${ASSETS_BASE}tt/i/2770.json" target="_blank" rel="noopener">example</a></li>
         <li><code>data/version.json</code> — current build hash + timestamp. <a class="nav-ext" href="${DATA_BASE}version.json" target="_blank" rel="noopener">open</a></li>
         <li><code>data-dev/changelog.json</code> — per-deploy "What's new" for the <b>dev</b> dataset. <a class="nav" href="${import.meta.env.BASE_URL}dev/?changelog">view</a></li>
         <li><code>data/tortoise.sqlite</code> — the whole indexed database (Brotli on the wire), queryable with any SQLite tool. <span class="dim">dev copy at <code>data-dev/</code>.</span></li>
