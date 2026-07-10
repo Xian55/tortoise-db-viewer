@@ -421,6 +421,16 @@ Pages. Pages base path is `/tortoise-db-viewer/` (`vite.config.js`; override wit
 `BASE_PATH`). Heavy assets (DB, zone maps, icon atlas) are pushed to Cloudflare R2
 (`aws s3 sync`, S3 API) and served from `VITE_ASSETS_BASE` to spare Pages bandwidth.
 
+**Asset origin is a repo variable.** The Build-site step reads
+`vars.ASSET_BASE_URL` (Actions → Variables) for `VITE_DATA_BASE`/`_DEV`/
+`VITE_ASSETS_BASE`; unset falls back to the rate-limited `pub-*.r2.dev` public URL.
+Set it to an R2 **custom domain** (e.g. `https://cdn.tortoiseclothing.org`, no
+trailing slash) to drop the r2.dev throttling — after the custom domain's SSL is
+Active in the R2 dashboard, and with the bucket **CORS policy** allowing the site
+origins (the custom domain uses bucket CORS, unlike the permissive r2.dev default).
+The S3-API upload steps still target the `tortoise-db-viewer` bucket directly and
+are unaffected.
+
 **World-map tiles sync via CI** like the zone maps: they're committed
 (`public/minimap/`, CI can't rebuild them — no client), and the "Upload assets to
 Cloudflare R2" step `aws s3 sync`s them to `s3://tortoise-db-viewer/minimap`. The
