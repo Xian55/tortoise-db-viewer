@@ -42,7 +42,9 @@ const catCode = (key) =>
 // CDN (CORS-enabled, so it textures the WebGL overlay). Turtle-custom icons aren't
 // on the CDN (they live only in the sprite atlas), so those fall back to the
 // generic Mining/Herbalism POI cell instead of a broken texture.
-const ICON_CDN = "https://render-us.worldofwarcraft.com/icons/56";
+// Post-redirect URL (see render.js ICON_BASE): skip the render-us -> render/us 302
+// that trips ORB / "CORS" console warnings on the map's marker icon textures.
+const ICON_CDN = "https://render.worldofwarcraft.com/us/icons/56";
 // Sprites start on the generic Mining/Herb POI cell and get UPGRADED to the real
 // item icon once it loads. We preload via a plain Image (not PIXI.Texture.from) so
 // a 404 (stale / Turtle-only icon name) never reaches Pixi's error path -- it just
