@@ -123,14 +123,19 @@ jobs:
           git for-each-ref --sort=-creatordate --format='%(refname:short)' 'refs/tags/cdn-v*' \
             | tail -n +4 | while read -r t; do echo "prune $t"; git push origin --delete "$t" || true; done
 
+      # Asset origin: set the repo variable ASSET_BASE_URL (Settings -> Secrets and
+      # variables -> Actions -> Variables) to an R2 custom domain, e.g.
+      # https://cdn.tortoiseclothing.org (NO trailing slash), to move off the
+      # rate-limited pub-*.r2.dev URL. Unset -> falls back to the r2.dev public URL,
+      # so this is safe to leave until the custom domain's SSL is Active.
       - name: Build site
         run: bunx --bun vite build
         env:
-          VITE_DATA_BASE: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/data/
+          VITE_DATA_BASE: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data/
           # Dev-dataset DB (server 1181dev branch), served at the /dev/ path. The
           # bundle picks this base when location is under /dev/ (src/config.js).
-          VITE_DATA_BASE_DEV: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/data-dev/
-          VITE_ASSETS_BASE: https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev/
+          VITE_DATA_BASE_DEV: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data-dev/
+          VITE_ASSETS_BASE: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/
           # repo slug for the jsDelivr/raw mirror URLs (src/config.js)
           VITE_GH_REPO: ${{ github.repository }}
 
