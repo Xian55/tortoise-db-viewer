@@ -20,6 +20,10 @@
 // spell_template is deferred to the same DBC phase (its tooltip text lives in Spell.dbc,
 // not the world DB) -> EMPTY stub. Fill these from a vanilla 1.12 client next phase.
 
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 const PFX = "stg_";
 
 // pattern helper: expand numbered column families (stat_type1.., dmg_min1..)
@@ -106,7 +110,7 @@ const TARGET = {
   item_display_info: ["ID", "icon"],
   area_template: ["entry", "name", "map_id", "zone_id"],
   faction: ["id", "name1", "reputation_list_id"],
-  faction_template: ["id", "faction_id"],
+  faction_template: ["id", "faction_id", "our_mask"], // our_mask -> creatures.team (build-db)
   map_template: ["entry", "parent", "map_type", "linked_zone", "player_limit", "reset_delay", "time_offset",
     "ghost_entrance_map", "ghost_entrance_x", "ghost_entrance_y", "map_name", "script_name"],
   skill_line_ability: ["id", "skill_id", "spell_id", "race_mask", "class_mask", "req_skill_value",
@@ -167,7 +171,18 @@ const RENAMES = {
 // tables cmangos lacks OR we defer -> staged empty (Turtle columns, zero rows).
 const FORCE_EMPTY = new Set(["spell_template"]);
 
+// DBC-derived tables cmangos omits, filled from scripts/data/cmangos-dbc.json
+// (extract-cmangos-dbc.py, from a vanilla 1.12 client). staging table -> JSON key.
+const DBC_KEY = {
+  area_template: "areas", map_template: "maps", faction: "faction",
+  faction_template: "faction_template", item_display_info: "item_display_info",
+  skill_line_ability: "skill_line_ability",
+};
+
 export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
+  const dbcFile = join(dirname(fileURLToPath(import.meta.url)), "..", "data", "cmangos-dbc.json");
+  const DBC = existsSync(dbcFile) ? JSON.parse(readFileSync(dbcFile, "utf8")) : null;
+
   const p = cmangosPath.replace(/\\/g, "/").replace(/'/g, "''");
   db.exec(`ATTACH '${p}' AS cm`);
 
@@ -181,7 +196,7 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
 
   const colsByTable = {};
   const staged = new Set();
-  const stats = { files: 0, applied: 0, skipped: 0, errors: 0, empty: [] };
+  const stats = { files: 0, applied: 0, skipped: 0, errors: 0, dbc: [], empty: [] };
 
   for (const table of tables) {
     const cols = TARGET[table];
@@ -193,17 +208,31 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
     const defs = cols.map((c) => (c === pk && hasPk ? `\`${c}\` INTEGER PRIMARY KEY` : `\`${c}\` NUMERIC`));
     db.exec(`CREATE TABLE \`${PFX}${table}\` (${defs.join(", ")})`);
 
-    if (FORCE_EMPTY.has(table) || !cmHas(table)) { stats.empty.push(table); continue; }
+    // 1) present in cmangos -> map its columns
+    if (!FORCE_EMPTY.has(table) && cmHas(table)) {
+      const src = cmCols(table);
+      const rn = RENAMES[table] || {};
+      const exprs = cols.map((c) => {
+        if (rn[c]) return `\`${rn[c]}\` AS \`${c}\``;
+        if (src.has(c.toLowerCase())) return `\`${c}\` AS \`${c}\``;
+        return `NULL AS \`${c}\``;
+      });
+      db.exec(`INSERT OR REPLACE INTO \`${PFX}${table}\` (${cols.map((c) => `\`${c}\``).join(",")}) SELECT ${exprs.join(", ")} FROM cm.\`${table}\``);
+      stats.applied++;
+      continue;
+    }
 
-    const src = cmCols(table);
-    const rn = RENAMES[table] || {};
-    const exprs = cols.map((c) => {
-      if (rn[c]) return `\`${rn[c]}\` AS \`${c}\``;
-      if (src.has(c.toLowerCase())) return `\`${c}\` AS \`${c}\``;
-      return `NULL AS \`${c}\``;
-    });
-    db.exec(`INSERT OR REPLACE INTO \`${PFX}${table}\` (${cols.map((c) => `\`${c}\``).join(",")}) SELECT ${exprs.join(", ")} FROM cm.\`${table}\``);
-    stats.applied++;
+    // 2) DBC-derived table cmangos omits -> fill from the extracted client DBC JSON
+    const dbcRows = DBC && DBC[DBC_KEY[table]];
+    if (dbcRows && dbcRows.length) {
+      const st = db.prepare(`INSERT OR REPLACE INTO \`${PFX}${table}\` (${cols.map((c) => `\`${c}\``).join(",")}) VALUES (${cols.map(() => "?").join(",")})`);
+      db.transaction(() => { for (const r of dbcRows) st.run(cols.map((c) => (r[c] === undefined ? null : r[c]))); })();
+      stats.dbc.push(table);
+      continue;
+    }
+
+    // 3) nothing available -> staged empty
+    stats.empty.push(table);
   }
 
   return {

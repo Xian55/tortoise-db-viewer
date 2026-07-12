@@ -120,6 +120,8 @@ python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
 bun scripts/extract-instance-bosses.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src) + built DB -> scripts/data/instance-bosses.json (script-spawned boss entry -> instance mapId; needs build-db first)
 bun scripts/extract-vanilla-ids.mjs   # LOCAL: cmangos Classic SQLite DB (classicmangos.sqlite) -> scripts/data/vanilla-ids.json (canonical vanilla-1.12 id allowlist; build-db flags items/creatures/quests custom = id NOT IN vanilla). CMANGOS_DB overrides path
+python scripts/extract-cmangos-dbc.py # LOCAL: vanilla 1.12 client DBCs -> scripts/data/cmangos-dbc.json (areas/maps/faction/faction_template/item_display_info/skill_line_ability; fills the DBC tables cmangos's world DB omits, for the SQL_SOURCE=cmangos build). CLIENT overrides path
+SQL_SOURCE=cmangos DATA_SUBDIR=data-vanilla-cmangos bun scripts/build-db.mjs # build the vanilla/cmangos dataset from cmangos's SQLite DB (+ cmangos-dbc.json) instead of Turtle dumps
 bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
 bun scripts/build-api.mjs             # public JSON API: rich per-entity JSON + tooltipHtml -> dist/api/<i|n|q|s>/<id>.json (served from R2 at api.tortoiseclothing.org); API_LIMIT=N for a fast subset
 ```
@@ -308,6 +310,22 @@ Re-run `extract-minimap.py` + commit on client map changes.
   inside the vanilla id range; not fooled by high-id vanilla rows). Threshold is the
   fallback if the JSON is absent. Can't detect an in-place *rebalance* of a vanilla entry
   (needs a field diff). Re-run + commit on a new cmangos Classic DB release.
+- `scripts/lib/cmangos-adapter.mjs` — alternative staging source for `SQL_SOURCE=cmangos`:
+  builds the viewer DB from cmangos's published Classic **SQLite** DB
+  (`classicmangos.sqlite`) instead of Turtle's MySQL dumps. Returns the same accessor
+  shape as `staging.mjs` so build-db's importers run unchanged — ATTACHes the cmangos DB
+  and stages each table under the *Turtle* column names (same MaNGOS table names + SQLite
+  case-insensitive columns ⇒ most map free; ~40 explicit renames + NULL for absent). The
+  first build step of the `/{expansion}/{core}` matrix's vanilla row (see the plan in
+  `notes/`). cmangos omits DBC-derived tables (it reads DBCs from the client at runtime);
+  those are filled from `scripts/data/cmangos-dbc.json` (see `extract-cmangos-dbc.py`).
+  `spell_template` is deferred (its text lives in Spell.dbc) ⇒ spells empty for now.
+- `scripts/extract-cmangos-dbc.py` — LOCAL: reads a vanilla 1.12 client's DBCs (StormLib
+  MPQ reader + WDBC parser, shared with extract-talents.py) → committed
+  `scripts/data/cmangos-dbc.json` (`areas`/`maps`/`faction`/`faction_template`/
+  `item_display_info`/`skill_line_ability`). Fills the DBC tables cmangos's world DB omits
+  so the `SQL_SOURCE=cmangos` build gets zone names, dungeon names, faction data + NPC team
+  alignment, and item icons. CI has no client ⇒ committed. `CLIENT` env overrides the path.
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
 - `scripts/lib/sqlite.mjs` — Bun/Node SQLite wrapper.
