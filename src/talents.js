@@ -10,8 +10,20 @@
 import { queryOne } from "./db.js";
 import { iconImg, esc } from "./render.js";
 import { Q_SPELL } from "./queries.js";
-import { ASSETS_BASE } from "./config.js";
-import talentsData from "../scripts/data/talents.json";
+import { ASSETS_BASE, DATASET } from "./config.js";
+// Dataset-isolated talent data. Talent trees are a CLIENT-derived asset (structure from
+// Talent.dbc), so they differ per dataset: Turtle's tree is heavily reworked (custom
+// talents like "Piercing Light", altered rank counts) and its talent spell-ids don't
+// exist in the vanilla `spells` table -- rendering Turtle's tree on the cMaNGOS dataset
+// showed "Talent 167" and wrong rank counts (#43). Each dataset uses its OWN
+// talents-<dataset>.json (Turtle main/dev share the base talents.json); a missing file
+// yields a graceful empty state rather than leaking the wrong dataset's tree.
+const TALENT_FILES = import.meta.glob("../scripts/data/talents*.json", { eager: true, import: "default" });
+const TURTLE_DATASETS = new Set(["main", "dev"]);
+const talentsKey = TURTLE_DATASETS.has(DATASET)
+  ? "../scripts/data/talents.json"
+  : `../scripts/data/talents-${DATASET}.json`;
+const talentsData = TALENT_FILES[talentsKey] || { maxPoints: 51, classes: {} };
 
 // canonical class order for the picker (matches the in-game class list)
 const CLASS_ORDER = ["warrior", "paladin", "hunter", "rogue", "priest", "shaman", "mage", "warlock", "druid"];
@@ -87,9 +99,12 @@ export async function showTalents(clsParam) {
     const links = order.map((s) => `<a class="nav talent-cls" href="?talents=${s}">
       <img class="talent-cls-icon" src="${ASSETS_BASE}icons/class/${s}.webp" alt="" width="48" height="48" loading="lazy">
       <span>${esc(classes[s].name)}</span></a>`).join("");
+    const emptyMsg = TURTLE_DATASETS.has(DATASET)
+      ? `No talent data yet — run <code>python scripts/extract-talents.py</code> against the Turtle client to generate <code>scripts/data/talents.json</code>.`
+      : `The talent calculator isn't available for this dataset yet — its talent trees need extracting from a vanilla client into <code>scripts/data/${talentsKey.split("/").pop()}</code> (Turtle's trees don't match this dataset's spells).`;
     app.innerHTML = `<div class="talent-page"><h1>Talent Calculator</h1>${
       links ? `<div class="talent-classlist">${links}</div>`
-            : `<p class="muted">No talent data yet — run <code>python scripts/extract-talents.py</code> against the Turtle client to generate <code>scripts/data/talents.json</code>.</p>`}</div>`;
+            : `<p class="muted">${emptyMsg}</p>`}</div>`;
     return;
   }
 

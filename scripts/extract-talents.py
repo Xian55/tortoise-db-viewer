@@ -27,7 +27,14 @@ OUTPUT (committed)
           { "id": int, "row": int, "col": int, "ranks": [spellId,...],
             "req": talentId, "reqRank": int } ] } ] } } }
 
-ENV  TW_CLIENT (default F:/Game/Turtle WoW) ; STORMLIB
+Talent trees are a per-dataset (client-derived) asset -- Turtle's tree is reworked and
+its custom talent spell-ids don't exist in a vanilla `spells` table, so the vanilla/cmangos
+dataset needs its OWN file (src/talents.js loads talents-<dataset>.json). To produce it,
+point TW_CLIENT at a vanilla 1.12 client and TALENTS_OUT at the dataset file:
+  TW_CLIENT="/path/to/vanilla-1.12" TALENTS_OUT=scripts/data/talents-vanilla-cmangos.json \
+    python scripts/extract-talents.py
+
+ENV  TW_CLIENT (default F:/Game/Turtle WoW) ; TALENTS_OUT (default talents.json) ; STORMLIB
 Run: python scripts/extract-talents.py
 """
 import ctypes as C
@@ -40,7 +47,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENT = os.environ.get("TW_CLIENT", r"F:/Game/Turtle WoW")
 STORMLIB = os.environ.get("STORMLIB", os.path.join(ROOT, "..", "StormLib", "bin", "StormLib_dll", "x64", "Release", "StormLib.dll"))
 DATA = os.path.join(CLIENT, "Data")
-OUT = os.path.join(ROOT, "scripts", "data", "talents.json")
+OUT = os.environ.get("TALENTS_OUT") or os.path.join(ROOT, "scripts", "data", "talents.json")
+if not os.path.isabs(OUT):
+    OUT = os.path.join(ROOT, OUT)
 ARCHIVE_ORDER = [
     "dbc.MPQ", "patch.MPQ", "patch-2.MPQ", "patch-3.mpq", "patch-4.mpq", "patch-5.mpq",
     "patch-6.mpq", "patch-7.mpq", "patch-8.mpq", "patch-9.mpq", "patch-Y.mpq", "_Patch-W.mpq",
