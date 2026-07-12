@@ -13,6 +13,7 @@ import { IMPORTS, LOOT_TABLES, LOOT_COLUMNS } from "./lib/schema.mjs";
 import { openDatabase, RUNTIME } from "./lib/sqlite.mjs";
 import { statsFromColumns, statsFromAuras } from "./lib/itemstats.mjs";
 import { buildStaging } from "./lib/staging.mjs";
+import { buildCmangosStaging } from "./lib/cmangos-adapter.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SQL_DIR = process.env.SQL_DIR || join(ROOT, "..", "tortoise-wow", "sql", "base");
@@ -23,11 +24,18 @@ const UPDATES_DIR = process.env.UPDATES_DIR || join(SQL_DIR, "..", "database_upd
 // Output subdir under public/ (default "data"). The dev-dataset build sets
 // DATA_SUBDIR=data-dev so the 1181dev DB lands beside the main one on R2.
 const DATA_SUBDIR = process.env.DATA_SUBDIR || "data";
+// Data source: "turtle" (default) stages Turtle's MySQL dumps + migrations from
+// SQL_DIR; "cmangos" reads cmangos's published Classic SQLite DB (CMANGOS_DB) via
+// lib/cmangos-adapter.mjs instead. See notes/plan-content-origin-and-variants.md.
+const SQL_SOURCE = process.env.SQL_SOURCE || "turtle";
+const CMANGOS_DB = process.env.CMANGOS_DB || "C:/Users/poler/Downloads/classic-sqlite-db/classicmangos.sqlite";
 // Single DB file, fetched whole by the browser and loaded into sqlite-wasm.
 // GitHub Pages gzips it on the wire (~27 MB -> ~8.6 MB), decompressed by the browser.
 const OUT = join(ROOT, "public", DATA_SUBDIR, "tortoise.sqlite");
 
-if (!existsSync(SQL_DIR)) {
+if (SQL_SOURCE === "cmangos") {
+  if (!existsSync(CMANGOS_DB)) { console.error(`CMANGOS_DB not found: ${CMANGOS_DB}`); process.exit(1); }
+} else if (!existsSync(SQL_DIR)) {
   console.error(`SQL_DIR not found: ${SQL_DIR}\nSet SQL_DIR to the server repo's sql/base folder.`);
   process.exit(1);
 }
@@ -77,9 +85,13 @@ const STAGE_SPECS = (() => {
   return specs;
 })();
 
-console.log("Staging raw tables + applying migrations...");
-const src = buildStaging(db, SQL_DIR, UPDATES_DIR, STAGE_SPECS);
-console.log(`  staged ${STAGE_SPECS.length} tables | migrations: ${src.stats.files} files, ${src.stats.applied} applied, ${src.stats.skipped} skipped, ${src.stats.errors} errors`);
+console.log(`Staging raw tables (source: ${SQL_SOURCE})...`);
+const src = SQL_SOURCE === "cmangos"
+  ? buildCmangosStaging(db, CMANGOS_DB, STAGE_SPECS)
+  : buildStaging(db, SQL_DIR, UPDATES_DIR, STAGE_SPECS);
+console.log(SQL_SOURCE === "cmangos"
+  ? `  staged ${STAGE_SPECS.length} tables from cmangos | mapped ${src.stats.applied}, empty (DBC-derived/deferred): ${src.stats.empty.join(", ")}`
+  : `  staged ${STAGE_SPECS.length} tables | migrations: ${src.stats.files} files, ${src.stats.applied} applied, ${src.stats.skipped} skipped, ${src.stats.errors} errors`);
 
 // Source accessors: prefer the migrated staging table, fall back to dump text
 // for any table that wasn't staged (keeps the importers working unchanged).
