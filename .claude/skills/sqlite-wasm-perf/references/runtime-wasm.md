@@ -4,12 +4,29 @@ The runtime target is `@sqlite.org/sqlite-wasm` running in a **Web Worker**
 (`src/db-worker.js`). Two cost centres exist here that a native app doesn't have:
 **cold-load** (download + parse + open) and **page-cache CPU** (no OS page cache to lean on).
 
-## Why the whole DB is downloaded (don't "optimize" this away)
+## Why the whole DB is downloaded (and the range-read caveats)
 
-sql.js-httpvfs / HTTP range reads are **unusable on GitHub Pages**: Pages gzips responses
-including 206 partials, and `Content-Range` reports the *compressed* length, corrupting
-byte-range math. So the whole file is fetched once (gzip/brotli is transparent for a full
-GET) and cached in OPFS. Do not reintroduce range-based lazy loading against Pages.
+The current design fetches the **whole** file once and caches it in OPFS. Range-based lazy
+loading (sql.js-httpvfs) is **unusable on GitHub Pages**: Pages gzips responses including 206
+partials, and `Content-Range` reports the *compressed* length, corrupting byte-range math.
+Do not reintroduce range reads against **Pages**.
+
+**On Cloudflare R2 (now the primary DB origin) the Pages blocker doesn't apply — but range
+reads are still not a free win, for three concrete reasons (verified 2026-07):**
+
+1. **The object is brotli-stored** (`Content-Encoding: br`; a `Range` request returns 206 whose
+   `Content-Range` total is the *compressed* ~15 MB). sql.js-httpvfs needs ranges over the *raw*
+   SQLite bytes — ranges over a brotli stream are useless. You'd have to publish a **separate
+   uncompressed 77 MB object** (losing the 5× wire compression for whole-file users).
+2. **The Cloudflare custom domain returned `200`, not `206`** — the proxy did not honor `Range`
+   as-configured (the `r2.dev` origin did). Range through the CDN needs cache/transform-rule work.
+3. **OPFS already makes repeat visits free** (whole file cached, keyed by version). So the range
+   win is only *first-visit, light* users; a heavy session (finder scanning ~25k items, a zone
+   map with ~12k spawns) fetches many pages and can exceed the 15 MB whole-file cost + add
+   round-trips.
+
+Net: a **measured spike** against an uncompressed R2 object, not a blind adoption. Keep whole-file
++ OPFS as the default until a prototype proves range reads win for your traffic mix.
 
 ## Cold-load budget — a first-class metric
 
