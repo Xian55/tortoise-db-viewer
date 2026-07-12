@@ -738,7 +738,9 @@ async function browseQuests(p) {
   // origin: Turtle-WoW custom additions (q.custom = 1) vs vanilla 1.12 (0).
   if (f.origin === "tw") where.push("q.custom = 1");
   else if (f.origin === "vanilla") where.push("q.custom = 0");
-  if (f.zone !== "") add("q.zone = ?", +f.zone);
+  // zone match includes the quest_dungeon bridge: a dungeon quest mis-filed under
+  // another zone (e.g. Baron Aquanis under Ashenvale) still surfaces under its dungeon.
+  if (f.zone !== "") { where.push("(q.zone = ? OR EXISTS (SELECT 1 FROM quest_dungeon qd WHERE qd.quest = q.entry AND qd.zone = ?))"); binds.push(+f.zone, +f.zone); }
   if (f.type !== "") add("q.type = ?", +f.type);
   if (f.minlvl !== "") add("q.level >= ?", +f.minlvl);
   if (f.maxlvl !== "") add("q.level <= ?", +f.maxlvl);
@@ -756,29 +758,43 @@ async function browseQuests(p) {
      ORDER BY q.level, q.title`, binds);
 
   // Zone dropdown: only zones/categories that actually carry quests, labeled.
-  const zrows = await query(`SELECT DISTINCT q.zone, a.name AS zone_name FROM quests q LEFT JOIN areas a ON a.entry = q.zone WHERE q.title <> ''`);
+  // Scoped to the active Type filter so e.g. "Dungeon" lists only dungeon zones
+  // (a type doesn't span every zone; showing empty-result zones just confuses).
+  const zrows = await query(
+    `SELECT DISTINCT q.zone, a.name AS zone_name FROM quests q LEFT JOIN areas a ON a.entry = q.zone
+     WHERE q.title <> '' AND q.hidden = 0${f.type !== "" ? " AND q.type = ?" : ""}`,
+    f.type !== "" ? [+f.type] : []);
   const zopts = zrows.map((z) => [String(z.zone), questZoneLabel(z.zone, z.zone_name)])
     .filter(([, l]) => l).sort((a, b) => a[1].localeCompare(b[1]));
 
+  // label of the selected zone (for rows pulled in via the quest_dungeon bridge, whose
+  // own q.zone differs -> the Zone cell shows the dungeon filtered for, real filing in title).
+  const selZoneLabel = f.zone !== "" ? (zopts.find(([v]) => v === f.zone)?.[1] || "") : "";
+  const isBridged = (r) => f.zone !== "" && String(r.zone) !== f.zone;
   const cols = [
     { key: "name", label: "Title", cell: (r) => questLink(r.entry, r.title) + (r.custom ? ' <span class="tagx tw-tag" title="Added by Turtle WoW (not in vanilla 1.12)">TW</span>' : ""), value: (r) => r.title },
     { key: "level", label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
     { key: "zone", label: "Zone", cls: "muted",
-      cell: (r) => (r.zone_page ? zoneLink(r.zone, questZoneLabel(r.zone, r.zone_name)) : esc(questZoneLabel(r.zone, r.zone_name))),
-      value: (r) => questZoneLabel(r.zone, r.zone_name) },
+      cell: (r) => isBridged(r)
+        ? `<span title="Filed under ${esc(questZoneLabel(r.zone, r.zone_name) || "—")}">${esc(selZoneLabel)}</span>`
+        : (r.zone_page ? zoneLink(r.zone, questZoneLabel(r.zone, r.zone_name)) : esc(questZoneLabel(r.zone, r.zone_name))),
+      value: (r) => isBridged(r) ? selZoneLabel : questZoneLabel(r.zone, r.zone_name) },
     { key: "type", label: "Type", cls: "muted", cell: (r) => QUEST_TYPE[r.type] || "", value: (r) => QUEST_TYPE[r.type] || "" },
   ];
   const filters = `<div class="filters">
     ${textField("q", "Name", f.q)}
-    ${selectField("zone", "Zone", options(zopts, f.zone, "Any zone"))}
     ${selectField("type", "Type", options(Object.entries(QUEST_TYPE), f.type, "Any type"))}
+    ${selectField("zone", "Zone", options(zopts, f.zone, "Any zone"))}
     ${numField("minlvl", "Level ≥", f.minlvl)} ${numField("maxlvl", "Level ≤", f.maxlvl)}
     ${selectField("class", "Class", options(CLASS_MASK, f.class, "Any class"))}
     ${selectField("faction", "Faction", options([["a", "Alliance"], ["h", "Horde"]], f.faction, "Any"))}
     ${selectField("origin", "Origin", options([["tw", "Turtle WoW"], ["vanilla", "Classic 1.12"]], f.origin, "Any"))}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
-  const hide = [f.zone !== "" && "zone", f.type !== "" && "type"].filter(Boolean);
+  // hide the Zone column when a zone is selected -- UNLESS the quest_dungeon bridge
+  // pulled in quests filed elsewhere (then the column distinguishes dungeon vs filing).
+  const anyBridged = f.zone !== "" && rows.some(isBridged);
+  const hide = [f.zone !== "" && !anyBridged && "zone", f.type !== "" && "type"].filter(Boolean);
   return { rows, cols: hideCols(cols, hide), filters, noun: "quests" };
 }
 
@@ -967,6 +983,9 @@ export async function showBrowse(kind, navigate) {
       // class change resets subtype AND columns -> the new class re-derives its
       // adaptive default columns (a weapon's DPS/Speed shouldn't linger on armor).
       if (el.dataset.f === "class") { np.delete("subclass"); np.delete("cols"); }
+      // quest Type change resets Zone: the Zone dropdown is scoped to the type, so
+      // a leftover zone would apply an option no longer offered (stale 0-result view).
+      if (isQuests && el.dataset.f === "type") np.delete("zone");
       navigate(`?${np.toString()}`);
     }));
   // multi-select dropdowns

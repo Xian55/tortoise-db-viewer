@@ -1589,6 +1589,125 @@ db.exec(`ALTER TABLE items ADD COLUMN quest_min_level INTEGER NOT NULL DEFAULT 0
   console.log(`  quest-reward faction lock: ${na} Alliance, ${nh} Horde`);
 }
 
+// ---- quest_dungeon: bridge dungeon quests to the areaid the finder's Zone filter
+// expects, so a mis-sorted dungeon quest still surfaces under its dungeon. A quest's
+// ZoneOrSort (q.zone) is often NOT the dungeon: Baron Aquanis is filed under Ashenvale,
+// yet it's a Blackfathom Deeps quest (its start item drops from a BFD-only boss). This
+// mirrors EXACTLY the dungeon page's Q_DUNGEON_QUESTS relations -- name-filed zone,
+// a quest giver/ender spawned INSIDE the instance, or a dungeon-exclusive req/source
+// item drop (via spawns UNION creature_instance, so script-spawned bosses count) -- so
+// the finder's Zone filter and the dungeon page agree on membership. For each belonging
+// quest whose own q.zone differs from the dungeon's "primary" browse zone (the areaid
+// the dungeon's OWN quests most commonly use), emit (quest, primaryZone). The primary is
+// always a real, populated q.zone, so it already appears in the finder's Zone dropdown
+// -- no dropdown change needed. Raid/custom interiors whose quests are never name-filed
+// have no clean dropdown target -> skipped.
+console.log("Building quest_dungeon bridge...");
+db.exec(`CREATE TABLE quest_dungeon (quest INTEGER, zone INTEGER)`);
+{
+  // Set-based (in-memory) build: each source table is scanned ONCE and joined via JS
+  // Maps. The earlier per-map SQL (a NOT-EXISTS over drops re-evaluating a CTE 47x with
+  // no build-time index) was quadratic -> minutes; this is ~0.5s.
+  const areaNameById = new Map(db.prepare(`SELECT entry, name FROM areas`).all().map((r) => [r.entry, r.name]));
+  const instMaps = db.prepare(`SELECT id, name FROM maps WHERE type IN (1,2) AND name <> '' AND hidden = 0`).all();
+  const instSet = new Set(instMaps.map((m) => m.id));
+  // dungeon display name = its largest WorldMap zone (what the dungeon page's zone route
+  // keys Q_DUNGEON_QUESTS on), falling back to the map name (map-less instances).
+  const zoneNameStmt = db.prepare(`SELECT name FROM zones WHERE mapid = ? ORDER BY (loctop-locbottom)*(locleft-locright) DESC LIMIT 1`);
+  const mapName = new Map(instMaps.map((m) => [m.id, zoneNameStmt.get(m.id)?.name || m.name]));
+
+  // creature entry -> Set(maps) it occupies: static `spawns` UNION script-placed
+  // `creature_instance` (so a boss with no static spawn still resolves to its instance).
+  const creatureMaps = new Map();
+  const addCM = (e, mp) => { let s = creatureMaps.get(e); if (!s) creatureMaps.set(e, s = new Set()); s.add(mp); };
+  for (const r of db.prepare(`SELECT id, map FROM spawns`).all()) addCM(r.id, r.map);
+  for (const r of db.prepare(`SELECT entry, map FROM creature_instance`).all()) addCM(r.entry, r.map);
+
+  // loot_id -> creature entries (a shared loot table can back several creatures).
+  const lootToCreatures = new Map();
+  for (const r of db.prepare(`SELECT entry, loot_id FROM creatures WHERE loot_id IS NOT NULL AND loot_id <> 0`).all()) {
+    let a = lootToCreatures.get(r.loot_id); if (!a) lootToCreatures.set(r.loot_id, a = []); a.push(r.entry);
+  }
+
+  // item -> the single instance map it drops EXCLUSIVELY inside (else absent). An item
+  // qualifies iff every map any of its droppers occupies is that one instance (or 451,
+  // the GM copy). Mirrors Q_DUNGEON_QUESTS' NOT-EXISTS off-map guard, in one pass.
+  const itemMaps = new Map();
+  for (const d of db.prepare(`SELECT item, owner FROM drops WHERE src = 'c'`).all()) {
+    const ces = lootToCreatures.get(d.owner); if (!ces) continue;
+    let s = itemMaps.get(d.item); if (!s) itemMaps.set(d.item, s = new Set());
+    for (const ce of ces) { const cm = creatureMaps.get(ce); if (cm) for (const mp of cm) s.add(mp); }
+  }
+  const itemExclusiveMap = new Map();
+  for (const [item, maps] of itemMaps) {
+    let only = null, ok = true;
+    for (const mp of maps) { if (mp === 451) continue; if (only === null) only = mp; else if (only !== mp) { ok = false; break; } }
+    if (ok && only !== null && instSet.has(only)) itemExclusiveMap.set(item, only);
+  }
+
+  // object entry -> Set(instance maps) for quest giver/ender objects placed inside instances.
+  const objInst = new Map();
+  const instList = instMaps.map((m) => m.id).join(",");
+  if (instList) for (const r of db.prepare(`SELECT id, map FROM spawn_points WHERE kind = 'o' AND map IN (${instList})`).all()) {
+    let s = objInst.get(r.id); if (!s) objInst.set(r.id, s = new Set()); s.add(r.map);
+  }
+
+  // quest -> Set(instance maps) it belongs to, via the same relations as the dungeon page.
+  const questMaps = new Map();
+  const belong = (q, mp) => { if (!instSet.has(mp)) return; let s = questMaps.get(q); if (!s) questMaps.set(q, s = new Set()); s.add(mp); };
+  const nameToMaps = new Map();
+  for (const [id, nm] of mapName) { let a = nameToMaps.get(nm); if (!a) nameToMaps.set(nm, a = []); a.push(id); }
+  // (a) quest's own zone area-name matches a dungeon display name
+  for (const r of db.prepare(`SELECT entry, zone FROM quests WHERE hidden = 0`).all()) {
+    const ms = nameToMaps.get(areaNameById.get(r.zone)); if (ms) for (const mp of ms) belong(r.entry, mp);
+  }
+  // (b) quest giver/ender spawns INSIDE the instance (creature or object)
+  for (const tbl of ["creature_quest_start", "creature_quest_end"]) {
+    for (const r of db.prepare(`SELECT quest, id FROM ${tbl}`).all()) {
+      const cm = creatureMaps.get(r.id); if (cm) for (const mp of cm) belong(r.quest, mp);
+    }
+  }
+  for (const tbl of ["gameobject_quest_start", "gameobject_quest_end"]) {
+    for (const r of db.prepare(`SELECT quest, id FROM ${tbl}`).all()) {
+      const om = objInst.get(r.id); if (om) for (const mp of om) belong(r.quest, mp);
+    }
+  }
+  // (c) required/source item that drops exclusively inside an instance
+  for (const r of db.prepare(`SELECT quest, item FROM quest_item WHERE role IN ('req','source')`).all()) {
+    const mp = itemExclusiveMap.get(r.item); if (mp !== undefined) belong(r.quest, mp);
+  }
+
+  const questZone = new Map(db.prepare(`SELECT entry, zone FROM quests WHERE hidden = 0`).all().map((r) => [r.entry, r.zone]));
+  const mapQuests = new Map();
+  for (const [q, maps] of questMaps) for (const mp of maps) { let a = mapQuests.get(mp); if (!a) mapQuests.set(mp, a = []); a.push(q); }
+
+  const ins = db.prepare(`INSERT INTO quest_dungeon VALUES (?, ?)`);
+  const seen = new Set();
+  let n = 0;
+  db.exec("BEGIN");
+  for (const [mp, quests] of mapQuests) {
+    const nm = mapName.get(mp);
+    // primary browse zone = most common belonging-quest zone whose area NAME is the
+    // dungeon (bridges the WorldMap-area vs AreaTable id split, e.g. Deadmines interior
+    // 5138 -> 1581, the id its quests actually file under). No name-filed quest -> skip
+    // (raid/custom interior with no clean dropdown target).
+    const cnt = new Map();
+    for (const q of quests) { const z = questZone.get(q); if (areaNameById.get(z) === nm) cnt.set(z, (cnt.get(z) || 0) + 1); }
+    let primary = null, best = -1;
+    for (const [z, c] of cnt) if (c > best) { best = c; primary = z; }
+    if (primary == null) continue;
+    for (const q of quests) {
+      if (questZone.get(q) === primary) continue;
+      const key = `${q}:${primary}`; if (seen.has(key)) continue; seen.add(key);
+      ins.run(q, primary); n++;
+    }
+  }
+  db.exec("COMMIT");
+  db.exec(`CREATE INDEX idx_quest_dungeon_quest ON quest_dungeon(quest)`);
+  db.exec(`CREATE INDEX idx_quest_dungeon_zone ON quest_dungeon(zone)`);
+  console.log(`  quest_dungeon: ${n} bridged quest->zone mappings`);
+}
+
 // ---- Full-text search over item / creature / quest names (unified search) ----
 console.log("Building FTS indexes...");
 db.exec(`CREATE VIRTUAL TABLE items_fts USING fts5(name, content='items', content_rowid='entry', tokenize='unicode61')`);
