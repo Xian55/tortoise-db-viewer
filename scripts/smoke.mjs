@@ -706,6 +706,22 @@ async function testQuestOrigin(customQuestId) {
   return rows > 0 && origin === "tw" && twTags > 0 && badge === "Turtle WoW";
 }
 
+// Item/NPC browse Origin filter (Turtle additions vs vanilla range). origin=tw ->
+// rows exist, all TW-tagged; origin=vanilla -> rows exist, none TW-tagged on the page.
+async function testOriginFilter(noun) {
+  await page.goto(`${BASE}?browse=${noun}&origin=tw`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
+  const twRows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const sel = await page.$eval('[data-f="origin"]', (el) => el.value).catch(() => "?");
+  const twTags = await page.$$eval(".browse td .tagx.tw-tag", (e) => e.length);
+  await page.goto(`${BASE}?browse=${noun}&origin=vanilla`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
+  const vanRows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const vanTags = await page.$$eval(".browse td .tagx.tw-tag", (e) => e.length);
+  console.log(`origin ${noun}: tw(rows=${twRows} sel=${sel} tags=${twTags}) vanilla(rows=${vanRows} tags=${vanTags})`);
+  return twRows > 0 && sel === "tw" && twTags > 0 && vanRows > 0 && vanTags === 0;
+}
+
 async function testItemSources(id, expectTag) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
   await page.waitForSelector(".item-sources .tagx", { timeout: T });
@@ -2158,6 +2174,8 @@ run(() => testFilterChips());              // active-filter chips + quality colo
 run(() => testColumnChooser());            // cols= chooser: Faction + Stamina + Quest Lvl columns
 run(() => testBrowseSpellCat());           // spell category + class filters
 run(() => testQuestOrigin(41189));         // quest Origin=Turtle WoW filter + TW badge
+run(() => testOriginFilter("items"));      // item Origin filter: tw-tagged vs vanilla
+run(() => testOriginFilter("npcs"));       // NPC Origin filter: tw-tagged vs vanilla
 run(() => testItemSources(2770));
 run(() => testItemBuyPrice(68, 65));   // vendor item shows Buy Price; non-vendor item doesn't
 run(() => testItemSources(5031, "Unobtainable"));
