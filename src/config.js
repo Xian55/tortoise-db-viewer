@@ -27,22 +27,47 @@
 const BASE = import.meta.env.BASE_URL; // e.g. "/tortoise-db-viewer/"
 const relPath = location.pathname.startsWith(BASE) ? location.pathname.slice(BASE.length) : "";
 const qs = new URLSearchParams(location.search);
-export const DATASET = relPath.startsWith("dev") || qs.get("db") === "dev" ? "dev" : "main";
+
+// Dataset registry. The site serves several DB copies chosen by URL path. Today:
+// "main" (vanilla/tortoise, at /) and "dev" (Turtle 1181dev branch, at /dev/). The
+// scheme generalizes to a /{expansion}/{core} matrix (e.g. vanilla/cmangos) — add an
+// entry and resolution + OPFS keying + R2 prefix + CDN mirrors all follow. Fields:
+//   id    OPFS-safe key (no slash) + UI id; keep "main"/"dev" (main.js/db-worker key on them)
+//   path  URL segment under BASE that selects this dataset ("" = the root/default)
+//   sub   R2 prefix + CDN slug suffix: data-base `data<sub>/`, branch `cdn<sub>`, tag `cdn<sub>-v`
+//   data  optional per-dataset R2 base env (MUST be a literal import.meta.env.* — Vite only
+//         static-replaces literal refs, not dynamic lookups); falls back to the `sub` convention
+// A new matrix row needs a build target + R2 populate + deploy wiring before it's live (see
+// notes/plan-content-origin-and-variants.md). main/dev reproduce the previous exact config.
+const DATASETS = [
+  { id: "main", path: "",    sub: "",     data: import.meta.env.VITE_DATA_BASE,     label: "Main" },
+  { id: "dev",  path: "dev", sub: "-dev", data: import.meta.env.VITE_DATA_BASE_DEV, label: "Dev"  },
+  // { id: "vanilla-cmangos", path: "vanilla/cmangos", sub: "-vanilla-cmangos",
+  //   data: import.meta.env.VITE_DATA_BASE_VANILLA_CMANGOS, label: "Vanilla · cMaNGOS" },
+];
+
+// Active dataset: ?db=<id> local-dev override, else the longest URL-path match (so "dev"
+// beats "" and "vanilla/cmangos" beats "dev"), else main (empty-path fallback).
+const forcedDb = qs.get("db");
+const matchesPath = (p) => p !== "" && (relPath === p || relPath.startsWith(p + "/"));
+const DS =
+  (forcedDb && DATASETS.find((d) => d.id === forcedDb)) ||
+  DATASETS.filter((d) => matchesPath(d.path)).sort((a, b) => b.path.length - a.path.length)[0] ||
+  DATASETS[0];
+export const DATASET = DS.id;
 const IS_DEV = DATASET === "dev";
 
 const REPO = import.meta.env.VITE_GH_REPO || "Xian55/tortoise-db-viewer";
 // Public JSON API origin (scripts/build-api.mjs → R2). Rotatable via VITE_API_BASE.
 export const API_BASE = import.meta.env.VITE_API_BASE || "https://api.tortoiseclothing.org";
-const CDN_BRANCH = IS_DEV ? "cdn-dev" : "cdn";           // orphan branch CI force-pushes
-const TAG = IS_DEV ? "cdn-dev-v" : "cdn-v";              // jsDelivr pin: `@${TAG}${version}`
+const CDN_BRANCH = `cdn${DS.sub}`;                       // orphan branch CI force-pushes (cdn, cdn-dev)
+const TAG = `cdn${DS.sub}-v`;                            // jsDelivr pin: `@${TAG}${version}`
 const JSDELIVR = `https://cdn.jsdelivr.net/gh/${REPO}`;
 const RAW_ROOT = `https://raw.githubusercontent.com/${REPO}`;
 const RAW_BRANCH = `${RAW_ROOT}/${CDN_BRANCH}`;      // branch HEAD (version.json discovery)
 const rawTag = (v) => `${RAW_ROOT}/${TAG}${v}`;       // immutable per-version tag (DB/atlas)
 
-const R2_DATA = IS_DEV
-  ? (import.meta.env.VITE_DATA_BASE_DEV || `${BASE}data-dev/`)
-  : (import.meta.env.VITE_DATA_BASE || `${BASE}data/`);
+const R2_DATA = DS.data || `${BASE}data${DS.sub}/`;   // per-dataset R2 base, else path convention
 const R2_ASSETS    = import.meta.env.VITE_ASSETS_BASE || BASE; // maps/minimap/class/poi/tt
 const PAGES_DATA   = IS_DEV ? R2_DATA : `${BASE}data/`; // Pages has main version.json/icons only
 const PAGES_ASSETS = BASE;
