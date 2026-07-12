@@ -135,6 +135,8 @@ jobs:
           # Dev-dataset DB (server 1181dev branch), served at the /dev/ path. The
           # bundle picks this base when location is under /dev/ (src/config.js).
           VITE_DATA_BASE_DEV: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data-dev/
+          # Vanilla/cMaNGOS dataset, served at /vanilla/cmangos/ (built by deploy-cmangos.yml).
+          VITE_DATA_BASE_VANILLA_CMANGOS: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data-vanilla-cmangos/
           VITE_ASSETS_BASE: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/
           # repo slug for the jsDelivr/raw mirror URLs (src/config.js)
           VITE_GH_REPO: ${{ github.repository }}
@@ -147,6 +149,11 @@ jobs:
       # the same R2-served bundle; the bundle reads the /dev/ path to pick the dev DB.
       - name: Emit /dev app shell
         run: mkdir -p dist/dev && cp dist/index.html dist/dev/index.html
+
+      # Same as /dev: the /vanilla/cmangos dataset (deploy-cmangos.yml populates its R2
+      # DB) only needs its app-shell path served; query routing handles the rest.
+      - name: Emit /vanilla/cmangos app shell
+        run: mkdir -p dist/vanilla/cmangos && cp dist/index.html dist/vanilla/cmangos/index.html
 
       # Per-icon custom webp for link-unfurl og:image. Turtle-custom icons aren't on
       # Blizzard's CDN and ship only as the packed atlas sprite, which can't be an

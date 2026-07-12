@@ -1,0 +1,72 @@
+name: Deploy vanilla/cmangos dataset
+
+# Builds ONLY the vanilla/cmangos dataset DB and uploads it to R2 under the
+# data-vanilla-cmangos/ prefix. Like deploy-dev.yml, but the source is cmangos's
+# published Classic SQLite DB (downloaded from their GitHub release) instead of a
+# server SQL checkout -- build-db reads it via SQL_SOURCE=cmangos (lib/cmangos-adapter),
+# supplemented by the committed scripts/data/cmangos-dbc.json (client DBC tables) +
+# vanilla-ids.json. The frontend + shared assets are owned by deploy.yml; the
+# /vanilla/cmangos app shell ships with the main deploy. A new content hash
+# auto-invalidates clients, so no Pages redeploy is needed here.
+#
+# Rollout: run one normal `main` deploy first (ships config + the app shell + the
+# VITE_DATA_BASE_VANILLA_CMANGOS env), THEN run this once to populate R2. After that,
+# refreshes are pure R2 uploads. Trigger manually (or on a schedule / new cmangos release).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-cmangos
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout site
+        uses: actions/checkout@v4
+
+      # cmangos ships the Classic world DB as SQLite on every release. Grab the latest.
+      - name: Download cmangos Classic SQLite DB
+        run: |
+          curl -fL -o classic-sqlite-db.zip \
+            https://github.com/cmangos/classic-db/releases/latest/download/classic-sqlite-db.zip
+          unzip -o classic-sqlite-db.zip -d cmangos-db
+          echo "CMANGOS_DB=$(ls cmangos-db/*.sqlite | head -1)" >> "$GITHUB_ENV"
+          ls -la cmangos-db
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Build SQLite database (vanilla/cmangos)
+        run: bun scripts/build-db.mjs
+        env:
+          SQL_SOURCE: cmangos
+          # CMANGOS_DB is exported to $GITHUB_ENV by the download step above
+          DATA_SUBDIR: data-vanilla-cmangos
+
+      # Same brotli + R2 layout as the main/dev deploys, retargeted to the
+      # data-vanilla-cmangos/ prefix. DB is immutable (cache-busted by ?v=);
+      # version.json is no-store so a new hash is picked up immediately.
+      - name: Upload vanilla/cmangos DB to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          bun -e 'import {brotliCompressSync,constants} from "node:zlib"; import {readFileSync,writeFileSync} from "node:fs"; const i=readFileSync("public/data-vanilla-cmangos/tortoise.sqlite"); const o=brotliCompressSync(i,{params:{[constants.BROTLI_PARAM_QUALITY]:11,[constants.BROTLI_PARAM_SIZE_HINT]:i.length}}); writeFileSync("public/data-vanilla-cmangos/tortoise.sqlite.br",o); console.log("brotli",i.length,"->",o.length);'
+          aws s3 cp public/data-vanilla-cmangos/tortoise.sqlite.br s3://tortoise-db-viewer/data-vanilla-cmangos/tortoise.sqlite \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/octet-stream \
+            --content-encoding br
+          aws s3 cp public/data-vanilla-cmangos/version.json s3://tortoise-db-viewer/data-vanilla-cmangos/version.json \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json --cache-control "no-store"

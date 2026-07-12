@@ -268,6 +268,8 @@ function syncDsToggle() {
   const B = import.meta.env.BASE_URL;
   ds.querySelector('[data-ds="main"]').href = `${B}${suffix}`;
   ds.querySelector('[data-ds="dev"]').href = `${B}dev/${suffix}`;
+  const cm = ds.querySelector('[data-ds="vanilla-cmangos"]');
+  if (cm) cm.href = `${B}vanilla/cmangos/${suffix}`;
 }
 
 // route() then drop the Share + compare buttons onto the rendered detail page.
