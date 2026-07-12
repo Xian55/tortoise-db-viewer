@@ -135,6 +135,21 @@ def main():
     } for v in rows]
     print(f"SkillLineAbility [{nf}f] {len(rows)} rows | sample: {out['skill_line_ability'][0]}")
 
+    # Spell.dbc (173f) — cmangos's spell_template already carries names/ranks/mechanics/
+    # icons; only the tooltip TEXT lives here. Loc blocks are 9 fields (8 locales + flags):
+    #   [120]SpellName_enUS [129]Rank_enUS [138]Description_enUS [147]AuraDescription_enUS
+    # (offsets pinned by scanning for a known spell). Keep only rows with text -> spell_text
+    # (entry, description, auraDescription); the adapter injects it into spell_template.
+    rows, s, nf = dbc("Spell.dbc")
+    txt = []
+    for v in rows:
+        desc, aura = s(v[138]), s(v[147])
+        if desc or aura:
+            txt.append({"entry": v[0], "description": desc, "auraDescription": aura})
+    out["spell_text"] = txt
+    fb = next((t for t in txt if "Frost damage" in t["description"]), txt[0])
+    print(f"Spell [{nf}f] {len(rows)} rows -> {len(txt)} w/text | sample: {fb['entry']} {fb['description'][:60]!r}")
+
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
