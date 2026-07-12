@@ -42,8 +42,8 @@ const qs = new URLSearchParams(location.search);
 const DATASETS = [
   { id: "main", path: "",    sub: "",     data: import.meta.env.VITE_DATA_BASE,     label: "Main" },
   { id: "dev",  path: "dev", sub: "-dev", data: import.meta.env.VITE_DATA_BASE_DEV, label: "Dev"  },
-  // { id: "vanilla-cmangos", path: "vanilla/cmangos", sub: "-vanilla-cmangos",
-  //   data: import.meta.env.VITE_DATA_BASE_VANILLA_CMANGOS, label: "Vanilla · cMaNGOS" },
+  { id: "vanilla-cmangos", path: "vanilla/cmangos", sub: "-vanilla-cmangos",
+    data: import.meta.env.VITE_DATA_BASE_VANILLA_CMANGOS, label: "Vanilla · cMaNGOS" },
 ];
 
 // Active dataset: ?db=<id> local-dev override, else the longest URL-path match (so "dev"
@@ -69,7 +69,9 @@ const rawTag = (v) => `${RAW_ROOT}/${TAG}${v}`;       // immutable per-version t
 
 const R2_DATA = DS.data || `${BASE}data${DS.sub}/`;   // per-dataset R2 base, else path convention
 const R2_ASSETS    = import.meta.env.VITE_ASSETS_BASE || BASE; // maps/minimap/class/poi/tt
-const PAGES_DATA   = IS_DEV ? R2_DATA : `${BASE}data/`; // Pages has main version.json/icons only
+// Only the MAIN dataset has a Pages mirror; every other dataset is R2-only (a Pages
+// fallback there would silently serve main's DB). Non-main -> point "pages" at R2 too.
+const PAGES_DATA   = DATASET === "main" ? `${BASE}data/` : R2_DATA;
 const PAGES_ASSETS = BASE;
 
 // version.json sources (small, non-circular) raced at boot to discover the version
