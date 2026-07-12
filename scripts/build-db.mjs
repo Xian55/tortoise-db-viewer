@@ -90,7 +90,7 @@ const src = SQL_SOURCE === "cmangos"
   ? buildCmangosStaging(db, CMANGOS_DB, STAGE_SPECS)
   : buildStaging(db, SQL_DIR, UPDATES_DIR, STAGE_SPECS);
 console.log(SQL_SOURCE === "cmangos"
-  ? `  staged ${STAGE_SPECS.length} tables from cmangos | mapped ${src.stats.applied}, empty (DBC-derived/deferred): ${src.stats.empty.join(", ")}`
+  ? `  staged ${STAGE_SPECS.length} tables from cmangos | mapped ${src.stats.applied}, DBC-filled: ${src.stats.dbc.join(", ") || "none"}, empty: ${src.stats.empty.join(", ") || "none"}`
   : `  staged ${STAGE_SPECS.length} tables | migrations: ${src.stats.files} files, ${src.stats.applied} applied, ${src.stats.skipped} skipped, ${src.stats.errors} errors`);
 
 // Source accessors: prefer the migrated staging table, fall back to dump text
