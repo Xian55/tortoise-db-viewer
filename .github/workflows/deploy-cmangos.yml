@@ -36,8 +36,11 @@ jobs:
           curl -fL -o classic-sqlite-db.zip \
             https://github.com/cmangos/classic-db/releases/latest/download/classic-sqlite-db.zip
           unzip -o classic-sqlite-db.zip -d cmangos-db
-          echo "CMANGOS_DB=$(ls cmangos-db/*.sqlite | head -1)" >> "$GITHUB_ENV"
           ls -la cmangos-db
+          # the zip ships FOUR DBs (characters/logs/mangos/realmd) -- we need the WORLD
+          # DB specifically, not `ls | head -1` (which picks classiccharacters.sqlite).
+          test -f cmangos-db/classicmangos.sqlite || { echo "classicmangos.sqlite missing"; exit 1; }
+          echo "CMANGOS_DB=cmangos-db/classicmangos.sqlite" >> "$GITHUB_ENV"
 
       - uses: oven-sh/setup-bun@v2
         with:
