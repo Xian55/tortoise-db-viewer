@@ -830,8 +830,17 @@ export const Q_ZONE_QUESTS = `
 //     exclusive drop -> the legendary/boss-item quests; world-/multi-dungeon drops
 //     like cloth or satyr horns are excluded by the NOT EXISTS off-map test). Map
 //     451 ("Development Land", a GM copy) is ignored so it can't break exclusivity.
+// A dropper's location comes from the `cloc` CTE = static `spawns` UNION
+// `creature_instance` (script-spawned bosses carry NO static spawn -> the old
+// spawns-only join missed e.g. Baron Aquanis, whose Strange Water Globe drops from
+// a C++-placed boss in Blackfathom Deeps). Both the inclusion join AND the
+// exclusivity guard read cloc, so the off-map test stays honest for such bosses.
 // gc = the alphabetically-first start NPC, for a stable Quest Giver cell.
 export const Q_DUNGEON_QUESTS = `
+  WITH cloc(entry, map) AS (
+    SELECT id, map FROM spawns
+    UNION SELECT entry, map FROM creature_instance
+  )
   SELECT q.entry, q.title, q.level, q.reqraces, gc.entry AS giver_id, gc.name AS giver
   FROM quests q
   LEFT JOIN creatures gc ON gc.entry = (
@@ -846,12 +855,12 @@ export const Q_DUNGEON_QUESTS = `
     UNION SELECT qi.quest FROM quest_item qi
       JOIN drops d ON d.item = qi.item AND d.src = 'c'
       JOIN creatures c ON c.loot_id = d.owner
-      JOIN spawns sp ON sp.id = c.entry AND sp.map = ?1
+      JOIN cloc ON cloc.entry = c.entry AND cloc.map = ?1
       WHERE qi.role IN ('req', 'source')
         AND NOT EXISTS (
           SELECT 1 FROM drops d2 JOIN creatures c2 ON c2.loot_id = d2.owner
-          JOIN spawns sp2 ON sp2.id = c2.entry
-          WHERE d2.item = qi.item AND d2.src = 'c' AND sp2.map <> ?1 AND sp2.map <> 451)
+          JOIN cloc c2l ON c2l.entry = c2.entry
+          WHERE d2.item = qi.item AND d2.src = 'c' AND c2l.map <> ?1 AND c2l.map <> 451)
   )
   ORDER BY q.level, q.title LIMIT 1000`;
 

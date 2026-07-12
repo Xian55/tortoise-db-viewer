@@ -1358,6 +1358,17 @@ async function testBrowseQuestZoneLink() {
   return zlinks > 0;
 }
 
+// quest_dungeon bridge: filtering the quest finder by a dungeon zone surfaces quests
+// mis-filed elsewhere (Baron Aquanis is a Blackfathom Deeps quest filed under Ashenvale).
+async function testBrowseQuestDungeonBridge() {
+  await page.goto(`${BASE}?browse=quests&zone=719`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
+  const titles = await page.$$eval(".browse td a.ilink[href*='quest=']", (a) => a.map((x) => x.textContent.trim()));
+  const hasBaron = titles.some((t) => t.includes("Baron Aquanis"));
+  console.log(`browse-quest-dungeon-bridge zone=719: rows=${titles.length} Baron Aquanis=${hasBaron}`);
+  return hasBaron && titles.length > 0;
+}
+
 // Starts/Ends (NPC) tabs carry a Location column with where the NPC is.
 async function testQuestNpcLocation(id) {
   await page.goto(`${BASE}?quest=${id}`, { waitUntil: WAIT, timeout: T });
@@ -1942,7 +1953,10 @@ async function testZoneQuests(id, minQuests) {
 // exclusive item drop, or same-named gameplay zone) on its Quests tab. Gilneas
 // City (?zone=5208) is a Turtle dungeon whose quests live on a separate AreaTable
 // zone, so this exercises the WorldMap-area <-> gameplay-zone bridge.
-async function testDungeonQuests(areaid, minQuests) {
+// expectTitle (optional): a quest that MUST appear -> guards the creature_instance
+// bridge in Q_DUNGEON_QUESTS. Baron Aquanis's start item drops from a script-spawned
+// boss (no static `spawns` row), so a spawns-only join dropped it from the list.
+async function testDungeonQuests(areaid, minQuests, expectTitle) {
   await page.goto(`${BASE}?zone=${areaid}`, { waitUntil: WAIT, timeout: 60000 });
   await page.waitForSelector(".zone-page .tab", { timeout: T });
   await page.evaluate(() => { const b = [...document.querySelectorAll(".zone-page .tab")].find((t) => t.textContent.trim().startsWith("Quests")); if (b) b.click(); });
@@ -1952,9 +1966,11 @@ async function testDungeonQuests(areaid, minQuests) {
   const headers = await page.$$eval(".zone-page .tabpane:not(.hidden) th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
   // each quest carries a faction-eligibility badge (Alliance / Horde / Neutral)
   const factions = await page.$$eval(".zone-page .tabpane:not(.hidden) tbody tr .tagx[class*='fac-']", (e) => [...new Set(e.map((x) => x.textContent.trim()))]);
-  console.log(`dungeon-quests ${areaid}: rows=${rows} questLink=${hasQuestLink} headers=[${headers.join(",")}] factions=${JSON.stringify(factions)}`);
+  const titles = await page.$$eval(".zone-page .tabpane:not(.hidden) tbody tr a.ilink[href*='quest=']", (e) => e.map((x) => x.textContent.trim()));
+  const hasTitle = !expectTitle || titles.some((t) => t.includes(expectTitle));
+  console.log(`dungeon-quests ${areaid}: rows=${rows} questLink=${hasQuestLink} headers=[${headers.join(",")}] factions=${JSON.stringify(factions)}${expectTitle ? ` hasTitle(${expectTitle})=${hasTitle}` : ""}`);
   return rows >= minQuests && hasQuestLink && headers.includes("Faction") && factions.length > 0
-    && factions.every((f) => ["Alliance", "Horde", "Neutral"].includes(f));
+    && factions.every((f) => ["Alliance", "Horde", "Neutral"].includes(f)) && hasTitle;
 }
 
 // client-only zones (map texture, no spawns in the public SQL export) render the
@@ -2071,6 +2087,7 @@ run(() => testQuestZoneChain(783));      // continent > zone > sub-zone
 run(() => testQuestBranch(783));         // hub quest: ⑂ fork badges
 run(() => testQuestBranch(5862, ".qc-merge")); // Redemption chain: 3 quests merge -> ⇉ badge
 run(() => testBrowseQuestZoneLink());    // browse quests links zones
+run(() => testBrowseQuestDungeonBridge());  // browse quests: dungeon-zone filter surfaces mis-filed quests (quest_dungeon)
 run(() => testQuestNoProvided(179));     // ReqSourceId==ReqItemId not shown as Provided
 run(() => testQuestRequiredDrops(179));  // objective item collapses to its drop sources + zones
 run(() => testQuestKillLocation(41189)); // Kill / Use targets show their zone
@@ -2144,6 +2161,7 @@ run(() => testDungeon(36, "Deadmines"));          // ?dungeon= redirects to the 
 run(() => testInstanceZone(5138, "Deadmines"));  // ?zone= auto-detects the dungeon
 run(() => testInstanceZone(2557, "Dire Maul"));  // interior map (areaId collision fix)
 run(() => testDungeonQuests(5208, 8));           // Gilneas City: related-quests tab (zone bridge)
+run(() => testDungeonQuests(719, 15, "Baron Aquanis"));  // BFD: script-spawned boss drop bridges quest via creature_instance
 run(() => testDungeonNoMap(532, "Lower Karazhan Halls"));  // map-less instance fallback
 run(() => testBrowsePersist());
 run(() => testBrowseMulti());
