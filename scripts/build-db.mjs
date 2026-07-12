@@ -1500,28 +1500,35 @@ flagJunk("quests", "title");
 flagJunk("spells", "name", "rank");
 flagJunk("maps", "name");
 
-// Turtle-WoW custom content flag. The base dump is already Turtle's world, so
-// "custom" means "not in vanilla 1.12": vanilla quest IDs top out at ~9665, and
-// Turtle allocates its added quests in dedicated high ranges (20000+, 40000+,
-// 60000+, 80000+ ...). Flag entry >= 10000 so the viewer can label + filter them.
-db.exec(`ALTER TABLE quests ADD COLUMN custom INTEGER NOT NULL DEFAULT 0`);
-db.exec(`UPDATE quests SET custom = 1 WHERE entry >= 10000`);
-console.log(`  custom (Turtle) quests: ${db.prepare("SELECT COUNT(*) n FROM quests WHERE custom=1").get().n}`);
-
-// Same "not in vanilla 1.12" flag for items + creatures, so the item/NPC finder can
-// isolate Turtle additions (browse.js origin filter + TW badge). These thresholds sit
-// in the EMPTY ID gap just above where vanilla density ends (measured from the built
-// DB), so no vanilla row is ever misflagged as custom. CAVEAT: it's conservative, not
-// exhaustive -- Turtle also drops some custom content INTO the vanilla ID range (items
-// 10000-24283) and rebalances vanilla entries in place; neither is caught here. So the
-// flag means "clearly a Turtle addition", and the "vanilla" filter is "hide those",
-// NOT a guaranteed pristine 1.12 view. Objects/spells are excluded (no clean gap; wait
-// for the vanilla-ID allowlist). Vanilla ceilings: items ~24283, creatures dense to
-// ~17.5k then an empty gap before the Turtle blocks (20k/50k/60k/90k/2M).
-for (const [tbl, cutoff] of [["items", 24283], ["creatures", 17999]]) {
+// Turtle-WoW custom content flag ("not in vanilla 1.12") for items/creatures/quests,
+// so the item/NPC/quest finder can isolate Turtle additions (browse.js origin filter +
+// TW badge). PRIMARY source is the vanilla-ID allowlist (scripts/data/vanilla-ids.json,
+// derived by extract-vanilla-ids.mjs from the cmangos Classic SQLite DB): an entry is
+// custom iff its id is NOT in the canonical vanilla set. This catches Turtle additions
+// that squat INSIDE the vanilla id range (e.g. items 10000-24283) and isn't fooled by
+// vanilla entries with very high ids. FALLBACK (allowlist absent, e.g. not yet
+// extracted) is an ID threshold placed in the empty gap above vanilla density -- clean
+// for items/creatures, hence those cutoffs. CAVEAT (both modes): can't detect an
+// in-place *rebalance* of a vanilla entry (same id, changed stats) -- that needs a
+// field-level diff. So "vanilla" filter = "hide the additions", not a pristine 1.12 view.
+const vanillaIdsFile = join(ROOT, "scripts", "data", "vanilla-ids.json");
+const vanillaIds = existsSync(vanillaIdsFile) ? JSON.parse(readFileSync(vanillaIdsFile, "utf8")) : null;
+if (vanillaIds) console.log(`  vanilla-ids: ${vanillaIds.db_version || "cmangos"} (items ${vanillaIds.items?.length}, creatures ${vanillaIds.creatures?.length}, quests ${vanillaIds.quests?.length})`);
+for (const [tbl, key, cutoff] of [["items", "items", 24283], ["creatures", "creatures", 17999], ["quests", "quests", 9999]]) {
   db.exec(`ALTER TABLE ${tbl} ADD COLUMN custom INTEGER NOT NULL DEFAULT 0`);
-  db.exec(`UPDATE ${tbl} SET custom = 1 WHERE entry > ${cutoff}`);
-  console.log(`  custom (Turtle) ${tbl}: ${db.prepare(`SELECT COUNT(*) n FROM ${tbl} WHERE custom=1`).get().n}`);
+  const ids = vanillaIds?.[key];
+  if (ids?.length) {
+    db.exec(`CREATE TEMP TABLE _van(id INTEGER PRIMARY KEY)`);
+    const ins = db.prepare(`INSERT OR IGNORE INTO _van(id) VALUES (?)`);
+    db.exec("BEGIN");
+    for (const id of ids) ins.run(id);
+    db.exec("COMMIT");
+    db.exec(`UPDATE ${tbl} SET custom = 1 WHERE entry NOT IN (SELECT id FROM _van)`);
+    db.exec(`DROP TABLE _van`);
+  } else {
+    db.exec(`UPDATE ${tbl} SET custom = 1 WHERE entry > ${cutoff}`); // fallback: threshold
+  }
+  console.log(`  custom (Turtle) ${tbl}: ${db.prepare(`SELECT COUNT(*) n FROM ${tbl} WHERE custom=1`).get().n}${ids?.length ? "" : " (threshold fallback)"}`);
 }
 
 // Buyable flag: item_template.buy_price is set on most items but only meaningful
