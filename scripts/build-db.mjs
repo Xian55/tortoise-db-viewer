@@ -1508,6 +1508,22 @@ db.exec(`ALTER TABLE quests ADD COLUMN custom INTEGER NOT NULL DEFAULT 0`);
 db.exec(`UPDATE quests SET custom = 1 WHERE entry >= 10000`);
 console.log(`  custom (Turtle) quests: ${db.prepare("SELECT COUNT(*) n FROM quests WHERE custom=1").get().n}`);
 
+// Same "not in vanilla 1.12" flag for items + creatures, so the item/NPC finder can
+// isolate Turtle additions (browse.js origin filter + TW badge). These thresholds sit
+// in the EMPTY ID gap just above where vanilla density ends (measured from the built
+// DB), so no vanilla row is ever misflagged as custom. CAVEAT: it's conservative, not
+// exhaustive -- Turtle also drops some custom content INTO the vanilla ID range (items
+// 10000-24283) and rebalances vanilla entries in place; neither is caught here. So the
+// flag means "clearly a Turtle addition", and the "vanilla" filter is "hide those",
+// NOT a guaranteed pristine 1.12 view. Objects/spells are excluded (no clean gap; wait
+// for the vanilla-ID allowlist). Vanilla ceilings: items ~24283, creatures dense to
+// ~17.5k then an empty gap before the Turtle blocks (20k/50k/60k/90k/2M).
+for (const [tbl, cutoff] of [["items", 24283], ["creatures", 17999]]) {
+  db.exec(`ALTER TABLE ${tbl} ADD COLUMN custom INTEGER NOT NULL DEFAULT 0`);
+  db.exec(`UPDATE ${tbl} SET custom = 1 WHERE entry > ${cutoff}`);
+  console.log(`  custom (Turtle) ${tbl}: ${db.prepare(`SELECT COUNT(*) n FROM ${tbl} WHERE custom=1`).get().n}`);
+}
+
 // Buyable flag: item_template.buy_price is set on most items but only meaningful
 // when a vendor actually sells it (~2.6k of ~20k) -- so the tooltip can show a
 // "Buy Price" without implying a drop/quest item is purchasable.

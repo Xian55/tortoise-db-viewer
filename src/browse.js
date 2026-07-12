@@ -33,7 +33,7 @@ const effReq = (r) => Math.max(r.required_level || 0, r.inventory_type ? (r.ques
 const spellCostVal = (r) => (r.power_type === 1 ? (r.mana_cost || 0) / 10 : (r.mana_cost || 0));
 
 const COL = {
-  name: { key: "name", label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
+  name: { key: "name", label: "Name", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon) + twTag(r), value: (r) => r.name },
   ilvl: { key: "ilvl", label: "iLvl", num: true, cls: "muted", cell: (r) => r.item_level || "", value: (r) => r.item_level || 0 },
   req: { key: "req", label: "Req", num: true, cls: "muted", hideEmpty: true,
     cell: (r) => { const e = effReq(r); if (!e) return ""; return e > (r.required_level || 0) ? `<span title="Available from a level-${e} quest reward">${e}*</span>` : `${e}`; },
@@ -65,6 +65,8 @@ function factionSide(r) {
 }
 const factionTag = (s) => s === 1 ? '<span class="tagx fac-alliance">Alliance</span>'
   : s === 2 ? '<span class="tagx fac-horde">Horde</span>' : "";
+// Turtle-custom badge for finder rows (items/NPCs). r.custom is the build-db flag.
+const twTag = (r) => r.custom ? ' <span class="tagx tw-tag" title="Added by Turtle WoW (not in vanilla 1.12)">TW</span>' : "";
 // armor subtype (Cloth/Leather/Mail/Plate) or weapon type (Sword/Axe/...) label.
 const itemSubtype = (r) => (r.class === 2 ? WEAPON_SUBCLASS[r.subclass] : r.class === 4 ? ARMOR_SUBCLASS[r.subclass] : "") || "";
 // short bind tag for the column (full text via title); mirrors BONDING keys.
@@ -208,7 +210,7 @@ function weightRow(w) {
 }
 
 const NPC_COLS = [
-  { key: "name", label: "Name", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
+  { key: "name", label: "Name", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : "") + twTag(r), value: (r) => r.name },
   { key: "level", label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
   { key: "rank", label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
   { key: "type", label: "Type", cls: "muted", cell: (r) => CREATURE_TYPE[r.type] || "", value: (r) => CREATURE_TYPE[r.type] || "" },
@@ -297,7 +299,7 @@ async function browseItems(p) {
     minil: p.get("minil") || "", maxil: p.get("maxil") || "",
     source: p.get("source") || "",
     bind: p.get("bind") || "", uclass: p.get("uclass") || "", faction: p.get("faction") || "",
-    unique: p.get("unique") || "", prof: p.get("prof") || "",
+    unique: p.get("unique") || "", prof: p.get("prof") || "", origin: p.get("origin") || "",
   };
   const criteria = parseCriteria(p.get("stats"));
   const weights = parseWeights(p.get("weights"));
@@ -349,6 +351,9 @@ async function browseItems(p) {
   else if (f.faction === "h") { where.push(`NOT ${exclusiveTo}`); binds.push(RACE_ALLIANCE, RACE_HORDE, 1); }
   if (f.unique === "1") where.push("i.max_count = 1");
   if (f.prof !== "") add("i.required_skill = ?", +f.prof);
+  // origin: Turtle-WoW additions (i.custom = 1) vs vanilla-range 1.12 (0). See build-db.
+  if (f.origin === "tw") where.push("i.custom = 1");
+  else if (f.origin === "vanilla") where.push("i.custom = 0");
   // each criterion -> presence-aware match against item_stats (op is whitelisted).
   // match=any OR-combines them ("crit≥1 OR agi≥20"); default match=all AND-combines.
   const critMatch = p.get("match") === "any" ? "any" : "all";
@@ -380,7 +385,7 @@ async function browseItems(p) {
   const rows = await query(
     `SELECT i.entry, i.name, i.quality, i.class, i.subclass, i.inventory_type, i.item_level, i.required_level, i.display_id,
             i.required_skill, i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, i.bonding, i.stackable,
-            i.quest_faction, i.quest_min_level, i.allowable_race, i.sell_price, di.icon${statSel2}${fishingSel},
+            i.quest_faction, i.quest_min_level, i.allowable_race, i.sell_price, i.custom, di.icon${statSel2}${fishingSel},
             (SELECT GROUP_CONCAT(source,',') FROM item_sources s WHERE s.item = i.entry) AS sources
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
@@ -449,6 +454,7 @@ async function browseItems(p) {
   if (f.uclass !== "") { const c = (CLASS_MASK.find((x) => String(x[0]) === f.uclass) || [])[1]; chip(`Usable <b>${esc(c || f.uclass)}</b>`, `data-rf="uclass"`); }
   if (f.faction !== "") chip(`Faction <b>${f.faction === "a" ? "Alliance" : "Horde"}</b>`, `data-rf="faction"`);
   if (f.prof !== "") chip(`Prof <b>${esc(PROFESSION_LABEL[f.prof] || f.prof)}</b>`, `data-rf="prof"`);
+  if (f.origin !== "") chip(`<b>${f.origin === "tw" ? "Turtle WoW" : "Classic 1.12"}</b>`, `data-rf="origin"`);
   if (f.unique === "1") chip(`<b>Unique</b>`, `data-rf="unique"`);
   for (const c of criteria) chip(`<b>${esc(GEAR_STAT_LABEL[c.key] || c.key)} ${esc(c.op)} ${esc(c.val)}</b>`, `data-rcrit="${esc(`${c.key},${c.op},${c.val}`)}"`);
   if (weights.length) chip(`⚔ <b>Gear score (${weights.length})</b>`, `data-rweights="1"`);
@@ -457,7 +463,7 @@ async function browseItems(p) {
 
   // collapsible sub-sections; each auto-opens when it has active values + shows a count badge.
   const badge = (n) => (n ? ` <span class="badge">${n}</span>` : "");
-  const moreCount = [f.minil, f.maxil, f.bind, f.uclass, f.faction, f.prof, f.unique === "1" ? "1" : ""].filter(Boolean).length;
+  const moreCount = [f.minil, f.maxil, f.bind, f.uclass, f.faction, f.prof, f.origin, f.unique === "1" ? "1" : ""].filter(Boolean).length;
   const section = (title, count, body, open = count) => `<details class="sec"${open ? " open" : ""}><summary>${title}${badge(count)}</summary><div class="sec-body">${body}</div></details>`;
   const moreBody = `<div class="filters embed">
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
@@ -466,6 +472,7 @@ async function browseItems(p) {
     ${selectField("faction", "Faction", options([["a", "Alliance"], ["h", "Horde"]], f.faction, "Any"))}
     ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any"))}
     ${selectField("unique", "Unique", options([["1", "Unique only"]], f.unique, "Any"))}
+    ${selectField("origin", "Origin", options([["tw", "Turtle WoW"], ["vanilla", "Classic 1.12"]], f.origin, "Any"))}
   </div>`;
   // Columns is its own group -- it controls what's SHOWN, not what's filtered. Muted
   // badge = how many columns are visible; opens when a custom set is active.
@@ -508,6 +515,7 @@ async function browseNpcs(p) {
   const f = {
     q: p.get("q") || "", type: p.get("type") || "", rank: p.get("rank") || "",
     faction: p.get("faction") || "", minlvl: p.get("minlvl") || "", maxlvl: p.get("maxlvl") || "",
+    origin: p.get("origin") || "",
   };
   const where = ["c.name <> ''", "c.hidden = 0"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
@@ -517,9 +525,12 @@ async function browseNpcs(p) {
   if (f.faction !== "") add("ft.faction_id = ?", +f.faction);
   if (f.minlvl !== "") add("c.level_min >= ?", +f.minlvl);
   if (f.maxlvl !== "") add("c.level_max <= ?", +f.maxlvl);
+  // origin: Turtle-WoW additions (c.custom = 1) vs vanilla-range 1.12 (0). See build-db.
+  if (f.origin === "tw") where.push("c.custom = 1");
+  else if (f.origin === "vanilla") where.push("c.custom = 0");
   const whereSql = "WHERE " + where.join(" AND ");
   const rows = await query(
-    `SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.type,
+    `SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.type, c.custom,
             ft.faction_id, fn.name1 AS faction,
             (SELECT 1 FROM factions ff WHERE ff.id = ft.faction_id) AS faction_page,
             c.zone AS zone_id, z.name AS zone
@@ -541,6 +552,7 @@ async function browseNpcs(p) {
     ${selectField("rank", "Rank", options([[0, "Normal"], ...Object.entries(CREATURE_RANK)], f.rank, "Any rank"))}
     ${selectField("faction", "Faction", options(fopts, f.faction, "Any faction"))}
     ${numField("minlvl", "Level ≥", f.minlvl)} ${numField("maxlvl", "Level ≤", f.maxlvl)}
+    ${selectField("origin", "Origin", options([["tw", "Turtle WoW"], ["vanilla", "Classic 1.12"]], f.origin, "Any"))}
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
   const hide = [f.type !== "" && "type", f.rank !== "" && "rank", f.faction !== "" && "faction"].filter(Boolean);
