@@ -1665,17 +1665,21 @@ async function testDatasetToggle() {
   const r = await page.evaluate(() => {
     const main = document.querySelector('#dsToggle [data-ds="main"]');
     const dev = document.querySelector('#dsToggle [data-ds="dev"]');
+    const cm = document.querySelector('#dsToggle [data-ds="vanilla-cmangos"]');
     return {
       count: document.querySelectorAll("#dsToggle .ds-btn").length,
       mainOn: main?.classList.contains("on"),
       devOn: dev?.classList.contains("on"),
       devHref: dev?.getAttribute("href") || "",
+      cmHref: cm?.getAttribute("href") || "",
       bodyDev: document.body.classList.contains("ds-dev"),
     };
   });
-  console.log(`dataset-toggle: count=${r.count} mainOn=${r.mainOn} devOn=${r.devOn} devHref="${r.devHref}" bodyDev=${r.bodyDev}`);
-  return r.count === 2 && r.mainOn === true && r.devOn === false
-    && /\/dev\/\?item=2770$/.test(r.devHref) && r.bodyDev === false;
+  console.log(`dataset-toggle: count=${r.count} mainOn=${r.mainOn} devOn=${r.devOn} devHref="${r.devHref}" cmHref="${r.cmHref}" bodyDev=${r.bodyDev}`);
+  // three datasets: main (/), dev (/dev/), vanilla-cmangos (/vanilla/cmangos/) -- see src/config.js DATASETS
+  return r.count === 3 && r.mainOn === true && r.devOn === false
+    && /\/dev\/\?item=2770$/.test(r.devHref) && /\/vanilla\/cmangos\/\?item=2770$/.test(r.cmHref)
+    && r.bodyDev === false;
 }
 
 // "What's new" changelog (?changelog). On the main dataset there's no
