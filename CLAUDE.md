@@ -119,6 +119,7 @@ python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc
 python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
 bun scripts/extract-instance-bosses.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src) + built DB -> scripts/data/instance-bosses.json (script-spawned boss entry -> instance mapId; needs build-db first)
+bun scripts/extract-vanilla-ids.mjs   # LOCAL: cmangos Classic SQLite DB (classicmangos.sqlite) -> scripts/data/vanilla-ids.json (canonical vanilla-1.12 id allowlist; build-db flags items/creatures/quests custom = id NOT IN vanilla). CMANGOS_DB overrides path
 bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
 bun scripts/build-api.mjs             # public JSON API: rich per-entity JSON + tooltipHtml -> dist/api/<i|n|q|s>/<id>.json (served from R2 at api.tortoiseclothing.org); API_LIMIT=N for a fast subset
 ```
@@ -299,6 +300,14 @@ Re-run `extract-minimap.py` + commit on client map changes.
   creature there to that map. build-db loads it into `creature_instance`; the character
   upgrade finder (`qInstanceDropsIn`) uses it to name e.g. "Razorfen Downs · Tuten'kash".
   CI has no server `src/`, so the JSON is committed. Run: build-db → this → build-db.
+- `scripts/extract-vanilla-ids.mjs` — LOCAL: reads the cmangos **Classic DB, published
+  as SQLite** (github.com/cmangos/classic-db/releases → `classicmangos.sqlite`) →
+  committed `scripts/data/vanilla-ids.json` (`{items,creatures,quests}` = the canonical
+  vanilla-1.12 id sets). build-db flags Turtle-custom content as `custom = entry NOT IN
+  vanilla` — more accurate than the old ID threshold (catches Turtle additions squatting
+  inside the vanilla id range; not fooled by high-id vanilla rows). Threshold is the
+  fallback if the JSON is absent. Can't detect an in-place *rebalance* of a vanilla entry
+  (needs a field diff). Re-run + commit on a new cmangos Classic DB release.
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
 - `scripts/lib/sqlite.mjs` — Bun/Node SQLite wrapper.
@@ -402,7 +411,11 @@ Re-run `extract-minimap.py` + commit on client map changes.
   tell which dungeon it's in. The extract parses each `src/scripts/dungeons/<instance>/`
   folder → `creature_instance(entry, map)`, letting the character upgrade finder name
   the instance for such a boss (e.g. Tuten'kash → Razorfen Downs). Committed (CI has no
-  server `src/`); re-run on scriptdev changes.
+  server `src/`); re-run on scriptdev changes. Plus the vanilla-1.12 id allowlist
+  (`scripts/data/vanilla-ids.json` via `extract-vanilla-ids.mjs`, from the cmangos
+  Classic SQLite DB): build-db flags items/creatures/quests `custom = id NOT IN vanilla`
+  (Turtle additions), falling back to an id threshold if absent. Committed (CI has no
+  cmangos DB); re-run on a new cmangos Classic DB release.
 - **Zone assignment is ADT-exact.** Each spawn's `spawn_points.zone` is precomputed
   in build-db from `scripts/data/subzone-bounds.json` (per-AreaTable bounding boxes
   extracted from the client ADT terrain chunks by `extract-area-bounds.py`): the
