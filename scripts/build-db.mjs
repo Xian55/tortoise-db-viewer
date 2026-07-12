@@ -1155,6 +1155,17 @@ console.log("Tagging PvP set gear...");
   console.log(`  item_sources pvp: ${np} items`);
 }
 
+// Denormalize the item->sources CSV onto items. The item finder's hottest query (the
+// full ~25k-row catalogue) rendered each row's source tags via a per-row correlated
+// GROUP_CONCAT subquery over item_sources -- ~1/3 of that query's time (measured ~30ms
+// of ~100ms). Precompute it in one build-time pass so the browse SELECT reads a column.
+// MUST run after item_sources is FULLY populated -- the PvP-set block above adds 'pvp'
+// rows after the main derivation. Order within the CSV is irrelevant: render.js
+// sourceTags() re-sorts by SRC_ORDER.
+console.log("Denormalizing item sources...");
+db.exec(`ALTER TABLE items ADD COLUMN sources TEXT`);
+db.exec(`UPDATE items SET sources = (SELECT GROUP_CONCAT(source, ',') FROM item_sources s WHERE s.item = items.entry)`);
+
 // ---- Reputation per kill (grind calculator) ----
 // Flatten the two-slot creature_onkill_rep into one row per (creature, faction):
 // value = rep gained on kill, maxstanding = the standing index kills cap out at.
