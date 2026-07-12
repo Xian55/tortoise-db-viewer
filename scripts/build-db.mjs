@@ -1589,6 +1589,25 @@ db.exec(`ALTER TABLE items ADD COLUMN quest_min_level INTEGER NOT NULL DEFAULT 0
   console.log(`  quest-reward faction lock: ${na} Alliance, ${nh} Horde`);
 }
 
+// ---- Prune false-positive quest-giver flags. The QUESTGIVER npc_flag (bit 2) is set
+// on ~40% of flagged creatures that have NO quest relation at all -- gossip-only NPCs
+// like "Servant of Azora" (#1949). It's a data quirk, not a per-entity fix: clear the
+// bit wherever the creature neither starts nor ends a quest we ingest. One structural
+// correction (no hardcoded list) fixes EVERY consumer at once -- the NPC-page role
+// badge, the zone/world-map "quest" marker (zonemap.js ORs npc_flags & 2), and the
+// public API roles -- and applies to every dataset (main/dev/cmangos). Other role bits
+// (vendor/trainer/…) are left intact.
+console.log("Pruning false-positive quest-giver flags...");
+{
+  const before = db.prepare(`SELECT COUNT(*) n FROM creatures WHERE (npc_flags & 2) <> 0`).get().n;
+  db.exec(`UPDATE creatures SET npc_flags = npc_flags & ~2
+    WHERE (npc_flags & 2) <> 0
+      AND entry NOT IN (SELECT id FROM creature_quest_start)
+      AND entry NOT IN (SELECT id FROM creature_quest_end)`);
+  const after = db.prepare(`SELECT COUNT(*) n FROM creatures WHERE (npc_flags & 2) <> 0`).get().n;
+  console.log(`  quest-giver flag: ${before} -> ${after} (${before - after} false positives cleared)`);
+}
+
 // ---- quest_dungeon: bridge dungeon quests to the areaid the finder's Zone filter
 // expects, so a mis-sorted dungeon quest still surfaces under its dungeon. A quest's
 // ZoneOrSort (q.zone) is often NOT the dungeon: Baron Aquanis is filed under Ashenvale,
