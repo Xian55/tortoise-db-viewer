@@ -165,11 +165,15 @@ const RENAMES = {
     vendor_id: "VendorTemplateId", flags_extra: "ExtraFlags",
   },
   creature: { wander_distance: "spawndist", movement_type: "MovementType" },
-  spell_template: { entry: "Id" },
+  // cmangos spell_template carries names/ranks/mechanics/icons; entry is `Id`, name/rank
+  // differ in name. description/auraDescription aren't in the world DB -> NULL here, then
+  // injected from Spell.dbc (cmangos-dbc.json spell_text) after staging.
+  spell_template: { entry: "Id", name: "SpellName", nameSubtext: "Rank1" },
 };
 
-// tables cmangos lacks OR we defer -> staged empty (Turtle columns, zero rows).
-const FORCE_EMPTY = new Set(["spell_template"]);
+// tables cmangos lacks entirely -> staged empty. (spell_template maps from cmangos +
+// gets its tooltip text injected from the client DBC below.)
+const FORCE_EMPTY = new Set();
 
 // DBC-derived tables cmangos omits, filled from scripts/data/cmangos-dbc.json
 // (extract-cmangos-dbc.py, from a vanilla 1.12 client). staging table -> JSON key.
@@ -233,6 +237,15 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
 
     // 3) nothing available -> staged empty
     stats.empty.push(table);
+  }
+
+  // spell tooltip text lives only in the client Spell.dbc (not cmangos' world DB):
+  // inject description/auraDescription into the cmangos-mapped spell_template.
+  if (DBC && DBC.spell_text && staged.has("spell_template")) {
+    const up = db.prepare(`UPDATE \`${PFX}spell_template\` SET description=?, auraDescription=? WHERE entry=?`);
+    let n = 0;
+    db.transaction(() => { for (const t of DBC.spell_text) { up.run(t.description ?? null, t.auraDescription ?? null, t.entry); n++; } })();
+    stats.spellText = n;
   }
 
   return {
