@@ -36,6 +36,7 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .ds-toggle .ds-btn + .ds-btn { border-left: 1px solid var(--border); }
 .ds-toggle .ds-btn.on { color: #0d0e12; background: var(--gold); }
 .ds-toggle .ds-btn[data-ds="dev"].on { color: #fff; background: #ff4d4d; }
+.ds-toggle .ds-btn[data-ds="vanilla-cmangos"].on { color: #0d0e12; background: #ff8c1a; }
 
 /* Home: static JSON endpoints note. */
 .home-api { margin-top: 20px; }
