@@ -593,6 +593,23 @@ async function testNpc(id, expectName, expectTab) {
   return name.includes(expectName) && tabsList.length > 0 && sortableH > 0 && !!display && (!expectTab || tabsList.some((t) => t.includes(expectTab)));
 }
 
+// Build-time prune of false-positive QUESTGIVER flags (build-db.mjs): an NPC with the
+// flag but no quest relation (e.g. Servant of Azora #1949) must NOT show the role badge;
+// a real quest giver (Eagan Peltskinner #196) must keep it.
+async function testQuestGiverPrune() {
+  const roleTags = async (id) => {
+    await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
+    await page.waitForSelector(".npc-head h1", { timeout: T });
+    return page.$$eval(".npc-head .npc-meta .tagx", (e) => e.map((x) => x.textContent.trim()));
+  };
+  const fp = await roleTags(1949);
+  const real = await roleTags(196);
+  const fpClean = !fp.includes("Quest Giver");
+  const realHas = real.includes("Quest Giver");
+  console.log(`questgiver-prune: #1949 tags=[${fp.join(",")}] (noBadge=${fpClean}) | #196 tags=[${real.join(",")}] (hasBadge=${realHas})`);
+  return fpClean && realHas;
+}
+
 // Measure the in-app (SPA) navigation render time — the actual "click an NPC"
 // path (DB already in memory; just queries + render). Catches query regressions
 // like an unindexed spawn_points scan. App must already be loaded (warm).
@@ -2136,6 +2153,7 @@ run(() => testLevelingGuide("goblin", 20));
 run(() => testGuideProgress("goblin"));         // tick a step -> localStorage + reload persistence
 run(() => testNpcLoad(15379, 400));  // AQ NPC, many spawns; ~4ms healthy, 726ms if zone lookup unindexed
 run(() => testNpc(2376, "Torn Fin Oracle"));
+run(() => testQuestGiverPrune());   // false-positive QUESTGIVER flag pruned (#1949) but real one kept (#196)
 run(() => testNpc(80402, "Aemara Sunsorrow", "Teaches"));  // trainer -> Teaches tab
 run(() => testTrainerCols(5038));  // single-profession trainer hides Profession col
 run(() => testNpc(10981, "", "Skinning"));
