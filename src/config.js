@@ -90,6 +90,21 @@ export let DATA_BASE   = R2_DATA;   // winner's version.json/changelog.json base
 // blocked, these assets degrade (no mirror — the icon atlas has its own chain).
 export let ASSETS_BASE = R2_ASSETS;
 
+// Zone parchments + minimap tiles are CLIENT-derived, so they differ per source: the
+// vanilla client's art (cMaNGOS) isn't Turtle's (custom zones, edited terrain). Turtle
+// main/dev share the base set; other datasets get a dataset-suffixed subtree
+// (maps-vanilla-cmangos/, minimap-vanilla-cmangos/), synced by that dataset's deploy.
+// MAP_SUB drives both the R2 path and the bundled transform-manifest filename.
+// MAPS_BASE_MAIN is the unsuffixed Turtle set, used as a FALLBACK when a dataset lacks a
+// given parchment: vanilla ships no dungeon interiors, so a cMaNGOS dungeon page reuses
+// Turtle's interior map (+ Turtle bounds, merged into the zones table by build-db). This
+// aligns for dungeons Turtle didn't re-lay; a Turtle-reworked interior (e.g. Molten Core)
+// will drift -- acceptable vs no map, and deny-listable to map-less if needed.
+export const MAP_SUB = (DATASET === "main" || DATASET === "dev") ? "" : DS.sub;
+export const MAPS_BASE = `${R2_ASSETS}maps${MAP_SUB}/`;
+export const MINIMAP_BASE = `${R2_ASSETS}minimap${MAP_SUB}/`;
+export const MAPS_BASE_MAIN = `${R2_ASSETS}maps/`;
+
 let winner = "r2";                  // which DATA_ORIGIN answered
 let probedMeta = null;              // version.json captured by the probe; reused by db.js getMeta
 export function getProbedMeta() { return probedMeta; }

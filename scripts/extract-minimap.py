@@ -38,8 +38,14 @@ STORMLIB = os.environ.get(
     os.path.join(ROOT, "..", "StormLib", "bin", "StormLib_dll", "x64", "Release", "StormLib.dll"),
 )
 DATA = os.path.join(CLIENT, "Data")
-OUT = os.path.join(ROOT, "public", "minimap")
-MANIFEST = os.path.join(ROOT, "scripts", "data", "minimap.json")
+# Per-dataset outputs (like TALENTS_OUT): point TW_CLIENT at a vanilla client and
+# MINIMAP_OUT/MINIMAP_MANIFEST at dataset-scoped paths to build the cMaNGOS minimap.
+OUT = os.environ.get("MINIMAP_OUT") or os.path.join(ROOT, "public", "minimap")
+MANIFEST = os.environ.get("MINIMAP_MANIFEST") or os.path.join(ROOT, "scripts", "data", "minimap.json")
+if not os.path.isabs(OUT):
+    OUT = os.path.join(ROOT, OUT)
+if not os.path.isabs(MANIFEST):
+    MANIFEST = os.path.join(ROOT, MANIFEST)
 
 # Highest precedence last (a file in a later patch overrides earlier archives).
 ARCHIVE_ORDER = [

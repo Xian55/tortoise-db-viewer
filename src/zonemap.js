@@ -376,7 +376,9 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
   currentMap = map;
   const bounds = [[0, 0], [H, W]];
   // parchment in tilePane (below overlayPane) so the Pixi markers draw on top
-  L.imageOverlay(zone.imgUrl, bounds, { pane: "tilePane" }).addTo(map);
+  // errorOverlayUrl: cross-dataset fallback parchment (e.g. cMaNGOS dungeon/raid interiors,
+  // which vanilla doesn't ship -> reuse Turtle's). Leaflet swaps to it if imgUrl 404s.
+  L.imageOverlay(zone.imgUrl, bounds, { pane: "tilePane", errorOverlayUrl: zone.imgFallback }).addTo(map);
   map.fitBounds(bounds);
   // don't let the zone shrink into a sea of grey: floor zoom at the whole-zone
   // fit, and keep panning within the image.
@@ -840,7 +842,7 @@ export function initFlightMap(el, continent, nodes, routes, navigate) {
   const map = L.map(el, { crs: L.CRS.Simple, maxZoom: 4, preferCanvas: true, attributionControl: false, zoomControl: true });
   currentMap = map;
   const bounds = [[0, 0], [H, W]];
-  L.imageOverlay(continent.imgUrl, bounds, { pane: "tilePane" }).addTo(map);
+  L.imageOverlay(continent.imgUrl, bounds, { pane: "tilePane", errorOverlayUrl: continent.imgFallback }).addTo(map);
   map.fitBounds(bounds);
   map.setMinZoom(map.getBoundsZoom(bounds));
   map.setMaxBounds(L.latLngBounds(bounds).pad(0.2));

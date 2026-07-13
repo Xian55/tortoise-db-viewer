@@ -9,14 +9,19 @@ import { showCharacters, showCharacter, showSharedLoadout } from "./character.js
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
-import { ASSETS_BASE, DATA_BASE, API_BASE, resolveOrigins, DATASET, getAtlasUrls } from "./config.js";
+import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, resolveOrigins, DATASET, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
 import { showTalents } from "./talents.js";
 // Seamless-minimap transform manifest (tile/adt/grid + per-continent bbox). Tiny,
 // committed; bundled at build time. The tile pyramid itself lives on R2.
-import minimapManifest from "../scripts/data/minimap.json";
+// Dataset-scoped minimap transform manifest (like the maps/minimap tiles): the vanilla
+// client's continent geometry differs, so cMaNGOS uses minimap-vanilla-cmangos.json.
+// Turtle main/dev use the base minimap.json. import.meta.glob tolerates a dataset that
+// ships no manifest (falls back to the base).
+const MINIMAP_MANIFESTS = import.meta.glob("../scripts/data/minimap*.json", { eager: true, import: "default" });
+const minimapManifest = MINIMAP_MANIFESTS[`../scripts/data/minimap${MAP_SUB}.json`] || MINIMAP_MANIFESTS["../scripts/data/minimap.json"];
 
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
@@ -1100,10 +1105,11 @@ async function showNpc(id) {
     const el = document.getElementById("zonemap");
     try {
       const { initZoneMap } = await import("./zonemap.js");
-      const imgUrl = `${ASSETS_BASE}maps/${drawZone.areaid}.webp`;
+      const imgUrl = `${MAPS_BASE}${drawZone.areaid}.webp`;
+      const imgFallback = `${MAPS_BASE_MAIN}${drawZone.areaid}.webp`;
       // Real spawns -> focus pins; quest-inferred zone -> parchment only (no coords).
       const opts = mapZone ? { focus: { label: npc.name, npc: npc.entry, points: mapPts } } : {};
-      initZoneMap(el, { ...drawZone, imgUrl }, [], [], navigate, opts);
+      initZoneMap(el, { ...drawZone, imgUrl, imgFallback }, [], [], navigate, opts);
     } catch (e) { el.innerHTML = errorBox(e); }
   }
 }
@@ -1208,8 +1214,8 @@ async function showObject(id) {
       // (re)draw the map for a zone: its parchment + this object's spawns there.
       const renderZone = (zone) => {
         const pts = spawns.filter((s) => s.zone === zone.areaid);
-        const imgUrl = `${ASSETS_BASE}maps/${zone.areaid}.webp`;
-        initZoneMap(el, { ...zone, imgUrl }, [], [], navigate, { focus: { label: obj.name, icon: focusIcon, points: pts } });
+        const imgUrl = `${MAPS_BASE}${zone.areaid}.webp`;
+        initZoneMap(el, { ...zone, imgUrl, imgFallback: `${MAPS_BASE_MAIN}${zone.areaid}.webp` }, [], [], navigate, { focus: { label: obj.name, icon: focusIcon, points: pts } });
         app.querySelectorAll("#objzoneswitch button").forEach((b) => b.classList.toggle("active", Number(b.dataset.zone) === zone.areaid));
       };
       renderZone(activeZone);
@@ -1691,13 +1697,13 @@ async function showQuest(id) {
         const opts = { markerLayers: v.markerLayers, route: v.route };
         if (v.kind === "zone") {
           const zone = qvZoneById.get(v.areaid);
-          initZoneMap(el, { ...zone, imgUrl: `${ASSETS_BASE}maps/${zone.areaid}.webp` }, [], [], navigate, opts);
+          initZoneMap(el, { ...zone, imgUrl: `${MAPS_BASE}${zone.areaid}.webp`, imgFallback: `${MAPS_BASE_MAIN}${zone.areaid}.webp` }, [], [], navigate, opts);
         } else {
           const m = (minimapManifest.maps || {})[String(v.mapId)];
           initWorldMap(el, {
             mapId: v.mapId, name: m.name, bbox: m.bbox,
             tile: minimapManifest.tile, adt: minimapManifest.adt, grid: minimapManifest.grid,
-            maxNativeZoom: minimapManifest.maxNativeZoom, tilesBase: `${ASSETS_BASE}minimap/`,
+            maxNativeZoom: minimapManifest.maxNativeZoom, tilesBase: MINIMAP_BASE,
           }, [], [], navigate, opts);
         }
         app.querySelectorAll("#questmapswitch button").forEach((b) => b.classList.toggle("active", b.dataset.vk === v.key));
@@ -1981,7 +1987,6 @@ async function showZone(id, gatherItem = null) {
   const el = document.getElementById("zonemap");
   try {
     const { initZoneMap } = await import("./zonemap.js");
-    const base = ASSETS_BASE;
     let zmap = null;
     // Keep the tab "show on map" checkbox + shown set in sync with the map/panel —
     // fires both on a tab-checkbox change and when the panel's "Selected" row is
@@ -1997,7 +2002,7 @@ async function showZone(id, gatherItem = null) {
       const fs = isInstance ? spawns.filter((s) => s.zone === fl.areaid) : spawns;
       const fo = isInstance ? objects.filter((o) => o.zone === fl.areaid) : objects;
       const fb = isInstance ? bosses.filter((b) => b.zone === fl.areaid) : bosses;
-      zmap = initZoneMap(el, { ...fl, imgUrl: `${base}maps/${fl.areaid}.webp` }, fs, fo, navigate, { focus: fl.areaid === z.areaid ? focus : null, bosses: fb, farm: isInstance ? null : farmPoints, onToggle: syncSel });
+      zmap = initZoneMap(el, { ...fl, imgUrl: `${MAPS_BASE}${fl.areaid}.webp`, imgFallback: `${MAPS_BASE_MAIN}${fl.areaid}.webp` }, fs, fo, navigate, { focus: fl.areaid === z.areaid ? focus : null, bosses: fb, farm: isInstance ? null : farmPoints, onToggle: syncSel });
       app.querySelectorAll("#floorswitch button").forEach((b) => b.classList.toggle("active", Number(b.dataset.floor) === fl.areaid));
     };
     renderFloor(activeFloor);
@@ -2132,7 +2137,7 @@ async function showFlights(mapId = 0) {
   const el = document.getElementById("zonemap");
   try {
     const { initFlightMap } = await import("./zonemap.js");
-    initFlightMap(el, { ...cont, imgUrl: `${ASSETS_BASE}maps/continent-${cont.map}.webp` }, nodes, routes, navigate);
+    initFlightMap(el, { ...cont, imgUrl: `${MAPS_BASE}continent-${cont.map}.webp`, imgFallback: `${MAPS_BASE_MAIN}continent-${cont.map}.webp` }, nodes, routes, navigate);
   } catch (e) { el.innerHTML = errorBox(e); }
   const csw = document.getElementById("contswitch");
   if (csw) csw.addEventListener("click", (e) => { const b = e.target.closest("button[data-cont]"); if (b) navigate(`?flights&cont=${b.dataset.cont}`); });
@@ -2206,7 +2211,7 @@ async function showWorldMap(mapId = 0) {
     initWorldMap(el, {
       mapId, name: m.name, bbox: m.bbox,
       tile: minimapManifest.tile, adt: minimapManifest.adt, grid: minimapManifest.grid,
-      maxNativeZoom: minimapManifest.maxNativeZoom, tilesBase: `${ASSETS_BASE}minimap/`,
+      maxNativeZoom: minimapManifest.maxNativeZoom, tilesBase: MINIMAP_BASE,
     }, spawns, objects, navigate, { zones, initial, onState, searchNpcs });
   } catch (e) { el.innerHTML = errorBox(e); }
   const csw = document.getElementById("contswitch");
