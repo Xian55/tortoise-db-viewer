@@ -21,3 +21,6 @@ notes/
 .env
 .env.*
 !.env.example
+
+# local wowhead-probe cache (re-generatable; missing.json is the committed artifact)
+scripts/data/model-thumb-coverage.json
