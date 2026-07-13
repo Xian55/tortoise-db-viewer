@@ -85,6 +85,10 @@ const ALLCOL = {
   sell: { key: "sell", label: "Sell", num: true, cls: "muted", cell: (r) => (r.sell_price ? moneyHtml(r.sell_price) : ""), value: (r) => r.sell_price || 0 },
   bind: { key: "bind", label: "Bind", cls: "muted", cell: (r) => (BIND_SHORT[r.bonding] ? `<span title="${esc(BONDING[r.bonding])}">${BIND_SHORT[r.bonding]}</span>` : ""), value: (r) => r.bonding || 0 },
   type: { key: "type", label: "Type", cls: "muted", cell: (r) => esc(itemSubtype(r)), value: (r) => itemSubtype(r) },
+  // Mount model: the summoned creature's display_id, rendered as the model-link
+  // hover span (initHovercards' global [data-display] listener shows the 3D preview).
+  model: { key: "model", label: "Model", cls: "muted", value: (r) => r.mount_display || 0,
+    cell: (r) => r.mount_display ? `<span class="model-link" data-display="${r.mount_display}" tabindex="0" title="Hover to preview the 3D model">Model #${r.mount_display}</span>` : "" },
   quality: { key: "quality", label: "Quality", cls: "muted", cell: (r) => esc((QUALITY[r.quality] || {}).name || ""), value: (r) => r.quality || 0 },
   stack: { key: "stack", label: "Stack", num: true, cls: "muted", cell: (r) => (r.stackable > 1 ? r.stackable : ""), value: (r) => r.stackable || 0 },
 };
@@ -106,7 +110,7 @@ function defaultColKeys(cls, subclass, slot) {
 // fixed render order for the selected non-stat columns; stat columns slot in
 // right after Name, before these. Selection order doesn't affect layout.
 const CANON_ORDER = ["dps", "speed", "armor", "ammo", "fishing", "slots", "prof",
-  "ilvl", "req", "slot", "type", "quality", "bind", "stack", "faction", "questlvl", "sell", "id", "source"];
+  "ilvl", "req", "slot", "type", "model", "quality", "bind", "stack", "faction", "questlvl", "sell", "id", "source"];
 
 // keys that resolve to a real column (so the chooser's stat groups drop their
 // duplicates -- Armor / Weapon DPS are value columns here, not item_stats reads).
@@ -116,7 +120,7 @@ const VALUE_COL_KEYS = new Set(Object.keys(ALLCOL));
 // stat (minus the ones already offered above as value columns) from GEAR_CRITERIA.
 const COL_GROUPS = [
   { group: "Columns", options: [["dps", "DPS"], ["speed", "Speed"], ["armor", "Armor"], ["ammo", "Damage"], ["fishing", "Fishing"], ["prof", "Profession"], ["slots", "Bag slots"], ["ilvl", "iLvl"], ["req", "Req level"], ["slot", "Slot"], ["source", "Source"]] },
-  { group: "Info", options: [["id", "Id"], ["faction", "Faction"], ["questlvl", "Quest Lvl"], ["bind", "Bind"], ["type", "Type"], ["quality", "Quality"], ["stack", "Stack"], ["sell", "Sell price"]] },
+  { group: "Info", options: [["id", "Id"], ["faction", "Faction"], ["questlvl", "Quest Lvl"], ["bind", "Bind"], ["type", "Type"], ["model", "Mount model"], ["quality", "Quality"], ["stack", "Stack"], ["sell", "Sell price"]] },
   ...GEAR_CRITERIA.map((g) => ({ group: g.group, options: g.options.filter(([k]) => !VALUE_COL_KEYS.has(k)) })).filter((g) => g.options.length),
 ];
 
@@ -309,7 +313,11 @@ async function browseItems(p) {
   // Name is always shown; stat keys resolve via the item_stats join, the rest via
   // ALLCOL. defaultColKeys keeps the smart per-class layout as the pre-checked set.
   const chosen = (p.get("cols") || "").split(",").filter(Boolean);
-  const selectedKeys = chosen.length ? chosen : defaultColKeys(f.class, f.subclass, f.slot);
+  // Mount view has no item class -> its own default columns (summoned-model preview
+  // + faction + how-to-get) instead of the generic gear layout.
+  const selectedKeys = chosen.length ? chosen
+    : f.mount === "1" ? ["model", "faction", "req", "source"]
+    : defaultColKeys(f.class, f.subclass, f.slot);
   const where = ["i.hidden = 0"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
   const addIn = (col, csv) => {
@@ -388,8 +396,10 @@ async function browseItems(p) {
     `SELECT i.entry, i.name, i.quality, i.class, i.subclass, i.inventory_type, i.item_level, i.required_level, i.display_id,
             i.required_skill, i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, i.bonding, i.stackable,
             i.quest_faction, i.quest_min_level, i.allowable_race, i.sell_price, i.custom, i.is_mount, di.icon${statSel2}${fishingSel},
-            i.sources
-     FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
+            mc.display_id AS mount_display, i.sources
+     FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
+          LEFT JOIN item_mount im ON im.item = i.entry
+          LEFT JOIN creatures mc ON mc.entry = im.creature ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
 
   // gear score: Σ weight·stat over the weighted keys. Compute per row, then sort

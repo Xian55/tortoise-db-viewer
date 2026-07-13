@@ -80,8 +80,9 @@ async function testMount(itemId, creatureId, expectCreature) {
   await page.waitForSelector(".npc-head", { timeout: T });
   const rev = await page.$$eval(".npc-meta", (es) => es.map((e) => e.textContent).join(" | "));
   const revLink = await page.$(`.npc-meta a[href*="item=${itemId}"]`) !== null;
-  // browse: mount=1 filter -> rows, all typed "Mount"
-  await page.goto(`${BASE}?browse=items&mount=1&cols=type`, { waitUntil: WAIT, timeout: T });
+  // browse: mount=1 filter -> rows, all typed "Mount", + the summoned-model column
+  // renders model-link spans (data-display) that drive the 3D hover preview.
+  await page.goto(`${BASE}?browse=items&mount=1&cols=type,model`, { waitUntil: WAIT, timeout: T });
   await page.waitForSelector(".browse table tbody tr", { timeout: T });
   const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
   const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
@@ -89,9 +90,10 @@ async function testMount(itemId, creatureId, expectCreature) {
   const types = ti < 0 ? [] : await page.$$eval(".browse table tbody tr",
     (rs, i) => rs.map((r) => r.querySelectorAll("td")[i]?.textContent.trim()).filter(Boolean), ti);
   const allMount = types.length > 0 && types.every((t) => t === "Mount");
-  console.log(`mount ${itemId}: summons="${summons}" npcHref="${npcHref}" rev=${revLink} | browse rows=${rows} typesMount=${allMount}`);
+  const models = await page.$$eval(".browse tbody .model-link[data-display]", (e) => e.length);
+  console.log(`mount ${itemId}: summons="${summons}" npcHref="${npcHref}" rev=${revLink} | browse rows=${rows} typesMount=${allMount} modelLinks=${models}`);
   return summons.includes("Summons") && summons.includes(expectCreature) && /npc=/.test(npcHref)
-    && revLink && rows > 0 && allMount;
+    && revLink && rows > 0 && allMount && models > 0;
 }
 
 async function testSameModel(id, minRows) {
