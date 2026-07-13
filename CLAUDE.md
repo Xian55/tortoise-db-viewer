@@ -104,6 +104,7 @@ bun scripts/build-db.mjs        # build public/data/tortoise.sqlite (+ version.j
 bun run dev                     # http://localhost:5173/tortoise-db-viewer/
 bunx --bun vite build           # production build to dist/
 node scripts/smoke.mjs          # headless end-to-end (needs Chrome; SMOKE_BASE env to point it)
+bun scripts/bench-queries.mjs   # LOCAL dev tool: times every Q_* vs the built DB (worst-case hot params) + flags bad plans (SCAN/TEMP-BTREE/AUTO-INDEX) for indexing fruit. --plans / --top N. Not CI-wired
 
 # Custom icons (Python + Pillow + StormLib; see "Custom icons" below)
 python scripts/extract-icons.py       # LOCAL: client MPQ -> assets/icons/custom/*.webp + supplement

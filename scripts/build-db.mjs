@@ -882,6 +882,7 @@ console.log("Deriving spell teach sources...");
   let nst = 0;
   db.transaction(() => { for (const [sp, set] of trainerNpcs) for (const e of set) { insST.run(sp, e); nst++; } })();
   db.exec(`CREATE INDEX idx_spell_trainer_spell ON spell_trainer(spell)`);
+  db.exec(`CREATE INDEX idx_spell_trainer_npc ON spell_trainer(npc)`); // Q_NPC_TRAINS (per trainer NPC page)
 
   // book/tome/recipe items: an item's Use LEARN_SPELL effect teaches a spell.
   db.exec(`CREATE TABLE spell_taught_item (spell INTEGER, item INTEGER)`);
@@ -1116,6 +1117,10 @@ console.log("Importing item sets...");
   db.exec(`CREATE TABLE item_sets (id INTEGER PRIMARY KEY, name TEXT)`);
   db.exec(`CREATE TABLE item_set_bonus (setid INTEGER, threshold INTEGER, spell INTEGER)`);
   db.exec(`CREATE INDEX idx_items_set ON items(set_id)`);
+  // display_id reverse lookup: Q_SAME_MODEL (item page "other versions" + API build, ×25k)
+  // + kills the AUTOMATIC index the icon-list EXISTS built. req-rep faction: Q_FACTION_ITEMS.
+  db.exec(`CREATE INDEX idx_items_display_id ON items(display_id)`);
+  db.exec(`CREATE INDEX idx_items_req_rep_faction ON items(required_reputation_faction)`);
   // "Used by this spell" reverse lookup (Q_SPELL_USED_BY): the query ORs spellid_1..5,
   // so one index per column lets the planner do a MULTI-INDEX OR instead of scanning
   // every item per spell (the API build's spell pass was the worst offender).
