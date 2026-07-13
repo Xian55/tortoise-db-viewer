@@ -104,6 +104,9 @@ export const MAP_SUB = (DATASET === "main" || DATASET === "dev") ? "" : DS.sub;
 export const MAPS_BASE = `${R2_ASSETS}maps${MAP_SUB}/`;
 export const MINIMAP_BASE = `${R2_ASSETS}minimap${MAP_SUB}/`;
 export const MAPS_BASE_MAIN = `${R2_ASSETS}maps/`;
+// Locally-rendered creature model thumbnails (Turtle-custom models Wowhead lacks).
+// Client-derived + branch-independent, so R2-fixed like maps (not dataset-suffixed).
+export const MODEL_THUMBS_BASE = `${R2_ASSETS}model-thumbs/`;
 
 let winner = "r2";                  // which DATA_ORIGIN answered
 let probedMeta = null;              // version.json captured by the probe; reused by db.js getMeta

@@ -24,3 +24,6 @@ notes/
 
 # local wowhead-probe cache (re-generatable; missing.json is the committed artifact)
 scripts/data/model-thumb-coverage.json
+
+# local render QC montages (temp)
+scratch_cmp/

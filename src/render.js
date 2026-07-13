@@ -333,11 +333,19 @@ export function npcLink(entry, name) {
   return `<a class="ilink npc" href="?npc=${entry}">${esc(name)}</a>`;
 }
 
-// Wowhead's pre-rendered creature thumbnail (Classic branch), keyed by the
-// creature's display_id (creature_template.display_id1). 404s for some creatures
-// -- incl. Turtle-custom ones Wowhead never saw -- so callers must hide on the
-// <img> error (see hovercard.js model card).
+// Locally-rendered model thumbnails (Turtle-custom models Wowhead lacks). main.js
+// loads the manifest at boot: { base, ids: Set<display_id> }. See
+// scripts/render-model-thumbs.py + public/model-thumbs/.
+let MODEL_THUMBS = { base: "", ids: null };
+export function setModelThumbs(m) { MODEL_THUMBS = m; }
+
+// Creature thumbnail by display_id: our own render if we have one (Turtle-custom
+// models), else Wowhead's Classic webthumb. Callers still hide on <img> error
+// (see hovercard.js) so a missing thumb degrades gracefully either way.
 export function modelThumbUrl(displayId) {
+  if (MODEL_THUMBS.ids && MODEL_THUMBS.ids.has(displayId)) {
+    return `${MODEL_THUMBS.base}${displayId}.webp`;
+  }
   return `https://wow.zamimg.com/modelviewer/classic/webthumbs/npc/${displayId % 256}/${displayId}.webp`;
 }
 

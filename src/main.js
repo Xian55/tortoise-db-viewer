@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect, getMeta } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, readableText } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, readableText } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -9,7 +9,7 @@ import { showCharacters, showCharacter, showSharedLoadout } from "./character.js
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
-import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, resolveOrigins, DATASET, getAtlasUrls } from "./config.js";
+import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
@@ -2311,6 +2311,17 @@ async function loadIconAtlas() {
   }
 }
 
+// Load the local model-thumbnail manifest (Turtle-custom models we rendered
+// ourselves); render.js then serves our webp for those and Wowhead for the rest.
+async function loadModelThumbs() {
+  try {
+    const res = await fetch(`${MODEL_THUMBS_BASE}manifest.json`);
+    if (!res.ok) return;
+    const ids = await res.json();
+    setModelThumbs({ base: MODEL_THUMBS_BASE, ids: new Set(ids) });
+  } catch { /* absent -> Wowhead-only fallback (unchanged behaviour) */ }
+}
+
 // Footer: "Updated <build date>" (from version.json's builtAt) + how long the
 // first page render took (performance.now() = ms since navigation start). Set once
 // on boot; the footer persists across SPA navigation so it reflects initial load.
@@ -2344,6 +2355,8 @@ resolveOrigins().finally(() => {
   preconnect();
   initHovercards();
   initSearchDropdown(searchInput, document.getElementById("searchForm"), navigate);
+  // model-thumb manifest loads in parallel (non-blocking; hovercards appear later)
+  loadModelThumbs();
   // Wait for the atlas (small JSON) so the first paint shows custom icons; route
   // anyway if it fails or is missing. Time the first render for the footer.
   loadIconAtlas()

@@ -79,9 +79,9 @@ jobs:
       # content hash of the three dirs (same pattern as the OG/tt/API caches): on a hit,
       # skip the syncs entirely. To force a re-sync (e.g. a manually-cleared R2 object),
       # bump the key suffix below.
-      - name: Static asset hash (maps/minimap/icons)
+      - name: Static asset hash (maps/minimap/icons/model-thumbs)
         id: assetshash
-        run: echo "hash=${{ hashFiles('public/maps/**', 'public/minimap/**', 'public/icons/**') }}" >> "$GITHUB_OUTPUT"
+        run: echo "hash=${{ hashFiles('public/maps/**', 'public/minimap/**', 'public/icons/**', 'public/model-thumbs/**') }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore static-asset sync marker
         id: assetcache
@@ -119,6 +119,15 @@ jobs:
             --exclude "*.json" --content-type image/webp --delete
           # ...then the atlas manifest as JSON (NOT image/webp)
           aws s3 sync public/icons s3://tortoise-db-viewer/icons \
+            --endpoint-url "$R2_ENDPOINT" \
+            --exclude "*" --include "*.json" --content-type application/json
+          # locally-rendered creature model thumbnails (Turtle-custom models):
+          # webp thumbs first (exclude the manifest)...
+          aws s3 sync public/model-thumbs s3://tortoise-db-viewer/model-thumbs \
+            --endpoint-url "$R2_ENDPOINT" \
+            --exclude "*.json" --content-type image/webp --delete
+          # ...then the manifest as JSON
+          aws s3 sync public/model-thumbs s3://tortoise-db-viewer/model-thumbs \
             --endpoint-url "$R2_ENDPOINT" \
             --exclude "*" --include "*.json" --content-type application/json
           touch .r2-assets-synced
@@ -317,7 +326,7 @@ jobs:
       # in the Pages artifact (~75 MB DB + ~13 MB brotli + ~2700 tile files). Drop them
       # so the artifact is just the site shell + OG stubs.
       - name: Trim R2-served assets from the Pages artifact
-        run: rm -rf dist/data/tortoise.sqlite dist/data/tortoise.sqlite.br dist/maps dist/minimap
+        run: rm -rf dist/data/tortoise.sqlite dist/data/tortoise.sqlite.br dist/maps dist/minimap dist/model-thumbs
 
       - uses: actions/upload-pages-artifact@v3
         with:

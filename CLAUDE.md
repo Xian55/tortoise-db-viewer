@@ -123,6 +123,8 @@ bun scripts/extract-instance-bosses.mjs # LOCAL: server ScriptDev2 src (../torto
 bun scripts/extract-vanilla-ids.mjs   # LOCAL: cmangos Classic SQLite DB (classicmangos.sqlite) -> scripts/data/vanilla-ids.json (vanilla-1.12 id allowlist + `edited` field-diff set; build-db flags items/creatures/quests custom = id NOT IN vanilla OR IN edited). Also field-diffs the built Turtle DB vs cmangos (run build-db first). CMANGOS_DB / TW_DB override paths
 python scripts/extract-cmangos-dbc.py # LOCAL: vanilla 1.12 client DBCs -> scripts/data/cmangos-dbc.json (areas/maps/faction/faction_template/item_display_info/skill_line_ability; fills the DBC tables cmangos's world DB omits, for the SQL_SOURCE=cmangos build). CLIENT overrides path
 SQL_SOURCE=cmangos DATA_SUBDIR=data-vanilla-cmangos bun scripts/build-db.mjs # build the vanilla/cmangos dataset from cmangos's SQLite DB (+ cmangos-dbc.json) instead of Turtle dumps
+bun scripts/probe-wowhead-thumbs.mjs  # LOCAL: classify every creature display_id by whether Wowhead's Classic webthumb exists -> scripts/data/model-thumb-missing.json (the 404 set = Turtle-custom models to render ourselves). Needs built DB. --fresh ignores the cache
+python scripts/render-model-thumbs.py # LOCAL: render the missing-worklist creature models (client MPQ -> M2 v256 parse -> headless-GL) -> public/model-thumbs/<displayId>.webp (300x300 transparent) + manifest.json. Skips CHARACTER models (need char-texture compositing). --only ID / --size N / --characters / --force. Needs moderngl+numpy+Pillow+StormLib+GPU
 bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
 bun scripts/build-api.mjs             # public JSON API: rich per-entity JSON + tooltipHtml -> dist/api/<i|n|q|s>/<id>.json (served from R2 at api.tortoiseclothing.org); API_LIMIT=N for a fast subset
 ```
@@ -320,6 +322,25 @@ Re-run `extract-minimap.py` + commit on client map changes.
   order for a full refresh: `build-db → extract-vanilla-ids → build-db` (first build makes
   the DB it diffs; `TW_DB` overrides its path). Re-run + commit on a new cmangos Classic DB
   release or material Turtle world-data change.
+- `scripts/probe-wowhead-thumbs.mjs` — LOCAL: HTTP-probes Wowhead's Classic creature
+  webthumb (`wow.zamimg.com/.../webthumbs/npc/<d%256>/<d>.webp`) for every creature
+  `display_id`; the confirmed-404 set (Turtle-custom models Wowhead never saw) →
+  committed `scripts/data/model-thumb-missing.json` (the render worklist). Full
+  present/missing map cached to `model-thumb-coverage.json` (gitignored). ~1500 of
+  ~8900 display_ids are custom.
+- `scripts/render-model-thumbs.py` — LOCAL: renders the missing worklist to static
+  preview thumbnails Wowhead can't provide. Reads the client MPQ (StormLib),
+  resolves `display_id → CreatureModelData M2 (vanilla v256) + CreatureDisplayInfo
+  skins`, parses the M2 (vertices/skin/views/textures/materials, bone-skinned to the
+  Stand-animation frame 0), and renders headless with moderngl → `public/model-thumbs/
+  <displayId>.webp` (300×300 transparent) + `manifest.json`. Two-pass opaque→additive
+  blend (particle/glow planes), opaque-body framing. **Skips CHARACTER models**
+  (`CreatureDisplayInfo.ExtendedDisplayInfoID != 0`) — humanoids need the char-texture
+  compositing system (skin/face/hair/equipment baking) this doesn't implement, so they'd
+  render untextured; they fall back to no-thumbnail. `src/render.js` `modelThumbUrl`
+  serves our webp for manifest ids, else the Wowhead webthumb. Committed (CI has no
+  client/GPU); re-run + commit on client model changes. Verified against wow.export's
+  `M2LegacyLoader`.
 - `scripts/lib/cmangos-adapter.mjs` — alternative staging source for `SQL_SOURCE=cmangos`:
   builds the viewer DB from cmangos's published Classic **SQLite** DB
   (`classicmangos.sqlite`) instead of Turtle's MySQL dumps. Returns the same accessor
