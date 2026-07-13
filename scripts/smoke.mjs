@@ -593,6 +593,23 @@ async function testNpc(id, expectName, expectTab) {
   return name.includes(expectName) && tabsList.length > 0 && sortableH > 0 && !!display && (!expectTab || tabsList.some((t) => t.includes(expectTab)));
 }
 
+// Build-time prune of false-positive QUESTGIVER flags (build-db.mjs): an NPC with the
+// flag but no quest relation (e.g. Servant of Azora #1949) must NOT show the role badge;
+// a real quest giver (Eagan Peltskinner #196) must keep it.
+async function testQuestGiverPrune() {
+  const roleTags = async (id) => {
+    await page.goto(`${BASE}?npc=${id}`, { waitUntil: WAIT, timeout: T });
+    await page.waitForSelector(".npc-head h1", { timeout: T });
+    return page.$$eval(".npc-head .npc-meta .tagx", (e) => e.map((x) => x.textContent.trim()));
+  };
+  const fp = await roleTags(1949);
+  const real = await roleTags(196);
+  const fpClean = !fp.includes("Quest Giver");
+  const realHas = real.includes("Quest Giver");
+  console.log(`questgiver-prune: #1949 tags=[${fp.join(",")}] (noBadge=${fpClean}) | #196 tags=[${real.join(",")}] (hasBadge=${realHas})`);
+  return fpClean && realHas;
+}
+
 // Measure the in-app (SPA) navigation render time — the actual "click an NPC"
 // path (DB already in memory; just queries + render). Catches query regressions
 // like an unindexed spawn_points scan. App must already be loaded (warm).
@@ -1665,17 +1682,21 @@ async function testDatasetToggle() {
   const r = await page.evaluate(() => {
     const main = document.querySelector('#dsToggle [data-ds="main"]');
     const dev = document.querySelector('#dsToggle [data-ds="dev"]');
+    const cm = document.querySelector('#dsToggle [data-ds="vanilla-cmangos"]');
     return {
       count: document.querySelectorAll("#dsToggle .ds-btn").length,
       mainOn: main?.classList.contains("on"),
       devOn: dev?.classList.contains("on"),
       devHref: dev?.getAttribute("href") || "",
+      cmHref: cm?.getAttribute("href") || "",
       bodyDev: document.body.classList.contains("ds-dev"),
     };
   });
-  console.log(`dataset-toggle: count=${r.count} mainOn=${r.mainOn} devOn=${r.devOn} devHref="${r.devHref}" bodyDev=${r.bodyDev}`);
-  return r.count === 2 && r.mainOn === true && r.devOn === false
-    && /\/dev\/\?item=2770$/.test(r.devHref) && r.bodyDev === false;
+  console.log(`dataset-toggle: count=${r.count} mainOn=${r.mainOn} devOn=${r.devOn} devHref="${r.devHref}" cmHref="${r.cmHref}" bodyDev=${r.bodyDev}`);
+  // three datasets: main (/), dev (/dev/), vanilla-cmangos (/vanilla/cmangos/) -- see src/config.js DATASETS
+  return r.count === 3 && r.mainOn === true && r.devOn === false
+    && /\/dev\/\?item=2770$/.test(r.devHref) && /\/vanilla\/cmangos\/\?item=2770$/.test(r.cmHref)
+    && r.bodyDev === false;
 }
 
 // "What's new" changelog (?changelog). On the main dataset there's no
@@ -2132,6 +2153,7 @@ run(() => testLevelingGuide("goblin", 20));
 run(() => testGuideProgress("goblin"));         // tick a step -> localStorage + reload persistence
 run(() => testNpcLoad(15379, 400));  // AQ NPC, many spawns; ~4ms healthy, 726ms if zone lookup unindexed
 run(() => testNpc(2376, "Torn Fin Oracle"));
+run(() => testQuestGiverPrune());   // false-positive QUESTGIVER flag pruned (#1949) but real one kept (#196)
 run(() => testNpc(80402, "Aemara Sunsorrow", "Teaches"));  // trainer -> Teaches tab
 run(() => testTrainerCols(5038));  // single-profession trainer hides Profession col
 run(() => testNpc(10981, "", "Skinning"));

@@ -1155,6 +1155,17 @@ console.log("Tagging PvP set gear...");
   console.log(`  item_sources pvp: ${np} items`);
 }
 
+// Denormalize the item->sources CSV onto items. The item finder's hottest query (the
+// full ~25k-row catalogue) rendered each row's source tags via a per-row correlated
+// GROUP_CONCAT subquery over item_sources -- ~1/3 of that query's time (measured ~30ms
+// of ~100ms). Precompute it in one build-time pass so the browse SELECT reads a column.
+// MUST run after item_sources is FULLY populated -- the PvP-set block above adds 'pvp'
+// rows after the main derivation. Order within the CSV is irrelevant: render.js
+// sourceTags() re-sorts by SRC_ORDER.
+console.log("Denormalizing item sources...");
+db.exec(`ALTER TABLE items ADD COLUMN sources TEXT`);
+db.exec(`UPDATE items SET sources = (SELECT GROUP_CONCAT(source, ',') FROM item_sources s WHERE s.item = items.entry)`);
+
 // ---- Reputation per kill (grind calculator) ----
 // Flatten the two-slot creature_onkill_rep into one row per (creature, faction):
 // value = rep gained on kill, maxstanding = the standing index kills cap out at.
@@ -1587,6 +1598,25 @@ db.exec(`ALTER TABLE items ADD COLUMN quest_min_level INTEGER NOT NULL DEFAULT 0
     }
   })();
   console.log(`  quest-reward faction lock: ${na} Alliance, ${nh} Horde`);
+}
+
+// ---- Prune false-positive quest-giver flags. The QUESTGIVER npc_flag (bit 2) is set
+// on ~40% of flagged creatures that have NO quest relation at all -- gossip-only NPCs
+// like "Servant of Azora" (#1949). It's a data quirk, not a per-entity fix: clear the
+// bit wherever the creature neither starts nor ends a quest we ingest. One structural
+// correction (no hardcoded list) fixes EVERY consumer at once -- the NPC-page role
+// badge, the zone/world-map "quest" marker (zonemap.js ORs npc_flags & 2), and the
+// public API roles -- and applies to every dataset (main/dev/cmangos). Other role bits
+// (vendor/trainer/…) are left intact.
+console.log("Pruning false-positive quest-giver flags...");
+{
+  const before = db.prepare(`SELECT COUNT(*) n FROM creatures WHERE (npc_flags & 2) <> 0`).get().n;
+  db.exec(`UPDATE creatures SET npc_flags = npc_flags & ~2
+    WHERE (npc_flags & 2) <> 0
+      AND entry NOT IN (SELECT id FROM creature_quest_start)
+      AND entry NOT IN (SELECT id FROM creature_quest_end)`);
+  const after = db.prepare(`SELECT COUNT(*) n FROM creatures WHERE (npc_flags & 2) <> 0`).get().n;
+  console.log(`  quest-giver flag: ${before} -> ${after} (${before - after} false positives cleared)`);
 }
 
 // ---- quest_dungeon: bridge dungeon quests to the areaid the finder's Zone filter

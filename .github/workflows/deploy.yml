@@ -240,19 +240,23 @@ jobs:
 
       # Wowhead-style JSON API (scripts/build-api.mjs): richer per-entity JSON (full
       # page data + rendered tooltipHtml) served from R2 at api.tortoiseclothing.org.
-      # Same content-hash cache gate + R2 hash-gate as the tt JSON above, so a
-      # code-only deploy restores from cache and skips the ~100k-file R2 sync. R2-only
-      # (never merged into dist -- would break Pages' syncing_files like tt).
-      - name: API JSON content hash
-        id: apihash
-        run: echo "hash=$(HASH_ONLY=1 bun scripts/build-api.mjs)" >> "$GITHUB_OUTPUT"
-
+      # Cache gate + R2 hash-gate so a code-only deploy restores from cache and skips
+      # the ~100k-file R2 sync. R2-only (never merged into dist -- would break Pages'
+      # syncing_files like tt).
+      #
+      # Cache key is an INPUT hash (the DB content hash in version.json + the files that
+      # determine the API output), NOT the rendered-output hash. HASH_ONLY=1 still renders
+      # every entity to hash its output, which cost ~8.7 min -- as long as the actual build
+      # (~8.8 min), so we paid the generation TWICE on a data change. hashFiles() is instant
+      # and, since the API output is a pure function of the DB + these modules, it invalidates
+      # exactly when the output can change. The R2 hash-gate below still compares the real
+      # OUTPUT digest from the (cache-restored) manifest.json, so publishing stays precise.
       - name: Restore API JSON
         id: apicache
         uses: actions/cache@v4
         with:
           path: api-json
-          key: api-${{ steps.apihash.outputs.hash }}
+          key: api-${{ hashFiles('public/data/version.json', 'scripts/build-api.mjs', 'src/queries.js', 'src/render.js', 'src/constants.js') }}
 
       - name: Build API JSON (cache miss only)
         if: steps.apicache.outputs.cache-hit != 'true'
