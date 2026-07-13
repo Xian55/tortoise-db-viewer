@@ -1563,9 +1563,14 @@ flagJunk("maps", "name");
 // that squat INSIDE the vanilla id range (e.g. items 10000-24283) and isn't fooled by
 // vanilla entries with very high ids. FALLBACK (allowlist absent, e.g. not yet
 // extracted) is an ID threshold placed in the empty gap above vanilla density -- clean
-// for items/creatures, hence those cutoffs. CAVEAT (both modes): can't detect an
-// in-place *rebalance* of a vanilla entry (same id, changed stats) -- that needs a
-// field-level diff. So "vanilla" filter = "hide the additions", not a pristine 1.12 view.
+// for items/creatures, hence those cutoffs.
+//
+// SECOND signal: the `edited` set (also from vanilla-ids.json) closes the in-place
+// *edit* gap the id-list alone can't see -- ids that ARE vanilla but Turtle repurposed
+// or rebalanced (extract-vanilla-ids.mjs field-diffs the built DB vs cmangos). An entry
+// is custom iff its id is NOT in vanilla OR it is in `edited`. Coverage per policy:
+// items = name/gameplay-field diff (repurposes + rebalances); creatures/quests = name/
+// title diff (repurposes only). Absent `edited` (id-list-only JSON) => allowlist behaviour.
 const vanillaIdsFile = join(ROOT, "scripts", "data", "vanilla-ids.json");
 const vanillaIds = existsSync(vanillaIdsFile) ? JSON.parse(readFileSync(vanillaIdsFile, "utf8")) : null;
 if (vanillaIds) console.log(`  vanilla-ids: ${vanillaIds.db_version || "cmangos"} (items ${vanillaIds.items?.length}, creatures ${vanillaIds.creatures?.length}, quests ${vanillaIds.quests?.length})`);
@@ -1583,7 +1588,23 @@ for (const [tbl, key, cutoff] of [["items", "items", 24283], ["creatures", "crea
   } else {
     db.exec(`UPDATE ${tbl} SET custom = 1 WHERE entry > ${cutoff}`); // fallback: threshold
   }
-  console.log(`  custom (Turtle) ${tbl}: ${db.prepare(`SELECT COUNT(*) n FROM ${tbl} WHERE custom=1`).get().n}${ids?.length ? "" : " (threshold fallback)"}`);
+  // Union the field-diff "edited" ids (vanilla id but Turtle-modified) into the flag.
+  // Only for Turtle builds: the `edited` set was diffed FROM the Turtle DB against
+  // cmangos, so in the cmangos dataset those same rows ARE pristine vanilla (never custom).
+  const edited = SQL_SOURCE === "cmangos" ? null : vanillaIds?.edited?.[key];
+  let nEdited = 0;
+  if (edited?.length) {
+    db.exec(`CREATE TEMP TABLE _edited(id INTEGER PRIMARY KEY)`);
+    const ins = db.prepare(`INSERT OR IGNORE INTO _edited(id) VALUES (?)`);
+    db.exec("BEGIN");
+    for (const id of edited) ins.run(id);
+    db.exec("COMMIT");
+    nEdited = db.prepare(`SELECT COUNT(*) n FROM ${tbl} WHERE custom = 0 AND entry IN (SELECT id FROM _edited)`).get().n;
+    db.exec(`UPDATE ${tbl} SET custom = 1 WHERE entry IN (SELECT id FROM _edited)`);
+    db.exec(`DROP TABLE _edited`);
+  }
+  const total = db.prepare(`SELECT COUNT(*) n FROM ${tbl} WHERE custom=1`).get().n;
+  console.log(`  custom (Turtle) ${tbl}: ${total}${ids?.length ? "" : " (threshold fallback)"}${nEdited ? ` (+${nEdited} vanilla-id edits)` : ""}`);
 }
 
 // Buyable flag: item_template.buy_price is set on most items but only meaningful

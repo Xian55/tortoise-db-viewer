@@ -119,7 +119,7 @@ python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc
 python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
 bun scripts/extract-instance-bosses.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src) + built DB -> scripts/data/instance-bosses.json (script-spawned boss entry -> instance mapId; needs build-db first)
-bun scripts/extract-vanilla-ids.mjs   # LOCAL: cmangos Classic SQLite DB (classicmangos.sqlite) -> scripts/data/vanilla-ids.json (canonical vanilla-1.12 id allowlist; build-db flags items/creatures/quests custom = id NOT IN vanilla). CMANGOS_DB overrides path
+bun scripts/extract-vanilla-ids.mjs   # LOCAL: cmangos Classic SQLite DB (classicmangos.sqlite) -> scripts/data/vanilla-ids.json (vanilla-1.12 id allowlist + `edited` field-diff set; build-db flags items/creatures/quests custom = id NOT IN vanilla OR IN edited). Also field-diffs the built Turtle DB vs cmangos (run build-db first). CMANGOS_DB / TW_DB override paths
 python scripts/extract-cmangos-dbc.py # LOCAL: vanilla 1.12 client DBCs -> scripts/data/cmangos-dbc.json (areas/maps/faction/faction_template/item_display_info/skill_line_ability; fills the DBC tables cmangos's world DB omits, for the SQL_SOURCE=cmangos build). CLIENT overrides path
 SQL_SOURCE=cmangos DATA_SUBDIR=data-vanilla-cmangos bun scripts/build-db.mjs # build the vanilla/cmangos dataset from cmangos's SQLite DB (+ cmangos-dbc.json) instead of Turtle dumps
 bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
@@ -305,11 +305,20 @@ Re-run `extract-minimap.py` + commit on client map changes.
 - `scripts/extract-vanilla-ids.mjs` — LOCAL: reads the cmangos **Classic DB, published
   as SQLite** (github.com/cmangos/classic-db/releases → `classicmangos.sqlite`) →
   committed `scripts/data/vanilla-ids.json` (`{items,creatures,quests}` = the canonical
-  vanilla-1.12 id sets). build-db flags Turtle-custom content as `custom = entry NOT IN
-  vanilla` — more accurate than the old ID threshold (catches Turtle additions squatting
-  inside the vanilla id range; not fooled by high-id vanilla rows). Threshold is the
-  fallback if the JSON is absent. Can't detect an in-place *rebalance* of a vanilla entry
-  (needs a field diff). Re-run + commit on a new cmangos Classic DB release.
+  vanilla-1.12 id sets, **plus** an `edited` set — see next). build-db flags Turtle-custom
+  content as `custom = entry NOT IN vanilla OR entry IN edited` — more accurate than the
+  old ID threshold (catches Turtle additions squatting inside the vanilla id range; not
+  fooled by high-id vanilla rows). Threshold is the fallback if the JSON is absent.
+  **`edited` closes the in-place-edit gap** the id-list can't see: if the built Turtle DB
+  (`public/data/tortoise.sqlite`) is present, the script field-DIFFs every shared id vs
+  cmangos and records Turtle's changes — **items** on a normalized-name OR curated
+  gameplay-field diff (repurposed ids AND rebalances; e.g. Atiesh's tweaked weapon speed),
+  **creatures/quests** on a name/title diff only (repurposes; their field diffs are FP-prone
+  — derived health, NULL-vs-empty subname, npc-flag drift, quest typo-fixes — so excluded).
+  Only Turtle builds union `edited` (the cmangos dataset's rows ARE that baseline). Run
+  order for a full refresh: `build-db → extract-vanilla-ids → build-db` (first build makes
+  the DB it diffs; `TW_DB` overrides its path). Re-run + commit on a new cmangos Classic DB
+  release or material Turtle world-data change.
 - `scripts/lib/cmangos-adapter.mjs` — alternative staging source for `SQL_SOURCE=cmangos`:
   builds the viewer DB from cmangos's published Classic **SQLite** DB
   (`classicmangos.sqlite`) instead of Turtle's MySQL dumps. Returns the same accessor
@@ -429,11 +438,14 @@ Re-run `extract-minimap.py` + commit on client map changes.
   tell which dungeon it's in. The extract parses each `src/scripts/dungeons/<instance>/`
   folder → `creature_instance(entry, map)`, letting the character upgrade finder name
   the instance for such a boss (e.g. Tuten'kash → Razorfen Downs). Committed (CI has no
-  server `src/`); re-run on scriptdev changes. Plus the vanilla-1.12 id allowlist
-  (`scripts/data/vanilla-ids.json` via `extract-vanilla-ids.mjs`, from the cmangos
-  Classic SQLite DB): build-db flags items/creatures/quests `custom = id NOT IN vanilla`
-  (Turtle additions), falling back to an id threshold if absent. Committed (CI has no
-  cmangos DB); re-run on a new cmangos Classic DB release.
+  server `src/`); re-run on scriptdev changes. Plus the vanilla-1.12 id allowlist +
+  `edited` field-diff set (`scripts/data/vanilla-ids.json` via `extract-vanilla-ids.mjs`,
+  from the cmangos Classic SQLite DB + a diff of the built Turtle DB): build-db flags
+  items/creatures/quests `custom = id NOT IN vanilla OR id IN edited` — the `edited` set
+  catches Turtle's in-place repurposes/rebalances of vanilla ids (items = name/gameplay
+  diff, creatures/quests = name/title diff), applied only to Turtle builds. Falls back to
+  an id threshold if the JSON is absent. Committed (CI has no cmangos DB); re-run on a new
+  cmangos Classic DB release or material Turtle world-data change.
 - **Zone assignment is ADT-exact.** Each spawn's `spawn_points.zone` is precomputed
   in build-db from `scripts/data/subzone-bounds.json` (per-AreaTable bounding boxes
   extracted from the client ADT terrain chunks by `extract-area-bounds.py`): the
