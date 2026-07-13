@@ -271,6 +271,11 @@ console.log("Loading instance bosses...");
   console.log(`  creature_instance: ${n}${n ? "" : " (scripts/data/instance-bosses.json absent)"}`);
 }
 
+// "Sold by" reverse lookup (Q_SOLD_BY): the query ORs c.entry (PK, indexed) with
+// c.vendor_id IN (shared vendor template). Indexing vendor_id lets the planner do a
+// MULTI-INDEX OR instead of scanning every creature per item.
+db.exec(`CREATE INDEX idx_creatures_vendor_id ON creatures(vendor_id)`);
+
 // ---- Recommended level range per instance (dungeons/raids) ----
 // map_template carries no level field, so derive a band from each instance's elite
 // (rank>=1) creatures, weighted by spawn count: lo = 10th percentile of their min
@@ -979,6 +984,12 @@ console.log("Importing quests + quest links...");
   db.exec(`CREATE INDEX idx_quests_zone ON quests(zone)`);
   db.exec(`CREATE INDEX idx_quests_level ON quests(level)`);
   db.exec(`CREATE INDEX idx_quests_type ON quests(type)`);
+  // Reverse-lookup indexes for the spell/quest reverse relations (Q_SPELL_REWARD_QUESTS,
+  // Q_QUEST_CHAIN). Without these both full-SCAN quests per call and the chain CTE builds
+  // an AUTOMATIC index every invocation -- the API build's quest/spell pass dominated on it.
+  db.exec(`CREATE INDEX idx_quests_rewspell ON quests(rewspell)`);
+  db.exec(`CREATE INDEX idx_quests_nextquest ON quests(nextquest)`);
+  db.exec(`CREATE INDEX idx_quests_prevquest ON quests(abs(prevquest))`); // chain walks abs(prevquest)
   console.log(`  quests: ${nq} | items: ${nqi} | creature/GO objectives: ${nco} | rep rewards: ${nrep}`);
 }
 
@@ -1105,6 +1116,10 @@ console.log("Importing item sets...");
   db.exec(`CREATE TABLE item_sets (id INTEGER PRIMARY KEY, name TEXT)`);
   db.exec(`CREATE TABLE item_set_bonus (setid INTEGER, threshold INTEGER, spell INTEGER)`);
   db.exec(`CREATE INDEX idx_items_set ON items(set_id)`);
+  // "Used by this spell" reverse lookup (Q_SPELL_USED_BY): the query ORs spellid_1..5,
+  // so one index per column lets the planner do a MULTI-INDEX OR instead of scanning
+  // every item per spell (the API build's spell pass was the worst offender).
+  for (let k = 1; k <= 5; k++) db.exec(`CREATE INDEX idx_items_spellid_${k} ON items(spellid_${k})`);
   const f = join(ROOT, "scripts", "data", "item-sets.json");
   if (existsSync(f)) {
     const sets = JSON.parse(readFileSync(f, "utf8"));
