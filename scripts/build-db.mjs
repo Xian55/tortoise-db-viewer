@@ -5,7 +5,7 @@
 // Default SQL_DIR assumes the server repo sits next to this one.
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { parseColumns, iterRows, NULL } from "./lib/sqldump.mjs";
@@ -1214,22 +1214,39 @@ console.log("Importing zones + spawn points...");
 {
   db.exec(`CREATE TABLE zones (areaid INTEGER PRIMARY KEY, name TEXT, mapid INTEGER, dir TEXT,
     locleft REAL, locright REAL, loctop REAL, locbottom REAL, img_w INTEGER, img_h INTEGER, spawns INTEGER)`);
-  const zf = join(ROOT, "scripts", "data", "zones.json");
+  // ZONES_FILE selects a dataset-scoped parchment-bounds file (e.g.
+  // zones-vanilla-cmangos.json for the cMaNGOS build); default is the Turtle set.
+  const zf = process.env.ZONES_FILE
+    ? (isAbsolute(process.env.ZONES_FILE) ? process.env.ZONES_FILE : join(ROOT, process.env.ZONES_FILE))
+    : join(ROOT, "scripts", "data", "zones.json");
   if (existsSync(zf)) {
     const zones = JSON.parse(readFileSync(zf, "utf8"));
     const nameOf = db.prepare(`SELECT name FROM areas WHERE entry = ?`);
     const sZ = db.prepare(`INSERT OR REPLACE INTO zones
       (areaid,name,mapid,dir,locleft,locright,loctop,locbottom,img_w,img_h) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+    const insZone = (z) => { const a = nameOf.get(z.areaId); sZ.run(z.areaId, (a && a.name) || z.dir, z.mapId, z.dir, z.locleft, z.locright, z.loctop, z.locbottom, z.w, z.h); };
     let nz = 0;
-    db.transaction(() => {
-      for (const z of zones) {
-        const a = nameOf.get(z.areaId);
-        sZ.run(z.areaId, (a && a.name) || z.dir, z.mapId, z.dir,
-          z.locleft, z.locright, z.loctop, z.locbottom, z.w, z.h);
-        nz++;
-      }
-    })();
+    db.transaction(() => { for (const z of zones) { insZone(z); nz++; } })();
     console.log(`  zones: ${nz}`);
+    // Dungeon/raid interior FALLBACK bounds. Vanilla ships no interior parchments, so a
+    // non-Turtle dataset (ZONES_FILE set) has no bounds for those pages. Merge the Turtle
+    // zones.json entries on INSTANCE maps (type 1/2) the dataset lacks, so a cMaNGOS
+    // dungeon page renders with bounds and the frontend falls the IMAGE back to Turtle's
+    // interior parchment (config.js MAPS_BASE_MAIN). Aligns for dungeons Turtle didn't
+    // re-lay; a reworked interior (Molten Core) may drift -- accepted vs no map.
+    const baseZf = join(ROOT, "scripts", "data", "zones.json");
+    if (process.env.ZONES_FILE && existsSync(baseZf) && baseZf !== zf) {
+      const have = new Set(zones.map((z) => z.areaId));
+      const instMaps = new Set(db.prepare(`SELECT id FROM maps WHERE type IN (1,2)`).all().map((r) => r.id));
+      let nf = 0;
+      db.transaction(() => {
+        for (const z of JSON.parse(readFileSync(baseZf, "utf8"))) {
+          if (have.has(z.areaId) || !instMaps.has(z.mapId)) continue;
+          insZone(z); nf++;
+        }
+      })();
+      if (nf) console.log(`  zones: +${nf} Turtle instance-interior fallback bounds`);
+    }
   } else {
     console.log("  (no zones.json -- run scripts/extract-maps.py for the zone maps)");
   }

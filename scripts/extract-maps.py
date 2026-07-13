@@ -39,8 +39,14 @@ STORMLIB = os.environ.get(
     os.path.join(ROOT, "..", "StormLib", "bin", "StormLib_dll", "x64", "Release", "StormLib.dll"),
 )
 DATA = os.path.join(CLIENT, "Data")
-OUT_MAPS = os.path.join(ROOT, "public", "maps")
-OUT_ZONES = os.path.join(ROOT, "scripts", "data", "zones.json")
+# Per-dataset outputs (like TALENTS_OUT): point TW_CLIENT at a vanilla client and
+# MAPS_OUT/MAPS_ZONES at dataset-scoped paths to build the cMaNGOS zone parchments.
+OUT_MAPS = os.environ.get("MAPS_OUT") or os.path.join(ROOT, "public", "maps")
+OUT_ZONES = os.environ.get("MAPS_ZONES") or os.path.join(ROOT, "scripts", "data", "zones.json")
+if not os.path.isabs(OUT_MAPS):
+    OUT_MAPS = os.path.join(ROOT, OUT_MAPS)
+if not os.path.isabs(OUT_ZONES):
+    OUT_ZONES = os.path.join(ROOT, OUT_ZONES)
 
 # Highest precedence last (a file in a later patch overrides earlier archives).
 ARCHIVE_ORDER = [
