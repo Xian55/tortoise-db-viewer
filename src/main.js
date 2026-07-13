@@ -2301,6 +2301,14 @@ async function loadIconAtlas() {
 async function showFooterMeta(loadMs) {
   const load = document.getElementById("footLoad");
   if (load) load.textContent = `Loaded in ${loadMs < 1000 ? `${Math.round(loadMs)} ms` : `${(loadMs / 1000).toFixed(1)} s`}`;
+  // Data-source credit is dataset-specific: the vanilla/cmangos dataset is derived from
+  // cMaNGOS classic-db (GPL v3) -- attribute it (see NOTICE.md). main/dev keep the Turtle link.
+  const dbLink = document.getElementById("footDb");
+  if (dbLink && DATASET === "vanilla-cmangos") {
+    dbLink.href = "https://github.com/cmangos/classic-db";
+    dbLink.textContent = "cMaNGOS (GPL v3)";
+    dbLink.title = "vanilla/cmangos dataset — data derived from cMaNGOS classic-db, licensed GPL v3";
+  }
   const upd = document.getElementById("footUpdated");
   if (!upd) return;
   try {
