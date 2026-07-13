@@ -126,3 +126,19 @@ node scripts/test-queries.mjs 7909        # validate relation SQL against the bu
 npm run build && node scripts/smoke.mjs   # headless end-to-end (needs Chrome/Edge)
 # live: SMOKE_BASE="https://<user>.github.io/<repo>/" node scripts/smoke.mjs
 ```
+
+## Data sources & licenses
+
+Datasets are built from third-party sources — see [`NOTICE.md`](NOTICE.md) for the full attribution.
+
+- **`vanilla/cmangos` dataset** and `scripts/data/vanilla-ids.json` are **derived from
+  [cMaNGOS classic-db](https://github.com/cmangos/classic-db)**, licensed **GPL v3**. Its
+  license and copyright notice are vendored verbatim in
+  [`third_party/cmangos-classic-db/`](third_party/cmangos-classic-db/); the corresponding source
+  for the derived data is this repository (`scripts/build-db.mjs` with `SQL_SOURCE=cmangos`).
+  These notices must not be removed from redistributed copies.
+- **main / dev datasets** are built from the Turtle-WoW server SQL dumps
+  ([Penqle/tortoise-wow](https://github.com/Penqle/tortoise-wow)).
+- **Blizzard content** (client-extracted maps, icons, talents, DBC tables) is © Blizzard
+  Entertainment / its licensors, used non-commercially for fan reference only — not affiliated
+  with or endorsed by Blizzard.
