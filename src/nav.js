@@ -72,6 +72,7 @@ const ITEMS = {
     { label: "Recipes", href: item("class=9") },
     { label: "Quest", href: item("class=12") },
     { label: "Keys", href: item("class=13") },
+    { label: "Mounts", href: item("mount=1") },
     { label: "Miscellaneous", href: item("class=15") },
     { label: "Item Sets", href: "?browse=itemsets" },
   ],

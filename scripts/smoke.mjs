@@ -66,6 +66,34 @@ async function testItem(id, expectName) {
 
 // "Same model" tab lists other items sharing this one's display_id (appearance).
 // Item 33292 (Elberetha's Scepter) shares display 68751 with 2 other wands.
+// Mount item: the tooltip surfaces the summoned creature ("Summons <npc>"), the
+// creature's NPC page reverse-links the item ("Mount summoned by"), and browse
+// categorises it as "Mount" (not blank Miscellaneous) + the mount=1 filter works.
+// 18768 Armored Dawnsaber -> Swift Dawnsaber (creature 14557).
+async function testMount(itemId, creatureId, expectCreature) {
+  await page.goto(`${BASE}?item=${itemId}`, { waitUntil: WAIT, timeout: 30000 });
+  await page.waitForSelector(".item-main .tt-mount", { timeout: T });
+  const summons = await page.$eval(".item-main .tt-mount", (e) => e.textContent.trim());
+  const npcHref = await page.$eval(".item-main .tt-mount a", (a) => a.getAttribute("href")).catch(() => "");
+  // reverse: the summoned creature's page names the item
+  await page.goto(`${BASE}?npc=${creatureId}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".npc-head", { timeout: T });
+  const rev = await page.$$eval(".npc-meta", (es) => es.map((e) => e.textContent).join(" | "));
+  const revLink = await page.$(`.npc-meta a[href*="item=${itemId}"]`) !== null;
+  // browse: mount=1 filter -> rows, all typed "Mount"
+  await page.goto(`${BASE}?browse=items&mount=1&cols=type`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const headers = await page.$$eval(".browse th", (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const ti = headers.indexOf("Type");
+  const types = ti < 0 ? [] : await page.$$eval(".browse table tbody tr",
+    (rs, i) => rs.map((r) => r.querySelectorAll("td")[i]?.textContent.trim()).filter(Boolean), ti);
+  const allMount = types.length > 0 && types.every((t) => t === "Mount");
+  console.log(`mount ${itemId}: summons="${summons}" npcHref="${npcHref}" rev=${revLink} | browse rows=${rows} typesMount=${allMount}`);
+  return summons.includes("Summons") && summons.includes(expectCreature) && /npc=/.test(npcHref)
+    && revLink && rows > 0 && allMount;
+}
+
 async function testSameModel(id, minRows) {
   await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
   await page.waitForSelector(".item-rel .tab", { timeout: T });
@@ -2095,6 +2123,7 @@ run(() => testItem(2770, "Copper Ore"));
 run(() => testItem(55356, "Netherwrought"));
 run(() => testItem(647, "Destiny"));
 run(() => testSameModel(33292, 2));  // items sharing a display_id (Same model tab)
+run(() => testMount(18768, 14557, "Swift Dawnsaber"));  // mount item -> summoned NPC + reverse + browse category
 run(() => testCompare(47185, 47191));  // ?compare= side-by-side tooltips + stat deltas
 run(() => testCharacterLoadout());     // ?characters import -> gear sheet + export
 run(() => testWeightSets());           // ?weights preset manager + browse integration

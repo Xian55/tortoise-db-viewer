@@ -380,6 +380,25 @@ export const Q_CRAFTING = `
 // tooltip + quest callers just read the handful they need (name/desc/icon/teaches/sN).
 export const Q_SPELL = `SELECT * FROM spells WHERE entry = ?1`;
 
+// Mount an item summons: item -> collection/own spell -> creature (item_mount is
+// precomputed in build-db). Creature may be NULL for the odd special mount (e.g.
+// the AQ Black Qiraji tank, whose summon effect carries no misc creature id).
+export const Q_ITEM_MOUNT = `
+  SELECT im.spell, im.creature, c.name AS creature_name, c.display_id, s.name AS spell_name
+  FROM item_mount im
+  LEFT JOIN creatures c ON c.entry = im.creature
+  LEFT JOIN spells s ON s.entry = im.spell
+  WHERE im.item = ?1`;
+
+// Reverse: item(s) that summon this creature as a mount (NPC page). Usually one.
+export const Q_MOUNT_SOURCE = `
+  SELECT i.entry, i.name, i.quality, di.icon
+  FROM item_mount im
+  JOIN items i ON i.entry = im.item
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE im.creature = ?1
+  ORDER BY i.quality DESC, i.name`;
+
 // ---- Spell detail page ----
 // Items this craft spell produces (+ the skill-up thresholds for difficulty).
 export const Q_SPELL_PRODUCES = `

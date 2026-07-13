@@ -68,7 +68,7 @@ const factionTag = (s) => s === 1 ? '<span class="tagx fac-alliance">Alliance</s
 // Turtle-custom badge for finder rows (items/NPCs). r.custom is the build-db flag.
 const twTag = (r) => r.custom ? ' <span class="tagx tw-tag" title="Added by Turtle WoW (not in vanilla 1.12)">TW</span>' : "";
 // armor subtype (Cloth/Leather/Mail/Plate) or weapon type (Sword/Axe/...) label.
-const itemSubtype = (r) => (r.class === 2 ? WEAPON_SUBCLASS[r.subclass] : r.class === 4 ? ARMOR_SUBCLASS[r.subclass] : "") || "";
+const itemSubtype = (r) => r.is_mount ? "Mount" : (r.class === 2 ? WEAPON_SUBCLASS[r.subclass] : r.class === 4 ? ARMOR_SUBCLASS[r.subclass] : "") || "";
 // short bind tag for the column (full text via title); mirrors BONDING keys.
 const BIND_SHORT = { 1: "BoP", 2: "BoE", 3: "BoU", 4: "Quest" };
 
@@ -300,6 +300,7 @@ async function browseItems(p) {
     source: p.get("source") || "",
     bind: p.get("bind") || "", uclass: p.get("uclass") || "", faction: p.get("faction") || "",
     unique: p.get("unique") || "", prof: p.get("prof") || "", origin: p.get("origin") || "",
+    mount: p.get("mount") || "",
   };
   const criteria = parseCriteria(p.get("stats"));
   const weights = parseWeights(p.get("weights"));
@@ -350,6 +351,7 @@ async function browseItems(p) {
   if (f.faction === "a") { where.push(`NOT ${exclusiveTo}`); binds.push(RACE_HORDE, RACE_ALLIANCE, 2); }
   else if (f.faction === "h") { where.push(`NOT ${exclusiveTo}`); binds.push(RACE_ALLIANCE, RACE_HORDE, 1); }
   if (f.unique === "1") where.push("i.max_count = 1");
+  if (f.mount === "1") where.push("i.is_mount = 1");
   if (f.prof !== "") add("i.required_skill = ?", +f.prof);
   // origin: Turtle-WoW additions (i.custom = 1) vs vanilla-range 1.12 (0). See build-db.
   if (f.origin === "tw") where.push("i.custom = 1");
@@ -385,7 +387,7 @@ async function browseItems(p) {
   const rows = await query(
     `SELECT i.entry, i.name, i.quality, i.class, i.subclass, i.inventory_type, i.item_level, i.required_level, i.display_id,
             i.required_skill, i.dmg_min1, i.dmg_max1, i.delay, i.armor, i.container_slots, i.bonding, i.stackable,
-            i.quest_faction, i.quest_min_level, i.allowable_race, i.sell_price, i.custom, di.icon${statSel2}${fishingSel},
+            i.quest_faction, i.quest_min_level, i.allowable_race, i.sell_price, i.custom, i.is_mount, di.icon${statSel2}${fishingSel},
             i.sources
      FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id ${joins} ${whereSql}
      ORDER BY i.quality DESC, i.item_level DESC`, binds);
@@ -456,6 +458,7 @@ async function browseItems(p) {
   if (f.prof !== "") chip(`Prof <b>${esc(PROFESSION_LABEL[f.prof] || f.prof)}</b>`, `data-rf="prof"`);
   if (f.origin !== "") chip(`<b>${f.origin === "tw" ? "Turtle WoW" : "Classic 1.12"}</b>`, `data-rf="origin"`);
   if (f.unique === "1") chip(`<b>Unique</b>`, `data-rf="unique"`);
+  if (f.mount === "1") chip(`<b>Mounts</b>`, `data-rf="mount"`);
   for (const c of criteria) chip(`<b>${esc(GEAR_STAT_LABEL[c.key] || c.key)} ${esc(c.op)} ${esc(c.val)}</b>`, `data-rcrit="${esc(`${c.key},${c.op},${c.val}`)}"`);
   if (weights.length) chip(`⚔ <b>Gear score (${weights.length})</b>`, `data-rweights="1"`);
   const chipsHtml = chips.length
@@ -463,7 +466,7 @@ async function browseItems(p) {
 
   // collapsible sub-sections; each auto-opens when it has active values + shows a count badge.
   const badge = (n) => (n ? ` <span class="badge">${n}</span>` : "");
-  const moreCount = [f.minil, f.maxil, f.bind, f.uclass, f.faction, f.prof, f.origin, f.unique === "1" ? "1" : ""].filter(Boolean).length;
+  const moreCount = [f.minil, f.maxil, f.bind, f.uclass, f.faction, f.prof, f.origin, f.unique === "1" ? "1" : "", f.mount === "1" ? "1" : ""].filter(Boolean).length;
   const section = (title, count, body, open = count) => `<details class="sec"${open ? " open" : ""}><summary>${title}${badge(count)}</summary><div class="sec-body">${body}</div></details>`;
   const moreBody = `<div class="filters embed">
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
@@ -473,6 +476,7 @@ async function browseItems(p) {
     ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any"))}
     ${selectField("unique", "Unique", options([["1", "Unique only"]], f.unique, "Any"))}
     ${selectField("origin", "Origin", options([["tw", "Turtle WoW"], ["vanilla", "Classic 1.12"]], f.origin, "Any"))}
+    ${selectField("mount", "Mounts", options([["1", "Mounts only"]], f.mount, "Any"))}
   </div>`;
   // Columns is its own group -- it controls what's SHOWN, not what's filtered. Muted
   // badge = how many columns are visible; opens when a custom set is active.

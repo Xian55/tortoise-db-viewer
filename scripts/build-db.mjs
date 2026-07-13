@@ -82,6 +82,7 @@ const STAGE_SPECS = (() => {
   add("quest_template", "tw_world_quest_template.sql");
   add("npc_trainer", "tw_world_npc_trainer.sql");
   add("npc_trainer_template", "tw_world_npc_trainer_template.sql");
+  add("collection_mount", "tw_world_collection_mount.sql"); // Turtle: itemId -> real mount spell
   return specs;
 })();
 
@@ -992,6 +993,60 @@ console.log("Importing quests + quest links...");
   db.exec(`CREATE INDEX idx_quests_nextquest ON quests(nextquest)`);
   db.exec(`CREATE INDEX idx_quests_prevquest ON quests(abs(prevquest))`); // chain walks abs(prevquest)
   console.log(`  quests: ${nq} | items: ${nqi} | creature/GO objectives: ${nco} | rep rewards: ${nrep}`);
+}
+
+// ---- Mounts: item -> summon spell -> summoned creature ----
+// Turtle changed mounts to "add to collection" (the item's own Use spell is a
+// generic dummy: 46499 "Add Mount to Collection"), so the item no longer points
+// at its creature directly. The real mount spell lives in `collection_mount`
+// (itemId -> spellId), and that spell carries SPELL_AURA_MOUNTED (aura 78) whose
+// miscValue is the summoned creature. VANILLA/old items keep the classic mechanic
+// (their own spellid_N is the mount aura spell), so we resolve BOTH paths ->
+// dataset-proof (cmangos has no collection_mount, falls back to own-spell). The
+// derived item_mount table + items.is_mount flag power the item/NPC pages and let
+// browse categorise mounts out of the "Miscellaneous" bucket.
+console.log("Deriving mounts (item -> spell -> creature)...");
+{
+  // spellId -> summoned creature entry, from the aura-78 (Mounted) effect misc value.
+  const mountCreature = new Map();
+  for (const r of db.prepare(`SELECT entry, effects FROM spells WHERE effects LIKE '%"aura":78%'`).all()) {
+    for (const e of JSON.parse(r.effects)) {
+      if (e.aura === 78 && e.misc) { mountCreature.set(r.entry, e.misc); break; }
+    }
+  }
+  // itemId -> mount spellId (Turtle's collection table; empty for cmangos).
+  const collectionSpell = new Map();
+  if (src.has("collection_mount")) {
+    const cm = src.columns("collection_mount");
+    const iItem = cm.indexOf("itemId"), iSpell = cm.indexOf("spellId");
+    for (const row of src.rows("collection_mount")) {
+      const item = clean(row[iItem]), spell = clean(row[iSpell]);
+      if (item && spell && !collectionSpell.has(item)) collectionSpell.set(item, spell);
+    }
+  }
+  db.exec(`ALTER TABLE items ADD COLUMN is_mount INTEGER NOT NULL DEFAULT 0`);
+  db.exec(`CREATE TABLE item_mount (item INTEGER PRIMARY KEY, spell INTEGER, creature INTEGER)`);
+  const insMount = db.prepare(`INSERT OR IGNORE INTO item_mount VALUES (?,?,?)`);
+  const setFlag = db.prepare(`UPDATE items SET is_mount = 1 WHERE entry = ?`);
+  let nm = 0, ncr = 0;
+  db.transaction(() => {
+    for (const it of db.prepare(`SELECT entry, spellid_1, spellid_2, spellid_3, spellid_4, spellid_5 FROM items`).all()) {
+      let spell = null, creature = null;
+      // Turtle collection path first (its own spell is the dummy).
+      if (collectionSpell.has(it.entry)) { spell = collectionSpell.get(it.entry); creature = mountCreature.get(spell) ?? null; }
+      // Classic/own-spell path: a spellid_N that IS a mount-aura spell.
+      if (creature == null) {
+        for (const s of [it.spellid_1, it.spellid_2, it.spellid_3, it.spellid_4, it.spellid_5]) {
+          if (s && mountCreature.has(s)) { spell = s; creature = mountCreature.get(s); break; }
+        }
+      }
+      if (spell == null && !collectionSpell.has(it.entry)) continue; // not a mount
+      insMount.run(it.entry, spell, creature); setFlag.run(it.entry); nm++;
+      if (creature != null) ncr++;
+    }
+  })();
+  db.exec(`CREATE INDEX idx_item_mount_creature ON item_mount(creature)`);
+  console.log(`  mounts: ${nm} items | ${ncr} resolved to a creature`);
 }
 
 // ---- Derived per-item gear stats (powers the multi-criteria browse filter) ----

@@ -479,6 +479,9 @@ async function showItem(id) {
     const sp = await queryOne(Q.Q_SPELL, [sid]);
     if (sp) spellMap.set(sid, sp);
   }));
+  // Mount items summon a creature (resolved item -> spell -> creature in build-db).
+  const mountRow = it.is_mount ? await queryOne(Q.Q_ITEM_MOUNT, [id]) : null;
+  const mountOpt = mountRow ? { entry: mountRow.creature, name: mountRow.creature_name, displayId: mountRow.display_id } : null;
 
   const [dropped, objects, sold, contained, contains, disen, quests, starts, createdBy, reagentFor, teaches, srcRows, gatherSpawns, sameModel] =
     await Promise.all([
@@ -644,7 +647,7 @@ async function showItem(id) {
 
   app.innerHTML =
     `<div class="item-view">
-      <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true, set: setOpt })}
+      <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true, set: setOpt, mount: mountOpt })}
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}${it.world_drop ? ' · <span class="tagx">World Drop</span>' : ""}${it.rolls_suffix ? ' · <span class="tagx" title="Can drop with a random suffix">🎲 Random suffix</span>' : ""}</div>
         ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}
         ${suffixSection(suffixes)}
@@ -972,11 +975,12 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, trains, npcSpawns, npcFaction] = await Promise.all([
+  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, trains, npcSpawns, npcFaction, mountSrc] = await Promise.all([
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
     query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]),
     query(Q.Q_NPC_TRAINS, [id]), query(Q.Q_NPC_SPAWNS, [id]), queryOne(Q.Q_NPC_FACTION, [id]),
+    query(Q.Q_MOUNT_SOURCE, [id]),
   ]);
   // Each spawn carries its exact precomputed home zone (build-db, ADT-derived).
   // Count per zone (and per map) -> the most-common zone is the one the map renders;
@@ -1080,7 +1084,9 @@ async function showNpc(id) {
   const noMapNote = (mapZone || questZone) ? ""
     : npcSpawns.length
       ? `<div class="zone-empty muted">No spawn-location map is available${instMap ? ` — <b>${esc(instMap.name)}</b> has no interior map in the client data` : ""}.</div>`
-      : `<div class="zone-empty muted">No spawn location is recorded for this NPC (it may be placed by a script or event).</div>`;
+      : mountSrc.length
+        ? `<div class="zone-empty muted">This creature is a summoned mount — it has no world spawn.</div>`
+        : `<div class="zone-empty muted">No spawn location is recorded for this NPC (it may be placed by a script or event).</div>`;
   // Quest-inferred zone: show the parchment but caption that there are no exact coords.
   const questZoneNote = questZone
     ? `<div class="zone-empty muted">No exact spawn coordinates in the current data — this NPC is placed by a script or event; the zone above is inferred from its quests.</div>`
@@ -1097,6 +1103,7 @@ async function showNpc(id) {
         ${mapHtml ? `<div class="npc-meta muted">Location: ${mapHtml}</div>`
           : questZone ? `<div class="npc-meta muted">Location: ${zoneLink(questZone.areaid, questZone.name)} <span class="dim">(from quests)</span></div>`
           : ""}
+        ${mountSrc.length ? `<div class="npc-meta muted">Mount summoned by ${mountSrc.map((m) => itemLink(m.entry, m.name, m.quality, m.icon)).join(", ")}</div>` : ""}
       </div>
       ${(mapZone || questZone) ? `<div id="zonemap"></div>` : noMapNote}
       ${questZoneNote}

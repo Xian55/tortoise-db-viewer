@@ -57,7 +57,10 @@ export function buildStaging(db, SQL_DIR, UPD_DIR, specs) {
         if (!staged.has(table)) continue;
         const cols = colsByTable[table];
         for (const c of m[2].split(",").map((s) => s.replace(/[`\s]/g, ""))) {
-          if (c && !cols.includes(c)) {
+          // Case-insensitive: SQLite matches column names case-insensitively, so a
+          // migration that inserts into `itemid` against a base `itemId` column must
+          // NOT trigger an ALTER (it would fail "duplicate column name").
+          if (c && !cols.some((x) => x.toLowerCase() === c.toLowerCase())) {
             db.exec(`ALTER TABLE \`${PFX}${table}\` ADD COLUMN \`${c}\` NUMERIC`);
             cols.push(c);
           }

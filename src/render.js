@@ -135,7 +135,7 @@ export function resolveSpellText(text, sp) {
 // Build the item tooltip card. spellMap: Map<spellId, spellRow>. linkSpells wraps
 // the green effect lines in spell links (on for the item page, off for transient
 // hovercards so a popover never holds a nested link).
-export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, set = null } = {}) {
+export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, set = null, mount = null } = {}) {
   const L = [];
   const line = (html, cls = "") => L.push(`<div class="tt-line ${cls}">${html}</div>`);
 
@@ -234,6 +234,15 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, se
     // a recipe's "learn" spell (sp.teaches) is a stub -> link to the real craft.
     const inner = linkSpells && sp ? spellLink(sp.teaches || sid, body, sp.icon) : esc(body);
     line(`${label} ${inner}`, "tt-spell");
+  }
+
+  // Mount: the creature this item summons (Turtle "Add to Collection" hides it
+  // behind a generic Use spell, so surface it explicitly). Creature may be absent
+  // for the odd special mount; still label the item as a mount.
+  if (mount) {
+    line(mount.entry && mount.name
+      ? `Summons ${npcLink(mount.entry, mount.name)}`
+      : "Mount", "tt-spell tt-mount");
   }
 
   // item set (in-game style: gold set name + member list + bonus lines)
