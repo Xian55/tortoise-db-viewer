@@ -1732,6 +1732,18 @@ db.exec(`CREATE TABLE quest_dungeon (quest INTEGER, zone INTEGER)`);
     for (const mp of maps) { if (mp === 451) continue; if (only === null) only = mp; else if (only !== mp) { ok = false; break; } }
     if (ok && only !== null && instSet.has(only)) itemExclusiveMap.set(item, only);
   }
+  // Persist item -> its exclusive instance map so the dungeon page's Q_DUNGEON_QUESTS
+  // branch (c) is a plain indexed join instead of a per-call NOT-EXISTS over drops + a
+  // materialized spawns∪creature_instance CTE (~95ms -> ~4ms/dungeon; see queries.js).
+  db.exec(`CREATE TABLE item_dungeon (item INTEGER, map INTEGER)`);
+  {
+    const insID = db.prepare(`INSERT INTO item_dungeon VALUES (?, ?)`);
+    db.exec("BEGIN");
+    for (const [item, mp] of itemExclusiveMap) insID.run(item, mp);
+    db.exec("COMMIT");
+    db.exec(`CREATE INDEX idx_item_dungeon_map ON item_dungeon(map)`);
+    console.log(`  item_dungeon: ${itemExclusiveMap.size} exclusive-drop items`);
+  }
 
   // object entry -> Set(instance maps) for quest giver/ender objects placed inside instances.
   const objInst = new Map();

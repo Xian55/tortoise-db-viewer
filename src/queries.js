@@ -836,11 +836,12 @@ export const Q_ZONE_QUESTS = `
 // a C++-placed boss in Blackfathom Deeps). Both the inclusion join AND the
 // exclusivity guard read cloc, so the off-map test stays honest for such bosses.
 // gc = the alphabetically-first start NPC, for a stable Quest Giver cell.
+// Branch (c) — "quest needs an item that drops EXCLUSIVELY inside this instance" — reads
+// the build-time `item_dungeon` table (item -> the one instance map it drops in; see
+// build-db). That replaces a per-call NOT-EXISTS over drops joined to a materialized
+// spawns∪creature_instance CTE (SQLite rebuilt an AUTOMATIC index every call): ~95ms ->
+// ~4ms per dungeon, result-identical. The other branches are already index-driven.
 export const Q_DUNGEON_QUESTS = `
-  WITH cloc(entry, map) AS (
-    SELECT id, map FROM spawns
-    UNION SELECT entry, map FROM creature_instance
-  )
   SELECT q.entry, q.title, q.level, q.reqraces, gc.entry AS giver_id, gc.name AS giver
   FROM quests q
   LEFT JOIN creatures gc ON gc.entry = (
@@ -853,14 +854,8 @@ export const Q_DUNGEON_QUESTS = `
     UNION SELECT r.quest FROM gameobject_quest_start r JOIN spawn_points s ON s.id = r.id AND s.kind = 'o' AND s.map = ?1
     UNION SELECT r.quest FROM gameobject_quest_end   r JOIN spawn_points s ON s.id = r.id AND s.kind = 'o' AND s.map = ?1
     UNION SELECT qi.quest FROM quest_item qi
-      JOIN drops d ON d.item = qi.item AND d.src = 'c'
-      JOIN creatures c ON c.loot_id = d.owner
-      JOIN cloc ON cloc.entry = c.entry AND cloc.map = ?1
+      JOIN item_dungeon idg ON idg.item = qi.item AND idg.map = ?1
       WHERE qi.role IN ('req', 'source')
-        AND NOT EXISTS (
-          SELECT 1 FROM drops d2 JOIN creatures c2 ON c2.loot_id = d2.owner
-          JOIN cloc c2l ON c2l.entry = c2.entry
-          WHERE d2.item = qi.item AND d2.src = 'c' AND c2l.map <> ?1 AND c2l.map <> 451)
   )
   ORDER BY q.level, q.title LIMIT 1000`;
 
