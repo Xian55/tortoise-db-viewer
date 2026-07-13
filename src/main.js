@@ -567,7 +567,11 @@ async function showItem(id) {
     ...(showQty ? [{ label: "Qty", num: true, cls: "muted", cell: (q) => q.count, value: (q) => q.count || 0 }] : []),
   ];
   const reagentForCols = [
-    { label: "Creates", cell: (r) => itemLink(r.created, r.created_name, r.quality, r.created_icon), value: (r) => r.created_name },
+    { label: "Creates",
+      cell: (r) => (r.created
+        ? itemLink(r.created, r.created_name, r.quality, r.created_icon)
+        : '<span class="muted">—</span>'),
+      value: (r) => r.created_name || "" },
     { label: "Via spell", cls: "muted", cell: (r) => spellLink(r.spell, r.spell_name, r.spell_icon), value: (r) => r.spell_name },
   ];
   // recipe/pattern/plans -> the item it teaches you to craft
@@ -634,7 +638,7 @@ async function showItem(id) {
     { id: "reqquest", label: "Required for quest", ...regTable(questCols(true, false), reqQuests) },
     { id: "starts", label: "Starts quest", ...regTable(questCols(false, false), starts) },
     { id: "created", label: "Created by", ...regTable(createdCols, createdRows) },
-    { id: "reagent", label: "Reagent for", ...regTable(reagentForCols, reagentFor.filter((r) => r.created)) },
+    { id: "reagent", label: "Reagent for", ...regTable(reagentForCols, reagentFor) },
     { id: "samemodel", label: "Same model", ...regTable(sameModelCols, sameModel) },
   ];
 

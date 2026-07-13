@@ -772,6 +772,19 @@ async function testCrafted(id, expectProf) {
   return hit && reagentLinks > 0 && profLink > 0;
 }
 
+// "Reagent for" tab must include enchant spells (which create no item), not just
+// crafted-item rows. Dream Dust (11176) is a reagent for 17 spells, 11 of them enchants.
+async function testReagentFor(id, minRows) {
+  await page.goto(`${BASE}?item=${id}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-rel", { timeout: T });
+  await page.$$eval(".item-rel .tab", (tabs) => { const t = tabs.find((x) => /Reagent for/.test(x.textContent)); if (t) t.click(); });
+  const rows = await page.$$eval(".item-rel .tabpane:not(.hidden) table tbody tr", (r) => r.length).catch(() => 0);
+  // no broken ?item=null links from enchant rows with no created item
+  const badLinks = await page.$$eval('.item-rel .tabpane:not(.hidden) a.ilink[href*="item=null"]', (a) => a.length).catch(() => 0);
+  console.log(`reagent-for ${id}: rows=${rows} (expect >=${minRows}) badLinks=${badLinks}`);
+  return rows >= minRows && badLinks === 0;
+}
+
 // crafting browse: filtered to one profession, grouped, with skill-up brackets
 // (orange #ff8040 span) and a Source column (recipe link / Trainer badge).
 async function testCrafting() {
@@ -2226,6 +2239,7 @@ run(() => testFilter("faction", "a"));
 run(() => testFilter("prof", "197"));
 run(() => testFilter("unique", "1"));
 run(() => testCrafted(2575, "Tailoring"));
+run(() => testReagentFor(11176, 17));  // Dream Dust: reagent-for incl. enchants (create no item)
 run(() => testCrafting());
 run(() => testCraftEnchanting());
 run(() => testGatheringProf());
