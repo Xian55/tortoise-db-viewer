@@ -12,14 +12,18 @@
 // Keys here MUST match GEAR_CRITERIA keys in src/constants.js and item_stats.stat.
 
 // effectApplyAuraName id -> stat key. (Synonymous duplicate auras are intentionally
-// omitted to avoid double counting: ranged AP 124 ~ melee AP 99; ranged/spell haste
-// 140/65 ~ melee haste 138; block VALUE 158 vs reference's Block% 51.)
+// omitted to avoid double counting: ranged/spell haste 140/65 ~ melee haste 138;
+// block VALUE 158 vs reference's Block% 51.) Ranged AP (124, MOD_RANGED_ATTACK_POWER)
+// IS tracked separately as its own `rangedAp` key so hunters can weight it independently
+// of generic melee AP (99); generic "+N Attack Power" items carry both auras, which is
+// correct in-game (generic AP raises ranged AP too).
 // NOTE: aura 13 (MOD_DAMAGE_DONE) is handled separately in statsFromAuras -- its misc
 // value is a spell-school mask, so school-specific spell power (+Fire dmg, +Shadow dmg)
 // is split from generic "sp" (see SP_SCHOOL) instead of all lumping into `sp`.
 export const AURA_STAT = {
   135: "heal",  // MOD_HEALING_DONE
   99: "ap",     // MOD_ATTACK_POWER
+  124: "rangedAp", // MOD_RANGED_ATTACK_POWER (scopes, hunter-specific ranged AP)
   85: "mp5",    // MOD_POWER_REGEN ("Restores N mana per 5 sec")
   161: "hp5",   // health regen per 5
   8: "hp5",     // "Regenerate N health every 5 seconds"

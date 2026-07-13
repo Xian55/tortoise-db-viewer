@@ -170,8 +170,10 @@ async function testFeralAp() {
   };
   const feral = await readCount("feralAp,>=,50");
   const ap = await readCount("ap,>=,50");
-  console.log(`feral-ap: feralAp>=50 items=${feral} | ap>=50 items=${ap}`);
-  return feral > 0 && ap > 0;
+  // Ranged AP (aura 124) is its own key too, so hunters can weight it independently.
+  const ranged = await readCount("rangedAp,>=,1");
+  console.log(`feral-ap: feralAp>=50 items=${feral} | ap>=50 items=${ap} | rangedAp>=1 items=${ranged}`);
+  return feral > 0 && ap > 0 && ranged > 0;
 }
 
 async function testCriteriaOr() {

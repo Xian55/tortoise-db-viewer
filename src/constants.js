@@ -97,7 +97,7 @@ export const RESISTANCES = [
 export const GEAR_CRITERIA = [
   { group: "Base Stats", options: [["str", "Strength"], ["agi", "Agility"], ["sta", "Stamina"], ["int", "Intellect"], ["spi", "Spirit"]] },
   { group: "Defense", options: [["armor", "Armor"], ["def", "Defense"], ["dodge", "Dodge %"], ["parry", "Parry %"], ["block", "Block %"], ["firRes", "Fire Res"], ["natRes", "Nature Res"], ["froRes", "Frost Res"], ["shaRes", "Shadow Res"], ["arcRes", "Arcane Res"]] },
-  { group: "Offensive", options: [["ap", "Attack Power"], ["feralAp", "Feral Attack Power"], ["sp", "Spell Power"], ["heal", "Healing Power"], ["crit", "Crit %"], ["spCrit", "Spell Crit %"], ["hit", "Hit %"], ["spHit", "Spell Hit %"], ["dps", "Weapon DPS"]] },
+  { group: "Offensive", options: [["ap", "Attack Power"], ["rangedAp", "Ranged Attack Power"], ["feralAp", "Feral Attack Power"], ["sp", "Spell Power"], ["heal", "Healing Power"], ["crit", "Crit %"], ["spCrit", "Spell Crit %"], ["hit", "Hit %"], ["spHit", "Spell Hit %"], ["dps", "Weapon DPS"]] },
   // School-specific spell power (aura 13, single-school mask). Generic "Spell Power"
   // above is the all-schools bonus; these only help spells of that school, so the
   // gear scorer counts them for matching specs only (e.g. Fire Dmg for a Fire mage).
@@ -122,7 +122,7 @@ export const STAT_WEIGHT_PRESETS = [
   { id: "paladin-ret", group: "Max level", label: "Paladin · Retribution", weights: { str: 2, ap: 1, crit: 12, hit: 12, dps: 3, sp: 0.3 } },
   { id: "paladin-prot", group: "Max level", label: "Paladin · Protection", weights: { sta: 2, def: 12, dodge: 10, parry: 8, block: 6, str: 1, sp: 0.5, int: 0.3, armor: 0.05 } },
   { id: "paladin-holy", group: "Max level", label: "Paladin · Holy", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.4, spCrit: 6, spi: 0.2 } },
-  { id: "hunter-dps", group: "Max level", label: "Hunter · Ranged", weights: { agi: 2, ap: 1, crit: 12, hit: 12, dps: 2, int: 0.5 } },
+  { id: "hunter-dps", group: "Max level", label: "Hunter · Ranged", weights: { agi: 2, ap: 1, rangedAp: 1, crit: 12, hit: 12, dps: 2, int: 0.5 } },
   { id: "rogue-dps", group: "Max level", label: "Rogue · Combat/Assassination", weights: { agi: 2, ap: 1, crit: 14, hit: 12, dps: 3 } },
   { id: "priest-shadow", group: "Max level", label: "Priest · Shadow", weights: { sp: 1, spShadow: 1, spCrit: 8, spHit: 10, int: 0.3, mp5: 0.3, sta: 0.5 } },
   { id: "priest-heal", group: "Max level", label: "Priest · Holy/Discipline", weights: { heal: 1, mp5: 0.6, int: 0.3, sp: 0.4, spi: 0.3 } },
@@ -148,7 +148,7 @@ export const STAT_WEIGHT_PRESETS = [
   // matter less than at 60, and mana regen (spi/mp5) keeps casters killing between drinks.
   { id: "lvl-melee", group: "Leveling", label: "Leveling · Melee (Str)", weights: { sta: 2, str: 2, ap: 1, dps: 4, crit: 5, leech: 2 } },
   { id: "lvl-melee-agi", group: "Leveling", label: "Leveling · Melee (Agi)", weights: { sta: 2, agi: 2, ap: 1, dps: 4, crit: 5, leech: 2 } },
-  { id: "lvl-hunter", group: "Leveling", label: "Leveling · Hunter", weights: { agi: 2, sta: 1.5, ap: 1, dps: 3, int: 0.4 } },
+  { id: "lvl-hunter", group: "Leveling", label: "Leveling · Hunter", weights: { agi: 2, sta: 1.5, ap: 1, rangedAp: 1, dps: 3, int: 0.4 } },
   { id: "lvl-caster", group: "Leveling", label: "Leveling · Caster", weights: { sta: 1.5, sp: 1, spHoly: 1, spFire: 1, spFrost: 1, spShadow: 1, spNature: 1, spArcane: 1, int: 0.6, spi: 0.6, spCrit: 5, leech: 2 } },
   { id: "lvl-healer", group: "Leveling", label: "Leveling · Healer", weights: { sta: 1, heal: 1, int: 0.6, spi: 0.6, mp5: 0.6 } },
   { id: "lvl-tank", group: "Leveling", label: "Leveling · Tank", weights: { sta: 3, armor: 0.06, str: 1, def: 6, dodge: 5, block: 4 } },
