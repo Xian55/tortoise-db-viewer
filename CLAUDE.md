@@ -334,10 +334,13 @@ Re-run `extract-minimap.py` + commit on client map changes.
   skins`, parses the M2 (vertices/skin/views/textures/materials, bone-skinned to the
   Stand-animation frame 0), and renders headless with moderngl → `public/model-thumbs/
   <displayId>.webp` (300×300 transparent) + `manifest.json`. Two-pass opaque→additive
-  blend (particle/glow planes), opaque-body framing. **Skips CHARACTER models**
-  (`CreatureDisplayInfo.ExtendedDisplayInfoID != 0`) — humanoids need the char-texture
-  compositing system (skin/face/hair/equipment baking) this doesn't implement, so they'd
-  render untextured; they fall back to no-thumbnail. `src/render.js` `modelThumbUrl`
+  blend (particle/glow planes), opaque-body framing. **CHARACTER models** (humanoid
+  NPCs, `CreatureDisplayInfo.ExtendedDisplayInfoID != 0`) render from their **pre-baked
+  NPC texture** (`CreatureDisplayInfoExtra` field 18 → `Textures\BakedNpcTextures\<name>`;
+  Turtle ships these) mapped onto the character-skin (type 1) + object-skin (type 2)
+  texture units — no full char-compositing pipeline needed; 3D hair (type 6) is skipped
+  (the baked head carries the face/hairline). A char model with no bake is skipped.
+  `src/render.js` `modelThumbUrl`
   serves our webp for manifest ids, else the Wowhead webthumb. Committed (CI has no
   client/GPU); re-run + commit on client model changes. Verified against wow.export's
   `M2LegacyLoader`.

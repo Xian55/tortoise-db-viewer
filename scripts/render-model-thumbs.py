@@ -263,15 +263,31 @@ def build_display_index(storm):
         v = cms(r[2]) if len(r) > 2 else ""
         if v and (v.lower().endswith(".mdx") or v.lower().endswith(".m2")):
             model_path[r[0]] = v
+    # CreatureDisplayInfoExtra (character NPCs): ExtendedDisplayInfoID -> a PRE-BAKED
+    # NPC body texture (field 18, e.g. "Filius.blp"). Turtle ships these baked
+    # composites under Textures\BakedNpcTextures\, so we can texture character models
+    # from the bake (skin+face+equipment already combined) without the full
+    # character-compositing pipeline. build the ext -> bake-path map.
+    bake_of = {}
+    extra = storm.read("DBFilesClient\\CreatureDisplayInfoExtra.dbc")
+    if extra:
+        erows, es = load_dbc(extra)
+        for r in erows:
+            bn = es(r[18]) if len(r) > 18 else ""
+            if bn:
+                bake_of[r[0]] = "Textures\\BakedNpcTextures\\" + bn
+
     disp = {}
     for r in cdi:
         did, model = r[0], r[1]
         skins = [cdi_s(r[6]), cdi_s(r[7]), cdi_s(r[8])] if len(r) > 8 else []
         skins = [s for s in skins if s]
-        # ExtendedDisplayInfoID (field 3) != 0 => a CHARACTER model (humanoid NPC)
-        # textured by the character-compositing system (skin/face/hair/equipment
-        # baking) we don't implement -> those render untextured, so flag + skip.
-        disp[did] = dict(model=model, skins=skins, path=model_path.get(model), ext=r[3] if len(r) > 3 else 0)
+        # ExtendedDisplayInfoID (field 3) != 0 => a CHARACTER model (humanoid NPC).
+        # Render it from its baked texture if present; else it needs the unbuilt
+        # char-compositing pipeline -> skip (no bake => untextured).
+        ext = r[3] if len(r) > 3 else 0
+        disp[did] = dict(model=model, skins=skins, path=model_path.get(model),
+                         ext=ext, bake=bake_of.get(ext) if ext else None)
     return disp
 
 
@@ -295,6 +311,26 @@ def resolve_submesh_textures(storm, m2, info):
     modeldir = os.path.dirname(info["path"]) if info.get("path") else ""
     TYPE_TO_VAR = {11: 0, 12: 1, 13: 2}   # monster skins 1/2/3 -> TextureVariation
     dyn_order = [i for i, t in enumerate(m2["textures"]) if t["type"] != 0]
+    # Character model: the baked NPC texture stands in for the character-skin (type 1)
+    # and object-skin (type 2) texture units. Hair (type 6) uses a separate hair
+    # texture we don't have, so those geosets are skipped (NPC renders without 3D hair;
+    # the baked head already carries the hairline/face).
+    bake_img = blp_to_rgba(storm, info["bake"]) if info.get("bake") else None
+    # Character-model geoset selection: a character model bundles every variant of
+    # every geoset group (ears, hands/gloves, sleeves, robe, cloak, ...), and drawing
+    # them all overlaps (double ears, double hands). Geoset id = group*100 + variant;
+    # for each group render only the LOWEST variant = the base/default character
+    # state. (Hair variants are type 6 and skipped separately.) Creatures: keep all.
+    keep_sub = None
+    if bake_img is not None:
+        import collections
+        bygroup = collections.defaultdict(list)
+        for si, sub in enumerate(m2["subs"]):
+            bygroup[sub["part"] // 100].append((sub["part"] % 100, si))
+        keep_sub = set()
+        for _g, lst in bygroup.items():
+            mn = min(v for v, _ in lst)
+            keep_sub.update(si for v, si in lst if v == mn)
     cache = {}
 
     def load_tex(ti):
@@ -302,7 +338,10 @@ def resolve_submesh_textures(storm, m2, info):
             return cache[ti]
         t = m2["textures"][ti]
         img = None
-        if t["type"] == 0 and t["name"]:
+        if bake_img is not None:
+            # character model: baked texture for body/object skin; hair skipped
+            img = bake_img if t["type"] in (1, 2) else None
+        elif t["type"] == 0 and t["name"]:
             img = blp_to_rgba(storm, t["name"])
         else:
             vi = TYPE_TO_VAR.get(t["type"])
@@ -339,6 +378,9 @@ def resolve_submesh_textures(storm, m2, info):
         si = tu["submesh"]
         if si in out and not out[si].get("skip"):
             continue
+        if keep_sub is not None and si not in keep_sub:   # char geoset not selected
+            out[si] = {"skip": True}
+            continue
         tc = tu["texCombo"]
         ti = m2["texlook"][tc] if tc < len(m2["texlook"]) else (0 if m2["textures"] else None)
         if is_effect(ti):
@@ -346,6 +388,11 @@ def resolve_submesh_textures(storm, m2, info):
             continue
         img = load_tex(ti) if (ti is not None and ti < len(m2["textures"])) else None
         if img is None:
+            # character model: a non-body/hair geoset with no baked texture -> skip
+            # (don't paint it with the fallback). creature: use the fallback texture.
+            if bake_img is not None:
+                out[si] = {"skip": True}
+                continue
             img = fallback
         mi = tu["material"]
         mat = mats[mi] if mi < len(mats) else {"blend": 0, "flags": 0}
@@ -632,7 +679,6 @@ def main():
         if flag("--limit"):
             ids = ids[: int(val("--limit"))]
 
-    keep_char = flag("--characters")  # opt-in to also render (untextured) char models
     ok = fail = skip = chars = 0
     for did in ids:
         out = os.path.join(OUT_DIR, f"{did}.webp")
@@ -641,8 +687,9 @@ def main():
         info = disp.get(did)
         if not info or not info.get("path"):
             fail += 1; continue
-        # skip character-model NPCs (need char-texture compositing we don't do)
-        if info.get("ext") and not keep_char:
+        # character-model NPCs render from their baked texture; skip only the ones
+        # with no bake (would be untextured -> need the full char-compositing pipeline).
+        if info.get("ext") and not info.get("bake"):
             chars += 1; continue
         try:
             m2b = storm.read(info["path"].rsplit(".", 1)[0] + ".m2") or storm.read(info["path"])
