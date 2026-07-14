@@ -417,7 +417,7 @@ h1 { font-size: 22px; }
 .results table td:first-child { width: 60%; }
 
 /* npc view */
-.npc-head { margin-bottom: 16px; }
+.npc-head { margin-bottom: 16px; display: flow-root; }  /* flow-root contains the floated .npc-model so it can't overlap the map below */
 .npc-head h1 { display: inline; margin: 0; }
 .npc-sub { margin-left: 8px; font-style: italic; }
 .npc-meta { margin-top: 8px; }
@@ -425,6 +425,12 @@ h1 { font-size: 22px; }
 .npc-meta .dim { opacity: .7; }
 .model-link { cursor: help; border-bottom: 1px dotted var(--muted); }
 .model-card { text-align: center; }
+/* NPC-page model thumbnail: floats right of the header so it doesn't push the map */
+.npc-model { float: right; margin: 0 0 8px 16px; display: block; line-height: 0;
+  border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: rgba(0,0,0,.15); }
+.npc-model img { display: block; width: 132px; height: 132px; object-fit: contain; }
+.npc-model:hover { border-color: var(--muted); }
+@media (max-width: 640px) { .npc-model img { width: 96px; height: 96px; } }
 .model-card .model-id { margin: 0 0 6px; }
 .model-card .model-thumb { display: block; max-width: 256px; min-width: 120px;
   min-height: 80px; background: rgba(0, 0, 0, .25); border-radius: 6px; }

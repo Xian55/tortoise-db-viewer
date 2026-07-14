@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect, getMeta } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, readableText } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -1092,9 +1092,20 @@ async function showNpc(id) {
     ? `<div class="zone-empty muted">No exact spawn coordinates in the current data — this NPC is placed by a script or event; the zone above is inferred from its quests.</div>`
     : "";
 
+  // Static model thumbnail (our render or Wowhead's), shown in the header so the
+  // model is visible without hovering and without pushing the map. Floats right;
+  // click opens the image in a new tab. Removes itself if no thumb exists.
+  const modelUrl = npc.display_id ? modelThumbUrl(npc.display_id) : null;
+  const modelThumb = modelUrl
+    ? `<a class="npc-model" href="${modelUrl}" target="_blank" rel="noopener" title="Open model image in a new tab">
+         <img src="${modelUrl}" alt="${esc(npc.name)} model" loading="lazy"
+              onerror="this.closest('.npc-model').remove()"></a>`
+    : "";
+
   app.innerHTML =
     `<div class="npc-page">
       <div class="npc-head">
+        ${modelThumb}
         <h1 class="${rankClass}">${esc(npc.name)}</h1>
         ${npc.subname ? `<span class="npc-sub muted">&lt;${esc(npc.subname)}&gt;</span>` : ""}
         <div class="npc-meta muted">${bits.join(" · ")}${hp ? " · " + hp : ""}
