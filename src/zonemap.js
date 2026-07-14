@@ -305,6 +305,28 @@ const npcColor = (entry) => `hsl(${((entry || 0) * 47) % 360} 70% 55%)`;
 // by initZoneMap's focus/boss layers and by buildMarkerLayer on both maps.
 function makeMarkerKit(navigate) {
   const div = (html, size, cls = "poi-div") => L.divIcon({ html, className: cls, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+  // Wire a marker to an entity URL: left-click = SPA navigate; ctrl/cmd/shift-click
+  // or middle-click = open in a NEW TAB (map markers aren't <a>, so Leaflet won't do
+  // this for us). `?npc=`/`?object=` are relative, resolving against the app base.
+  const openTab = (url) => window.open(new URL(url, location.href).href, "_blank", "noopener");
+  const link = (m, url) => {
+    m.on("click", (e) => {
+      const oe = e.originalEvent;
+      if (oe && (oe.ctrlKey || oe.metaKey || oe.shiftKey)) openTab(url);
+      else navigate(url);
+    });
+    // Middle-click -> new tab. Open on AUXCLICK (fires after mouseup), not mousedown:
+    // opening on mousedown steals focus before the mouseup, leaving Leaflet's drag
+    // gesture stuck (grab cursor / phantom panning). mousedown only kills the
+    // browser autoscroll glyph. Wired on the DOM element once the marker is added.
+    m.on("add", () => {
+      const elm = m.getElement && m.getElement();
+      if (!elm) return;
+      elm.addEventListener("mousedown", (e) => { if (e.button === 1) e.preventDefault(); });
+      elm.addEventListener("auxclick", (e) => { if (e.button === 1) { e.preventDefault(); openTab(url); } });
+    });
+    return m;
+  };
   // item/POI icon marker (gather node, object); `icon` is a CDN/atlas basename.
   const iconMark = (ll, icon, label) => L.marker(ll, { icon: div(iconMarker(icon, "map-poi"), 22), bubblingMouseEvents: false }).bindTooltip(label, { direction: "top" });
   // a POI-atlas sprite marker (giver/turn-in/objective cells) keyed by category.
@@ -312,24 +334,24 @@ function makeMarkerKit(navigate) {
   // coloured creature pin (click -> npc page); `color` overrides the per-entry hue.
   const npcMark = (ll, label, entry, color) => {
     const m = L.marker(ll, { icon: div(`<span class="map-pin" style="background:${color || npcColor(entry)}"></span>`, 16), bubblingMouseEvents: false }).bindTooltip(label, { direction: "top" });
-    if (entry) m.on("click", () => navigate(`?npc=${entry}`));
+    if (entry) link(m, `?npc=${entry}`);
     return m;
   };
   // boss skull, drawn above everything (click -> npc page).
   const bossMark = (ll, name, entry) => {
     const m = L.marker(ll, { icon: div(`<span class="map-boss" style="${poiSpriteStyle(BOSS_GRID, 26)}"></span>`, 26), bubblingMouseEvents: false }).bindTooltip(esc(name), { direction: "top" });
     m.options.zIndexOffset = 1000;
-    if (entry) m.on("click", () => navigate(`?npc=${entry}`));
+    if (entry) link(m, `?npc=${entry}`);
     return m;
   };
-  return { iconMark, poiMark, npcMark, bossMark };
+  return { iconMark, poiMark, npcMark, bossMark, link };
 }
 // Turn one marker-layer spec into an L.layerGroup + its lat/lng bounds. Per-point
 // style: kind 'o' (object) -> icon/POI marker + click ?object=; else creature pin.
 // `ctx` = { toLatLng, openMarkerMenu?, kit, navigate } (per-map projection + menu).
 // spec: { key, label, kind?, color?, icon?, poi?, on?, points:[{x,y,entry,name,kind}] }.
 function buildMarkerLayer(spec, ctx) {
-  const { toLatLng, openMarkerMenu, kit, navigate } = ctx;
+  const { toLatLng, openMarkerMenu, kit } = ctx;
   const grp = L.layerGroup(); const lls = [];
   for (const p of spec.points) {
     const ll = toLatLng(p.x, p.y); lls.push(ll);
@@ -337,7 +359,7 @@ function buildMarkerLayer(spec, ctx) {
     let mk;
     if (p.kind === "o") {
       mk = spec.icon ? kit.iconMark(ll, spec.icon, label) : kit.poiMark(ll, spec.poi || "Quest Giver", label);
-      if (p.entry) mk.on("click", () => navigate(`?object=${p.entry}`));
+      if (p.entry) kit.link(mk, `?object=${p.entry}`);
     } else {
       mk = kit.npcMark(ll, label, p.entry, spec.color);
     }
@@ -748,7 +770,10 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
   map.on("mouseout", () => { tip.style.display = "none"; });
   map.on("click", (e) => {
     const sp = nearest(e.containerPoint);
-    if (sp && sp.href) navigate(sp.href);
+    if (!sp || !sp.href) return;
+    const oe = e.originalEvent;
+    if (oe && (oe.ctrlKey || oe.metaKey || oe.shiftKey)) window.open(new URL(sp.href, location.href).href, "_blank", "noopener");
+    else navigate(sp.href);
   });
   // middle-click -> open the dot's entity in a new tab, leaving the map open
   el.addEventListener("mousedown", (e) => { if (e.button === 1) e.preventDefault(); }); // kill autoscroll glyph
