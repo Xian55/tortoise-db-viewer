@@ -126,10 +126,12 @@ jobs:
           aws s3 sync public/model-thumbs s3://tortoise-db-viewer/model-thumbs \
             --endpoint-url "$R2_ENDPOINT" \
             --exclude "*.json" --content-type image/webp --delete
-          # ...then the manifest as JSON
+          # ...then the manifest as JSON (short TTL: it's updated in place, and the
+          # frontend also cache-busts it with ?v=<version> — see loadModelThumbs)
           aws s3 sync public/model-thumbs s3://tortoise-db-viewer/model-thumbs \
             --endpoint-url "$R2_ENDPOINT" \
-            --exclude "*" --include "*.json" --content-type application/json
+            --exclude "*" --include "*.json" --content-type application/json \
+            --cache-control "public,max-age=300"
           touch .r2-assets-synced
 
       # Extra DB delivery routes for networks where R2 is blocked or throttled: the

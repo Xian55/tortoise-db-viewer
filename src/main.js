@@ -2315,10 +2315,14 @@ async function loadIconAtlas() {
 // ourselves); render.js then serves our webp for those and Wowhead for the rest.
 async function loadModelThumbs() {
   try {
-    const res = await fetch(`${MODEL_THUMBS_BASE}manifest.json`);
+    // ?v=<version> busts Cloudflare's edge cache on redeploy — the manifest is
+    // updated in place, so a plain URL would serve the stale cached copy.
+    let version = "0";
+    try { version = (await getMeta()).version || "0"; } catch { /* no version yet */ }
+    const res = await fetch(`${MODEL_THUMBS_BASE}manifest.json?v=${version}`);
     if (!res.ok) return;
     const ids = await res.json();
-    setModelThumbs({ base: MODEL_THUMBS_BASE, ids: new Set(ids) });
+    setModelThumbs({ base: MODEL_THUMBS_BASE, ids: new Set(ids), ver: version });
   } catch { /* absent -> Wowhead-only fallback (unchanged behaviour) */ }
 }
 

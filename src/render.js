@@ -334,17 +334,18 @@ export function npcLink(entry, name) {
 }
 
 // Locally-rendered model thumbnails (Turtle-custom models Wowhead lacks). main.js
-// loads the manifest at boot: { base, ids: Set<display_id> }. See
+// loads the manifest at boot: { base, ids: Set<display_id>, ver }. See
 // scripts/render-model-thumbs.py + public/model-thumbs/.
-let MODEL_THUMBS = { base: "", ids: null };
+let MODEL_THUMBS = { base: "", ids: null, ver: "" };
 export function setModelThumbs(m) { MODEL_THUMBS = m; }
 
 // Creature thumbnail by display_id: our own render if we have one (Turtle-custom
 // models), else Wowhead's Classic webthumb. Callers still hide on <img> error
-// (see hovercard.js) so a missing thumb degrades gracefully either way.
+// (see hovercard.js) so a missing thumb degrades gracefully either way. Our webp
+// carry ?v=<version> so a redeploy busts Cloudflare's edge cache.
 export function modelThumbUrl(displayId) {
   if (MODEL_THUMBS.ids && MODEL_THUMBS.ids.has(displayId)) {
-    return `${MODEL_THUMBS.base}${displayId}.webp`;
+    return `${MODEL_THUMBS.base}${displayId}.webp${MODEL_THUMBS.ver ? `?v=${MODEL_THUMBS.ver}` : ""}`;
   }
   return `https://wow.zamimg.com/modelviewer/classic/webthumbs/npc/${displayId % 256}/${displayId}.webp`;
 }
