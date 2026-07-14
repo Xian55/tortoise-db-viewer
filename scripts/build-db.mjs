@@ -1373,7 +1373,17 @@ console.log("Importing zones + spawn points...");
       // area 46 = Redridge): without this guard those bosses get dragged onto the
       // continent zone and vanish from the dungeon map. Reject the cross-map hit and
       // fall through to the WMA box below (which only holds this map's zones).
-      if (best) { const rz = renderZone(best.i); if (rz && zoneMapid.get(rz) === map) return rz; }
+      if (best) {
+        const rz = renderZone(best.i);
+        if (rz && zoneMapid.get(rz) === map) {
+          // Multi-floor instances: the 2D ADT area can't tell stacked floors apart
+          // (Kel'Thuzad's Upper Necropolis chunk resolves to the main Naxxramas zone),
+          // so if the point isn't inside the resolved zone's OWN WMA box, prefer the
+          // WMA-box search below — the per-floor boxes disambiguate by footprint.
+          const bx = (boxesByMap.get(map) || []).find((z) => z.areaid === rz);
+          if (!bx || (x >= bx.locbottom && x <= bx.loctop && y >= bx.locright && y <= bx.locleft)) return rz;
+        }
+      }
     }
     const boxes = boxesByMap.get(map);
     if (!boxes) return null;

@@ -210,24 +210,40 @@ def main():
 
     # Several WorldMapAreas share one areaId: an instance interior (mapId = the
     # instance map) AND a continent "entrance" mini-map (mapId 0/1). The output is
-    # keyed by areaId (one image + one zones row), so we must pick one -- prefer the
-    # instance interior (the dungeon map players want; e.g. Dire Maul 2557 -> the
-    # 'DireMaul' interior on map 429, not 'DireMaulEntrance' on Kalimdor). For
-    # instance-vs-instance or entrance-vs-entrance ties, last-seen wins (unchanged).
+    # keyed by areaId (one image + one zones row), so pick one -- prefer the instance
+    # interior (e.g. Dire Maul 2557 -> the 'DireMaul' interior on map 429). For a
+    # continent tie, last-seen wins. But TWO instance interiors can share one areaId
+    # (Lower Karazhan map 532 + Upper Karazhan map 814 both = areaId 3457): keep the
+    # last as primary and render the other under a synthetic id (1000000 + mapId) so
+    # each dungeon gets its own parchment + zones row (keyed by mapId downstream).
     CONTINENTS = {0, 1}
+    SYN = 1000000
     chosen = {}
+    extras = []
     for z in rows:
         if not z["dir"] or z["areaId"] <= 0:
             continue
         cur = chosen.get(z["areaId"])
-        if cur is None or (z["mapId"] not in CONTINENTS) or (cur["mapId"] in CONTINENTS):
-            chosen[z["areaId"]] = z  # keep instance over continent; else last wins
+        if cur is None:
+            chosen[z["areaId"]] = z
+            continue
+        z_inst = z["mapId"] not in CONTINENTS
+        cur_inst = cur["mapId"] not in CONTINENTS
+        if z_inst and cur_inst:
+            extras.append(cur)            # instance-vs-instance: demote earlier, keep last
+            chosen[z["areaId"]] = z
+        elif z_inst and not cur_inst:
+            chosen[z["areaId"]] = z        # instance beats continent (drop entrance)
+        # else: z is a continent entrance for an already-chosen instance -> ignore
 
     os.makedirs(OUT_MAPS, exist_ok=True)
     zones = []
     skipped = 0
     n_ovl = 0
-    for z in chosen.values():
+    # (WMA, output areaId): primaries keyed by their real areaId; the demoted instance
+    # interiors keyed by a synthetic id so they don't clobber the primary.
+    to_render = [(z, z["areaId"]) for z in chosen.values()] + [(z, SYN + z["mapId"]) for z in extras]
+    for z, oid in to_render:
         d = z["dir"]
         base = load_grid(d, d, W, H)   # unexplored parchment (full 1024x768)
         if base is None:
@@ -245,13 +261,13 @@ def main():
         fl, ft, fr, fb = FRAME
         canvas = canvas.crop((fl, ft, CW - fr, CH - fb))
         cw, ch = CW - fl - fr, CH - ft - fb
-        canvas.save(os.path.join(OUT_MAPS, f"{z['areaId']}.webp"), "WEBP", quality=82, method=6)
+        canvas.save(os.path.join(OUT_MAPS, f"{oid}.webp"), "WEBP", quality=82, method=6)
         # recompute world bounds for the cropped rectangle (locleft/right span y over
         # image width CW; loctop/bottom span x over image height CH)
         dy = z["locleft"] - z["locright"]
         dx = z["loctop"] - z["locbottom"]
         zones.append({
-            **z, "w": cw, "h": ch,
+            **z, "areaId": oid, "w": cw, "h": ch,
             "locleft": z["locleft"] - fl / CW * dy,
             "locright": z["locright"] + fr / CW * dy,
             "loctop": z["loctop"] - ft / CH * dx,
