@@ -490,6 +490,20 @@ async function testItemSet(itemId, setId) {
   return members >= 5 && bonuses >= 2 && bonusLink && nameLink && noRawToken && pageMembers >= 5 && summary && summarySortable > 0;
 }
 
+// Set membership is corrected to the client ItemSet.dbc (issue #319): the server
+// dump mis-groups Paladin Judgement pieces (70517-70524) into set 640
+// "Dreadslayer's Rampage" whose DBC members are only 55108/55113. The ?itemset=640
+// page must list the wanted member and NOT the contaminant.
+async function testSetMembership(setId, wantItem, contaminantItem) {
+  await page.goto(`${BASE}?itemset=${setId}`, { waitUntil: WAIT, timeout: T });
+  await page.waitForSelector(".item-set-page .item-set", { timeout: T });
+  const hrefs = await page.$$eval(".item-set-page .set-member a", (e) => e.map((a) => a.getAttribute("href") || "")).catch(() => []);
+  const hasWant = hrefs.some((h) => h.includes(`item=${wantItem}`));
+  const hasContaminant = hrefs.some((h) => h.includes(`item=${contaminantItem}`));
+  console.log(`set-membership ${setId}: members=${hrefs.length} hasWant=${hasWant} hasContaminant=${hasContaminant}`);
+  return hasWant && !hasContaminant;
+}
+
 // A single-profession trainer hides the redundant Profession column (every row
 // the same skill). NPC 5038 is an Enchanting trainer.
 async function testTrainerCols(id) {
@@ -2146,6 +2160,7 @@ function run(thunk) {
 run(() => testItem(7909, "Aquamarine"));
 run(() => testItemWorldDrop(14555));  // world-drop item: label + "World drop from" tab
 run(() => testItemSet(22416, 523));   // item set panel + ?itemset page
+run(() => testSetMembership(640, 55108, 70517));  // DBC-corrected membership (issue #319)
 run(() => testQuestRewardFaction(22113));  // reward-from-quest Faction column
 run(() => testItemSlots(42243, "22 Slot Bag"));     // bag capacity (class 1)
 run(() => testItemSlots(18714, "18 Slot Quiver"));  // quiver capacity (class 11)

@@ -112,7 +112,7 @@ python scripts/extract-spell-icons.py # LOCAL: client SpellIcon.dbc -> scripts/d
 python scripts/build-atlas.py         # assets/icons/custom/*.webp -> public/icons/custom-atlas.{webp,json}
 python scripts/extract-maps.py        # LOCAL: client -> public/maps/*.webp + scripts/data/zones.json
 python scripts/extract-area-bounds.py # LOCAL: client ADTs -> scripts/data/subzone-bounds.json (exact coord->area)
-python scripts/extract-item-sets.py   # LOCAL: client ItemSet.dbc -> scripts/data/item-sets.json (set names + bonuses)
+python scripts/extract-item-sets.py   # LOCAL: client ItemSet.dbc -> scripts/data/item-sets.json (set names + bonuses + ItemID_* membership; build-db corrects items.set_id to it)
 python scripts/extract-skill-lines.py # LOCAL: client SkillLine.dbc -> scripts/data/skill-lines.json (skill categories)
 python scripts/extract-locks.py       # LOCAL: client Lock.dbc -> scripts/data/locks.json (lockId -> mining/herbalism; splits gather nodes)
 python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/minimap/<map>/{z}/{x}/{y}.webp tile pyramid + scripts/data/minimap.json
@@ -425,9 +425,11 @@ Re-run `extract-minimap.py` + commit on client map changes.
   world map markers and the layer-control legend draw their per-category icons from
   it via the `CAT_ICON`/`OBJ_ICON` cell map in `src/zonemap.js` (cells verified
   against the art -- the upstream `icon_atlas.js` names are unreliable). Plus
-  item-set names + bonus spells (`scripts/data/item-sets.json` via
-  `extract-item-sets.py`, from the client `ItemSet.dbc`; set members derive from
-  `items.set_id` in the SQL dump), and skill-line categories
+  item-set names + bonus spells + membership (`scripts/data/item-sets.json` via
+  `extract-item-sets.py`, from the client `ItemSet.dbc`; each set carries its DBC
+  `ItemID_*` member list, and build-db **corrects `items.set_id` to it** —
+  authoritative over the server dump's `item_template.set`, which mis-groups some
+  re-itemized/orphaned pieces into the wrong set, issue #319), and skill-line categories
   (`scripts/data/skill-lines.json` via `extract-skill-lines.py`, from the client
   `SkillLine.dbc`; build-db joins these onto `skill_line_ability` to set
   `spells.category` for the browse filter), gather-node skills

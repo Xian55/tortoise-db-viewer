@@ -1165,8 +1165,12 @@ console.log("Deriving item_sources...");
   console.log(`  spell_taught_item: ${after} obtainable (dropped ${before - after} unobtainable)`);
 }
 
-// ---- Item sets (name + set-bonus spells from the client ItemSet.dbc; members
-// derive from items.set_id). ----
+// ---- Item sets (name + set-bonus spells from the client ItemSet.dbc). Membership
+// is CORRECTED against the DBC ItemID_* list below: the server dump's
+// item_template.set groups some re-itemized/orphaned pieces into the wrong set
+// (issue #319 -- e.g. Paladin Judgement 70517-70524 polluting set 640
+// "Dreadslayer's Rampage"); the client uses ItemSet.dbc's ItemID_*, so we make it
+// authoritative on items.set_id (which every set query keys on). ----
 console.log("Importing item sets...");
 {
   db.exec(`CREATE TABLE item_sets (id INTEGER PRIMARY KEY, name TEXT)`);
@@ -1194,6 +1198,39 @@ console.log("Importing item sets...");
     })();
     db.exec(`CREATE INDEX idx_item_set_bonus ON item_set_bonus(setid)`);
     console.log(`  item_sets: ${nset} sets, ${nb} bonuses`);
+
+    // Correct items.set_id to the client ItemSet.dbc membership (authoritative).
+    // Two DBC-derived passes, no name/class heuristics -- see the block comment.
+    // Backward-safe: if item-sets.json has no "items" key yet, both maps are empty
+    // and nothing changes. `items` = DBC ItemID_1..17 (Turtle client, so legit
+    // Turtle set extensions are already included and contamination is excluded).
+    const dbcSetOf = new Map();  // itemId -> its authoritative setId
+    const membered = new Set();  // setIds that HAVE a non-empty DBC member list
+    for (const [id, v] of Object.entries(sets)) {
+      if (v.items && v.items.length) {
+        membered.add(Number(id));
+        for (const it of v.items) if (it) dbcSetOf.set(it, Number(id));
+      }
+    }
+    const setTo = db.prepare(`UPDATE items SET set_id = ? WHERE entry = ?`);
+    let moved = 0, detached = 0;
+    db.transaction(() => {
+      // Pass 1 -- DBC wins: every DBC-listed item that exists in this dataset gets
+      // its authoritative set_id (fixes mis-assignments + adds untagged members).
+      for (const [it, sid] of dbcSetOf) {
+        const r = setTo.run(sid, it);
+        if (r.changes) moved++;
+      }
+      // Pass 2 -- detach contamination: an item pointing at a DBC-membered set but
+      // not listed in it (and not rescued by pass 1) is not a client-visible member.
+      for (const { entry, set_id } of db.prepare(
+        `SELECT entry, set_id FROM items WHERE set_id > 0`).all()) {
+        if (membered.has(set_id) && dbcSetOf.get(entry) !== set_id) {
+          setTo.run(null, entry); detached++;
+        }
+      }
+    })();
+    console.log(`  item set membership: ${moved} set_id assigned, ${detached} detached (DBC-corrected)`);
   } else {
     console.log("  (no item-sets.json -- run scripts/extract-item-sets.py)");
   }

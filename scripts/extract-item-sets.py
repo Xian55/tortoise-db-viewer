@@ -10,7 +10,11 @@ ItemSet.dbc (1.12, 45 fields): [0] id, [1-8] name (loc; [1]=enUS), [9] nameFlags
 [10-26] itemId[17], [27-34] setSpellID[8], [35-42] setThreshold[8], [43-44] reqSkill.
 
 OUTPUT (committed)
-  scripts/data/item-sets.json  { "<setId>": { "name": str, "bonuses": [[threshold, spell], ...] } }
+  scripts/data/item-sets.json
+    { "<setId>": { "name": str, "bonuses": [[threshold, spell], ...], "items": [itemId, ...] } }
+  "items" is the DBC ItemID_1..17 membership -- the AUTHORITATIVE member list the
+  game client uses. build-db corrects items.set_id against it (the server dump's
+  item_template.set groups some re-itemized/orphaned pieces into the wrong set).
 
 REQUIREMENTS  StormLib.dll (x64) ; the Turtle WoW client.
 ENV           TW_CLIENT (default F:/Game/Turtle WoW) ; STORMLIB
@@ -103,14 +107,16 @@ def main():
             if spell and thr:
                 bonuses.append([thr, spell])
         bonuses.sort()
-        out[str(sid)] = {"name": name, "bonuses": bonuses}
+        items = [v[10 + k] for k in range(17) if v[10 + k]]
+        out[str(sid)] = {"name": name, "bonuses": bonuses, "items": items}
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
         f.write("\n")
     print(f"wrote {os.path.relpath(OUT, ROOT)} ({len(out)} item sets, "
-          f"{sum(len(v['bonuses']) for v in out.values())} bonuses)")
+          f"{sum(len(v['bonuses']) for v in out.values())} bonuses, "
+          f"{sum(len(v['items']) for v in out.values())} members)")
 
 
 if __name__ == "__main__":
