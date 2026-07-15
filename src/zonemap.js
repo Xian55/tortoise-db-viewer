@@ -754,6 +754,19 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
     }
     return best;
   };
+  // Test hook: on-screen positions of visible dots that carry a waypoint (so a
+  // right-click yields the copy menu). Lets the smoke suite target a GPU-drawn dot
+  // directly instead of blind-scanning the overlay pixel by pixel (~40s -> instant).
+  if (typeof window !== "undefined") window.__zoneDots = () => {
+    const r = el.getBoundingClientRect(), out = [];
+    for (const sp of container.children) {
+      if (!sp.visible || !sp.wpt) continue;
+      const p = map.latLngToContainerPoint(sp.ll);
+      if (p.x < 6 || p.y < 6 || p.x > r.width - 6 || p.y > r.height - 6) continue; // on-screen only
+      out.push({ x: Math.round(r.left + p.x), y: Math.round(r.top + p.y) });
+    }
+    return out;
+  };
   map.on("mousemove", (e) => {
     if (raf) return;
     raf = requestAnimationFrame(() => {

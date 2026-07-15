@@ -123,8 +123,9 @@ embeddable-tooltip (`/tt`) step, and TLS notes — is in
 
 ```sh
 node scripts/test-queries.mjs 7909        # validate relation SQL against the built DB
-npm run build && node scripts/smoke.mjs   # headless end-to-end (needs Chrome/Edge)
-# live: SMOKE_BASE="https://<user>.github.io/<repo>/" node scripts/smoke.mjs
+npm run build && bun run smoke            # headless end-to-end, parallel (needs Chrome; bun test)
+# one topic / one test:  bun run smoke -- item      |  bun run smoke:test -t "item 7909"
+# live: SMOKE_BASE="https://<user>.github.io/<repo>/" bun run smoke
 ```
 
 ## Data sources & licenses
