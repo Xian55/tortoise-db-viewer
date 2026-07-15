@@ -85,9 +85,16 @@ const NPCS = {
     .map(([id, name]) => ({ label: name, href: `?browse=npcs&type=${id}` })),
 };
 
+// Craftable professions (gathering skills 356/182/393 have no recipe route; Mining 186
+// keeps its smelting recipes) -> the leveling-planner submenu.
+const CRAFTABLE_PROFS = PROFESSION.filter(([id]) => ![356, 182, 393].includes(id));
 const CRAFTING = {
   label: "Crafting", href: "?browse=crafting",
-  children: PROFESSION.map(([id, name]) => ({ label: name, href: `?browse=crafting&prof=${id}` })),
+  children: [
+    { label: "Leveling Planner", href: "?profplan=164",
+      children: CRAFTABLE_PROFS.map(([id, name]) => ({ label: name, href: `?profplan=${id}` })) },
+    ...PROFESSION.map(([id, name]) => ({ label: name, href: `?browse=crafting&prof=${id}` })),
+  ],
 };
 
 const SPELLS = {

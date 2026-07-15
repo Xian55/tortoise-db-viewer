@@ -695,6 +695,7 @@ async function browseCrafting(p) {
     ${textField("q", "Name", f.q)}
     ${selectField("prof", "Profession", options(PROFESSION, f.prof, "Any"))}
     ${checkField("obtainable", "Obtainable only", f.obtainable)}
+    <a class="nav filters-cta" href="?profplan=${f.prof && !GATHERING_SKILLS.has(+f.prof) ? f.prof : 164}">📈 Leveling planner →</a>
     <button class="reset" data-reset="1">Reset</button>
   </div>`;
   return { rows: crafts, cols: hideCols(cols, f.prof ? ["prof"] : []), filters, noun: "crafts" };

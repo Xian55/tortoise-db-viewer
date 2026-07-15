@@ -13,6 +13,7 @@ import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BAS
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
+import { showProfPlan } from "./profplan.js";
 import { showTalents } from "./talents.js";
 // Seamless-minimap transform manifest (tile/adt/grid + per-continent bbox). Tiny,
 // committed; bundled at build time. The tile pyramid itself lives on R2.
@@ -155,6 +156,7 @@ function route() {
   else if (params.get("random") !== null) return showRandom();
   else if (params.get("guides") !== null) return showLeveling();
   else if (params.get("guide")) return showGuide(params.get("guide"));
+  else if (params.get("profplan") !== null) return showProfPlan(params.get("profplan"));
   else if (params.get("talents") !== null) return showTalents(params.get("talents"));
   else if (params.get("loadout")) return showSharedLoadout(params.get("loadout"), navigate);
   else if (params.get("character")) return showCharacter(params.get("character"), navigate);
@@ -305,6 +307,7 @@ function showHome() {
       card("?characters", "inv_shield_06", "Character Planner", "Import your gear (GearExport), see set bonuses, and get slot-by-slot upgrades ranked for your spec. Share builds by link.", "feature"),
       card("?weights", "ability_marksmanship", "Gear-Score Presets", "Build, share, and reuse stat-weight sets — 22 class/spec starters, or make your own.", "feature"),
       card("?talents", "inv_misc_book_11", "Talent Calculator", "Plan any class's 51-point build; the link saves it.", "feature"),
+      card("?profplan=164", "trade_blacksmithing", "Profession Leveling", "Efficient 1→300 routes with a deduped materials shopping list, for every crafting profession.", "feature"),
     ])}
 
     ${section("Browse the database", [
