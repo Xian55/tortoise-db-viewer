@@ -13,7 +13,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke/run.mjs",
+    "smoke:test": "bun test --preload ./scripts/smoke/setup.mjs scripts/smoke/tests",
+    "smoke:flake": "node scripts/smoke/run.mjs -r 3"
   },
   "devDependencies": {
     "puppeteer-core": "^25.1.0",

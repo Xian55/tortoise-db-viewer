@@ -27,3 +27,6 @@ scripts/data/model-thumb-coverage.json
 
 # local render QC montages (temp)
 scratch_cmp/
+
+# Smoke-test persistent Chrome profiles (per-shard OPFS DB cache; downloaded once)
+.smoke-cache/

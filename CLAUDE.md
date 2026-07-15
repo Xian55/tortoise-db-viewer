@@ -103,7 +103,7 @@ bun install
 bun scripts/build-db.mjs        # build public/data/tortoise.sqlite (+ version.json)
 bun run dev                     # http://localhost:5173/tortoise-db-viewer/
 bunx --bun vite build           # production build to dist/
-node scripts/smoke.mjs          # headless end-to-end (needs Chrome; SMOKE_BASE env to point it)
+bun run smoke                   # headless end-to-end, PARALLEL (bun test; needs Chrome). Shards topic modules across processes, each its own persistent Chrome profile (OPFS DB downloaded once, not per run). See scripts/smoke/tests/CLAUDE.md. `-- item quest` filters modules; `bun run smoke:test -t "name"` runs one test; SMOKE_BASE points it at a running server
 bun scripts/bench-queries.mjs   # LOCAL dev tool: times every Q_* vs the built DB (worst-case hot params) + flags bad plans (SCAN/TEMP-BTREE/AUTO-INDEX) for indexing fruit. --plans / --top N. Not CI-wired
 
 # Custom icons (Python + Pillow + StormLib; see "Custom icons" below)
@@ -408,8 +408,10 @@ Re-run `extract-minimap.py` + commit on client map changes.
   **except** Turtle custom icons, which `render.js` `iconImg` draws as a `<span>`
   sprite from the committed atlas (`main.js` loads `custom-atlas.json` at boot;
   falls back to the CDN `<img>` until then / if absent).
-- Every user-facing change should keep `scripts/smoke.mjs` green and add a check
-  when it introduces a new view/behavior.
+- Every user-facing change should keep the smoke suite green (`bun run smoke`) and
+  add a check when it introduces a new view/behavior. Tests live in per-topic modules
+  under `scripts/smoke/tests/*.test.mjs` (bun test); see that dir's `CLAUDE.md` for the
+  harness API (`nav`/`load`/`smoke`) and how to add one.
 
 ## Gotchas
 
