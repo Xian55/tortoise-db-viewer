@@ -360,6 +360,7 @@ export const Q_ZONE_FOCUS_SPAWNS = `
 // skill-up thresholds (green = midpoint). craft_source resolves trainer vs recipe.
 export const Q_CRAFTING = `
   SELECT sc.spell, s.name AS spell_name, s.icon AS spell_icon, sc.skill, sc.skill_req, sc.skill_min, sc.skill_max,
+         s.cooldown_ms, s.cat_cooldown_ms,
          ci.entry AS item, ci.name AS item_name, ci.quality, cdi.icon AS item_icon,
          sr.item AS reagent, ri.name AS reagent_name, ri.quality AS reagent_quality, rdi.icon AS reagent_icon, sr.count,
          cs.trainer, cs.auto, cs.learn_req, cs.recipe_item, rc.name AS recipe_name, rc.quality AS recipe_quality, rcdi.icon AS recipe_icon

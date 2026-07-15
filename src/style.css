@@ -1097,3 +1097,73 @@ a.ext { color: var(--gold); }
   .char-count { margin-left: 0; }
   .char-row { flex-wrap: wrap; }
 }
+
+/* ---- Profession leveling planner (?profplan=) ---- */
+.filters-cta { margin-left: auto; align-self: center; white-space: nowrap; font-weight: 600; color: var(--gold); }
+.pp-page { max-width: 1100px; }
+.pp-head h1 { display: flex; align-items: center; gap: 8px; }
+.pp-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+.pp-prof { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--panel); color: var(--muted); font-size: 13px; }
+.pp-prof:hover { border-color: var(--gold); color: var(--text); text-decoration: none; }
+.pp-prof.active { border-color: var(--gold); color: var(--text); background: var(--panel2); }
+.pp-note { font-size: 12px; line-height: 1.45; margin: 8px 0; }
+.pp-self { display: block; margin: 8px 0 4px; font-size: 13px; cursor: pointer; }
+.pp-self input { accent-color: var(--gold); vertical-align: middle; margin-right: 5px; }
+.tagx.pp-foreign { border-color: #a06a3f; color: #d08a4f; }
+.pp-progress-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 12px 0 16px; }
+.pp-progress { flex: 1; min-width: 180px; max-width: 420px; height: 10px; background: var(--panel2);
+  border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.pp-progress > i { display: block; height: 100%; width: 0; background: #39d353; transition: width .2s; }
+.pp-progress-label { font-size: 13px; color: var(--muted); min-width: 130px; }
+.pp-reset { background: var(--panel2); border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+.pp-reset:hover { color: var(--text); border-color: var(--gold); }
+.pp-body { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.pp-route, .pp-shop { padding-bottom: 6px; }
+.pp-seg { display: flex; align-items: flex-start; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--border); }
+.pp-seg:first-of-type { border-top: none; }
+.pp-seg.done .pp-seg-main { opacity: .5; }
+.pp-seg.done .pp-seg-title { text-decoration: line-through; }
+/* the skill-range pill IS the done toggle */
+.pp-range { flex: none; display: inline-flex; align-items: center; gap: 3px; min-width: 62px; justify-content: center;
+  padding: 2px 7px; border: 1px solid var(--rc, var(--border)); color: var(--rc, var(--text)); background: transparent;
+  border-radius: 5px; font: inherit; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+  cursor: pointer; white-space: nowrap; }
+.pp-range.pp-toggle:hover { border-color: var(--gold); }
+.pp-tick { display: none; font-size: 10px; }
+.pp-seg.done .pp-range { background: #39d353; border-color: #39d353; color: #06120a; }
+.pp-seg.done .pp-tick { display: inline; }
+.pp-seg-main { min-width: 0; }
+.pp-seg-title { line-height: 1.55; }
+.pp-seg-title b { color: var(--gold); }
+.pp-seg-src { font-size: 12px; }
+.pp-reagents { list-style: none; margin: 3px 0 0; padding: 0; }
+.pp-reagents li { line-height: 1.7; font-size: 13px; }
+.pp-rc { color: var(--muted); font-variant-numeric: tabular-nums; }
+.pp-gap { color: var(--muted); font-style: italic; align-items: center; }
+.pp-alts { margin-top: 5px; }
+.pp-alts > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; display: inline-flex; align-items: center; gap: 4px; }
+.pp-alts > summary::before { content: "▸"; font-size: 10px; }
+.pp-alts[open] > summary::before { content: "▾"; }
+.pp-alts > summary:hover { color: var(--gold); }
+.pp-alt { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; padding: 3px 0 3px 14px; font-size: 12.5px; line-height: 1.5; }
+.pp-alt-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; align-self: center; }
+.pp-alt-n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.pp-alt-sub { font-size: 12px; }
+.pp-shop-list { display: flex; flex-direction: column; }
+.pp-shop-row { display: flex; gap: 10px; align-items: baseline; padding: 6px 14px; border-top: 1px solid var(--border); }
+.pp-shop-row:first-child { border-top: none; }
+.pp-shop-main { min-width: 0; flex: 1; }
+.pp-qty { flex: none; min-width: 42px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pp-qty b { color: var(--gold); }
+.pp-src { display: flex; flex-wrap: wrap; gap: 3px 6px; align-items: center; margin-top: 3px; }
+.pp-src .tagx { margin-left: 0; }
+.pp-vendor { display: inline-flex; align-items: center; gap: 4px; }
+.pp-price { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+/* transitive base-reagent breakdown for a crafted mat */
+.pp-sub { list-style: none; margin: 3px 0 0; padding: 0 0 0 12px; border-left: 1px solid var(--border); }
+.pp-sub li { font-size: 12px; line-height: 1.6; }
+.pp-sub li::before { content: "↳"; color: var(--muted); margin-right: 4px; }
+.pp-sub-q { color: var(--muted); font-variant-numeric: tabular-nums; }
+.pp-sub .pp-sub { margin-top: 1px; }
+@media (max-width: 860px) { .pp-body { grid-template-columns: 1fr; } }
