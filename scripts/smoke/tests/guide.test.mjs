@@ -3,10 +3,13 @@ import { page, nav, T, smoke } from "../harness.mjs";
 // ---- leveling guides (?guides index + ?guide=<id> auto-generated step guide) ----
 async function testLevelingIndex() {
   await nav(`?guides`);
-  await page.waitForSelector(".guide-index .guide-card", { timeout: T });
-  const cards = await page.$$eval(".guide-index .guide-card", (e) => e.map((c) => c.getAttribute("href")));
-  console.log(`leveling-index: cards=${cards.length} links=${JSON.stringify(cards)}`);
-  return cards.length >= 2 && cards.every((h) => /guide=/.test(h));
+  await page.waitForSelector(".guide-index .guide-level-cards .guide-card", { timeout: T });
+  // zone leveling guides (scoped: the page also has chain-guide + profession-planner card grids)
+  const cards = await page.$$eval(".guide-index .guide-level-cards .guide-card", (e) => e.map((c) => c.getAttribute("href")));
+  const chainCards = await page.$$eval(".guide-index .guide-card[href*='?guide=']", (e) => e.length);
+  const profCards = await page.$$eval(".guide-index .guide-card[href*='?profplan=']", (e) => e.length);
+  console.log(`leveling-index: level=${cards.length} chain=${chainCards} prof=${profCards} links=${JSON.stringify(cards)}`);
+  return cards.length >= 2 && cards.every((h) => /guide=/.test(h)) && chainCards >= 2 && profCards >= 2;
 }
 
 // One guide: quests batched into hub STAGES (Pick up / Complete / Turn in), a TSP hub
@@ -44,7 +47,69 @@ async function testGuideProgress(id) {
   return !!stored && /^1 \/ /.test(label) && persisted;
 }
 
+// ---- chain guides (attunements + Inferno): ordered tickable checklist ----
+async function testChainGuide(id, minSteps, factions) {
+  await nav(`?guide=${id}`);
+  await page.waitForSelector(".chain-page .chain-step", { timeout: T });
+  const steps = await page.$$eval(".chain-page .chain-step", (e) => e.length);
+  const hasQuestLink = (await page.$(".chain-step .chain-step-h a.ilink.quest")) !== null;
+  const terminal = (await page.$(".chain-step.chain-terminal .chain-badge")) !== null;
+  const pills = await page.$$eval(".chain-factions button", (e) => e.length).catch(() => 0);
+  // tick first step -> persists + progress label updates
+  await page.evaluate(() => { const cb = document.querySelector(".chain-step .guide-check"); cb.checked = true; cb.dispatchEvent(new Event("change", { bubbles: true })); });
+  const label = await page.$eval(".guide-progress-label", (e) => e.textContent);
+  const done = (await page.$(".chain-step.done")) !== null;
+  console.log(`chain ${id}: steps=${steps} questLink=${hasQuestLink} terminal=${terminal} pills=${pills} label="${label}" done=${done}`);
+  return steps >= minSteps && hasQuestLink && terminal && pills === factions && /^1 \/ /.test(label) && done;
+}
+
+// Faction toggle swaps the Alliance/Horde step list (different terminal quest).
+async function testChainFactionSwitch() {
+  await nav(`?guide=onyxia`);
+  await page.waitForSelector(".chain-page .chain-step", { timeout: T });
+  const before = await page.$$eval(".chain-step .guide-check", (e) => e.map((c) => c.dataset.q).join(","));
+  await page.evaluate(() => { [...document.querySelectorAll(".chain-factions button")].find((b) => !b.classList.contains("active"))?.click(); });
+  await page.waitForFunction((prev) => {
+    const now = [...document.querySelectorAll(".chain-step .guide-check")].map((c) => c.dataset.q).join(",");
+    return now && now !== prev;
+  }, { timeout: T }, before).catch(() => {});
+  const after = await page.$$eval(".chain-step .guide-check", (e) => e.map((c) => c.dataset.q).join(","));
+  console.log(`chain onyxia switch: changed=${before !== after}`);
+  return before !== after;
+}
+
 smoke("leveling index", () => testLevelingIndex());
 smoke("leveling guide high-elf", () => testLevelingGuide("high-elf", 20));
 smoke("leveling guide goblin", () => testLevelingGuide("goblin", 20));
 smoke("guide progress goblin", () => testGuideProgress("goblin"));
+// Per-step hand-authored notes (manifest `notes`) render under the step.
+async function testChainNotes(id, minSteps) {
+  await nav(`?guide=${id}`);
+  await page.waitForSelector(".chain-page .chain-step", { timeout: T });
+  const steps = await page.$$eval(".chain-page .chain-step", (e) => e.length);
+  const notes = await page.$$eval(".chain-page .chain-step-note", (e) => e.length);
+  console.log(`chain ${id}: steps=${steps} notes=${notes}`);
+  return steps >= minSteps && notes >= 1;
+}
+
+// oneOf chain (Naxx rep tiers): banner shown, ticking two options still caps at 1 / 1.
+async function testChainOneOf(id, options) {
+  await nav(`?guide=${id}`);
+  await page.waitForSelector(".chain-page .chain-oneof", { timeout: T });
+  const steps = await page.$$eval(".chain-page .chain-step", (e) => e.length);
+  await page.evaluate(() => {
+    [...document.querySelectorAll(".chain-step .guide-check")].slice(0, 2)
+      .forEach((cb) => { cb.checked = true; cb.dispatchEvent(new Event("change", { bubbles: true })); });
+  });
+  const label = await page.$eval(".guide-progress-label", (e) => e.textContent);
+  console.log(`chain ${id} oneOf: steps=${steps} label="${label}"`);
+  return steps === options && /^1 \/ 1 /.test(label);
+}
+
+smoke("chain guide inferno", () => testChainGuide("inferno", 10, 0));
+smoke("chain guide onyxia", () => testChainGuide("onyxia", 14, 2));
+smoke("chain guide onyxia faction switch", () => testChainFactionSwitch());
+smoke("chain guide karazhan", () => testChainGuide("karazhan", 10, 2));
+smoke("chain guide karazhan notes", () => testChainNotes("karazhan", 10));
+smoke("chain guide emerald-sanctum", () => testChainGuide("emerald-sanctum", 6, 0));
+smoke("chain guide naxxramas oneOf", () => testChainOneOf("naxxramas", 3));

@@ -13,10 +13,22 @@
 // via a switcher. Progress (quests turned in) is stored per guide in localStorage.
 import { query } from "./db.js";
 import * as Q from "./queries.js";
-import { questLink, npcLink, objectLink, itemLink, zoneLink, moneyHtml, esc } from "./render.js";
+import { questLink, npcLink, objectLink, itemLink, zoneLink, moneyHtml, iconImg, esc } from "./render.js";
 import { orderQuestChain, navigate } from "./main.js";
 import { ASSETS_BASE } from "./config.js";
+import { PROFESSION, GATHERING_SKILLS } from "./constants.js";
 import guides from "../scripts/data/leveling-guides.json";
+import chainGuides from "../scripts/data/chain-guides.json";
+
+// Craftable professions (gathering skills craft nothing; Mining keeps smelting) ->
+// the profession-planner cards on the Guides index. Icons mirror profplan.js.
+const CRAFTABLE_PROFS = PROFESSION.filter(([id]) => !GATHERING_SKILLS.has(id) || id === 186);
+const PROF_ICON = {
+  171: "trade_alchemy", 164: "trade_blacksmithing", 185: "inv_misc_food_15",
+  333: "trade_engraving", 202: "trade_engineering", 129: "inv_misc_bandage_03",
+  755: "inv_misc_gem_variety_01", 165: "trade_leatherworking", 186: "trade_mining",
+  197: "trade_tailoring", 142: "ability_tracking",
+};
 
 const appEl = () => document.getElementById("app");
 const MARKER_CAP = 250;   // max spawns plotted for one focused objective target
@@ -72,17 +84,48 @@ export function showLeveling() {
       ${prog}
     </a>`;
   }).join("");
+  const chainCards = Object.entries(chainGuides).map(([id, g]) => {
+    const variants = g.factions ? Object.keys(g.factions) : [];
+    const steps = g.factions ? Object.values(g.factions)[0].quests.length : (g.quests || []).length;
+    return `<a class="guide-card ilink" href="?guide=${esc(id)}">
+      <div class="guide-card-top">
+        <span class="guide-card-name">${esc(g.name)}</span>
+        ${g.tw ? `<span class="tagx tw-tag" title="Added by Turtle WoW">TW</span>` : ""}
+      </div>
+      <div class="guide-card-range muted">Levels ${esc(g.levelRange || "")} · ${steps} steps${variants.length ? ` · ${esc(variants.join(" / "))}` : ""}</div>
+      <div class="guide-card-blurb">${esc(g.blurb || "")}</div>
+    </a>`;
+  }).join("");
+
+  const profCards = CRAFTABLE_PROFS.map(([id, name]) =>
+    `<a class="guide-card guide-prof-card ilink" href="?profplan=${id}">
+      <span class="guide-prof-icon">${iconImg(PROF_ICON[id] || "inv_misc_questionmark", "guide-prof-img")}</span>
+      <span class="guide-prof-name">${esc(name)}</span>
+    </a>`).join("");
+
   appEl().innerHTML = `<div class="guide-index">
     <h1>Leveling Guides</h1>
     <p class="muted">Efficient starting-zone routes for Turtle WoW's custom races, generated live from the quest
       database. Quests are batched by hub and the hubs are ordered to cut travel.
       Click a stage to spotlight its targets on the map. Progress is saved in this browser.</p>
-    <div class="guide-cards">${cards}</div>
+    <div class="guide-cards guide-level-cards">${cards}</div>
+
+    <h2 class="guide-prof-h">Attunements &amp; Special Chains</h2>
+    <p class="muted">Long, order-sensitive quest chains — raid attunements and Turtle's permanent-Hardcore
+      Inferno line — as tickable checklists. Each step links its givers, objectives and rewards.
+      Progress is saved in this browser.</p>
+    <div class="guide-cards">${chainCards}</div>
+
+    <h2 class="guide-prof-h">Profession Leveling</h2>
+    <p class="muted">Efficient 1→300 routes for every crafting profession — what to craft in each skill window,
+      with a deduped materials shopping list. Progress is saved in this browser.</p>
+    <div class="guide-cards guide-prof-cards">${profCards}</div>
   </div>`;
 }
 
 // ---- one guide ----
 export async function showGuide(id) {
+  if (chainGuides[id]) return showChainGuide(id);
   const app = appEl();
   const g = guides[id];
   if (!g) {
@@ -564,4 +607,132 @@ function wireCopy() {
       .then(() => { b.textContent = "copied ✓"; setTimeout(() => { b.textContent = prev; }, 1200); })
       .catch(() => {});
   });
+}
+
+// ---- chain guides (attunements + Inferno): an ordered, tickable quest checklist ----
+// Unlike the zone leveling guides these are NOT hub-batched or TSP-ordered -- a chain is a
+// fixed sequence of specific quest ids (per faction) from the manifest, so we resolve each
+// id and render it in manifest order. NB the DB prevquest/nextquest links are unreliable for
+// some of these (e.g. Inferno 40917 prev=40922), which is exactly why the order is pinned in
+// the manifest rather than re-derived here. Map is intentionally omitted -- chains span many
+// dungeons/zones with no single parchment; the quest/npc/item links carry their own pages.
+export async function showChainGuide(id) {
+  const app = appEl();
+  const g = chainGuides[id];
+  if (!g) { app.innerHTML = `<div class="home"><h1>Guide</h1><p>No guide named “${esc(id)}”. See <a class="nav" href="?guides">all guides</a>.</p></div>`; return; }
+  document.title = `${g.name} Guide - Tortoise-WoW DB`;
+  app.innerHTML = `<div class="loading">Building ${esc(g.name)} guide…</div>`;
+
+  const variants = g.factions
+    ? Object.entries(g.factions).map(([faction, v]) => ({ faction, quests: v.quests }))
+    : [{ faction: g.faction || null, quests: g.quests || [] }];
+  const allIds = [...new Set(variants.flatMap((v) => v.quests))];
+  const rows = allIds.length ? await query(Q.qQuestsByIds(allIds.length), allIds) : [];
+  const byId = new Map(rows.map((r) => [r.entry, r]));
+  const rel = await loadRelations(rows);
+
+  const terminalLabel = g.terminalLabel || (id === "inferno" ? "Inferno" : (g.category || "Final step"));
+  const factionKey = (f) => `twdb:guide:${id}${f ? ":" + f : ""}`;
+  let active = variants[0];
+
+  const render = () => {
+    const steps = active.quests.map((qid) => byId.get(qid)).filter(Boolean);
+    // `oneOf` chains (e.g. Naxx's rep-tiered turn-ins) are alternatives: do ANY one, no terminal.
+    const stepHtml = steps.map((q, i) => renderChainStep(q, i + 1, rel, !g.oneOf && i === steps.length - 1, terminalLabel, g.notes && g.notes[q.entry])).join("");
+    const oneOf = !!g.oneOf;
+    const oneOfBanner = oneOf ? `<div class="chain-oneof">Complete <b>one</b> of the options below — whichever matches your standing. Any single one grants the attunement.</div>` : "";
+    const pills = variants.length > 1
+      ? `<div class="chain-factions floor-switch">${variants.map((v) =>
+          `<button data-f="${esc(v.faction)}" class="${v.faction === active.faction ? "active " : ""}${facClass(v.faction)}">${esc(v.faction)}</button>`).join("")}</div>`
+      : "";
+    app.innerHTML = `<div class="guide-page chain-page">
+      <div class="guide-header">
+        <div class="guide-head-top">
+          <h1>${esc(g.name)} <span class="tagx ${facClass(g.faction)}">${esc(g.category || "")}</span></h1>
+          <span class="guide-range muted">Levels ${esc(g.levelRange || "")}</span>
+        </div>
+        ${g.intro ? `<p class="guide-intro">${esc(g.intro)}</p>` : ""}
+        <div class="guide-progress-row">
+          <div class="guide-progress"><i></i></div>
+          <span class="guide-progress-label"></span>
+          <button type="button" class="guide-reset">Reset progress</button>
+        </div>
+        ${pills}
+      </div>
+      ${oneOfBanner}
+      <ol class="chain-steps${oneOf ? " chain-oneof-list" : ""}">${stepHtml}</ol>
+      <p class="muted guide-chain-back"><a class="nav" href="?guides">← All guides</a></p>
+    </div>`;
+    wireChainProgress(factionKey(active.faction), oneOf ? 1 : steps.length, oneOf);
+    app.querySelectorAll(".chain-factions button").forEach((b) => b.addEventListener("click", () => {
+      const v = variants.find((x) => x.faction === b.dataset.f);
+      if (v && v !== active) { active = v; render(); }
+    }));
+  };
+  render();
+}
+
+function renderChainStep(q, n, rel, terminal, terminalLabel, note) {
+  const links = (rows, isObj) => (rows || []).map((r) => (isObj ? objectLink(r.entry, r.name) : npcLink(r.entry, r.name)));
+  const givers = [...links(rel.giversN.get(q.entry), false), ...links(rel.giversG.get(q.entry), true)];
+  const enders = [...links(rel.endersN.get(q.entry), false), ...links(rel.endersG.get(q.entry), true)];
+  const objs = (rel.objectives.get(q.entry) || []).map((o) => {
+    const link = o.is_go ? objectLink(o.target, o.name || `#${o.target}`) : npcLink(o.target, o.name || `#${o.target}`);
+    return `<span class="guide-obj-chip">${o.count > 1 ? `${o.count}× ` : ""}${link}</span>`;
+  }).join(" ");
+  const items = rel.items.get(q.entry) || [];
+  const reqs = items.filter((i) => i.role === "req" || i.role === "source")
+    .map((it) => itemLink(it.entry, it.name, it.quality, it.icon) + (it.count > 1 ? ` ×${it.count}` : ""));
+  const rew = rewardHtml(q, items);
+  const tw = q.custom ? ' <span class="tagx tw-tag" title="Added by Turtle WoW">TW</span>' : "";
+  const lvl = q.minlevel > 0 ? ` <span class="guide-lvl">${q.minlevel}</span>` : "";
+  const sameGE = givers.length && enders.join("|") === givers.join("|");
+  const metaRows = [
+    givers.length ? `<span><b class="cs-k">From</b> ${givers.slice(0, 4).join(", ")}</span>` : "",
+    objs ? `<span><b class="cs-k do">Do</b> ${objs}</span>` : "",
+    reqs.length ? `<span><b class="cs-k">Bring</b> ${reqs.join(", ")}</span>` : "",
+    (enders.length && !sameGE) ? `<span><b class="cs-k turnin">Turn in</b> ${enders.slice(0, 4).join(", ")}</span>` : "",
+  ].filter(Boolean).join("");
+  return `<li class="chain-step${terminal ? " chain-terminal" : ""}">
+    <label class="chain-step-check"><input type="checkbox" class="guide-check" data-q="${q.entry}"></label>
+    <div class="chain-step-body">
+      <div class="chain-step-h"><span class="chain-step-n">${n}</span> ${questLink(q.entry, q.title)}${lvl}${tw}${terminal ? ` <span class="chain-badge">${esc(terminalLabel)}</span>` : ""}${rew}</div>
+      ${metaRows ? `<div class="chain-step-meta">${metaRows}</div>` : ""}
+      ${note ? `<div class="chain-step-note">${esc(note)}</div>` : ""}
+    </div>
+  </li>`;
+}
+
+// progress for one chain/faction: a set of completed quest entries in localStorage.
+// oneOf chains count as done once ANY single option is ticked (total is 1).
+function wireChainProgress(key, total, oneOf) {
+  const app = appEl();
+  let done;
+  try { done = new Set(JSON.parse(localStorage.getItem(key)) || []); } catch { done = new Set(); }
+  const bar = app.querySelector(".guide-progress > i");
+  const label = app.querySelector(".guide-progress-label");
+  const checks = [...app.querySelectorAll(".guide-check")];
+  const save = () => { try { localStorage.setItem(key, JSON.stringify([...done])); } catch { /* private mode */ } };
+  const apply = () => {
+    let d = 0;
+    for (const cb of checks) {
+      const on = done.has(+cb.dataset.q);
+      cb.checked = on;
+      cb.closest(".chain-step")?.classList.toggle("done", on);
+      if (on) d++;
+    }
+    const shown = oneOf ? Math.min(d, 1) : d;
+    const pct = total ? Math.round((100 * shown) / total) : 0;
+    if (bar) bar.style.width = `${pct}%`;
+    if (label) label.textContent = `${shown} / ${total} step${total === 1 ? "" : "s"} · ${pct}%`;
+  };
+  apply();
+  app.querySelector(".chain-steps")?.addEventListener("change", (e) => {
+    const cb = e.target.closest(".guide-check");
+    if (!cb) return;
+    const q = +cb.dataset.q;
+    if (cb.checked) done.add(q); else done.delete(q);
+    save(); apply();
+  });
+  app.querySelector(".guide-reset")?.addEventListener("click", () => { done.clear(); save(); apply(); });
 }

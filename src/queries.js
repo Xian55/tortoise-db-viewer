@@ -795,6 +795,13 @@ export const Q_GUIDE_QUESTS = `
     AND (q.reqraces = 0 OR (q.reqraces & ?2) <> 0)
   ORDER BY q.level, q.title LIMIT 1000`;
 
+// Explicit-id quest fetch for the chain guides (attunements / Inferno): the manifest
+// gives an ordered id list, so unlike Q_GUIDE_QUESTS there's no zone/race filter here.
+export const qQuestsByIds = (n) => `
+  SELECT q.entry, q.title, q.level, q.minlevel, q.type, q.reqraces, q.custom,
+         q.prevquest, q.nextquest, q.xp, q.money, q.objectives
+  FROM quests q WHERE q.entry IN (${inList(n)})`;
+
 // Batched quest relations for a set of quests (the guide's section) -- one round-trip
 // each, grouped client-side by quest entry. Creature givers reuse qQuestStartNpcs.
 export const qQuestEndNpcs = (n) => `

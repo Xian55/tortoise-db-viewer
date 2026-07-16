@@ -116,6 +116,17 @@ const ZONES = {
   ],
 };
 
+// Guides gather the two "how to level" tools: the hand-authored zone routes (?guides)
+// and the profession leveling planner (?profplan=, also reachable from Crafting).
+const GUIDES = {
+  label: "Guides", href: "?guides",
+  children: [
+    { label: "Leveling Guides", href: "?guides" },
+    { label: "Profession Leveling", href: "?profplan=164",
+      children: CRAFTABLE_PROFS.map(([id, name]) => ({ label: name, href: `?profplan=${id}` })) },
+  ],
+};
+
 // Utilities grouped under "More" so the menubar fits one line (no wrap).
 const MORE = {
   label: "More",
@@ -136,7 +147,7 @@ export const MENU = [
   CRAFTING,
   { label: "Factions", href: "?browse=factions" },
   ZONES,
-  { label: "Guides", href: "?guides" },
+  GUIDES,
   { label: "Talents", href: "?talents" },
   MORE,
 ];

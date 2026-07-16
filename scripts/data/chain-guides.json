@@ -1,0 +1,155 @@
+{
+  "onyxia": {
+    "name": "Onyxia's Lair",
+    "category": "Attunement",
+    "levelRange": "48-60",
+    "blurb": "The Drakefire Amulet chain that opens Onyxia's Lair. A long faction-specific questline through Blackrock, Dustwallow Marsh and the dragon shrines.",
+    "intro": "Both factions end by earning the Drakefire Amulet, which unlocks the door to Onyxia's Lair. The routes differ — pick your side below. The Horde \"Test of Skulls\" step (four dragon shrines) can be done in any order; all four are required before Ascension.",
+    "factions": {
+      "Alliance": { "quests": [4182, 4183, 4184, 4185, 4186, 4223, 4224, 4241, 4242, 4264, 4282, 4322, 6402, 6403, 6501, 6502] },
+      "Horde": { "quests": [4903, 4941, 4974, 6566, 6567, 6568, 6569, 6570, 6582, 6583, 6584, 6585, 6601, 6602] }
+    }
+  },
+  "molten-core": {
+    "name": "Molten Core",
+    "category": "Attunement",
+    "levelRange": "55-60",
+    "blurb": "\"Attunement to the Core\" — reach the heart of Blackrock Depths and gain a direct teleport into Molten Core.",
+    "intro": "A single quest done deep inside Blackrock Depths, at the Molten Core entrance behind the Shadowforge lava. Completing it lets you teleport straight in from the BRD instance portal instead of running through. Only one person needs the summon, but everyone benefits from their own attunement.",
+    "factions": {
+      "Alliance": { "quests": [7848] },
+      "Horde": { "quests": [7487] }
+    }
+  },
+  "blackwing-lair": {
+    "name": "Blackwing Lair",
+    "category": "Attunement",
+    "levelRange": "58-60",
+    "blurb": "\"Blackhand's Command\" — read the orb behind General Drakkisath in Upper Blackrock Spire to open the way into Blackwing Lair.",
+    "intro": "A single quest: kill General Drakkisath at the end of UBRS, then click the Orb of Command behind him. This attunes you to use the orb at the top of Blackrock Spire that ports into Blackwing Lair.",
+    "quests": [7761]
+  },
+  "ubrs": {
+    "name": "Upper Blackrock Spire — Seal of Ascension",
+    "category": "Dungeon Key",
+    "levelRange": "57-60",
+    "blurb": "The Seal of Ascension opens the UBRS door. A soft key — one holder opens it for the group.",
+    "intro": "Before these quests you must gather three gemstones (Gemstone of Spirestone, Smolderthorn and Bloodaxe) from the Lower Blackrock Spire warlords. Then Vaelan in the LBRS entrance sets the Unadorned Seal of Ascension, and this chain finishes it into the Seal of Ascension that opens the Upper Spire door.",
+    "quests": [4742, 4743]
+  },
+  "naxxramas": {
+    "name": "Naxxramas",
+    "category": "Attunement",
+    "levelRange": "60",
+    "oneOf": true,
+    "blurb": "Argent Dawn reputation opens the Dread Citadel. Turn in to Archmage Angela Dosantos at Light's Hope Chapel — the higher your standing, the cheaper it is.",
+    "intro": "Naxxramas has no quest chain — it's a reputation gate. Grind the Argent Dawn (Plaguelands, Scholomance, Stratholme, Argent Dawn commissions) to at least Honored, then complete ONE version of \"The Dread Citadel - Naxxramas\" from Archmage Angela Dosantos at Light's Hope Chapel in the Eastern Plaguelands. Higher standing costs less.",
+    "notes": {
+      "9123": "Exalted with the Argent Dawn — granted free (Arcane Cloaking at no cost).",
+      "9122": "Revered with the Argent Dawn — 2 Arcane Crystal, 1 Nexus Crystal + 30g.",
+      "9121": "Honored with the Argent Dawn — 5 Arcane Crystal, 2 Nexus Crystal, 1 Righteous Orb + 60g."
+    },
+    "quests": [9123, 9122, 9121]
+  },
+  "karazhan-crypts": {
+    "name": "Karazhan Crypts",
+    "category": "Attunement",
+    "tw": true,
+    "levelRange": "58-60",
+    "blurb": "Turtle-custom. The key to open the Karazhan Crypts door — one person opening it lets the whole group in.",
+    "intro": "Added in patch 1.16.0. A seven-part faction chain that rewards the crypt key. Only one player needs it to open the door. Pick your side below.",
+    "factions": {
+      "Alliance": { "quests": [40311, 40312, 40313, 40314, 40315, 40316, 40317] },
+      "Horde": { "quests": [40304, 40305, 40306, 40307, 40308, 40309, 40310] }
+    }
+  },
+  "karazhan": {
+    "name": "Karazhan 40 — The Key to Karazhan",
+    "category": "Attunement",
+    "tw": true,
+    "levelRange": "58-60",
+    "blurb": "Turtle-custom. The full Master's Key chain into the 40-man Karazhan raid, starting from Lord Ebonlocke inside Karazhan 10.",
+    "intro": "A ten-step questline that takes you from Karazhan 10 through Dustwallow Marsh, Dire Maul West and Blackwing Lair to forge the Master's Key. Steps I–II and VI–X are shared; steps III–V differ by faction — pick your side below.",
+    "notes": {
+      "40817": "Lord Ebonlocke is inside Karazhan 10 — up the central staircase, left into the dining hall.",
+      "40818": "Kill Moroes (the final boss of Karazhan 10), then return to Lord Ebonlocke.",
+      "40819": "Given by the Cook next to Ebonlocke, not Ebonlocke himself. Alliance: go to the Dalaran bubble in Alterac Mountains.",
+      "40822": "Given by the Cook next to Ebonlocke, not Ebonlocke himself. Horde: go to the Undercity, Magic Quarter.",
+      "40820": "Find Magus Halister in Theramore.",
+      "40823": "Find Krog in Brackenwall Village.",
+      "40821": "Find \"Vandol\" on the southern shore of Dustwallow Marsh — the NPC is actually named Dolvan Bracewind.",
+      "40824": "Find \"Vandol\" on the southern shore of Dustwallow Marsh — the NPC is actually named Dolvan Bracewind.",
+      "40826": "Find four Echoes of Medivh around the world.",
+      "40827": "Kill Immol'thar in Dire Maul West and loot his corpse.",
+      "40828": "The book is next to Nefarian's throne in Blackwing Lair — needs a cleared BWL ID or a fresh clear.",
+      "40829": "Wait for Dolvan to craft the key. Done!"
+    },
+    "factions": {
+      "Alliance": { "quests": [40817, 40818, 40819, 40820, 40821, 40825, 40826, 40827, 40828, 40829] },
+      "Horde": { "quests": [40817, 40818, 40822, 40823, 40824, 40825, 40826, 40827, 40828, 40829] }
+    }
+  },
+  "emerald-sanctum": {
+    "name": "Emerald Sanctum",
+    "category": "Attunement",
+    "tw": true,
+    "levelRange": "58-60",
+    "blurb": "Turtle-custom. The \"Into the Dream\" chain rewards the Gemstone of Ysera — keep it in your bags to enter the Emerald Sanctum, like Onyxia's key.",
+    "intro": "Added with the Hyjal zone in patch 1.17.1. A six-part chain starting from Ralathius in Hyjal. Like the Onyxia key you must keep the reward Gemstone of Ysera in your bags to zone in.",
+    "notes": {
+      "40958": "Collect 3 Nightmare Effigy — ~10% drop from any satyr in Hyjal.",
+      "40959": "Three items: Binding Fragment (elite Cliff Giants in Azshara), Overloaded Arcane Prism (DM West — Arcane Torrent patrols after the tree boss), Slumberer's Shard (Sunken Temple — the summoned Weaver after Jammal'an). Do the Shard last.",
+      "40960": "Talk to Itharius in his Swamp of Sorrows cave, then return to Ralathius in Hyjal.",
+      "40961": "Long RP session — shadow mobs spawn; kill them all.",
+      "40962": "Kill Larannikus and loot his quest item — bring roughly 3–5 players (tank/healer/dps)."
+    },
+    "quests": [40957, 40958, 40959, 40960, 40961, 40962]
+  },
+  "scarlet-crusade": {
+    "name": "Scarlet Crusade",
+    "category": "Attunement",
+    "tw": true,
+    "levelRange": "58-60",
+    "blurb": "Turtle-custom. Attunement for the upcoming Scarlet Crusade raid (not yet released) — a long story chain through the Plaguelands.",
+    "intro": "The raid isn't live yet, but its attunement is completable now. A twelve-step faction chain ending in the Plaguelands. Pick your side below.",
+    "notes": {
+      "80730": "Delete the ring you receive after finding the clues, or the script won't spawn the Scarlet Crusade NPCs.",
+      "80703": "Stay ~100 yards from Thandol Span and wait for the ambush; approaching too fast bugs it. Escort Vladeus to the top of Menethil keep.",
+      "80710": "Kill undead across the Plaguelands for brains (~80–90% drop). Keep the disguise on.",
+      "80711": "Turn in 50 Savage Fronds + 50 Core of Elements — cheapest off the AH.",
+      "80728": "Scarlet Initiate Uniform drops ~30% from 53–55 elites in EPL — may need a friend."
+    },
+    "factions": {
+      "Alliance": { "quests": [80700, 80701, 80702, 80730, 80703, 80704, 80706, 80707, 80708, 80709, 80710, 80711] },
+      "Horde": { "quests": [80720, 80721, 80722, 80723, 80724, 80725, 80726, 80727, 80728, 80729, 80710, 80711] }
+    }
+  },
+  "stormwrought-castle": {
+    "name": "Stormwrought Castle",
+    "category": "Dungeon Key",
+    "tw": true,
+    "levelRange": "27-60",
+    "blurb": "Turtle-custom. A key that opens shortcut routes and extra bosses inside Stormwrought Castle.",
+    "intro": "Added in patch 1.18.0. A single key quest that unlocks routes not normally accessible in the dungeon (shortcuts and access to more bosses).",
+    "quests": [41837]
+  },
+  "dragonmaw-retreat": {
+    "name": "Dragonmaw Retreat",
+    "category": "Dungeon Key",
+    "tw": true,
+    "levelRange": "25-60",
+    "blurb": "Turtle-custom. A key that opens shortcut routes and extra bosses inside Dragonmaw Retreat.",
+    "intro": "Added in patch 1.18.0. A single key quest that unlocks routes not normally accessible in the dungeon (shortcuts and access to more bosses).",
+    "quests": [41774]
+  },
+  "inferno": {
+    "name": "Inferno — Permanent Hardcore",
+    "category": "Hardcore",
+    "tw": true,
+    "faction": "Neutral",
+    "levelRange": "55-60",
+    "blurb": "The level-55 quest chain that makes a Hardcore character permanently mortal. Finish it before level 60 to keep the Hardcore playstyle for good.",
+    "intro": "A letter arrives at 55 pointing you to a mailbox in Deadwind Pass, outside Karazhan. Each step sends you into a dungeon for a token, then back to the mailbox. Completing the chain rewards the Pendant of Mortality and locks in permanent (Inferno) Hardcore. Steps run in order; tick each off as you turn it in.",
+    "quests": [40914, 40915, 40916, 40917, 40918, 40919, 40920, 40921, 40922, 40923]
+  }
+}

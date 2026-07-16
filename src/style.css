@@ -650,6 +650,49 @@ h1 .tagx.tw-tag { font-size: 13px; vertical-align: middle; }
 .guide-card-blurb { font-size: 13px; line-height: 1.5; color: var(--text); }
 .guide-card-prog { display: inline-block; margin-top: 10px; font-size: 12px; color: #74c98a; }
 
+/* profession-planner cards on the guides index */
+.guide-prof-h { margin-top: 30px; }
+.guide-prof-cards { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.guide-prof-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.guide-prof-icon { flex: 0 0 auto; display: inline-flex; }
+.guide-prof-img { width: 34px; height: 34px; display: block; border-radius: 5px; border: 1px solid #000; background: #000; }
+.guide-prof-name { font-size: 15px; font-weight: 700; color: var(--gold); }
+
+/* chain guides (attunements + Inferno): ordered tickable checklist */
+.chain-page .guide-intro { max-width: 90ch; line-height: 1.55; }
+.chain-factions { margin-top: 12px; }
+.chain-steps { list-style: none; margin: 18px 0 0; padding: 0; counter-reset: none;
+  display: flex; flex-direction: column; gap: 8px; }
+.chain-step { display: flex; gap: 12px; padding: 12px 14px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 9px; align-items: flex-start; }
+.chain-step.done { opacity: .55; }
+.chain-step.done .chain-step-h > a { text-decoration: line-through; }
+.chain-terminal { border-color: var(--gold); box-shadow: inset 0 0 0 1px rgba(255,209,0,.25); }
+.chain-step-check { flex: 0 0 auto; padding-top: 2px; }
+.chain-step-check input { width: 17px; height: 17px; cursor: pointer; }
+.chain-step-body { flex: 1 1 auto; min-width: 0; }
+.chain-step-h { font-size: 15px; line-height: 1.5; }
+.chain-step-n { display: inline-block; min-width: 22px; margin-right: 4px; font-weight: 700;
+  color: var(--muted); font-variant-numeric: tabular-nums; }
+.chain-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px;
+  font-size: 11px; font-weight: 700; background: rgba(255,209,0,.15); color: var(--gold);
+  border: 1px solid rgba(255,209,0,.4); }
+.chain-step-meta { margin-top: 6px; display: flex; flex-direction: column; gap: 3px;
+  font-size: 13px; color: var(--text); }
+.chain-step-meta > span { line-height: 1.45; }
+.cs-k { display: inline-block; min-width: 46px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); font-weight: 700; }
+.cs-k.do { color: #6bb9ff; }
+.cs-k.turnin { color: #ffd100; }
+.chain-oneof { margin: 16px 0 4px; padding: 9px 12px; font-size: 13.5px; line-height: 1.45;
+  background: rgba(107,185,255,.1); border: 1px solid rgba(107,185,255,.35); border-radius: 8px;
+  color: var(--text); }
+.chain-oneof-list .chain-step { border-style: dashed; }
+.chain-step-note { margin-top: 6px; padding: 6px 9px; font-size: 12.5px; line-height: 1.45;
+  color: var(--muted); background: rgba(127,127,127,.08); border-left: 2px solid var(--border);
+  border-radius: 0 4px 4px 0; }
+.guide-chain-back { margin-top: 18px; }
+
 /* page header */
 .guide-header { margin-bottom: 18px; }
 .guide-head-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
