@@ -11,8 +11,8 @@
 // actually vendor-sold. See src/guide.js for the manifest/live-resolve/progress pattern
 // this mirrors.
 import { query } from "./db.js";
-import { Q_CRAFTING } from "./queries.js";
-import { itemLink, spellLink, iconImg, moneyHtml, esc } from "./render.js";
+import { Q_CRAFTING, Q_PROFESSION_TRAINERS, Q_PROFESSION_TRAINER_RANGE, Q_PROFESSION_RANKS } from "./queries.js";
+import { itemLink, spellLink, iconImg, moneyHtml, npcLink, zoneLink, teamBadge, esc } from "./render.js";
 import { PROFESSION, PROFESSION_LABEL, GATHERING_SKILLS } from "./constants.js";
 import { navigate } from "./main.js";
 
@@ -396,6 +396,142 @@ function shoppingRow(r, src, recipeMap) {
   </div>`;
 }
 
+// The four classic profession rank-ups, woven into the route as timeline stops. To
+// lift your skill cap you must visit a trainer: `learnAt` is when the next rank
+// becomes trainable, `wall` is the current cap you can't skill past until you do
+// (Apprentice = learning the profession itself, wall 0). Universal 1.12 constants.
+const RANKS = [
+  { name: "Apprentice", tier: 1, learnAt: 1, wall: 0, newCap: 75 },
+  { name: "Journeyman", tier: 2, learnAt: 50, wall: 75, newCap: 150 },
+  { name: "Expert", tier: 3, learnAt: 125, wall: 150, newCap: 225 },
+  { name: "Artisan", tier: 4, learnAt: 200, wall: 225, newCap: 300 },
+];
+
+// The four rank-up spells for this skill, keyed by tier (1..4). Resolved live from the
+// SKILL effect (118): its misc is the skill-line id, its value the tier. These are the
+// trainer-taught, player-facing spells (name = the profession, e.g. "Blacksmithing"),
+// so the timeline links the exact spell you learn. Lowest entry wins on duplicates.
+async function loadRankSpells(skill) {
+  const rows = await query(Q_PROFESSION_RANKS, []);
+  const byTier = new Map();
+  for (const r of rows) {
+    let effs; try { effs = JSON.parse(r.effects || "[]"); } catch { continue; }
+    for (const e of effs) {
+      if (e.effect === 118 && Number(e.misc) === skill && e.value >= 1) {
+        const cur = byTier.get(e.value);
+        if (!cur || r.entry < cur.entry) byTier.set(e.value, { entry: r.entry, name: r.name, icon: r.icon });
+      }
+    }
+  }
+  return byTier;
+}
+
+// Load + fold this skill's trainer NPCs (one entry per trainer, most-common spawn zone,
+// annotated with the skill range of recipes they teach). Pure data — the caller slots
+// them into the route timeline per faction. Empty array if the skill has no trainers.
+async function loadTrainers(skill) {
+  const [tRows, rRows] = await Promise.all([
+    query(Q_PROFESSION_TRAINERS, [skill]),
+    query(Q_PROFESSION_TRAINER_RANGE, [skill]),
+  ]);
+  const range = new Map(rRows.map((r) => [r.entry, r]));
+  const byNpc = new Map();
+  for (const r of tRows) {
+    let g = byNpc.get(r.entry);
+    if (!g) { g = { entry: r.entry, name: r.name, team: r.team || 0, lvl: r.lvl || 0, zones: [] }; byNpc.set(r.entry, g); }
+    if (r.areaid) g.zones.push({ areaid: r.areaid, zone: r.zone, n: r.n });
+  }
+  return [...byNpc.values()].map((g) => {
+    g.zones.sort((a, b) => b.n - a.n);      // fold to the trainer's most-common zone
+    g.loc = g.zones[0] || null;
+    const rr = range.get(g.entry);
+    g.lo = rr && rr.lo != null ? rr.lo : null;
+    g.hi = rr && rr.hi != null ? rr.hi : null;
+    return g;
+  }).filter((g) => g.loc);   // only trainers with a known spawn location (skip script/pool-placed NPCs)
+}
+
+// Faction-filtered trainers relevant to a rank, best-first. `side` is 'a'|'h'; neutral
+// trainers (team 0/3) serve both. For Apprentice we want the low-level starter-town
+// trainers; for later ranks the ones whose taught recipes reach past the wall (i.e. that
+// actually offer that rank), preferring accessible (lower-level) ones. Falls back to all
+// faction trainers when range data is absent (gathering skills have no craft recipes).
+function trainersForRank(trainers, side, rank) {
+  const team = side === "h" ? 2 : 1;
+  const mine = trainers.filter((t) => t.team === team || t.team === 0 || t.team === 3);
+  if (rank.name === "Apprentice") {
+    return [...mine].sort((a, b) => (a.lvl || 0) - (b.lvl || 0) || (a.lo || 999) - (b.lo || 999) || a.name.localeCompare(b.name));
+  }
+  // Trainers who teach recipes reaching past the wall can plausibly offer that rank.
+  const offers = mine.filter((t) => t.hi != null && t.hi >= rank.wall);
+  const pool = offers.length ? offers : mine;
+  // Float the trainers whose taught range sits closest to this wall (so Journeyman shows
+  // mid-level trainers, Artisan shows the high-end specialists) rather than the same
+  // widest-range NPCs at every stop.
+  const dist = (t) => (t.hi == null ? Infinity : Math.abs(((t.lo || 1) + t.hi) / 2 - rank.wall));
+  return [...pool].sort((a, b) => dist(a) - dist(b) || (a.lvl || 0) - (b.lvl || 0) || a.name.localeCompare(b.name));
+}
+
+const SHOWN_TRAINERS = 4;   // trainers listed per stop before the "+N more" expander
+function trainerItem(t) {
+  const rng = (t.lo != null && t.hi != null)
+    ? `<span class="pp-tr-range" title="Teaches recipes needing skill ${t.lo}–${t.hi}">${t.lo}–${t.hi}</span>` : "";
+  return `<li class="pp-tr">${teamBadge(t.team)} ${npcLink(t.entry, t.name)}` +
+    `<span class="pp-tr-loc">${zoneLink(t.loc.areaid, t.loc.zone)}</span>${rng}</li>`;
+}
+
+// One training stop in the route timeline: which rank spell to learn, when it unlocks,
+// and the nearest faction trainers (with location) to seek. Rendered inline between craft
+// steps. `rankSpells` maps tier -> the actual spell so we can link it (e.g. Journeyman).
+function trainStep(rank, trainers, side, profName, rankSpells) {
+  const list = trainersForRank(trainers, side, rank);
+  const sp = rankSpells && rankSpells.get(rank.tier);
+  // Link the trainer-taught rank spell, but keep the rank word as the label (the spell's
+  // own name is just the profession, identical across tiers).
+  const rankLink = sp ? spellLink(sp.entry, rank.name, sp.icon) : `<b>${esc(rank.name)}</b>`;
+  const head = rank.name === "Apprentice"
+    ? `Learn ${sp ? spellLink(sp.entry, profName, sp.icon) : `<b>${esc(profName)}</b>`}`
+    : `Train ${rankLink} <span class="muted">(cap ${rank.wall} → ${rank.newCap}, trainable at skill ${rank.learnAt})</span>`;
+  const shown = list.slice(0, SHOWN_TRAINERS).map(trainerItem).join("");
+  const extra = list.length - SHOWN_TRAINERS;
+  const more = extra > 0
+    ? `<details class="pp-tr-more"><summary>+${extra} more ${side === "h" ? "Horde" : "Alliance"}/neutral trainer${extra === 1 ? "" : "s"}</summary>` +
+      `<ul class="pp-tr-list">${list.slice(SHOWN_TRAINERS).map(trainerItem).join("")}</ul></details>`
+    : "";
+  const body = list.length
+    ? `<ul class="pp-tr-list">${shown}</ul>${more}`
+    : `<p class="muted">No ${side === "h" ? "Horde" : "Alliance"} trainer found in the data for this rank.</p>`;
+  return `<div class="pp-seg pp-train-step">
+    <span class="pp-train-pin" aria-hidden="true">⚑</span>
+    <div class="pp-seg-main">
+      <div class="pp-seg-title">${head}</div>
+      ${body}
+    </div>
+  </div>`;
+}
+
+// Render the route as one timeline: craft steps with training stops woven in at the
+// rank walls. Apprentice (learn the profession) opens the timeline; each later rank is
+// slotted just before the first craft that would carry you past its cap — where the
+// game blocks you until you train it.
+function renderRoute(segments, trainers, side, profName, rankSpells) {
+  const out = [trainStep(RANKS[0], trainers, side, profName, rankSpells)];   // Learn <profession> first
+  const walls = RANKS.slice(1);                                              // Journeyman / Expert / Artisan
+  let ptr = 0;
+  for (const seg of segments) {
+    const reach = seg.to || 0;
+    while (ptr < walls.length && reach > walls[ptr].wall) { out.push(trainStep(walls[ptr], trainers, side, profName, rankSpells)); ptr++; }
+    out.push(segRow(seg));
+  }
+  return out.join("");
+}
+
+// Faction toggle (Alliance | Horde) — steers which trainers the timeline stops show.
+function factionToggle(side) {
+  const opt = (val, label) => `<a class="pp-side${side === val ? " active" : ""}" data-side="${val}" href="#">${label}</a>`;
+  return `<div class="pp-side-toggle" role="group" aria-label="Faction">${opt("a", "Alliance")}${opt("h", "Horde")}</div>`;
+}
+
 function profPicker(skill) {
   return CRAFTABLE.map(([id, name]) =>
     `<a class="pp-prof${String(id) === String(skill) ? " active" : ""}" href="?profplan=${id}">${iconImg(PROF_ICON[id] || "trade_engineering")}${esc(name)}</a>`
@@ -410,16 +546,32 @@ export async function showProfPlan(rawSkill) {
   document.title = `${name || "Profession"} Leveling Planner - Tortoise-WoW DB`;
 
   if (!name || GATHERING_SKILLS.has(skill) && skill !== 186) {
-    // gathering profession (or unknown) -> no craft path; point at the browse view
+    // gathering profession (or unknown) -> no craft path; point at the browse view. There
+    // are still four rank-ups to train, so show the training timeline (where to learn each
+    // rank for your faction) — that's the useful "where do I go" answer for gatherers.
+    const side = new URLSearchParams(location.search).get("side") === "h" ? "h" : "a";
+    const [trainers, rankSpells] = name ? await Promise.all([loadTrainers(skill), loadRankSpells(skill)]) : [[], new Map()];
+    const timeline = trainers.length
+      ? `<div class="pp-controls">${factionToggle(side)}</div>
+         <section class="pp-route panel"><h2>Training route <span class="muted">(⚑ = train)</span></h2>
+           ${RANKS.map((r) => trainStep(r, trainers, side, name, rankSpells)).join("")}</section>` : "";
     app.innerHTML = `<div class="pp-page"><h1>Profession Leveling Planner</h1>
       <div class="pp-picker">${profPicker(skill)}</div>
       <p class="muted">${name ? `${esc(name)} is a gathering profession — you level it by gathering nodes out in the world, not by crafting.` : "Pick a crafting profession above."}
-      ${name ? ` See <a class="nav" href="?browse=crafting&prof=${skill}">${esc(name)} in the browser</a>.` : ""}</p></div>`;
+      ${name ? ` See <a class="nav" href="?browse=crafting&prof=${skill}">${esc(name)} in the browser</a>.` : ""}</p>
+      ${timeline}</div>`;
+    app.querySelector(".pp-side-toggle")?.addEventListener("click", (e) => {
+      const a = e.target.closest(".pp-side"); if (!a) return;
+      e.preventDefault();
+      if (a.dataset.side !== side) navigate(`?profplan=${skill}&side=${a.dataset.side}`);
+    });
     return;
   }
 
+  const params = new URLSearchParams(location.search);
   // Self-sufficient (default ON): steer away from recipes needing another profession's mats.
-  const selfSuff = new URLSearchParams(location.search).get("self") !== "0";
+  const selfSuff = params.get("self") !== "0";
+  const side = params.get("side") === "h" ? "h" : "a";   // faction for the training stops
 
   app.innerHTML = `<div class="loading">Planning ${esc(name)} 1→${TARGET}…</div>`;
   const rows = await query(Q_CRAFTING, []);
@@ -433,6 +585,7 @@ export async function showProfPlan(rawSkill) {
   const src = await sourceReagents(list);
   // expand crafted mats (e.g. Enchanted Thorium Bar) into their transitive base reagents
   const recipeMap = await resolveRecipeMap(list.filter((r) => src.get(r.item)?.crafted).map((r) => r.item));
+  const [trainers, rankSpells] = await Promise.all([loadTrainers(skill), loadRankSpells(skill)]);   // trainers + rank-up spells for the timeline
 
   const steps = segments.filter((s) => !s.gap);
   const totalCrafts = steps.reduce((n, s) => n + s.crafts, 0);
@@ -445,8 +598,11 @@ export async function showProfPlan(rawSkill) {
       <p class="muted">A low-cost 1→${TARGET} route generated live from the recipe database — it favours cheap materials and reliable skill-ups (never grinding a low-chance green recipe). Craft counts are estimates. Tick each step; progress is saved in this browser.</p>
     </div>
     <div class="pp-picker">${profPicker(skill)}</div>
-    <label class="pp-self"><input type="checkbox" class="pp-self-cb"${selfSuff ? " checked" : ""}> Self-sufficient
-      <span class="muted">— avoid recipes needing another profession's mats (enchanting dusts, transmutes, enchanted bars)</span></label>
+    <div class="pp-controls">
+      ${factionToggle(side)}
+      <label class="pp-self"><input type="checkbox" class="pp-self-cb"${selfSuff ? " checked" : ""}> Self-sufficient
+        <span class="muted">— avoid recipes needing another profession's mats (enchanting dusts, transmutes, enchanted bars)</span></label>
+    </div>
     ${shortNote}
     <div class="pp-progress-row">
       <div class="pp-progress"><i></i></div>
@@ -455,8 +611,8 @@ export async function showProfPlan(rawSkill) {
     </div>
     <div class="pp-body">
       <section class="pp-route panel">
-        <h2>Route <span class="muted">(${steps.length} steps · ~${totalCrafts} crafts)</span></h2>
-        ${segments.length ? segments.map(segRow).join("") : '<p class="muted">No learnable recipes found for this profession in the current dataset.</p>'}
+        <h2>Route <span class="muted">(${steps.length} steps · ~${totalCrafts} crafts · ⚑ = train)</span></h2>
+        ${segments.length ? renderRoute(segments, trainers, side, name, rankSpells) : '<p class="muted">No learnable recipes found for this profession in the current dataset.</p>'}
       </section>
       <aside class="pp-shop panel">
         <h2>Shopping list <span class="muted">(${list.length} materials)</span></h2>
@@ -467,8 +623,13 @@ export async function showProfPlan(rawSkill) {
   </div>`;
 
   wireProgress(skill, steps);
-  app.querySelector(".pp-self-cb")?.addEventListener("change", (e) =>
-    navigate(`?profplan=${skill}&self=${e.target.checked ? "1" : "0"}`));
+  const go = (nextSelf, nextSide) => navigate(`?profplan=${skill}&self=${nextSelf}&side=${nextSide}`);
+  app.querySelector(".pp-self-cb")?.addEventListener("change", (e) => go(e.target.checked ? "1" : "0", side));
+  app.querySelector(".pp-side-toggle")?.addEventListener("click", (e) => {
+    const a = e.target.closest(".pp-side"); if (!a) return;
+    e.preventDefault();
+    if (a.dataset.side !== side) go(selfSuff ? "1" : "0", a.dataset.side);
+  });
 }
 
 function wireProgress(skill, steps) {
