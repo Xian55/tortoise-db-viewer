@@ -139,10 +139,13 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, se
   const L = [];
   const line = (html, cls = "") => L.push(`<div class="tt-line ${cls}">${html}</div>`);
 
-  // header (icon + name)
+  // header (icon + name). Stackable trade goods show their max single stack count
+  // as an in-game-style badge on the icon (bottom-right), like bags / Wowhead.
+  const stack = it.stackable > 1
+    ? `<span class="tt-stack" title="Max stack: ${it.stackable}">${it.stackable}</span>` : "";
   const head =
     `<div class="tt-head">` +
-    iconImg(it.icon, "tt-icon") +
+    `<span class="tt-icon-wrap">${iconImg(it.icon, "tt-icon")}${stack}</span>` +
     `<div class="tt-name" style="color:${qualityColor(it.quality)}">${esc(it.name)}</div>` +
     `</div>`;
   L.push(head);

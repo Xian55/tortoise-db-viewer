@@ -229,6 +229,10 @@ a.set-bonus-link:hover { text-decoration: underline; }
 }
 .tt-head { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
 .tt-icon { width: 48px; height: 48px; border-radius: 6px; border: 1px solid #000; background: #000; }
+.tt-icon-wrap { position: relative; display: inline-block; line-height: 0; flex: 0 0 auto; }
+.tt-stack { position: absolute; right: 2px; bottom: 2px; min-width: 14px; padding: 0 3px;
+  font-size: 12px; font-weight: 700; line-height: 15px; text-align: right; color: #fff;
+  text-shadow: 0 0 2px #000, 1px 1px 2px #000; pointer-events: none; }
 .tt-name { font-size: 17px; font-weight: 600; line-height: 1.2; }
 .tt-rank { margin-left: auto; align-self: center; font-size: 13px; }
 .tt-line { color: #ffffff; }

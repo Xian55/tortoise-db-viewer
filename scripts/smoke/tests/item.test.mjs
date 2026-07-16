@@ -193,6 +193,16 @@ async function testSoldByLocation(id) {
   return heads.includes("Location") && heads.includes("Faction") && badges >= 1 && zoneLinks >= 1;
 }
 
+// Stackable trade goods show their max single stack count as an icon badge (like
+// bags / Wowhead). Linen Cloth (2589) stacks to 20; Hearthstone (6948) never stacks.
+async function testStackBadge(id, expect) {
+  await nav(`?item=${id}`);
+  await page.waitForSelector(".item-main .tt-icon", { timeout: T });
+  const badge = await page.$eval(".item-main .tt-stack", (e) => e.textContent.trim()).catch(() => null);
+  console.log(`stack-badge ${id}: badge=${badge} expect=${expect}`);
+  return expect === null ? badge === null : badge === String(expect);
+}
+
 // readable item (book/letter/document) renders its page_text prose in a .readable
 // panel. Marshal McBride's Documents (745) chains four report pages.
 async function testReadableItem(id, expect) {
@@ -330,6 +340,8 @@ smoke("item random-suffix 7457", () => testItemRandomSuffix(7457));
 smoke("item container 16882", () => testContainer(16882, "Junkbox"));
 smoke("item vendor-restock 2319", () => testVendorRestock(2319));
 smoke("item sold-by location+faction 2319", () => testSoldByLocation(2319));
+smoke("item stack badge 2589", () => testStackBadge(2589, 20));
+smoke("item no stack badge 6948", () => testStackBadge(6948, null));
 smoke("item readable 745", () => testReadableItem(745, "REPORT: Kobolds"));
 smoke("item teaches 70204", () => testTeaches(70204, "Shadowforged"));
 smoke("item custom-icon 9376", () => testCustomIcon(9376, "Jang"));
