@@ -203,6 +203,18 @@ async function testStackBadge(id, expect) {
   return expect === null ? badge === null : badge === String(expect);
 }
 
+// Item page shows a quality + item-class subtitle, each linking into the item
+// browser (Linen Cloth 2589 = Common / Trade Goods).
+async function testItemClassLine(id, quality, cls) {
+  await nav(`?item=${id}`);
+  await page.waitForSelector(".item-main .item-classline", { timeout: T });
+  const q = await page.$eval(".item-classline .item-qual", (e) => ({ t: e.textContent.trim(), h: e.getAttribute("href") })).catch(() => null);
+  const links = await page.$$eval(".item-classline a", (e) => e.map((a) => ({ t: a.textContent.trim(), h: a.getAttribute("href") })));
+  console.log(`classline ${id}: qual=${JSON.stringify(q)} links=${JSON.stringify(links)}`);
+  return !!q && q.t === quality && /\?browse=items&quality=/.test(q.h)
+    && links.some((a) => a.t === cls && /\?browse=items&class=/.test(a.h));
+}
+
 // readable item (book/letter/document) renders its page_text prose in a .readable
 // panel. Marshal McBride's Documents (745) chains four report pages.
 async function testReadableItem(id, expect) {
@@ -342,6 +354,7 @@ smoke("item vendor-restock 2319", () => testVendorRestock(2319));
 smoke("item sold-by location+faction 2319", () => testSoldByLocation(2319));
 smoke("item stack badge 2589", () => testStackBadge(2589, 20));
 smoke("item no stack badge 6948", () => testStackBadge(6948, null));
+smoke("item classline 2589", () => testItemClassLine(2589, "Common", "Trade Goods"));
 smoke("item readable 745", () => testReadableItem(745, "REPORT: Kobolds"));
 smoke("item teaches 70204", () => testTeaches(70204, "Shadowforged"));
 smoke("item custom-icon 9376", () => testCustomIcon(9376, "Jang"));

@@ -220,6 +220,9 @@ a.set-bonus-link:hover { text-decoration: underline; }
 .set-summary .best { color: #1eff00; }   /* highest contributor per stat row */
 .item-view { display: grid; grid-template-columns: 340px 1fr; gap: 26px; align-items: start; }
 @media (max-width: 760px) { .item-view { grid-template-columns: 1fr; } }
+.item-classline { margin-top: 8px; font-size: 14px; }
+.item-classline a { text-decoration: none; }
+.item-classline a:hover { text-decoration: underline; }
 .item-meta { margin-top: 10px; font-size: 12px; }
 
 /* tooltip */
