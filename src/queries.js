@@ -452,6 +452,45 @@ export const Q_PROFESSION_LEARN = `
         AND s.teaches IS NULL AND s.hidden = 0
   ORDER BY s.entry, c.team, c.level_min, c.name`;
 
+// Profession trainer NPCs for a skill + WHERE they stand -- powers the profplan
+// "Where to train" panel (which NPC, which zone, which faction to seek for each
+// rank-up). A trainer is any creature that teaches at least one spell of the skill
+// (recipes carry the profession's skill id); it carries the creature's team
+// (1 Alliance / 2 Horde / 3 both / 0 neutral) and every zone it spawns in with a
+// per-zone spawn count, so the caller folds each trainer to its most-common zone.
+// One row per (trainer, zone); trainers with no static spawn keep one areaid=NULL row.
+export const Q_PROFESSION_TRAINERS = `
+  SELECT c.entry, c.name, c.team, c.level_min AS lvl,
+         s.zone AS areaid, z.name AS zone, z.mapid, m.type AS mtype, COUNT(s.id) AS n
+  FROM (SELECT DISTINCT st.npc FROM spell_trainer st
+        JOIN spells sp ON sp.entry = st.spell AND sp.skill = ?1) t
+  JOIN creatures c ON c.entry = t.npc AND c.name <> ''
+  LEFT JOIN spawn_points s INDEXED BY idx_spawn_id ON s.kind = 'c' AND s.id = c.entry AND s.zone IS NOT NULL
+  LEFT JOIN zones z ON z.areaid = s.zone
+  LEFT JOIN maps m ON m.id = z.mapid
+  GROUP BY c.entry, s.zone`;
+
+// The four player-facing rank-up spells (Apprentice/Journeyman/Expert/Artisan) for every
+// profession — the trainer-taught ones (name = the profession, e.g. "Blacksmithing",
+// rank = the tier, learnable = 1). Identified by the SKILL effect (id 118): its misc =
+// the skill-line id, its value = the tier (1..4). NOT the internal SKILL_STEP twin
+// (effect 44, name "Journeyman Blacksmith", no trainer). Small set (~80 rows) — the
+// caller filters to its skill in JS and links each tier's spell in the training timeline.
+export const Q_PROFESSION_RANKS = `
+  SELECT entry, name, icon, effects FROM spells
+  WHERE effects LIKE '%"effect":118%' AND name <> ''`;
+
+// The skill window each profession trainer covers: MIN/MAX required-skill of the
+// recipes they teach (from craft_source.learn_req). Lets the panel show "teaches
+// skill 15-230" so a player picks a trainer whose range covers their bracket.
+// Empty for gathering skills (no craft_source rows) -> the caller omits the badge.
+export const Q_PROFESSION_TRAINER_RANGE = `
+  SELECT st.npc AS entry, MIN(NULLIF(cs.learn_req, 0)) AS lo, MAX(cs.learn_req) AS hi
+  FROM spell_trainer st
+  JOIN spells sp ON sp.entry = st.spell AND sp.skill = ?1
+  JOIN craft_source cs ON cs.spell = sp.entry
+  GROUP BY st.npc`;
+
 // Items (book/tome/recipe) whose Use "learn" effect teaches this spell.
 export const Q_SPELL_BOOKS = `
   SELECT i.entry, i.name, i.quality, di.icon
