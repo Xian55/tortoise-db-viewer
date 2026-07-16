@@ -219,7 +219,7 @@ export const qItemReagents = (n) => `
 // NPCs that sell an item: direct npc_vendor entries + creatures whose vendor_id
 // references a npc_vendor_template that stocks it.
 export const Q_SOLD_BY = `
-  SELECT DISTINCT c.entry, c.name, c.level_min, c.level_max,
+  SELECT DISTINCT c.entry, c.name, c.level_min, c.level_max, c.team,
     COALESCE((SELECT maxcount FROM npc_vendor WHERE entry = c.entry AND item = ?1),
              (SELECT maxcount FROM npc_vendor_template WHERE entry = c.vendor_id AND item = ?1)) AS maxcount,
     COALESCE((SELECT incrtime FROM npc_vendor WHERE entry = c.entry AND item = ?1),

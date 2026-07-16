@@ -179,6 +179,20 @@ async function testVendorRestock(id) {
   return stock.length > 0 && hasRestock;
 }
 
+// Sold-by tab shows each vendor's zone (Location column) and faction alignment
+// badge (A/H/N). Medium Leather (2319) is sold by Lhara in a real zone.
+async function testSoldByLocation(id) {
+  await nav(`?item=${id}`);
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".item-rel .tab")].find((t) => /Sold by/.test(t.textContent)); if (b) b.click(); });
+  await page.waitForSelector(".item-rel .tabpane:not(.hidden) table tbody tr", { timeout: T });
+  const heads = await page.$$eval(".item-rel .tabpane:not(.hidden) thead th", (e) => e.map((t) => t.textContent.trim()));
+  const badges = await page.$$eval(".item-rel .tabpane:not(.hidden) tbody .tbadge", (e) => e.length);
+  const zoneLinks = await page.$$eval(".item-rel .tabpane:not(.hidden) tbody a.zone", (e) => e.length);
+  console.log(`sold-by ${id}: heads=${JSON.stringify(heads)} badges=${badges} zoneLinks=${zoneLinks}`);
+  return heads.includes("Location") && heads.includes("Faction") && badges >= 1 && zoneLinks >= 1;
+}
+
 // readable item (book/letter/document) renders its page_text prose in a .readable
 // panel. Marshal McBride's Documents (745) chains four report pages.
 async function testReadableItem(id, expect) {
@@ -315,6 +329,7 @@ smoke("item compare 47185:47191", () => testCompare(47185, 47191));
 smoke("item random-suffix 7457", () => testItemRandomSuffix(7457));
 smoke("item container 16882", () => testContainer(16882, "Junkbox"));
 smoke("item vendor-restock 2319", () => testVendorRestock(2319));
+smoke("item sold-by location+faction 2319", () => testSoldByLocation(2319));
 smoke("item readable 745", () => testReadableItem(745, "REPORT: Kobolds"));
 smoke("item teaches 70204", () => testTeaches(70204, "Shadowforged"));
 smoke("item custom-icon 9376", () => testCustomIcon(9376, "Jang"));

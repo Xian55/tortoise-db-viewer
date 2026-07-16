@@ -530,8 +530,11 @@ async function showItem(id) {
     }
   }
 
-  // where each dropping NPC lives (zone or dungeon), batched
-  const dropLoc = await resolveNpcLocations(dropped.map((d) => d.entry));
+  // where each dropping NPC / vendor lives (zone or dungeon), batched
+  const [dropLoc, soldLoc] = await Promise.all([
+    resolveNpcLocations(dropped.map((d) => d.entry)),
+    resolveNpcLocations(sold.map((s) => s.entry)),
+  ]);
   const dchance = (d) => d.drop_chance ?? d.skin_chance ?? d.pick_chance;
   const srcTag = (d) => (d.skin_chance != null ? ' <span class="muted">(skin)</span>' : d.pick_chance != null ? ' <span class="muted">(pickpocket)</span>' : "");
   // Qty = stack size dropped (blank for the usual single); value sorts by max count.
@@ -554,7 +557,9 @@ async function showItem(id) {
   ];
   const soldCols = [
     { label: "Vendor", cell: (s) => npcLink(s.entry, s.name), value: (s) => s.name },
+    { label: "Faction", cls: "muted", cell: (s) => teamBadge(s.team), value: (s) => teamLabel(s.team) },
     { label: "Level", num: true, cls: "muted", cell: (s) => lvlRange(s), value: (s) => s.level_max || s.level_min || 0 },
+    { label: "Location", cls: "muted", cell: (s) => (soldLoc.get(s.entry) || {}).html || "", value: (s) => (soldLoc.get(s.entry) || {}).text || "" },
     stockCol,
   ];
   const itemChanceCols = [
