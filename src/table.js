@@ -17,6 +17,17 @@ import { esc } from "./render.js";
 
 const stripTags = (h) => String(h).replace(/<[^>]*>/g, "").trim();
 
+// Rows-per-page: the dropdown options + a persisted global preference so the choice
+// survives a table's re-render (browse rebuilds its table on every filter change).
+const PS_OPTIONS = [25, 50, 100, 200, 1000, 5000];
+const PS_MIN = PS_OPTIONS[0]; // fewer rows than this => nothing to paginate, hide the tools
+const PS_STORE = "tw.tablePageSize";
+function psRead() {
+  try { const v = localStorage.getItem(PS_STORE); if (v === "all") return Infinity; const n = +v; return n > 0 ? n : null; }
+  catch { return null; }
+}
+function psWrite(v) { try { localStorage.setItem(PS_STORE, isFinite(v) ? String(v) : "all"); } catch { /* ignore */ } }
+
 // Drop columns flagged hideEmpty (no row renders a value) or hideUniform (every
 // row renders the same single value) -- e.g. a profession trainer's Profession
 // column (all rows the same), or a Level column that's empty for every row.
@@ -46,6 +57,9 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
     collapsed: new Set(),
     selected: new Set(),
   };
+  // Finite-default tables (browse, tabbed lists) honour the persisted global rows-per-page;
+  // show-all tables (pageSize omitted => Infinity) stay show-all but still get the dropdown.
+  state.pageSize = isFinite(pageSize) ? (psRead() ?? pageSize) : pageSize;
   const emit = () => onState && onState({ sort: colKey(state.sort), dir: state.dir, group: colKey(state.group) });
 
   const keyOf = (col, row) => (col.value ? col.value(row) : stripTags(col.cell(row)));
@@ -78,12 +92,13 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
     const dcols = grouped ? columns.filter((_, i) => i !== state.group) : columns;
     const gcol = grouped ? columns[state.group] : null;
     const selTh = selectable ? `<th class="selcol"><input type="checkbox" data-selall title="Select all"></th>` : "";
-    const selTd = (r) => (selectable ? `<td class="selcol"><input type="checkbox" data-selrow="${esc(rkey(r))}"${state.selected.has(rkey(r)) ? " checked" : ""}></td>` : "");
+    const selTd = (r) => (selectable ? `<td class="selcol"><input type="checkbox" aria-label="Select row" data-selrow="${esc(rkey(r))}"${state.selected.has(rkey(r)) ? " checked" : ""}></td>` : "");
 
-    const showAll = !isFinite(pageSize);
-    const pages = showAll ? 1 : Math.max(1, Math.ceil(state.rows.length / pageSize));
+    const showAll = !isFinite(state.pageSize);
+    const pages = showAll ? 1 : Math.max(1, Math.ceil(state.rows.length / state.pageSize));
     if (state.page >= pages) state.page = pages - 1;
-    const slice = showAll ? state.rows : state.rows.slice(state.page * pageSize, (state.page + 1) * pageSize);
+    if (state.page < 0) state.page = 0;
+    const slice = showAll ? state.rows : state.rows.slice(state.page * state.pageSize, (state.page + 1) * state.pageSize);
 
     const head = dcols.map((c) => {
       const i = columns.indexOf(c);
@@ -99,7 +114,7 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
       if (grouped) {
         const g = keyOf(gcol, r), gk = String(g), col = state.collapsed.has(gk);
         if (g !== prev) {
-          const gsel = selectable ? `<td class="selcol"><input type="checkbox" data-selgroup="${esc(gk)}"></td>` : "";
+          const gsel = selectable ? `<td class="selcol"><input type="checkbox" aria-label="Select group" data-selgroup="${esc(gk)}"></td>` : "";
           // header labels the group; gcol.group(row) lets a column show the group
           // key (e.g. "Recipe") instead of a member's cell (a specific recipe link)
           const ghead = gcol.group ? gcol.group(r) : gcol.cell(r);
@@ -113,17 +128,29 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
       }
     }
 
-    const groupSel = groupable ? `<div class="groupctl"><label>Group by</label><select data-groupby>
+    const groupSel = groupable ? `<div class="groupctl"><label>Group by</label><select data-groupby aria-label="Group by column">
       <option value=""${state.group == null ? " selected" : ""}>None</option>
       ${columns.map((c, i) => `<option value="${i}"${state.group === i ? " selected" : ""}>${esc(c.label)}</option>`).join("")}
     </select></div>` : "";
 
-    const pager = (!showAll && pages > 1) ? `<div class="pager">
+    const long = state.rows.length > PS_MIN; // enough rows to warrant the paging tools
+    const pagerHtml = () => (!showAll && pages > 1) ? `<div class="pager">
       <button data-pg="${state.page - 1}"${state.page <= 0 ? " disabled" : ""}>← Prev</button>
       <span class="muted">Page ${state.page + 1} / ${pages}</span>
       <button data-pg="${state.page + 1}"${state.page >= pages - 1 ? " disabled" : ""}>Next →</button></div>` : "";
+    // options = the canonical set + whatever custom size this table was created with / is on
+    const extra = [pageSize, state.pageSize].filter((n) => isFinite(n) && !PS_OPTIONS.includes(n));
+    const sizeOpts = extra.length ? [...new Set([...PS_OPTIONS, ...extra])].sort((a, b) => a - b) : PS_OPTIONS;
+    const sizeSel = long ? `<label class="psize"><span>Rows</span><select data-psize aria-label="Rows per page">${
+      sizeOpts.map((n) => `<option value="${n}"${state.pageSize === n ? " selected" : ""}>${n}</option>`).join("")
+    }<option value="all"${showAll ? " selected" : ""}>All</option></select></label>` : "";
+    const jumpBtn = (d, txt) => `<button type="button" class="tbl-jump" data-jump="${d}" title="Jump to ${d} of table">${txt}</button>`;
 
-    container.innerHTML = groupSel + `<table class="dtable"><thead><tr>${selTh}${head}</tr></thead><tbody>${body}</tbody></table>` + pager;
+    const topbar = (groupable || long) ? `<div class="tabletop">${groupSel || "<span></span>"}` +
+      `<div class="table-tools">${sizeSel}${pagerHtml()}${long ? jumpBtn("bottom", "↓ Bottom") : ""}</div></div>` : "";
+    const botbar = long ? `<div class="tablebot">${pagerHtml()}${jumpBtn("top", "↑ Top")}</div>` : "";
+
+    container.innerHTML = topbar + `<table class="dtable"><thead><tr>${selTh}${head}</tr></thead><tbody>${body}</tbody></table>` + botbar;
     if (selectable) syncSelUI();
   }
 
@@ -154,6 +181,13 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
     }
     const pg = e.target.closest("button[data-pg]");
     if (pg) { state.page = +pg.dataset.pg; render(); return; }
+    const jump = e.target.closest("[data-jump]");
+    if (jump) {
+      const tbl = container.querySelector("table.dtable");
+      if (jump.dataset.jump === "bottom") tbl?.scrollIntoView({ block: "end", behavior: "smooth" });
+      else container.scrollIntoView({ block: "start", behavior: "smooth" });
+      return;
+    }
     // collapse / expand a group (ignore clicks on links or the group checkbox)
     const gr = e.target.closest(".grouprow");
     if (gr && !e.target.closest("a") && !e.target.closest("input")) {
@@ -168,6 +202,15 @@ export function createTable(container, { columns, rows, pageSize = Infinity, gro
     }
   });
   container.addEventListener("change", (e) => {
+    const ps = e.target.closest("[data-psize]");
+    if (ps) {
+      const topIndex = isFinite(state.pageSize) ? state.page * state.pageSize : 0; // keep the current top row in view
+      state.pageSize = ps.value === "all" ? Infinity : +ps.value;
+      state.page = isFinite(state.pageSize) ? Math.floor(topIndex / state.pageSize) : 0;
+      psWrite(state.pageSize);
+      render();
+      return;
+    }
     const sel = e.target.closest("[data-groupby]");
     if (sel) { state.group = sel.value === "" ? null : +sel.value; state.collapsed.clear(); state.page = 0; render(); emit(); return; }
     if (!selectable) return;

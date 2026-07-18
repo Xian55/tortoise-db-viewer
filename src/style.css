@@ -299,6 +299,18 @@ th.sortable.active { color: var(--gold); }
 .groupctl { display: inline-flex; gap: 6px; align-items: center; margin-bottom: 10px; }
 .groupctl label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
 .groupctl select { padding: 5px 9px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; }
+/* table control rows: Group by (left) + rows-per-page / pager / jump (right), above +
+   below the table. See src/table.js. */
+.tabletop { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.tabletop .groupctl { margin-bottom: 0; }
+.table-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.table-tools .pager, .tablebot .pager { margin-top: 0; }
+.tablebot { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.psize { display: inline-flex; align-items: center; gap: 6px; }
+.psize span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.psize select { padding: 5px 9px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; }
+.tbl-jump { padding: 6px 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; font: inherit; }
+.tbl-jump:hover { color: var(--text); }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--panel2); }
 .ilink:hover { text-decoration: underline; }
