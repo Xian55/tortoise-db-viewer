@@ -138,7 +138,8 @@ for (const spec of IMPORTS) importSpec(spec);
 // before this import), so the staged value is unreliable. The base dump is authoritative
 // for pet-food type (1 Meat, 2 Fish, 3 Cheese, 4 Bread, 5 Fungus, 6 Fruit, 7 Raw Meat,
 // 8 Raw Fish) -> powers the Hunter Pets diet links (?browse=items&food=N).
-{
+// Turtle-only: the cmangos dataset has no base dump file (built from a SQLite DB).
+if (SQL_SOURCE !== "cmangos" && existsSync(join(SQL_DIR, "tw_world_item_template.sql"))) {
   const dump = read("tw_world_item_template.sql");
   const cols = parseColumns(dump);
   const iE = cols.indexOf("entry"), iF = cols.indexOf("food_type");
