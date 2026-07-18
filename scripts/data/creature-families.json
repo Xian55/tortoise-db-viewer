@@ -1,0 +1,341 @@
+{
+ "1": {
+  "diet": [
+   "Meat"
+  ],
+  "foodMask": 1,
+  "icon": "ability_hunter_pet_wolf",
+  "name": "Wolf",
+  "skillLine": 208
+ },
+ "11": {
+  "diet": [
+   "Meat"
+  ],
+  "foodMask": 1,
+  "icon": "ability_hunter_pet_raptor",
+  "name": "Raptor",
+  "skillLine": 217
+ },
+ "12": {
+  "diet": [
+   "Cheese",
+   "Fungus",
+   "Fruit"
+  ],
+  "foodMask": 52,
+  "icon": "ability_hunter_pet_tallstrider",
+  "name": "Tallstrider",
+  "skillLine": 218
+ },
+ "15": {
+  "diet": [],
+  "foodMask": 0,
+  "icon": "",
+  "name": "Felhunter",
+  "skillLine": 189
+ },
+ "16": {
+  "diet": [],
+  "foodMask": 0,
+  "icon": "",
+  "name": "Voidwalker",
+  "skillLine": 204
+ },
+ "17": {
+  "diet": [],
+  "foodMask": 0,
+  "icon": "",
+  "name": "Succubus",
+  "skillLine": 205
+ },
+ "18": {
+  "diet": [],
+  "foodMask": 0,
+  "icon": "",
+  "name": "Incubus",
+  "skillLine": 205
+ },
+ "19": {
+  "diet": [],
+  "foodMask": 0,
+  "icon": "",
+  "name": "Doomguard",
+  "skillLine": 207
+ },
+ "2": {
+  "diet": [
+   "Meat",
+   "Fish"
+  ],
+  "foodMask": 3,
+  "icon": "ability_hunter_pet_cat",
+  "name": "Cat",
+  "skillLine": 209
+ },
+ "20": {
+  "diet": [
+   "Meat"
+  ],
+  "foodMask": 1,
+  "icon": "ability_hunter_pet_scorpid",
+  "name": "Scorpid",
+  "skillLine": 236
+ },
+ "21": {
+  "diet": [
+   "Fish",
+   "Fungus",
+   "Fruit",
+   "Raw Fish"
+  ],
+  "foodMask": 178,
+  "icon": "ability_hunter_pet_turtle",
+  "name": "Turtle",
+  "skillLine": 251
+ },
+ "23": {
+  "diet": [],
+  "foodMask": 0,
+  "icon": "",
+  "name": "Imp",
+  "skillLine": 188
+ },
+ "24": {
+  "diet": [
+   "Fungus",
+   "Fruit"
+  ],
+  "foodMask": 48,
+  "icon": "ability_hunter_pet_bat",
+  "name": "Bat",
+  "skillLine": 653
+ },
+ "25": {
+  "diet": [
+   "Meat",
+   "Fruit"
+  ],
+  "foodMask": 33,
+  "icon": "ability_hunter_pet_hyena",
+  "name": "Hyena",
+  "skillLine": 654
+ },
+ "26": {
+  "diet": [
+   "Meat"
+  ],
+  "foodMask": 1,
+  "icon": "ability_hunter_pet_owl",
+  "name": "Owl",
+  "skillLine": 655
+ },
+ "27": {
+  "diet": [
+   "Fish",
+   "Cheese",
+   "Bread"
+  ],
+  "foodMask": 14,
+  "icon": "ability_hunter_pet_windserpent",
+  "name": "Wind Serpent",
+  "skillLine": 656
+ },
+ "28": {
+  "diet": [],
+  "foodMask": 0,
+  "icon": "",
+  "name": "Remote Control",
+  "skillLine": 758
+ },
+ "29": {
+  "diet": [],
+  "foodMask": 0,
+  "icon": "",
+  "name": "Felguard",
+  "skillLine": 761
+ },
+ "3": {
+  "diet": [
+   "Meat"
+  ],
+  "foodMask": 1,
+  "icon": "ability_hunter_pet_spider",
+  "name": "Spider",
+  "skillLine": 203
+ },
+ "30": {
+  "diet": [
+   "Meat",
+   "Fish",
+   "Fruit",
+   "Raw Meat",
+   "Raw Fish"
+  ],
+  "foodMask": 227,
+  "icon": "ability_hunter_pet_dragonhawk",
+  "name": "Dragonhawk",
+  "skillLine": 763
+ },
+ "31": {
+  "diet": [
+   "Meat",
+   "Raw Meat"
+  ],
+  "foodMask": 65,
+  "icon": "ability_hunter_pet_ravager",
+  "name": "Ravager",
+  "skillLine": 767
+ },
+ "32": {
+  "diet": [
+   "Fish",
+   "Fruit",
+   "Raw Fish"
+  ],
+  "foodMask": 162,
+  "icon": "ability_hunter_pet_warpstalker",
+  "name": "Warp Stalker",
+  "skillLine": 766
+ },
+ "33": {
+  "diet": [
+   "Cheese",
+   "Bread",
+   "Fungus",
+   "Fruit"
+  ],
+  "foodMask": 60,
+  "icon": "ability_hunter_pet_sporebat",
+  "name": "Sporebat",
+  "skillLine": 765
+ },
+ "34": {
+  "diet": [
+   "Meat",
+   "Raw Meat"
+  ],
+  "foodMask": 65,
+  "icon": "ability_hunter_pet_netherray",
+  "name": "Nether Ray",
+  "skillLine": 764
+ },
+ "35": {
+  "diet": [
+   "Meat",
+   "Fish"
+  ],
+  "foodMask": 3,
+  "icon": "ability_hunter_pet_serpent1",
+  "name": "Serpent",
+  "skillLine": 1009
+ },
+ "36": {
+  "diet": [
+   "Meat",
+   "Fruit"
+  ],
+  "foodMask": 33,
+  "icon": "ability_hunter_aspectofthefox",
+  "name": "Fox",
+  "skillLine": 1010
+ },
+ "37": {
+  "diet": [
+   "Meat"
+  ],
+  "foodMask": 1,
+  "icon": "ability_creature_disease_04",
+  "name": "Plagued",
+  "skillLine": 208
+ },
+ "38": {
+  "diet": [
+   "Meat"
+  ],
+  "foodMask": 1,
+  "icon": "ability_mount_ridinghorse",
+  "name": "Horse",
+  "skillLine": 208
+ },
+ "39": {
+  "diet": [
+   "Fungus",
+   "Fruit"
+  ],
+  "foodMask": 48,
+  "icon": "ability_hunter_pet_bat",
+  "name": "Moth",
+  "skillLine": 1011
+ },
+ "4": {
+  "diet": [
+   "Meat",
+   "Fish",
+   "Cheese",
+   "Bread",
+   "Fungus",
+   "Fruit"
+  ],
+  "foodMask": 63,
+  "icon": "ability_hunter_pet_bear",
+  "name": "Bear",
+  "skillLine": 210
+ },
+ "5": {
+  "diet": [
+   "Meat",
+   "Fish",
+   "Cheese",
+   "Bread",
+   "Fungus",
+   "Fruit"
+  ],
+  "foodMask": 63,
+  "icon": "ability_hunter_pet_boar",
+  "name": "Boar",
+  "skillLine": 211
+ },
+ "6": {
+  "diet": [
+   "Meat",
+   "Fish"
+  ],
+  "foodMask": 3,
+  "icon": "ability_hunter_pet_crocolisk",
+  "name": "Crocolisk",
+  "skillLine": 212
+ },
+ "7": {
+  "diet": [
+   "Meat",
+   "Fish"
+  ],
+  "foodMask": 3,
+  "icon": "ability_hunter_pet_vulture",
+  "name": "Carrion Bird",
+  "skillLine": 213
+ },
+ "8": {
+  "diet": [
+   "Fish",
+   "Bread",
+   "Fungus",
+   "Fruit"
+  ],
+  "foodMask": 58,
+  "icon": "ability_hunter_pet_crab",
+  "name": "Crab",
+  "skillLine": 214
+ },
+ "9": {
+  "diet": [
+   "Fungus",
+   "Fruit"
+  ],
+  "foodMask": 48,
+  "icon": "ability_hunter_pet_gorilla",
+  "name": "Gorilla",
+  "skillLine": 215
+ }
+}

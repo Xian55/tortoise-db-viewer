@@ -27,7 +27,7 @@ export const IMPORTS = [
     target: "creatures",
     columns: ["entry", "name", "subname", "level_min", "level_max", "rank", "type", "faction",
       "health_min", "health_max", "npc_flags", "loot_id", "pickpocket_loot_id", "skinning_loot_id",
-      "display_id1", "vendor_id"], // display_id1 -> renamed to display_id in build-db; vendor_id -> npc_vendor_template
+      "display_id1", "vendor_id", "beast_family", "type_flags"], // display_id1 -> renamed to display_id in build-db; vendor_id -> npc_vendor_template; beast_family -> renamed pet_family; type_flags -> derives tameable then dropped
     text: ["name", "subname"],
     pk: "entry",
     indexes: ["loot_id", "pickpocket_loot_id", "skinning_loot_id"],

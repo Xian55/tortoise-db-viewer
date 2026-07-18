@@ -133,10 +133,43 @@ function importSpec(spec) {
 console.log("Importing core tables...");
 for (const spec of IMPORTS) importSpec(spec);
 
+// Restore items.food_type from the BASE dump. Migrations that REPLACE an item row
+// without the Turtle-specific `food_type` column null it out (staging applies them
+// before this import), so the staged value is unreliable. The base dump is authoritative
+// for pet-food type (1 Meat, 2 Fish, 3 Cheese, 4 Bread, 5 Fungus, 6 Fruit, 7 Raw Meat,
+// 8 Raw Fish) -> powers the Hunter Pets diet links (?browse=items&food=N).
+{
+  const dump = read("tw_world_item_template.sql");
+  const cols = parseColumns(dump);
+  const iE = cols.indexOf("entry"), iF = cols.indexOf("food_type");
+  if (iF >= 0) {
+    const upd = db.prepare("UPDATE items SET food_type = ? WHERE entry = ?");
+    let n = 0;
+    db.transaction(() => {
+      for (const r of iterRows(dump, "item_template")) {
+        const ft = clean(r[iF]);
+        if (ft) { upd.run(ft, clean(r[iE])); n++; }
+      }
+    })();
+    console.log(`  food_type restored: ${n} food items`);
+  }
+}
+
 // creature_template.display_id1 is the creature's default model (always nonzero
 // in the dump). Expose it as `display_id` -- the key for Wowhead's pre-rendered
 // model thumbnail (render.js modelThumbUrl). display_id2..4 are unused here.
 db.exec("ALTER TABLE creatures RENAME COLUMN display_id1 TO display_id");
+
+// Hunter-pet fields (creature_template.beast_family + type_flags). `pet_family` is
+// the CreatureFamily id (0 = not a pet family); `tameable` is the TAMEABLE bit of
+// type_flags (0x1). Together they drive the Hunter Pets section (src/pets.js) and
+// the "Tameable · <family>" badge on the NPC page. type_flags is only needed to
+// derive `tameable`, so it's dropped after (keeps the shipped row narrow).
+db.exec("ALTER TABLE creatures RENAME COLUMN beast_family TO pet_family");
+db.exec("ALTER TABLE creatures ADD COLUMN tameable INTEGER NOT NULL DEFAULT 0");
+db.exec("UPDATE creatures SET tameable = 1 WHERE (type_flags & 1) <> 0");
+db.exec("ALTER TABLE creatures DROP COLUMN type_flags");
+db.exec("CREATE INDEX idx_creatures_pet_family ON creatures(pet_family) WHERE tameable = 1");
 
 // Creature faction alignment (team): resolve creature_template.faction ->
 // faction_template.our_mask (0x2 = Alliance, 0x4 = Horde). Lets the UI tag which
@@ -1934,6 +1967,144 @@ db.exec(`CREATE VIRTUAL TABLE quests_tg USING fts5(title, tokenize='trigram', co
 db.exec(`INSERT INTO quests_tg(rowid, title) SELECT entry, title FROM quests WHERE title IS NOT NULL AND title <> '' AND hidden = 0`);
 db.exec(`CREATE VIRTUAL TABLE spells_tg USING fts5(name, tokenize='trigram', content='')`);
 db.exec(`INSERT INTO spells_tg(rowid, name) SELECT entry, name FROM spells WHERE name IS NOT NULL AND name <> '' AND teaches IS NULL AND hidden = 0`);
+
+// ---- Hunter pet families (Hunter Pets section, src/pets.js) ----
+// Family NAME + DIET + ICON come from the client CreatureFamily.dbc
+// (scripts/data/creature-families.json, committed). ROLE + Health/Armor/Damage stat
+// MODIFIERS + which family learns which shared ability are curated
+// (scripts/data/pet-families.json). The trainable ability CATALOG is DERIVED from the
+// shipped spells table: skill 261 ("Beast Training") holds every trainable pet ability,
+// one max-rank spell per ability. A family's ability set = the universal abilities +
+// its curated family-specific set + any signature spell in its OWN CreatureFamily skill
+// line -- the last auto-covers TW-custom families (Serpent/Fox) whose Poison Spit/Grace
+// aren't in the curated data. Only families with >=1 tameable creature get a row.
+{
+  const famFile = join(ROOT, "scripts", "data", "creature-families.json");
+  const petFile = join(ROOT, "scripts", "data", "pet-families.json");
+  const famDbc = existsSync(famFile) ? JSON.parse(readFileSync(famFile, "utf8")) : {};
+  const petCur = existsSync(petFile) ? JSON.parse(readFileSync(petFile, "utf8")) : {};
+  const STANDARD = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 20, 21, 24, 25, 26, 27]); // vanilla 1.12 hunter families
+
+  db.exec(`CREATE TABLE pet_families (
+    id INTEGER PRIMARY KEY, name TEXT, diet TEXT, icon TEXT, role TEXT,
+    mod_health REAL, mod_armor REAL, mod_damage REAL,
+    custom INTEGER NOT NULL DEFAULT 0, npc_count INTEGER NOT NULL DEFAULT 0)`);
+  db.exec(`CREATE TABLE pet_ability (
+    key TEXT PRIMARY KEY, name TEXT, active INTEGER NOT NULL DEFAULT 1,
+    spell INTEGER, icon TEXT, description TEXT, max_rank INTEGER)`);
+  // Per-rank rows: `level` is the pet level at which that rank becomes available
+  // (spell_template.spellLevel). A tamed pet gets the highest rank its level allows,
+  // so this answers "to learn Bite (Rank 3), tame a Bite-family beast of level >=16".
+  db.exec(`CREATE TABLE pet_ability_rank (
+    ability_key TEXT NOT NULL, rank INTEGER NOT NULL, spell INTEGER, level INTEGER,
+    PRIMARY KEY (ability_key, rank))`);
+  // Reverse map: any pet-ability spell entry (the empty "learn" stub in skill 261, the
+  // real cast spell in a family skill line, or a family duplicate) -> its ability + rank +
+  // the pet level that rank needs. Lets the spell page answer "tame X to learn this".
+  db.exec(`CREATE TABLE pet_ability_spell (
+    spell INTEGER PRIMARY KEY, ability_key TEXT NOT NULL, rank INTEGER, level INTEGER)`);
+  db.exec(`CREATE TABLE pet_family_ability (
+    family_id INTEGER NOT NULL, ability_key TEXT NOT NULL,
+    PRIMARY KEY (family_id, ability_key))`);
+
+  // Families that actually have tameable creatures (+ per-family counts).
+  const famCounts = new Map();
+  for (const r of db.prepare(`SELECT pet_family AS f, COUNT(*) n FROM creatures WHERE tameable=1 AND pet_family>0 GROUP BY pet_family`).all())
+    famCounts.set(r.f, r.n);
+
+  // Ability catalog from skill 261 (Beast Training): group by name, keep max rank.
+  const passive = new Set(petCur.passive || []);
+  const nameToKey = {}; // curated display name (lower) -> stable key
+  for (const [k, nm] of Object.entries(petCur.abilityNames || {})) nameToKey[nm.toLowerCase()] = k;
+  const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const rankNum = (r) => { const m = /(\d+)/.exec(r || ""); return m ? +m[1] : 0; };
+
+  // Pet skill lines: skill 261 (Beast Training, the canonical ability enumerator with
+  // one stub per rank) + each family's own line + the shared 270/134 pet skills. Bounds
+  // name+rank matching to PET spells (so warrior Charge / rogue Prowl don't leak in).
+  const petSkillSet = new Set([261, 270, 134]);
+  for (const f of Object.values(famDbc)) if (f.skillLine) petSkillSet.add(f.skillLine);
+  const petSkillList = [...petSkillSet].join(",");
+  // Resolve a rank's REAL cast spell (with a tooltip) -- the skill-261 entry is an empty
+  // "learn" stub. Match by name+rank within the pet skill set, richest description wins.
+  const realStmt = db.prepare(`SELECT entry, icon, description FROM spells
+    WHERE name = ?1 AND rank IS ?2 AND description <> '' AND skill IN (${petSkillList})
+    ORDER BY (skill = 261), LENGTH(description) DESC LIMIT 1`);
+
+  const abilityByKey = new Map(); // key -> catalog row
+  const keyByName = new Map();    // lower spell name -> key (membership resolve)
+  const ranksByKey = new Map();   // key -> [{rank, spell, level}]
+  const canonLevel = new Map();   // `${key}|${rank}` -> canonical pet level (from the 261 stub)
+  const insRank = db.prepare(`INSERT OR REPLACE INTO pet_ability_rank(ability_key, rank, spell, level) VALUES (?,?,?,?)`);
+  for (const s of db.prepare(`SELECT entry, name, rank, icon, description, spell_level FROM spells WHERE skill=261 AND name IS NOT NULL AND name<>''`).all()) {
+    if (/Tamed Pet Passive/i.test(s.name)) continue;
+    const lname = s.name.toLowerCase();
+    const key = nameToKey[lname] || slug(s.name);
+    keyByName.set(lname, key);
+    const rn = rankNum(s.rank);
+    const level = s.spell_level || 0;
+    canonLevel.set(`${key}|${rn}`, level);
+    // prefer the real cast spell (tooltip); fall back to the stub if none found.
+    const real = realStmt.get(s.name, s.rank) || null;
+    const spell = real?.entry ?? s.entry;
+    const icon = real?.icon || s.icon || null;
+    const description = real?.description || s.description || null;
+    const prev = abilityByKey.get(key);
+    if (!prev || rn >= prev.max_rank) {
+      abilityByKey.set(key, { key, name: s.name, active: passive.has(key) ? 0 : 1, spell, icon, description, max_rank: rn });
+    }
+    if (!ranksByKey.has(key)) ranksByKey.set(key, []);
+    ranksByKey.get(key).push({ rank: rn, spell, level });
+  }
+  // Reverse map: EVERY pet-ability spell entry (stub + real + family dupes) -> ability/rank/
+  // canonical level, so opening any of them on the spell page shows the "tame to learn" panel.
+  const insPAS = db.prepare(`INSERT OR IGNORE INTO pet_ability_spell(spell, ability_key, rank, level) VALUES (?,?,?,?)`);
+  db.transaction(() => {
+    for (const s of db.prepare(`SELECT entry, name, rank FROM spells WHERE skill IN (${petSkillList}) AND name IS NOT NULL AND name<>''`).all()) {
+      if (/Tamed Pet Passive/i.test(s.name)) continue;
+      const key = keyByName.get(s.name.toLowerCase());
+      if (!key) continue;
+      const rn = rankNum(s.rank);
+      insPAS.run(s.entry, key, rn, canonLevel.get(`${key}|${rn}`) ?? 0);
+    }
+  })();
+  db.transaction(() => {
+    for (const [key, ranks] of ranksByKey) for (const r of ranks) insRank.run(key, r.rank, r.spell, r.level);
+  })();
+  const insAbil = db.prepare(`INSERT OR REPLACE INTO pet_ability(key,name,active,spell,icon,description,max_rank) VALUES (?,?,?,?,?,?,?)`);
+  db.transaction(() => { for (const a of abilityByKey.values()) insAbil.run(a.key, a.name, a.active, a.spell, a.icon, a.description, a.max_rank); })();
+
+  // Per-family metadata + ability membership.
+  const univ = (petCur.universal || []).filter((k) => abilityByKey.has(k));
+  const insFam = db.prepare(`INSERT INTO pet_families(id,name,diet,icon,role,mod_health,mod_armor,mod_damage,custom,npc_count) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+  const insFA = db.prepare(`INSERT OR IGNORE INTO pet_family_ability(family_id,ability_key) VALUES (?,?)`);
+  const sigStmt = db.prepare(`SELECT DISTINCT name FROM spells WHERE skill=? AND name IS NOT NULL AND name<>''`);
+  db.transaction(() => {
+    for (const [fid, n] of famCounts) {
+      const d = famDbc[String(fid)] || {};
+      const c = petCur.families?.[String(fid)] || {};
+      const mods = c.mods || {};
+      insFam.run(fid, d.name || `Family ${fid}`, (d.diet || []).join(", ") || null, d.icon || null,
+        c.role || null, mods.health ?? null, mods.armor ?? null, mods.damage ?? null,
+        STANDARD.has(fid) ? 0 : 1, n);
+
+      const keys = new Set(univ);
+      for (const k of c.abilities || []) if (abilityByKey.has(k)) keys.add(k);
+      if (d.skillLine) { // signature abilities from the family's own skill line
+        for (const s of sigStmt.all(d.skillLine)) {
+          if (/Tamed Pet Passive/i.test(s.name)) continue;
+          const k = keyByName.get(s.name.toLowerCase());
+          if (k && abilityByKey.has(k)) keys.add(k);
+        }
+      }
+      for (const k of keys) insFA.run(fid, k);
+    }
+  })();
+
+  const ntame = db.prepare(`SELECT COUNT(*) n FROM creatures WHERE tameable=1`).get().n;
+  const ncustom = db.prepare(`SELECT COUNT(*) n FROM pet_families WHERE custom=1`).get().n;
+  console.log(`  pet families: ${famCounts.size} (${ncustom} Turtle-custom), ${abilityByKey.size} abilities, ${ntame} tameable creatures`);
+}
 
 console.log("Optimizing...");
 db.pragma("journal_mode = DELETE");
