@@ -80,9 +80,12 @@ const ITEMS = {
 
 const NPCS = {
   label: "NPCs", href: "?browse=npcs",
-  children: Object.entries(CREATURE_TYPE)
-    .filter(([id]) => +id !== 10) // drop "Not specified"
-    .map(([id, name]) => ({ label: name, href: `?browse=npcs&type=${id}` })),
+  children: [
+    { label: "Hunter Pets", href: "?pets" },
+    ...Object.entries(CREATURE_TYPE)
+      .filter(([id]) => +id !== 10) // drop "Not specified"
+      .map(([id, name]) => ({ label: name, href: `?browse=npcs&type=${id}` })),
+  ],
 };
 
 // Craftable professions (gathering skills 356/182/393 have no recipe route; Mining 186

@@ -925,6 +925,9 @@ details.sec .sec-body { padding: 2px 13px 13px; }
 .spell-card .tt-spell { color: var(--gold); }         /* spell descriptions are gold in-game (not item-green) */
 .spell-details h3 { margin: 0 0 8px; }
 .spell-details { margin-top: 4px; }
+.pet-learn { padding: 12px 16px; }
+.pet-learn h3 { margin: 0 0 8px; font-size: 14px; }
+.pet-learn .pet-note { margin: 0 0 10px; max-width: 70ch; }
 .kv-grid { display: grid; grid-template-columns: max-content 1fr max-content 1fr; gap: 3px 14px; align-items: baseline; }
 .kv-k { color: var(--muted); white-space: nowrap; }
 .kv-v { color: #ddd; }
@@ -1240,3 +1243,98 @@ a.ext { color: var(--gold); }
 .pp-tr-more > summary::before { content: "▸"; font-size: 10px; }
 .pp-tr-more[open] > summary::before { content: "▾"; }
 .pp-tr-more > summary:hover { color: var(--gold); }
+
+/* ---- Hunter Pets (?pets, ?petfamily=) ---- */
+.pet-index > h1, .pet-family h1 { margin-bottom: 6px; }
+.pet-h { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+  margin: 26px 0 10px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.pet-fam-cards { margin-bottom: 8px; }
+.pet-fam-card { display: flex; flex-direction: column; gap: 8px; }
+.pet-fam-card-top { display: flex; align-items: center; gap: 10px; }
+.pet-fam-icon { width: 32px; height: 32px; border-radius: 6px; flex: none; }
+.pet-fam-card-meta { font-size: 13px; }
+.pet-diet { display: flex; flex-wrap: wrap; gap: 5px; }
+/* family comparison table (?pets) */
+.pet-fam-icon-sm { width: 20px; height: 20px; border-radius: 4px; vertical-align: middle; }
+.pet-statcell { display: inline-flex; align-items: center; gap: 7px; }
+.pet-statcell-bar { width: 46px; height: 7px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--border); overflow: hidden; flex: none; }
+.pet-statcell-fill { display: block; height: 100%; }
+.pet-statcell-fill.hi { background: #74c98a; }
+.pet-statcell-fill.mid { background: #b7a24a; }
+.pet-statcell-fill.lo { background: #c9746a; }
+.pet-statcell-val { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
+.pet-compare-link { float: right; font-size: 12px; font-weight: 400; color: var(--gold); }
+.pet-compare-link:hover { text-decoration: underline; }
+.pet-diet-pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 10px; color: var(--muted);
+  background: var(--panel2); border: 1px solid var(--border); text-decoration: none; }
+a.pet-diet-pill:hover { border-color: var(--gold); color: var(--gold); }
+/* detail page */
+.pet-fam-header { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.pet-fam-hero-icon { width: 56px; height: 56px; border-radius: 8px; flex: none; border: 1px solid var(--border); }
+.pet-fam-sub { font-size: 14px; margin: 2px 0 6px; }
+.pet-fam-grid { display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 16px; margin-bottom: 16px; }
+@media (max-width: 720px) { .pet-fam-grid { grid-template-columns: 1fr; } }
+.pet-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+.pet-panel h2 { margin: 0 0 12px; font-size: 14px; }
+.pet-panel h3 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.pet-note { margin: -4px 0 12px; font-size: 12px; }
+.pet-stats { display: flex; flex-direction: column; gap: 10px; }
+.pet-stat { display: grid; grid-template-columns: 58px 1fr 48px; align-items: center; gap: 8px; }
+.pet-stat-label { font-size: 13px; color: var(--muted); }
+.pet-stat-bar { height: 8px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--border); overflow: hidden; position: relative; }
+.pet-stat-fill { display: block; height: 100%; }
+.pet-stat-fill.hi { background: #74c98a; }
+.pet-stat-fill.mid { background: #b7a24a; }
+.pet-stat-fill.lo { background: #c9746a; }
+.pet-stat-val { font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.pet-abils { display: flex; flex-wrap: wrap; gap: 8px; }
+.pet-abil { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 4px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 20px; }
+.pet-abil:hover { border-color: var(--gold); text-decoration: none; }
+.pet-abil-icon { width: 22px; height: 22px; border-radius: 50%; flex: none; }
+.pet-abil-name { font-size: 13px; color: var(--text); }
+.pet-abil-rank { font-size: 11px; }
+.npc-tame { color: #74c98a; white-space: nowrap; }
+/* ability rows with per-rank "tame at level" chips */
+.pet-abil-rows { display: flex; flex-direction: column; gap: 8px; }
+.pet-abil-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pet-abil-row > a.ilink.spell { min-width: 140px; font-weight: 600; }
+.pet-abil-ranks { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.pet-rank { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 7px; border-radius: 6px;
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text); font-size: 12px;
+  font-variant-numeric: tabular-nums; }
+.pet-rank:hover { border-color: var(--gold); color: var(--gold); text-decoration: none; }
+.pet-rank small { color: var(--muted); font-size: 10px; }
+.pet-rank:hover small { color: var(--gold); }
+td .pet-rank { margin: 1px 0; }
+/* ability page (?petability=) + inline ability blocks on ?pets */
+.pet-learnedby { margin: 4px 0 18px; line-height: 1.7; }
+.pet-rank-secs { display: flex; flex-direction: column; gap: 12px; }
+.pet-rank-sec { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 10px 14px; }
+.pet-rank-sec h4 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+.pet-rank-title { color: var(--gold); text-decoration: none; }
+.pet-rank-title:hover { text-decoration: underline; }
+.pet-rank-desc { font-style: italic; color: var(--muted); font-weight: 400; }
+.pet-tame-lead { font-size: 12px; margin-bottom: 4px; }
+.pet-tame-list { margin: 0; padding-left: 22px; columns: 2; column-gap: 28px; }
+.pet-tame-list li { break-inside: avoid; margin: 2px 0; }
+@media (max-width: 640px) { .pet-tame-list { columns: 1; } }
+.pet-allranks { float: right; font-size: 12px; font-weight: 400; color: var(--gold); }
+
+/* ?pets: jump-link table of contents + one full section per ability */
+.pet-toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 20px; }
+.pet-toc-link { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; cursor: pointer;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 14px; color: var(--text);
+  font: inherit; font-size: 12px; }
+.pet-toc-link:hover { border-color: var(--gold); color: var(--gold); }
+.pet-toc-icon { width: 16px; height: 16px; border-radius: 3px; }
+.pet-ability-blocks { display: flex; flex-direction: column; gap: 20px; }
+.pet-ability-block { scroll-margin-top: 70px; border-top: 2px solid color-mix(in srgb, var(--gold) 40%, var(--border)); padding-top: 12px; }
+.pet-ability-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.pet-abil-block-icon { width: 40px; height: 40px; border-radius: 6px; flex: none; border: 1px solid var(--border); }
+.pet-ability-name { margin: 0; font-size: 19px; }
+.pet-ability-namelink { color: var(--text); text-decoration: none; }
+.pet-ability-namelink:hover { color: var(--gold); text-decoration: underline; }
+.pet-ability-kind { font-size: 12px; font-weight: 400; margin-left: 6px; }
+.pet-learnedby-inline { margin-top: 4px; line-height: 1.6; font-size: 13px; }
+.pet-universal-note { margin-top: 4px; font-size: 13px; font-style: italic; }

@@ -336,6 +336,11 @@ export function npcLink(entry, name) {
   return `<a class="ilink npc" href="?npc=${entry}">${esc(name)}</a>`;
 }
 
+// Hunter pet family link (?petfamily=<id>) -> the Hunter Pets family page.
+export function petFamilyLink(id, name) {
+  return `<a class="ilink npc" href="?petfamily=${id}">${esc(name || `Family ${id}`)}</a>`;
+}
+
 // Locally-rendered model thumbnails (Turtle-custom models Wowhead lacks). main.js
 // loads the manifest at boot: { base, ids: Set<display_id>, ver }. See
 // scripts/render-model-thumbs.py + public/model-thumbs/.

@@ -304,7 +304,7 @@ async function browseItems(p) {
     source: p.get("source") || "",
     bind: p.get("bind") || "", uclass: p.get("uclass") || "", faction: p.get("faction") || "",
     unique: p.get("unique") || "", prof: p.get("prof") || "", origin: p.get("origin") || "",
-    mount: p.get("mount") || "",
+    mount: p.get("mount") || "", food: p.get("food") || "",
   };
   const criteria = parseCriteria(p.get("stats"));
   const weights = parseWeights(p.get("weights"));
@@ -360,6 +360,8 @@ async function browseItems(p) {
   else if (f.faction === "h") { where.push(`NOT ${exclusiveTo}`); binds.push(RACE_ALLIANCE, RACE_HORDE, 1); }
   if (f.unique === "1") where.push("i.max_count = 1");
   if (f.mount === "1") where.push("i.is_mount = 1");
+  // pet-food diet (1 Meat … 6 Fruit): hunter-pet feeding, linked from the Pets pages.
+  if (f.food !== "") add("i.food_type = ?", +f.food);
   if (f.prof !== "") add("i.required_skill = ?", +f.prof);
   // origin: Turtle-WoW additions (i.custom = 1) vs vanilla-range 1.12 (0). See build-db.
   if (f.origin === "tw") where.push("i.custom = 1");

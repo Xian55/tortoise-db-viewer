@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect, getMeta } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, QUALITY, ITEM_CLASS, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -13,6 +13,7 @@ import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BAS
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
+import { showPets, showPetFamily, showPetAbility } from "./pets.js";
 import { showProfPlan } from "./profplan.js";
 import { showTalents } from "./talents.js";
 // Seamless-minimap transform manifest (tile/adt/grid + per-continent bbox). Tiny,
@@ -156,6 +157,9 @@ function route() {
   else if (params.get("random") !== null) return showRandom();
   else if (params.get("guides") !== null) return showLeveling();
   else if (params.get("guide")) return showGuide(params.get("guide"));
+  else if (params.get("petability")) return showPetAbility(params.get("petability"));
+  else if (params.get("petfamily")) return showPetFamily(Number(params.get("petfamily")));
+  else if (params.get("pets") !== null) return showPets();
   else if (params.get("profplan") !== null) return showProfPlan(params.get("profplan"));
   else if (params.get("talents") !== null) return showTalents(params.get("talents"));
   else if (params.get("loadout")) return showSharedLoadout(params.get("loadout"), navigate);
@@ -314,6 +318,7 @@ function showHome() {
       card("?browse=items", "inv_sword_27", "Items", "Filter by slot, stat, and source; rank by gear score."),
       card("?browse=itemsets", "inv_chest_plate01", "Item Sets", "Tier & dungeon sets with their bonuses."),
       card("?browse=npcs", "inv_misc_head_dragon_01", "NPCs", "Creatures, loot, locations."),
+      card("?pets", "ability_hunter_beasttaming", "Hunter Pets", "Tameable families — diet, abilities, where to tame."),
       card("?browse=quests", "inv_scroll_03", "Quests", "Objectives, rewards, chains."),
       card("?browse=spells", "spell_holy_magicalsentry", "Spells & Abilities", "Class skills and professions."),
       card("?browse=crafting", "trade_blacksmithing", "Crafting & Professions", "Recipes, reagents, learnable skills."),
@@ -803,12 +808,15 @@ async function showSpell(id) {
   if (!sp) { app.innerHTML = `<div class="home"><p>No spell with ID ${id}.</p></div>`; return; }
   document.title = `${sp.name} - Tortoise-WoW DB`;
 
-  const [produces, reagents, usedBy, source, trainers, books, rewardQuests] = await Promise.all([
+  const [produces, reagents, usedBy, source, trainers, books, rewardQuests, petAbil] = await Promise.all([
     query(Q.Q_SPELL_PRODUCES, [id]), query(Q.Q_SPELL_REAGENTS, [id]),
     query(Q.Q_SPELL_USED_BY, [id]), queryOne(Q.Q_SPELL_SOURCE, [id]),
     query(Q.Q_SPELL_TRAINERS, [id]), query(Q.Q_SPELL_BOOKS, [id]),
     query(Q.Q_SPELL_REWARD_QUESTS, [id]),
+    queryOne(Q.Q_PET_ABILITY_BY_SPELL, [id]),
   ]);
+  // If this spell is a hunter pet ability, list the beasts you can tame to learn this rank.
+  const petLearn = petAbil ? await query(Q.Q_PET_LEARN_NPCS, [petAbil.ability_key, petAbil.level, petAbil.next_level || 0]) : [];
 
   const prof = PROFESSION_LABEL[sp.skill] || "";
 
@@ -942,6 +950,24 @@ async function showSpell(id) {
   }
   if (learned) meta.push(`Learned from: ${learned}`);
 
+  // Pet-ability "tame to learn" panel: the level band that grants exactly this rank.
+  let petLearnPanel = "";
+  if (petAbil) {
+    const band = petAbil.next_level ? `level ${petAbil.level}–${petAbil.next_level - 1}`
+      : `level ${petAbil.level}${petAbil.level > 1 ? "+" : " or higher"}`;
+    meta.push(`<a class="nav" href="?petability=${esc(petAbil.ability_key)}" title="All ranks of this pet ability">🐾 Pet ability</a>`);
+    petLearnPanel = `<section class="panel pet-learn">
+      <h3>Tame a beast to learn this${petAbil.rank ? ` (Rank ${petAbil.rank})` : ""}
+        <a class="nav pet-allranks" href="?petability=${esc(petAbil.ability_key)}">all ranks ›</a></h3>
+      <p class="muted pet-note">A hunter learns a pet ability by taming a beast that already knows it.
+        A fresh pet comes with the highest rank its level allows, so tame one of the beasts below at
+        <b>${band}</b> to get <b>${esc(petAbil.name)}${petAbil.rank ? ` Rank ${petAbil.rank}` : ""}</b>
+        (grouped by family — the family must be able to learn it).</p>
+      ${petLearn.length ? `<div id="pet-learn-table"></div>`
+        : `<p class="muted">No tameable beast in the data matches this rank's level band.</p>`}
+    </section>`;
+  }
+
   app.innerHTML =
     `<div class="npc-page spell-page">
       ${card}
@@ -952,10 +978,27 @@ async function showSpell(id) {
         ${effHtml}
         ${flagsHtml}
       </div>
+      ${petLearnPanel}
       ${hasTabs ? tabs(tabDefs) : ""}
     </div>`;
   mountTables();
   wireTabs();
+
+  if (petAbil && petLearn.length) {
+    createTable(document.getElementById("pet-learn-table"), {
+      columns: [
+        { key: "name", label: "Creature", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : "") + (r.custom ? ' <span class="tagx tw-tag" title="Turtle-WoW custom">TW</span>' : ""), value: (r) => r.name },
+        { key: "family", label: "Family", cell: (r) => petFamilyLink(r.pet_family, r.family), value: (r) => r.family, group: (r) => esc(r.family) },
+        { key: "level", label: "Level", num: true, cls: "num", cell: (r) => lvlRange(r), value: (r) => r.level_min || 0 },
+        { key: "zone", label: "Zone", cls: "muted", cell: (r) => (r.zone ? zoneLink(r.areaid, r.zone) : "—"), value: (r) => r.zone || "", group: (r) => (r.zone ? esc(r.zone) : "Unknown") },
+      ],
+      rows: petLearn,
+      pageSize: 25,
+      groupable: true,
+      group: "family",
+      sort: "level",
+    });
+  }
 }
 
 // Render a zone link with an optional Dungeon/Raid tag from its map type.
@@ -992,13 +1035,21 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, trains, npcSpawns, npcFaction, mountSrc] = await Promise.all([
+  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, trains, npcSpawns, npcFaction, mountSrc, petAbil, petRanks] = await Promise.all([
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
     query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]),
     query(Q.Q_NPC_TRAINS, [id]), query(Q.Q_NPC_SPAWNS, [id]), queryOne(Q.Q_NPC_FACTION, [id]),
     query(Q.Q_MOUNT_SOURCE, [id]),
+    npc.tameable && npc.pet_family ? query(Q.Q_PET_FAMILY_ABIL, [npc.pet_family]) : Promise.resolve([]),
+    npc.tameable && npc.pet_family ? query(Q.Q_PET_ABILITY_RANKS) : Promise.resolve([]),
   ]);
+  // ability_key -> ascending [{rank, spell, level}], to compute the rank a tamed pet of
+  // THIS beast's level starts with (highest rank whose level <= the beast's level).
+  const petRankMap = new Map();
+  for (const r of petRanks) { if (!petRankMap.has(r.ability_key)) petRankMap.set(r.ability_key, []); petRankMap.get(r.ability_key).push(r); }
+  for (const l of petRankMap.values()) l.sort((a, b) => a.rank - b.rank);
+  const petGrantRank = (a) => { const rks = petRankMap.get(a.key) || []; let g = null; for (const r of rks) if (r.level <= npc.level_max) g = r; return g; };
   // Each spawn carries its exact precomputed home zone (build-db, ADT-derived).
   // Count per zone (and per map) -> the most-common zone is the one the map renders;
   // the Location label names the top zone for each continent map.
@@ -1045,6 +1096,7 @@ async function showNpc(id) {
   const bits = [`Level ${lvl}`];
   if (CREATURE_RANK[npc.rank]) bits.push(CREATURE_RANK[npc.rank]);
   if (CREATURE_TYPE[npc.type]) bits.push(`<a class="nav" href="?browse=npcs&type=${npc.type}">${CREATURE_TYPE[npc.type]}</a>`);
+  if (npc.tameable) bits.push(`<span class="npc-tame" title="Tameable by hunters">🐾 Tameable${npc.pet_family ? ` · ${petFamilyLink(npc.pet_family, npc.pet_family_name)}${npc.pet_family_custom ? ' <span class="tagx tw-tag" title="Turtle-WoW custom pet family">TW</span>' : ""}` : ""}</span>`);
   if (npcFaction) bits.push(npcFaction.has_page ? factionLink(npcFaction.id, npcFaction.name) : esc(npcFaction.name));
   const hp = npc.health_max ? `${npc.health_min}–${npc.health_max} HP` : "";
   const roles = npcRoles(npc.npc_flags);
@@ -1081,7 +1133,25 @@ async function showNpc(id) {
   const isWorldDrop = (d) => d.world_drop && d.chance < 1;
   const drops = loot.filter((d) => !isWorldDrop(d));
   const worldDrops = loot.filter(isWorldDrop);
+  // Pet abilities: a tameable beast is a hunter-pet source; list the family's
+  // trainable abilities (ability rank scales with the pet's level once tamed).
+  const petAbilCols = [
+    { label: "Ability", cell: (a) => spellLink(a.spell, a.name, a.icon || "inv_misc_questionmark"), value: (a) => a.name },
+    // What rank a pet tamed from THIS beast starts with (highest rank its level unlocks).
+    // Abilities gated above its level show the pet level they unlock at.
+    {
+      label: "Learn on tame", cell: (a) => {
+        const g = petGrantRank(a);
+        if (g) return `<a class="ilink spell" href="?spell=${g.spell}">Rank ${g.rank}</a>`;
+        const first = (petRankMap.get(a.key) || [])[0];
+        return first ? `<span class="muted" title="Your pet learns this once it reaches level ${first.level}">— <span class="dim">(pet Lvl ${first.level}+)</span></span>` : `<span class="muted">—</span>`;
+      },
+      value: (a) => { const g = petGrantRank(a); return g ? g.rank : 0; },
+    },
+    { label: "Max Rank", num: true, cls: "muted", cell: (a) => String(a.max_rank || ""), value: (a) => a.max_rank || 0 },
+  ];
   const tabDefs = [
+    { id: "petabilities", label: "Pet Abilities", ...regTable(petAbilCols, petAbil) },
     { id: "teaches", label: "Teaches", ...regTable(teachesCols, trains) },
     { id: "drops", label: "Drops", ...regTable(lootCols, drops) },
     { id: "worlddrops", label: "World Drops", ...regTable(lootCols, worldDrops) },

@@ -526,7 +526,11 @@ export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, rank, school, m
   FROM spells WHERE name <> '' AND teaches IS NULL AND hidden = 0 ORDER BY name`;
 
 // ---- NPC (creature) pages ----
-export const Q_NPC = `SELECT entry, name, subname, level_min, level_max, rank, type, faction, health_min, health_max, npc_flags, display_id FROM creatures WHERE entry = ?1`;
+// pet_family/tameable + the family name drive the "Tameable · <family>" badge and
+// the pet-abilities block on the NPC page (a tameable beast is a hunter pet source).
+export const Q_NPC = `SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.type, c.faction, c.health_min, c.health_max, c.npc_flags, c.display_id,
+    c.tameable, c.pet_family, pf.name AS pet_family_name, pf.custom AS pet_family_custom
+  FROM creatures c LEFT JOIN pet_families pf ON pf.id = c.pet_family WHERE c.entry = ?1`;
 
 const npcLoot = (src, ownerCol) => `
   SELECT i.entry, i.name, i.quality, di.icon, d.chance, d.mincount, d.maxcount, i.world_drop
@@ -561,6 +565,92 @@ export const Q_NPC_ENDS = `SELECT q.entry, q.title, q.level FROM creature_quest_
 export const Q_NPC_MAPS = `
   SELECT DISTINCT m.id, m.name, m.type FROM spawns s JOIN maps m ON m.id = s.map
   WHERE s.id = ?1 AND m.name <> '' ORDER BY m.type DESC, m.name`;
+
+// ---- Hunter pets (?pets index + ?petfamily=<id> detail) ----
+// pet_families / pet_ability / pet_family_ability are derived in build-db from the
+// client CreatureFamily.dbc + curated pet-families.json + the spells table (skill 261).
+const PET_FAMILY_COLS = `id, name, diet, icon, role, mod_health, mod_armor, mod_damage, custom, npc_count`;
+export const Q_PET_FAMILIES = `SELECT ${PET_FAMILY_COLS} FROM pet_families ORDER BY custom, name`;
+export const Q_PET_FAMILY = `SELECT ${PET_FAMILY_COLS} FROM pet_families WHERE id = ?1`;
+// A family's trainable abilities (active first, strongest signature ability first).
+export const Q_PET_FAMILY_ABIL = `
+  SELECT pa.key, pa.name, pa.active, pa.spell, pa.icon, pa.description, pa.max_rank
+  FROM pet_family_ability fa JOIN pet_ability pa ON pa.key = fa.ability_key
+  WHERE fa.family_id = ?1 ORDER BY pa.active DESC, pa.max_rank DESC, pa.name`;
+// Tameable creatures of a family ("where to tame"): level + home zone, custom flagged.
+export const Q_PET_FAMILY_NPCS = `
+  SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.custom, c.display_id,
+    c.zone AS areaid, z.name AS zone
+  FROM creatures c LEFT JOIN zones z ON z.areaid = c.zone
+  WHERE c.tameable = 1 AND c.pet_family = ?1 AND c.hidden = 0
+  ORDER BY c.level_min, c.level_max, c.name`;
+// Per-rank levels: `level` is the pet level a rank needs (a tamed pet gets the highest
+// rank its level allows) -> "to learn Bite Rank 3, tame a Bite-family beast of level 16+".
+export const Q_PET_ABILITY_RANKS = `SELECT ability_key, rank, spell, level FROM pet_ability_rank ORDER BY ability_key, rank`;
+
+// ---- one pet ability (?petability=<key>): all ranks + every beast that teaches them ----
+export const Q_PET_ABILITY = `SELECT key, name, active, spell, icon, description, max_rank FROM pet_ability WHERE key = ?1`;
+// Ranks + the real spell's effect numbers so the per-rank text resolves ("7 to 9 damage").
+export const Q_PET_ABILITY_RANKS_ONE = `
+  SELECT par.rank, par.spell, par.level, s.description, s.effects, s.duration_ms,
+    s.s1, s.s2, s.s3, s.d1, s.d2, s.d3
+  FROM pet_ability_rank par LEFT JOIN spells s ON s.entry = par.spell
+  WHERE par.ability_key = ?1 ORDER BY par.rank`;
+// Every tameable beast of a family that can learn this ability (rank computed client-side
+// from each creature's level vs the rank-level table).
+export const Q_PET_ABILITY_TAMES = `
+  SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.custom, c.display_id,
+    c.pet_family, pf.name AS family, pf.custom AS family_custom, c.zone AS areaid, z.name AS zone
+  FROM creatures c
+  JOIN pet_families pf ON pf.id = c.pet_family
+  LEFT JOIN zones z ON z.areaid = c.zone
+  WHERE c.tameable = 1 AND c.hidden = 0
+    AND c.pet_family IN (SELECT family_id FROM pet_family_ability WHERE ability_key = ?1)
+  ORDER BY c.level_min, c.level_max, c.name`;
+
+// ---- the "all abilities on one page" view (?pets) needs everything in a few bulk reads ----
+// All ranks of every ability + effect numbers, for per-rank text resolution.
+export const Q_PET_ALL_ABILITY_RANKS = `
+  SELECT par.ability_key, par.rank, par.spell, par.level, s.description, s.effects, s.duration_ms,
+    s.s1, s.s2, s.s3, s.d1, s.d2, s.d3
+  FROM pet_ability_rank par LEFT JOIN spells s ON s.entry = par.spell
+  ORDER BY par.ability_key, par.rank`;
+// Every tameable beast (grouped client-side by family, then intersected with each ability's
+// families). ~800 rows — one read powers all ability sections.
+export const Q_PET_ALL_TAMES = `
+  SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.custom,
+    c.pet_family, pf.name AS family, pf.custom AS family_custom, c.zone AS areaid, z.name AS zone
+  FROM creatures c
+  JOIN pet_families pf ON pf.id = c.pet_family
+  LEFT JOIN zones z ON z.areaid = c.zone
+  WHERE c.tameable = 1 AND c.hidden = 0
+  ORDER BY c.level_min, c.level_max, c.name`;
+// Global ability reference (?pets): the catalog + which families can learn each.
+export const Q_PET_ABILITIES = `SELECT key, name, active, spell, icon, description, max_rank FROM pet_ability ORDER BY active DESC, name`;
+export const Q_PET_ABILITY_MEMBERS = `
+  SELECT fa.ability_key, pf.id, pf.name, pf.custom
+  FROM pet_family_ability fa JOIN pet_families pf ON pf.id = fa.family_id
+  ORDER BY pf.custom, pf.name`;
+
+// Spell page: is this spell a pet ability? -> its ability/rank/level + the next rank's
+// level (so we can say "tame a level X-(Y-1) beast to learn exactly this rank").
+export const Q_PET_ABILITY_BY_SPELL = `
+  SELECT pas.ability_key, pas.rank, pas.level, pa.name, pa.active, pa.max_rank,
+    (SELECT MIN(r2.level) FROM pet_ability_rank r2 WHERE r2.ability_key = pas.ability_key AND r2.level > pas.level) AS next_level
+  FROM pet_ability_spell pas JOIN pet_ability pa ON pa.key = pas.ability_key
+  WHERE pas.spell = ?1`;
+// Tameable creatures that teach a given ability rank: a family that HAS the ability, with a
+// level range you can tame within [level, next_level-1] so the fresh pet comes with this rank.
+export const Q_PET_LEARN_NPCS = `
+  SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.custom, c.display_id,
+    c.pet_family, pf.name AS family, pf.custom AS family_custom, c.zone AS areaid, z.name AS zone
+  FROM creatures c
+  JOIN pet_families pf ON pf.id = c.pet_family
+  LEFT JOIN zones z ON z.areaid = c.zone
+  WHERE c.tameable = 1 AND c.hidden = 0
+    AND c.pet_family IN (SELECT family_id FROM pet_family_ability WHERE ability_key = ?1)
+    AND c.level_max >= ?2 AND (?3 = 0 OR c.level_min < ?3)
+  ORDER BY c.level_min, c.level_max, c.name LIMIT 400`;
 
 // This NPC's own spawn points (world coords + map + precomputed home zone), to plot
 // on its zone map. INDEXED BY forces the spawn-first plan (few rows via idx_spawn_id).
