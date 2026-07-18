@@ -114,6 +114,7 @@ python scripts/extract-maps.py        # LOCAL: client -> public/maps/*.webp + sc
 python scripts/extract-area-bounds.py # LOCAL: client ADTs -> scripts/data/subzone-bounds.json (exact coord->area)
 python scripts/extract-item-sets.py   # LOCAL: client ItemSet.dbc -> scripts/data/item-sets.json (set names + bonuses + ItemID_* membership; build-db corrects items.set_id to it)
 python scripts/extract-skill-lines.py # LOCAL: client SkillLine.dbc -> scripts/data/skill-lines.json (skill categories)
+python scripts/extract-creature-families.py # LOCAL: client CreatureFamily.dbc -> scripts/data/creature-families.json (pet family id -> name + diet/PetFoodMask + ability skill line + icon; powers the Hunter Pets section)
 python scripts/extract-locks.py       # LOCAL: client Lock.dbc -> scripts/data/locks.json (lockId -> mining/herbalism; splits gather nodes)
 python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/minimap/<map>/{z}/{x}/{y}.webp tile pyramid + scripts/data/minimap.json
 python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc -> scripts/data/talents.json (talent-tree structure)
@@ -438,6 +439,20 @@ Re-run `extract-minimap.py` + commit on client map changes.
   (`scripts/data/locks.json` via `extract-locks.py`, from the client `Lock.dbc`;
   maps a gameobject's `data0` lockId -> `mining`/`herbalism` so build-db sets
   `gameobjects.gather`, splitting veins/herbs out of the map's `Obj: Chest` bucket),
+  and hunter-pet family metadata (`scripts/data/creature-families.json` via
+  `extract-creature-families.py`, from the client `CreatureFamily.dbc`: family id ->
+  name + diet/PetFoodMask + ability skill line + icon; plus the curated
+  `scripts/data/pet-families.json` = per-family role + Health/Armor/Damage stat
+  modifiers + shared-ability membership. build-db ingests `creature_template.beast_family`
+  + the `type_flags` TAMEABLE bit, then derives the `pet_families` / `pet_ability` /
+  `pet_ability_rank` / `pet_ability_spell` / `pet_family_ability` tables — the ability
+  catalog comes from the shipped `spells` table (skill 261 "Beast Training" holds one
+  empty "learn" stub per rank; build-db resolves each to the REAL cast spell in a family
+  skill line for a real tooltip) + each family's own skill line, so TW-custom families
+  (Serpent/Fox/Moth) and their custom abilities are covered automatically. `pet_ability_spell`
+  maps every pet-ability spell entry → ability/rank/level so the spell page shows a "tame a
+  beast to learn this rank" panel. Powers `?pets` / `?petfamily=<id>`, the NPC-page
+  "Tameable" badge, and the pet-ability spell-page panel),
   and the seamless-world-map transform
   manifest (`scripts/data/minimap.json` via `extract-minimap.py`) + the world-map
   **tile pyramid** itself (`public/minimap/`, ~2400 webp — committed like
