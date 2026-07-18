@@ -171,9 +171,9 @@ function critRow(c) {
   const key = c ? c.key : "", op = (c && c.op) || ">=", val = c ? c.val : "";
   const ops = [">", ">=", "="].map((o) => `<option value="${esc(o)}"${o === op ? " selected" : ""}>${esc(o)}</option>`).join("");
   return `<div class="crit-row" data-crow>
-    <select data-cstat><option value=""${key ? "" : " selected"}>Stat…</option>${critStatOptions(key)}</select>
-    <select data-cop>${ops}</select>
-    <input type="number" data-cval value="${esc(val)}" min="0" placeholder="0">
+    <select data-cstat aria-label="Criterion stat"><option value=""${key ? "" : " selected"}>Stat…</option>${critStatOptions(key)}</select>
+    <select data-cop aria-label="Comparison operator">${ops}</select>
+    <input type="number" data-cval aria-label="Criterion value" value="${esc(val)}" min="0" placeholder="0">
     <button type="button" class="crit-rm" data-crm title="Remove criterion">✕</button>
   </div>`;
 }
@@ -206,9 +206,9 @@ function parseWeights(raw) {
 function weightRow(w) {
   const key = w ? w.key : "", val = w ? w.w : "";
   return `<div class="wt-row" data-wrow>
-    <select data-wstat><option value=""${key ? "" : " selected"}>Stat…</option>${weightStatOptions(key)}</select>
+    <select data-wstat aria-label="Weight stat"><option value=""${key ? "" : " selected"}>Stat…</option>${weightStatOptions(key)}</select>
     <span class="wt-x">×</span>
-    <input type="number" data-wval value="${esc(String(val))}" step="0.5" placeholder="1">
+    <input type="number" data-wval aria-label="Weight multiplier" value="${esc(String(val))}" step="0.5" placeholder="1">
     <button type="button" class="crit-rm" data-wrm title="Remove weight">✕</button>
   </div>`;
 }
@@ -236,13 +236,13 @@ function options(entries, cur, anyLabel) {
   return s;
 }
 function selectField(name, label, opts) {
-  return `<div class="fld"><label>${esc(label)}</label><select data-f="${name}">${opts}</select></div>`;
+  return `<div class="fld"><label>${esc(label)}</label><select data-f="${name}" aria-label="${esc(label)}">${opts}</select></div>`;
 }
 function numField(name, label, cur) {
-  return `<div class="fld"><label>${esc(label)}</label><input type="number" data-f="${name}" value="${cur ?? ""}" min="0"></div>`;
+  return `<div class="fld"><label>${esc(label)}</label><input type="number" data-f="${name}" aria-label="${esc(label)}" value="${cur ?? ""}" min="0"></div>`;
 }
 function textField(name, label, cur) {
-  return `<div class="fld"><label>${esc(label)}</label><input type="search" data-f="${name}" value="${esc(cur ?? "")}" placeholder="name…"></div>`;
+  return `<div class="fld"><label>${esc(label)}</label><input type="search" data-f="${name}" aria-label="${esc(label)}" value="${esc(cur ?? "")}" placeholder="name…"></div>`;
 }
 // default-on checkbox (see collect(): omitted from the URL when checked, =0 when off)
 function checkField(name, label, checked) {
@@ -257,7 +257,7 @@ function multiField(name, label, entries, csv, raw) {
   const boxes = entries.map(([v, l]) =>
     `<label class="multi-opt"><input type="checkbox" data-mv="${name}" value="${v}"${sel.has(String(v)) ? " checked" : ""}> ${raw ? l : esc(l)}</label>`).join("");
   return `<div class="fld multi" data-multi="${name}"><label>${esc(label)}</label>
-    <button type="button" class="multi-btn">${esc(summary)} ▾</button>
+    <button type="button" class="multi-btn" aria-label="${esc(label)}: ${esc(summary)}">${esc(summary)} ▾</button>
     <div class="multi-panel">${boxes}</div></div>`;
 }
 
@@ -426,7 +426,7 @@ async function browseItems(p) {
 
   const subMap = f.class === "2" ? WEAPON_SUBCLASS : f.class === "4" ? ARMOR_SUBCLASS : null;
   const critRows = criteria.length ? criteria.map(critRow).join("") : critRow(null);
-  const matchSel = `<select data-f="match" class="crit-match" title="How to combine the criteria below">
+  const matchSel = `<select data-f="match" class="crit-match" aria-label="How to combine criteria" title="How to combine the criteria below">
     <option value="all"${critMatch === "all" ? " selected" : ""}>Match all</option>
     <option value="any"${critMatch === "any" ? " selected" : ""}>Match any</option></select>`;
   const critInner = `<div data-criteria>
@@ -438,7 +438,7 @@ async function browseItems(p) {
   const presetGroups = [...new Set(STAT_WEIGHT_PRESETS.map((pr) => pr.group || "Presets"))];
   const mySets = loadSets();
   const myGroup = mySets.length ? `<optgroup label="My presets">${mySets.map((s) => `<option value="${s.id}"${s.id === presetId ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</optgroup>` : "";
-  const presetSel = `<select data-wpreset><option value="">Preset…</option>${myGroup}${presetGroups.map((g) =>
+  const presetSel = `<select data-wpreset aria-label="Stat weight preset"><option value="">Preset…</option>${myGroup}${presetGroups.map((g) =>
     `<optgroup label="${esc(g)}">${STAT_WEIGHT_PRESETS.filter((pr) => (pr.group || "Presets") === g).map((pr) =>
       `<option value="${pr.id}"${pr.id === presetId ? " selected" : ""}>${esc(pr.label)}</option>`).join("")}</optgroup>`).join("")}</select>`;
   const wtRows = weights.length ? weights.map(weightRow).join("") : weightRow(null);

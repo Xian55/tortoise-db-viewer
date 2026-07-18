@@ -18,6 +18,10 @@ body {
 }
 a { color: #4ea3ff; text-decoration: none; }
 a:hover { text-decoration: underline; }
+/* links inside running prose need a non-colour cue (WCAG link-in-text-block): the
+   link/text colour contrast is < 3:1, so underline them. Scoped to prose blocks --
+   table/nav/card links stand alone and are exempt. */
+.home p a, .npc-meta a { text-decoration: underline; }
 code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 
 .topbar {
@@ -43,7 +47,7 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .home-api .api-list { list-style: none; padding: 0; margin: 8px 0 0; }
 .home-api .api-list li { padding: 4px 0; color: var(--muted); line-height: 1.6; }
 .home-api .api-list code { color: var(--text); }
-.home-api .api-list .dim { opacity: .7; }
+.home-api .api-list .dim { opacity: .88; }
 
 /* "What's new" changelog page (?changelog). */
 .changelog .cl-section { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 12px 16px; margin: 14px 0; }
@@ -164,10 +168,13 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 
 /* reserve ~viewport height so the async DB-driven render (the "Loading…" -> full
    page swap) doesn't shove the footer down -- that shove was the dominant CLS
-   (Lighthouse ~0.78). The subtracted budget must cover ALL the non-#app chrome
-   (topbar ~54 + #app margins 44 + footer ~80 = ~178px) or the page overflows the
-   viewport and shows a permanent scrollbar even on short pages. */
-#app { max-width: 1100px; margin: 22px auto; padding: 0 18px; min-height: calc(100vh - 180px); }
+   (Lighthouse ~0.78). Budget = topbar ~54 + #app margins 44 = ~98px ONLY (NOT the
+   footer's ~80px): including the footer pulls it UP into the viewport at first
+   paint, so the swap then shifts that visible strip down -- the exact residual CLS
+   we're killing. Seating the footer just below the fold makes the swap shift it
+   off-screen (uncounted), trading it for a small scroll only on the few short
+   pages (home / empty states); tall entity pages scroll anyway. */
+#app { max-width: 1100px; margin: 22px auto; padding: 0 18px; min-height: calc(100vh - 96px); }
 .loading, .home, .results { padding: 8px 2px; }
 
 /* home landing: feature card grid */
@@ -429,7 +436,7 @@ h1 { font-size: 22px; }
 .npc-sub { margin-left: 8px; font-style: italic; }
 .npc-meta { margin-top: 8px; }
 .npc-boss { color: #ff8000; } .npc-rare { color: #a335ee; } .npc-elite { color: #ffd100; }
-.npc-meta .dim { opacity: .7; }
+.npc-meta .dim { opacity: .88; }
 .model-link { cursor: help; border-bottom: 1px dotted var(--muted); }
 .model-card { text-align: center; }
 /* NPC-page model thumbnail: floats right of the header so it doesn't push the map */
@@ -534,15 +541,16 @@ a.ilink.zone { color: #8fd18f; }
 #zonemap .wm-group-title { font-weight: 600; }
 #zonemap .wm-group-count { color: var(--muted); font-size: 11px; }
 #zonemap .wm-group-acts { margin-left: auto; display: flex; gap: 7px; }
-#zonemap .wm-group-acts a { color: var(--gold); cursor: pointer; font-size: 11px; }
-#zonemap .wm-group-acts a:hover { text-decoration: underline; }
+#zonemap .wm-group-acts button { color: var(--gold); cursor: pointer; font-size: 11px;
+  background: none; border: 0; padding: 2px; font-family: inherit; }
+#zonemap .wm-group-acts button:hover { text-decoration: underline; }
 #zonemap .wm-group.collapsed .wm-group-rows { display: none; }
 #zonemap .wm-panel-body.searching .wm-group.collapsed .wm-group-rows { display: block; }
 /* a category/layer row */
-#zonemap .wm-row { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 18px;
+#zonemap .wm-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 18px; min-height: 26px;
   cursor: pointer; }
 #zonemap .wm-row:hover { background: var(--panel2); }
-#zonemap .wm-row input { flex: none; margin: 0; accent-color: var(--gold); }
+#zonemap .wm-row input { flex: none; margin: 0; accent-color: var(--gold); width: 16px; height: 16px; }
 #zonemap .wm-row-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #zonemap .wm-row-n { flex: none; color: var(--muted); font-size: 11px; }
 /* coloured legend dot for a marker-layer row (giver/turn-in/kill/collect) */

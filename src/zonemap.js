@@ -226,8 +226,9 @@ function buildLayerPanel(map, { groups = [], header = null } = {}) {
         const t = L.DomUtil.create("span", "wm-group-title", gh); t.textContent = title;
         const cnt = L.DomUtil.create("span", "wm-group-count", gh); cnt.textContent = "0";
         const acts = L.DomUtil.create("span", "wm-group-acts", gh);
-        const allB = L.DomUtil.create("a", "wm-all", acts); allB.textContent = "all";
-        const noneB = L.DomUtil.create("a", "wm-none", acts); noneB.textContent = "none";
+        // <button>, not <a>: these are actions with no href (uncrawlable-anchor a11y/SEO fail)
+        const allB = L.DomUtil.create("button", "wm-all", acts); allB.type = "button"; allB.textContent = "all";
+        const noneB = L.DomUtil.create("button", "wm-none", acts); noneB.type = "button"; noneB.textContent = "none";
         const rowsBox = L.DomUtil.create("div", "wm-group-rows", gEl);
         const rec = { gEl, rowsBox, cnt, groupRows: [] };
         L.DomEvent.on(gh, "click", (e) => {
