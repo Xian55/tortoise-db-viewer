@@ -120,6 +120,7 @@ python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/min
 python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc -> scripts/data/talents.json (talent-tree structure)
 python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
+bun scripts/extract-script-abilities.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src/scripts) -> scripts/data/script-abilities.json (creature_template.script_name -> the spell ids that C++ fight hardcodes; gives Ragnaros/Nefarian/Onyxia an ability list they have no SQL rows for)
 bun scripts/extract-instance-bosses.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src) + built DB -> scripts/data/instance-bosses.json (script-spawned boss entry -> instance mapId; needs build-db first)
 bun scripts/extract-vanilla-ids.mjs   # LOCAL: cmangos Classic SQLite DB (classicmangos.sqlite) -> scripts/data/vanilla-ids.json (vanilla-1.12 id allowlist + `edited` field-diff set; build-db flags items/creatures/quests custom = id NOT IN vanilla OR IN edited). Also field-diffs the built Turtle DB vs cmangos (run build-db first). CMANGOS_DB / TW_DB override paths
 python scripts/extract-cmangos-dbc.py # LOCAL: vanilla 1.12 client DBCs -> scripts/data/cmangos-dbc.json (areas/maps/faction/faction_template/item_display_info/skill_line_ability; fills the DBC tables cmangos's world DB omits, for the SQL_SOURCE=cmangos build). CLIENT overrides path
@@ -178,9 +179,19 @@ The NPC page's **Stats** tab and **Abilities** tab (wowhead-style) come from
   carries a cast chance + repeat cooldown, stored by the server in **seconds**),
   `t` the four `spell_id1..4` template slots, `e` EventAI scripted casts
   (`creature_ai_events.action{1,2,3}_script` → `creature_ai_scripts` command 15,
-  `datalong` = the spell), `a` the passive `auras` list. Rows whose spell isn't in
-  the shipped `spells` table are dropped, so this runs **after** the spells import.
-  Bosses placed by ScriptDev2 **C++** keep their spells in code, so they list none.
+  `datalong` = the spell), `a` the passive `auras` list, and `c` the ScriptDev2 **C++**
+  fights (below). Rows whose spell isn't in the shipped `spells` table are dropped, so
+  this runs **after** the spells import.
+- **`c` -- C++ boss fights.** A boss scripted in the server's C++ has no spell list, no
+  template slots and no EventAI rows, so it listed nothing at all (Ragnaros, Nefarian,
+  Onyxia...). `extract-script-abilities.mjs` (LOCAL) parses
+  `../tortoise-wow/src/scripts/**/*.cpp`: constants -> each AI struct's brace range ->
+  the cast calls inside it, then chains `newscript->Name` -> `GetAI_*` -> struct, and
+  writes the committed `scripts/data/script-abilities.json` (`script_name -> [spell]`).
+  build-db joins it on `creature_template.script_name`. **Turtle only** -- cmangos'
+  `ScriptName` points at its own separate C++, so attributing Turtle's spells there
+  would be a guess (and cmangos covers those fights with EventAI). Shared scripts that
+  cast from DB data (`generic_spell_ai`, 338 creatures) correctly resolve to zero.
 - **cmangos** carries the same data in different shapes, so the derivation branches
   on the staged **column names**, not on `SQL_SOURCE`: the template slots are a
   separate `creature_template_spells` table, `creature_spell_list` is row-per-spell
@@ -336,6 +347,15 @@ Re-run `extract-minimap.py` + commit on client map changes.
   change). Serving needs a one-time Cloudflare setup: add `api.tortoiseclothing.org`
   as an R2 custom domain on the `tortoise-db-viewer` bucket, set bucket CORS to `*`,
   and a Transform Rule rewriting `/[inqs]/<id>` → `…/<id>.json`.
+- `scripts/extract-script-abilities.mjs` — LOCAL: reads the server ScriptDev2 C++
+  (`../tortoise-wow/src/scripts/**/*.cpp`) → committed `scripts/data/script-abilities.json`
+  (`script_name → [spellId]`). Per file it collects the `NAME = <number>` constants, walks
+  each `struct …AI` brace range for `DoCastSpellIfCan`/`CastSpell`/`DoCast`/`DoCastAOE`
+  calls, resolves their spell argument through those constants, then chains
+  `newscript->Name` → `GetAI_*` → struct so a multi-script file attributes correctly (a
+  file with a single AI struct falls back to it). build-db joins it on
+  `creature_template.script_name` → `creature_ability` src `c`. CI has no server `src/`,
+  so the JSON is committed; re-run + commit on scriptdev changes.
 - `scripts/extract-instance-bosses.mjs` — LOCAL: reads the server ScriptDev2 C++
   (`../tortoise-wow/src/scripts/dungeons/<instance>/`) + the built DB → committed
   `scripts/data/instance-bosses.json` (`[{e:creatureEntry, m:mapId}]`). Instance bosses
