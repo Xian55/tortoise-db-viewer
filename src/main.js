@@ -3,7 +3,7 @@ import { query, queryOne, preconnect, getMeta } from "./db.js";
 import * as Q from "./queries.js";
 import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, QUALITY, ITEM_CLASS, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, QUALITY, ITEM_CLASS, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, DMG_SCHOOL, RESISTANCES, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { showCharacters, showCharacter, showSharedLoadout } from "./character.js";
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
@@ -1028,6 +1028,138 @@ async function resolveNpcLocations(entries, kind = "c") {
   return out;
 }
 
+// ---- NPC combat stats panel (creature_template, see build-db) ----
+// Range-valued because a creature template spans level_min..level_max: the server
+// interpolates health/mana between the two bounds when it spawns one at a level.
+// Damage/armor/resists are flat per template. Everything is the raw server value
+// before the rate.* config multipliers, which the world data doesn't expose.
+const npcRange = (lo, hi, fmt = (v) => v.toLocaleString()) =>
+  lo === hi ? fmt(lo) : `${fmt(lo)}–${fmt(hi)}`;
+
+// Stat categories, in display order (the group column sorts on the ordinal).
+const NPC_STAT_CATS = ["Defense", "Offense", "Resources & loot"];
+
+// A stat's value next to the median of the creature's peers -- every non-hidden
+// creature of the same level and rank (Q_NPC_PEERS). "3,379 armor" says nothing on
+// its own; "×0.80 of a typical level 63 boss" is the read a hardcore player wants.
+// Under this many peers the cohort isn't representative and the column is dropped
+// (the cells render empty, so the table's hideEmpty takes it out).
+const NPC_PEER_MIN = 10;
+const NPC_BAR_HALF = 46;   // px; half the bar's width, = a ±100% deviation
+
+function npcRatioCell(ratio) {
+  if (ratio == null || !isFinite(ratio) || ratio <= 0) return "";
+  // Within ±2% of the median is "typical" -- show the number, skip the bar.
+  const dir = ratio > 1.02 ? "over" : ratio < 0.98 ? "under" : "";
+  const w = Math.min(NPC_BAR_HALF, Math.round(Math.abs(ratio - 1) * 100));
+  return `<span class="cmp"><span class="cmp-num${dir ? " " + dir : ""}">×${ratio.toFixed(2)}</span>` +
+    `<span class="cmp-bar">${dir ? `<i class="${dir}" style="width:${w}px"></i>` : ""}</span></span>`;
+}
+
+const npcPills = (list) => list.map((v) => `<span class="stat-pill">${esc(v)}</span>`).join("");
+// Long pill lists fold past `keep` into a native <details> -- no JS, keyboard-operable.
+function npcPillsCapped(list, keep) {
+  if (list.length <= keep + 1) return npcPills(list);
+  return npcPills(list.slice(0, keep)) +
+    `<details class="pill-more"><summary>+${list.length - keep} more</summary>${npcPills(list.slice(keep))}</details>`;
+}
+
+// Rows for the Stats tab. `ratio` is set only on the stats we have a peer median
+// for; everything else renders an empty comparison cell.
+function npcStatRows(npc, peers) {
+  const rows = [];
+  const med = peers && peers.n >= NPC_PEER_MIN ? peers : null;
+  const ratio = (v, base) => (med && v > 0 && base > 0 ? v / base : null);
+  const add = (cat, label, value, r = null, sort = 0) => { if (value) rows.push({ cat, catOrd: NPC_STAT_CATS.indexOf(cat), label, value, ratio: r, sort }); };
+  const num = (v) => Math.round(v).toLocaleString();
+
+  if (npc.health_max) add("Defense", "Health", npcRange(npc.health_min, npc.health_max), ratio(npc.health_max, med?.health), npc.health_max);
+  if (npc.armor) add("Defense", "Armor", npc.armor.toLocaleString(), ratio(npc.armor, med?.armor), npc.armor);
+  const resists = RESISTANCES.filter(([col]) => npc[col] > 0);
+  if (resists.length) {
+    add("Defense", "Resistances",
+      resists.map(([col, label]) => `<span class="stat-pill">${label}<b>${npc[col]}</b></span>`).join(""),
+      null, resists.reduce((a, [col]) => a + npc[col], 0));
+  }
+  // Immunity masks: schools are 1 << school, mechanics 1 << (mechanic - 1) (mangos).
+  // The mechanic mask can exceed 2^31 (Ragnaros is 2,793,635,615) -- JS coerces `&`
+  // operands to int32, which still tests bits 0..30 correctly, and mechanic 32 doesn't
+  // exist in 1.12, so no masking workaround is needed.
+  const schools = Object.entries(SPELL_SCHOOL).filter(([bit]) => npc.school_immune_mask & (1 << Number(bit))).map(([, l]) => l);
+  const mechanics = Object.entries(SPELL_MECHANIC).filter(([m]) => npc.mechanic_immune_mask & (1 << (Number(m) - 1))).map(([, l]) => l);
+  // School immunity is rare and decisive ("Fire does nothing to Ragnaros"), so it gets
+  // its own row rather than being buried among the effect immunities.
+  if (schools.length) add("Defense", "Immune to damage", npcPills(schools), null, schools.length);
+  // Raid bosses carry a stock block of ~18 effect immunities; showing all of them at
+  // once swamps the table, so past a handful the rest fold into a disclosure.
+  if (mechanics.length) add("Defense", "Immune to effects", npcPillsCapped(mechanics, 6), null, mechanics.length);
+
+  const speed = npc.base_attack_time ? npc.base_attack_time / 1000 : 0;
+  if (npc.dmg_max) {
+    const school = DMG_SCHOOL[npc.dmg_school];
+    add("Offense", "Melee damage", npcRange(npc.dmg_min, npc.dmg_max, num) + (school ? ` <span class="dim">${esc(school)}</span>` : ""), null, npc.dmg_max);
+    // Sustained white-hit DPS -- the number that decides whether a mob out-damages
+    // your mitigation, and the one worth comparing against its peers.
+    if (speed) {
+      const dps = (npc.dmg_min + npc.dmg_max) / 2 / speed;
+      add("Offense", "Melee DPS", `~${num(dps)}`, ratio(dps, med?.dps), dps);
+    }
+  }
+  if (speed) add("Offense", "Attack speed", `${speed.toFixed(2)} sec`, null, speed);
+  if (npc.attack_power) add("Offense", "Attack power", npc.attack_power.toLocaleString(), ratio(npc.attack_power, med?.attack_power), npc.attack_power);
+  if (npc.ranged_dmg_max) {
+    add("Offense", "Ranged damage", npcRange(npc.ranged_dmg_min, npc.ranged_dmg_max, num), null, npc.ranged_dmg_max);
+    if (npc.ranged_attack_time) add("Offense", "Ranged speed", `${(npc.ranged_attack_time / 1000).toFixed(2)} sec`, null, npc.ranged_attack_time / 1000);
+  }
+
+  if (npc.mana_max) add("Resources & loot", "Mana", npcRange(npc.mana_min, npc.mana_max), null, npc.mana_max);
+  if (npc.gold_max) {
+    add("Resources & loot", "Money",
+      `${moneyHtml(npc.gold_min)}${npc.gold_min !== npc.gold_max ? ` – ${moneyHtml(npc.gold_max)}` : ""}`, null, npc.gold_max);
+  }
+  return rows;
+}
+
+// Names the cohort the medians came from: "Lvl 63 World Boss" for the column header,
+// "level 63 world bosses" for the prose note under the table.
+const npcPeerLabel = (npc) => `Lvl ${npc.level_max || npc.level_min} ${CREATURE_RANK[npc.rank] || "mob"}`;
+const npcPeerPlural = (npc) => {
+  const kind = (CREATURE_RANK[npc.rank] || "mob").toLowerCase();
+  return `level ${npc.level_max || npc.level_min} ${kind}${kind.endsWith("s") ? "es" : "s"}`;
+};
+
+function npcStatsPane(npc, peers) {
+  const rows = npcStatRows(npc, peers);
+  if (!rows.length) return { html: "", count: 0 };
+  const columns = [
+    // Grouping removes this column from the body and renders it as the group header,
+    // so it only becomes a visible column if the reader picks "Group by: None".
+    { key: "cat", label: "Category", cell: (r) => esc(r.cat), value: (r) => r.catOrd, group: (r) => esc(r.cat) },
+    { key: "stat", label: "Stat", cell: (r) => esc(r.label), value: (r) => r.label },
+    { key: "value", label: "Value", cls: "npc-stat-v", cell: (r) => r.value, value: (r) => r.sort, num: true },
+    {
+      key: "peer", label: `vs. typical ${npcPeerLabel(npc)}`, num: true, hideEmpty: true,
+      cell: (r) => npcRatioCell(r.ratio), value: (r) => r.ratio || 0,
+    },
+  ];
+  const t = regTable(columns, rows, { groupable: true, group: "cat" });
+  const med = peers && peers.n >= NPC_PEER_MIN ? peers : null;
+  const note = med
+    ? `<p class="npc-stat-note muted">Baseline: median of ${med.n.toLocaleString()} ${esc(npcPeerPlural(npc))} —
+       ${Math.round(med.health).toLocaleString()} HP · ${Math.round(med.armor).toLocaleString()} armor ·
+       ~${Math.round(med.dps).toLocaleString()} DPS · ${Math.round(med.attack_power).toLocaleString()} AP.</p>`
+    : `<p class="npc-stat-note muted">Too few ${esc(npcPeerPlural(npc))} in the data for a meaningful comparison.</p>`;
+  return { count: rows.length, noCount: true, html: t.html + note };
+}
+
+// How an ability reaches the creature (creature_ability.src), for the Source column.
+const NPC_ABILITY_SRC = {
+  l: ["Spell list", "Cast from the creature's shared spell list (creature_spells)"],
+  t: ["Ability", "One of the four spell slots on the creature template"],
+  e: ["Scripted", "Cast by an EventAI script (on aggro, at a health threshold, on a timer, …)"],
+  a: ["Aura", "A passive aura the creature spawns with"],
+};
+
 async function showNpc(id) {
   app.innerHTML = `<div class="loading">Loading NPC ${id}…</div>`;
   let npc;
@@ -1035,12 +1167,13 @@ async function showNpc(id) {
   if (!npc) { app.innerHTML = `<div class="home"><p>No NPC with ID ${id}.</p></div>`; return; }
   document.title = `${npc.name} - Tortoise-WoW DB`;
 
-  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, trains, npcSpawns, npcFaction, mountSrc, petAbil, petRanks] = await Promise.all([
+  const [loot, skin, pick, sells, starts, ends, objectiveOf, maps, trains, npcSpawns, npcFaction, mountSrc, abilities, peers, petAbil, petRanks] = await Promise.all([
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
     query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]),
     query(Q.Q_NPC_TRAINS, [id]), query(Q.Q_NPC_SPAWNS, [id]), queryOne(Q.Q_NPC_FACTION, [id]),
-    query(Q.Q_MOUNT_SOURCE, [id]),
+    query(Q.Q_MOUNT_SOURCE, [id]), query(Q.Q_NPC_ABILITIES, [id]),
+    queryOne(Q.Q_NPC_PEERS, [npc.level_max || npc.level_min || 0, npc.rank || 0]),
     npc.tameable && npc.pet_family ? query(Q.Q_PET_FAMILY_ABIL, [npc.pet_family]) : Promise.resolve([]),
     npc.tameable && npc.pet_family ? query(Q.Q_PET_ABILITY_RANKS) : Promise.resolve([]),
   ]);
@@ -1150,7 +1283,28 @@ async function showNpc(id) {
     },
     { label: "Max Rank", num: true, cls: "muted", cell: (a) => String(a.max_rank || ""), value: (a) => a.max_rank || 0 },
   ];
+  // Spells the creature casts at you (+ its passive auras). Cooldown/chance only
+  // exist for spell-list entries; scripted (EventAI) casts carry their timing in the
+  // script's own trigger conditions, which we don't ingest.
+  const abilityCols = [
+    { label: "Spell", cell: (a) => spellLink(a.spell, a.name, a.icon || "inv_misc_questionmark") + (a.rank ? ` <span class="dim">(${esc(a.rank)})</span>` : ""), value: (a) => a.name },
+    {
+      label: "Source", cls: "muted", cell: (a) => {
+        const [label, tip] = NPC_ABILITY_SRC[a.src] || ["", ""];
+        return label ? `<span title="${esc(tip)}">${label}</span>` : "";
+      },
+      value: (a) => (NPC_ABILITY_SRC[a.src] || [""])[0],
+      group: (a) => (NPC_ABILITY_SRC[a.src] || [""])[0],
+    },
+    { label: "School", cls: "muted", hideUniform: true, cell: (a) => esc(SPELL_SCHOOL[a.school] || ""), value: (a) => SPELL_SCHOOL[a.school] || "" },
+    { label: "Cast", num: true, cls: "muted", hideEmpty: true, cell: (a) => (a.cast_ms ? `${(a.cast_ms / 1000).toFixed(1)}s` : ""), value: (a) => a.cast_ms || 0 },
+    { label: "Range", num: true, cls: "muted", hideEmpty: true, cell: (a) => (a.range_max ? `${Math.round(a.range_max)} yd` : ""), value: (a) => a.range_max || 0 },
+    { label: "Chance", num: true, cls: "muted", hideEmpty: true, cell: (a) => (a.prob != null && a.prob < 100 ? `${a.prob}%` : ""), value: (a) => (a.prob != null && a.prob < 100 ? a.prob : 0) },
+    { label: "Cooldown", num: true, cls: "muted", hideEmpty: true, cell: (a) => (a.cd_max ? (a.cd_min === a.cd_max ? `${a.cd_min}s` : `${a.cd_min}–${a.cd_max}s`) : ""), value: (a) => a.cd_min || 0 },
+  ];
   const tabDefs = [
+    { id: "stats", label: "Stats", ...npcStatsPane(npc, peers) },
+    { id: "abilities", label: "Abilities", ...regTable(abilityCols, abilities, { groupable: true }) },
     { id: "petabilities", label: "Pet Abilities", ...regTable(petAbilCols, petAbil) },
     { id: "teaches", label: "Teaches", ...regTable(teachesCols, trains) },
     { id: "drops", label: "Drops", ...regTable(lootCols, drops) },

@@ -291,8 +291,10 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, se
 export function tabs(items) {
   const live = items.filter((t) => t.count > 0);
   if (!live.length) return `<p class="muted">No data.</p>`;
+  // `noCount` tabs show no badge -- for panes whose content isn't a row list (a stat
+  // block, say), where a number in the tab bar would be meaningless.
   const bar = live.map((t, i) =>
-    `<button class="tab${i === 0 ? " active" : ""}" data-tab="${t.id}">${esc(t.label)} <span class="tabn">${t.count}</span></button>`).join("");
+    `<button class="tab${i === 0 ? " active" : ""}" data-tab="${t.id}">${esc(t.label)}${t.noCount ? "" : ` <span class="tabn">${t.count}</span>`}</button>`).join("");
   const panes = live.map((t, i) =>
     `<div class="tabpane${i === 0 ? "" : " hidden"}" data-pane="${t.id}">${t.html}</div>`).join("");
   return `<div class="tabs"><div class="tabbar">${bar}</div><div class="tabpanes">${panes}</div></div>`;
