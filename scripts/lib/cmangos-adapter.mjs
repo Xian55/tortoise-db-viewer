@@ -127,6 +127,18 @@ const TARGET = {
   npc_trainer: ["entry", "spell", "spellcost", "reqskill", "reqskillvalue", "reqlevel"],
   npc_trainer_template: ["entry", "spell", "spellcost", "reqskill", "reqskillvalue", "reqlevel"],
   item_enchantment_template: ["entry", "ench", "chance"],
+  // NPC abilities. cmangos splits these differently from Turtle: the four template
+  // spell slots moved to their own table, the shared spell list is row-per-spell
+  // (Turtle's creature_spells is 8 slots wide), and `creature_ai_scripts` is the
+  // EventAI event table itself (Turtle's same-named table is dbscripts). build-db
+  // detects which shape it got from the column names -- see "Deriving NPC abilities".
+  creature_template_spells: ["entry", "spell1", "spell2", "spell3", "spell4", "spell5",
+    "spell6", "spell7", "spell8", "spell9", "spell10"],
+  creature_spell_list: ["Id", "Position", "SpellId", "Availability", "RepeatMin", "RepeatMax"],
+  // cmangos keeps passive auras here; Turtle has them on creature_template.auras.
+  creature_template_addon: ["entry", "auras"],
+  creature_ai_scripts: ["id", "creature_id", "action1_type", "action1_param1",
+    "action2_type", "action2_param1", "action3_type", "action3_param1"],
 };
 for (const t of ["creature_loot_template", "gameobject_loot_template", "item_loot_template",
   "disenchant_loot_template", "fishing_loot_template", "pickpocketing_loot_template",
@@ -162,7 +174,9 @@ const RENAMES = {
     frost_res: "ResistanceFrost", shadow_res: "ResistanceShadow", arcane_res: "ResistanceArcane",
     spell_list_id: "SpellList", gold_min: "MinLootGold", gold_max: "MaxLootGold", ai_name: "AIName",
     regeneration: "RegenerateStats", equipment_id: "EquipmentTemplateId", trainer_id: "TrainerTemplateId",
-    vendor_id: "VendorTemplateId", flags_extra: "ExtraFlags",
+    vendor_id: "VendorTemplateId", flags_extra: "ExtraFlags", unit_class: "UnitClass",
+    ranged_attack_power: "RangedAttackPower", mechanic_immune_mask: "MechanicImmuneMask",
+    school_immune_mask: "SchoolImmuneMask",
   },
   creature: { wander_distance: "spawndist", movement_type: "MovementType" },
   // cmangos spell_template carries names/ranks/mechanics/icons; entry is `Id`, name/rank
@@ -174,6 +188,10 @@ const RENAMES = {
 // tables cmangos lacks entirely -> staged empty. (spell_template maps from cmangos +
 // gets its tooltip text injected from the client DBC below.)
 const FORCE_EMPTY = new Set();
+
+// Turtle-only tables with no cmangos counterpart: left unstaged (build-db's source
+// branches key off `src.has(...)`), not warned about -- their absence is expected.
+const NO_CMANGOS = new Set(["creature_spells", "creature_ai_events"]);
 
 // DBC-derived tables cmangos omits, filled from scripts/data/cmangos-dbc.json
 // (extract-cmangos-dbc.py, from a vanilla 1.12 client). staging table -> JSON key.
@@ -192,8 +210,10 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
 
   const pkOf = Object.fromEntries(STAGE_SPECS.map((s) => [s.table, s.pk]));
   // every table build-db reads: the staged specs + item_enchantment_template (read via
-  // the srcRows dump fallback in the Turtle build, so it must be provided here too).
-  const tables = [...new Set([...STAGE_SPECS.map((s) => s.table), "item_enchantment_template"])];
+  // the srcRows dump fallback in the Turtle build, so it must be provided here too) +
+  // the cmangos-only NPC-ability tables (no Turtle dump file, so not in STAGE_SPECS).
+  const tables = [...new Set([...STAGE_SPECS.map((s) => s.table), "item_enchantment_template",
+    "creature_template_spells", "creature_spell_list", "creature_template_addon"])];
 
   const cmHas = (t) => !!db.prepare(`SELECT 1 FROM cm.sqlite_master WHERE type='table' AND name=?`).get(t);
   const cmCols = (t) => new Set(db.prepare(`SELECT name FROM pragma_table_info('${t}','cm')`).all().map((r) => r.name.toLowerCase()));
@@ -204,7 +224,10 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
 
   for (const table of tables) {
     const cols = TARGET[table];
-    if (!cols) { console.warn(`  cmangos-adapter: no target columns for ${table} — skipped`); continue; }
+    if (!cols) {
+      if (!NO_CMANGOS.has(table)) console.warn(`  cmangos-adapter: no target columns for ${table} — skipped`);
+      continue;
+    }
     colsByTable[table] = cols;
     staged.add(table);
     const pk = pkOf[table];
