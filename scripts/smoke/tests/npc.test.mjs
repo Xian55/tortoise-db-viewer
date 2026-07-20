@@ -275,10 +275,29 @@ async function testNpcAbilities(id, minRows) {
   return rows >= minRows && spellLinks === rows && sources.length > 1;
 }
 
+// A boss whose fight lives in the server's C++ (ScriptDev2) has no spell list, no
+// template slots and no EventAI rows, so it listed nothing until script-abilities.json
+// (extract-script-abilities.mjs) mapped script_name -> the spells the script casts.
+// Ragnaros is the canonical case.
+async function testNpcScriptAbilities(id, wantSpells) {
+  await nav(`?npc=${id}`);
+  await page.waitForSelector(".npc-page .tab", { timeout: T });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".npc-page .tab")].find((t) => t.textContent.includes("Abilities")); if (b) b.click(); });
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) tbody tr", { timeout: T }).catch(() => {});
+  const pane = ".npc-page .tabpane:not(.hidden)";
+  const names = await page.$$eval(`${pane} tbody a.ilink`, (e) => e.map((a) => a.textContent.trim()));
+  const sources = await page.$$eval(`${pane} tbody tr`, (trs) =>
+    [...new Set(trs.map((r) => r.children[1]?.textContent.trim()).filter(Boolean))]).catch(() => []);
+  const missing = wantSpells.filter((s) => !names.some((n) => n.includes(s)));
+  console.log(`npc-script-abilities ${id}: spells=[${names.join(",")}] sources=[${sources.join(",")}] missing=[${missing.join(",")}]`);
+  return !missing.length && sources.includes("Boss script");
+}
+
 smoke("npc-load 15379 perf", () => testNpcLoad(15379, 400));
 smoke("npc stats 12118 Lucifron", () => testNpcStats(12118, ["Health", "Mana", "Armor", "Melee damage", "Melee DPS", "Attack speed"]));
 smoke("npc stats no-peers 448 Hogger", () => testNpcStatsNoPeers(448));
 smoke("npc abilities 1748 Bolvar", () => testNpcAbilities(1748, 4));
+smoke("npc abilities 11502 Ragnaros (C++ script)", () => testNpcScriptAbilities(11502, ["Wrath of Ragnaros", "Magma Blast"]));
 smoke("npc 2376 Torn Fin Oracle", () => testNpc(2376, "Torn Fin Oracle"));
 smoke("npc 80402 trainer Teaches", () => testNpc(80402, "Aemara Sunsorrow", "Teaches"));
 smoke("npc 10981 Skinning", () => testNpc(10981, "", "Skinning"));
