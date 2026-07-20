@@ -1,6 +1,7 @@
 // Import specs: which dump files/columns become which SQLite tables.
 // `columns: null` keeps every column from the source CREATE TABLE.
-// `text` lists columns that should be stored as TEXT (everything else INTEGER).
+// `text` lists columns that should be stored as TEXT, `real` as REAL
+// (everything else INTEGER).
 
 export const IMPORTS = [
   {
@@ -27,8 +28,21 @@ export const IMPORTS = [
     target: "creatures",
     columns: ["entry", "name", "subname", "level_min", "level_max", "rank", "type", "faction",
       "health_min", "health_max", "npc_flags", "loot_id", "pickpocket_loot_id", "skinning_loot_id",
-      "display_id1", "vendor_id", "beast_family", "type_flags"], // display_id1 -> renamed to display_id in build-db; vendor_id -> npc_vendor_template; beast_family -> renamed pet_family; type_flags -> derives tameable then dropped
-    text: ["name", "subname"],
+      "display_id1", "vendor_id", "beast_family", "type_flags",
+      // Combat stats (the NPC page's stat block, wowhead-style). dmg_* are folded
+      // by dmg_multiplier in build-db (the server applies it at damage calc), then
+      // dmg_multiplier is dropped. unit_class picks the power bar (1 warrior/rage,
+      // 2 paladin/mana, 4 rogue/energy, 8 mage/mana).
+      "mana_min", "mana_max", "armor", "dmg_min", "dmg_max", "dmg_multiplier", "dmg_school",
+      "attack_power", "base_attack_time", "ranged_attack_time", "ranged_dmg_min", "ranged_dmg_max",
+      "ranged_attack_power", "unit_class", "holy_res", "fire_res", "nature_res", "frost_res",
+      "shadow_res", "arcane_res", "gold_min", "gold_max", "mechanic_immune_mask", "school_immune_mask",
+      // Ability sources -> the derived creature_ability table, then dropped.
+      "spell_id1", "spell_id2", "spell_id3", "spell_id4", "spell_list_id", "auras"],
+    // display_id1 -> renamed to display_id in build-db; vendor_id -> npc_vendor_template;
+    // beast_family -> renamed pet_family; type_flags -> derives tameable then dropped.
+    text: ["name", "subname", "auras"],
+    real: ["dmg_min", "dmg_max", "dmg_multiplier", "ranged_dmg_min", "ranged_dmg_max"],
     pk: "entry",
     indexes: ["loot_id", "pickpocket_loot_id", "skinning_loot_id"],
   },

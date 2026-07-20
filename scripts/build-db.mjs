@@ -53,8 +53,10 @@ const t0 = Date.now();
 const clean = (v) => (v === NULL ? null : v);
 const read = (file) => readFileSync(join(SQL_DIR, file), "utf8");
 
-function colType(name, textSet) {
-  return textSet.has(name) ? "TEXT" : "INTEGER";
+function colType(name, textSet, realSet) {
+  if (textSet.has(name)) return "TEXT";
+  if (realSet && realSet.has(name)) return "REAL";
+  return "INTEGER";
 }
 
 // ---- Staging: load the raw world tables + apply server migrations ----
@@ -83,6 +85,12 @@ const STAGE_SPECS = (() => {
   add("npc_trainer", "tw_world_npc_trainer.sql");
   add("npc_trainer_template", "tw_world_npc_trainer_template.sql");
   add("collection_mount", "tw_world_collection_mount.sql"); // Turtle: itemId -> real mount spell
+  // NPC ability sources (-> creature_ability). creature_spells is the shared spell
+  // list creature_template.spell_list_id points at; the EventAI pair resolves a
+  // scripted cast (creature_ai_events.actionN_script -> creature_ai_scripts command 15).
+  add("creature_spells", "tw_world_creature_spells.sql");
+  add("creature_ai_events", "tw_world_creature_ai_events.sql");
+  add("creature_ai_scripts", "tw_world_creature_ai_scripts.sql");
   return specs;
 })();
 
@@ -110,9 +118,10 @@ function importSpec(spec) {
   const missing = cols.filter((c, i) => idx[i] < 0);
   if (missing.length) throw new Error(`${spec.target}: columns missing from ${spec.file}: ${missing}`);
   const textSet = new Set(spec.text);
+  const realSet = new Set(spec.real);
 
   const defs = cols.map((c) =>
-    c === spec.pk ? `\`${c}\` INTEGER PRIMARY KEY` : `\`${c}\` ${colType(c, textSet)}`
+    c === spec.pk ? `\`${c}\` INTEGER PRIMARY KEY` : `\`${c}\` ${colType(c, textSet, realSet)}`
   );
   db.exec(`CREATE TABLE ${spec.target} (${defs.join(", ")})`);
 
@@ -171,6 +180,21 @@ db.exec("ALTER TABLE creatures ADD COLUMN tameable INTEGER NOT NULL DEFAULT 0");
 db.exec("UPDATE creatures SET tameable = 1 WHERE (type_flags & 1) <> 0");
 db.exec("ALTER TABLE creatures DROP COLUMN type_flags");
 db.exec("CREATE INDEX idx_creatures_pet_family ON creatures(pet_family) WHERE tameable = 1");
+// Peer cohort for the NPC Stats tab's "vs. typical" column (Q_NPC_PEERS): every
+// creature of the same level + rank. Without it that query full-scans creatures.
+db.exec("CREATE INDEX idx_creatures_peer ON creatures(level_max, rank)");
+
+// Melee/ranged damage: the server multiplies the template's dmg_min/dmg_max by
+// dmg_multiplier when it builds the creature (Creature::SelectLevel ->
+// SetBaseWeaponDamage, then StatSystem's damage calc), so fold it in here and drop
+// the multiplier -- the stored numbers are then what the mob actually hits for
+// (before the per-rank rate.damage.* config mod, which we can't see, exactly like
+// health_min/health_max already ignores rate.health.*). Rounded to 1 decimal -- the
+// raw dump values carry meaningless float precision (19.837, 14.868877, ...).
+db.exec(`UPDATE creatures SET
+    dmg_min = ROUND(dmg_min * dmg_multiplier, 1), dmg_max = ROUND(dmg_max * dmg_multiplier, 1),
+    ranged_dmg_min = ROUND(ranged_dmg_min * dmg_multiplier, 1), ranged_dmg_max = ROUND(ranged_dmg_max * dmg_multiplier, 1)`);
+db.exec("ALTER TABLE creatures DROP COLUMN dmg_multiplier");
 
 // Creature faction alignment (team): resolve creature_template.faction ->
 // faction_template.our_mask (0x2 = Alliance, 0x4 = Horde). Lets the UI tag which
@@ -938,6 +962,180 @@ console.log("Deriving spell teach sources...");
   db.exec(`ALTER TABLE spells ADD COLUMN learnable INTEGER DEFAULT 0`);
   db.exec(`UPDATE spells SET learnable = 1 WHERE entry IN (SELECT spell FROM spell_trainer) OR entry IN (SELECT spell FROM spell_taught_item)`);
   console.log(`  spell_trainer: ${nst} | spell_taught_item: ${nti}`);
+}
+
+// ---- NPC abilities (the spells a creature casts at you) ----
+// Four independent sources in the world DB, unioned into one `creature_ability`
+// table so the NPC page can list them wowhead-style:
+//   't' creature_template.spell_id1..4  -- the classic four fixed slots
+//   'l' creature_template.spell_list_id -> creature_spells (the shared list Turtle
+//       prefers; carries cast probability + repeat cooldown, the latter in seconds)
+//   'e' EventAI: creature_ai_events.action{1,2,3}_script -> creature_ai_scripts rows
+//       with command 15 (SCRIPT_COMMAND_CAST_SPELL), datalong = the spell id
+//   'a' creature_template.auras -- a comma list of passive auras the mob spawns with
+// Rows whose spell isn't in the shipped `spells` table are dropped (nothing to show),
+// so this runs after the spells import. (creature, spell) is unique; the first source
+// to claim a pair wins in the order above, so a listed spell keeps its probability.
+console.log("Deriving NPC abilities...");
+{
+  db.exec(`CREATE TABLE creature_ability (
+    creature INTEGER NOT NULL, spell INTEGER NOT NULL, src TEXT NOT NULL,
+    prob INTEGER, cd_min INTEGER, cd_max INTEGER, ord INTEGER, -- cd_* in SECONDS
+    PRIMARY KEY (creature, spell)) WITHOUT ROWID`);
+  const ins = db.prepare(`INSERT OR IGNORE INTO creature_ability VALUES (?,?,?,?,?,?,?)`);
+  const known = new Set(db.prepare(`SELECT entry FROM spells WHERE name <> ''`).all().map((r) => r.entry));
+  const add = (creature, spell, src, prob, cdMin, cdMax, ord) => {
+    if (!spell || !known.has(spell)) return 0;
+    ins.run(creature, spell, src, prob ?? null, cdMin ?? null, cdMax ?? null, ord);
+    return 1;
+  };
+  let nl = 0, nt = 0, ne = 0, na = 0;
+
+  // 'l' -- shared spell lists, keyed by creature_template.spell_list_id.
+  const lists = new Map(); // listId -> [{spell, prob, cdMin, cdMax, ord}]
+  if (src.has("creature_spells")) {
+    const c = src.columns("creature_spells");
+    const at = (n) => c.indexOf(n);
+    const slots = [];
+    for (let k = 1; ; k++) {
+      const i = at(`spellId_${k}`);
+      if (i < 0) break;
+      slots.push({ id: i, prob: at(`probability_${k}`), lo: at(`delayRepeatMin_${k}`), hi: at(`delayRepeatMax_${k}`) });
+    }
+    for (const r of src.rows("creature_spells")) {
+      const out = [];
+      slots.forEach((s, k) => {
+        const sp = Number(r[s.id]) || 0;
+        if (!sp) return;
+        // The server stores these timers as SECONDS (ObjectMgr multiplies by
+        // IN_MILLISECONDS on load) and clamps an out-of-range probability to 100.
+        const p = Number(r[s.prob]) || 0;
+        out.push({
+          spell: sp, prob: p > 0 && p <= 100 ? p : 100,
+          cdMin: Number(r[s.lo]) || null, cdMax: Number(r[s.hi]) || null, ord: k,
+        });
+      });
+      if (out.length) lists.set(Number(r[c.indexOf("entry")]), out);
+    }
+  }
+  db.transaction(() => {
+    for (const cr of db.prepare(`SELECT entry, spell_list_id FROM creatures WHERE spell_list_id <> 0`).all()) {
+      for (const s of lists.get(cr.spell_list_id) || []) nl += add(cr.entry, s.spell, "l", s.prob, s.cdMin, s.cdMax, s.ord);
+    }
+  })();
+
+  // 't' -- the four fixed template slots.
+  db.transaction(() => {
+    for (const cr of db.prepare(`SELECT entry, spell_id1, spell_id2, spell_id3, spell_id4 FROM creatures
+        WHERE spell_id1 <> 0 OR spell_id2 <> 0 OR spell_id3 <> 0 OR spell_id4 <> 0`).all()) {
+      for (const k of [1, 2, 3, 4]) nt += add(cr.entry, cr[`spell_id${k}`], "t", null, null, null, k - 1);
+    }
+  })();
+
+  // 'l' (cmangos) -- creature_spell_list is row-per-spell instead of 8 fixed slots,
+  // keyed by the same creature_template.SpellList. Availability is the cast chance in
+  // %, and its repeat timers are MILLISECONDS (Turtle's are seconds) -> normalize.
+  if (src.has("creature_spell_list")) {
+    const c = src.columns("creature_spell_list");
+    const at = (n) => c.indexOf(n);
+    const [iId, iPos, iSp, iAv, iLo, iHi] = ["Id", "Position", "SpellId", "Availability", "RepeatMin", "RepeatMax"].map(at);
+    for (const r of src.rows("creature_spell_list")) {
+      const list = Number(r[iId]), sp = Number(r[iSp]) || 0;
+      if (!list || !sp) continue;
+      if (!lists.has(list)) lists.set(list, []);
+      const av = Number(r[iAv]) || 0;
+      lists.get(list).push({
+        spell: sp, prob: av > 0 && av <= 100 ? av : 100,
+        cdMin: Math.round(Number(r[iLo]) / 1000) || null, cdMax: Math.round(Number(r[iHi]) / 1000) || null,
+        ord: Number(r[iPos]) || 0,
+      });
+    }
+    db.transaction(() => {
+      for (const cr of db.prepare(`SELECT entry, spell_list_id FROM creatures WHERE spell_list_id <> 0`).all()) {
+        for (const s of lists.get(cr.spell_list_id) || []) nl += add(cr.entry, s.spell, "l", s.prob, s.cdMin, s.cdMax, s.ord);
+      }
+    })();
+  }
+
+  // 't' (cmangos) -- the template slots live in their own table (spell1..spell10).
+  if (src.has("creature_template_spells")) {
+    const c = src.columns("creature_template_spells");
+    const iE = c.indexOf("entry");
+    const slots = c.map((n, i) => (/^spell\d+$/.test(n) ? i : -1)).filter((i) => i >= 0);
+    db.transaction(() => {
+      for (const r of src.rows("creature_template_spells")) {
+        const cr = Number(r[iE]);
+        if (cr) slots.forEach((i, k) => { nt += add(cr, Number(r[i]) || 0, "t", null, null, null, k); });
+      }
+    })();
+  }
+
+  // 'e' -- EventAI: event row -> action script id -> the CAST_SPELL commands in it.
+  if (src.has("creature_ai_events") && src.has("creature_ai_scripts")) {
+    const sc = src.columns("creature_ai_scripts");
+    const iId = sc.indexOf("id"), iCmd = sc.indexOf("command"), iSpell = sc.indexOf("datalong");
+    const byScript = new Map(); // script id -> [spell]
+    for (const r of src.rows("creature_ai_scripts")) {
+      if (Number(r[iCmd]) !== 15) continue;
+      const id = Number(r[iId]), sp = Number(r[iSpell]) || 0;
+      if (!sp) continue;
+      if (!byScript.has(id)) byScript.set(id, []);
+      byScript.get(id).push(sp);
+    }
+    const ec = src.columns("creature_ai_events");
+    const iCr = ec.indexOf("creature_id");
+    const actions = ["action1_script", "action2_script", "action3_script"].map((n) => ec.indexOf(n)).filter((i) => i >= 0);
+    db.transaction(() => {
+      for (const r of src.rows("creature_ai_events")) {
+        const cr = Number(r[iCr]);
+        if (!cr) continue;
+        for (const ai of actions) {
+          for (const sp of byScript.get(Number(r[ai])) || []) ne += add(cr, sp, "e", null, null, null, 0);
+        }
+      }
+    })();
+  }
+
+  // 'e' (cmangos) -- same EventAI data, but flattened: cmangos' `creature_ai_scripts`
+  // IS the event table (Turtle's same-named table is dbscripts, handled above), with
+  // the actions inline. action type 11 = ACTION_T_CAST, param1 = the spell.
+  if (src.has("creature_ai_scripts") && (src.columns("creature_ai_scripts") || []).includes("action1_type")) {
+    const c = src.columns("creature_ai_scripts");
+    const iCr = c.indexOf("creature_id");
+    const acts = [1, 2, 3].map((k) => [c.indexOf(`action${k}_type`), c.indexOf(`action${k}_param1`)])
+      .filter(([t, p]) => t >= 0 && p >= 0);
+    db.transaction(() => {
+      for (const r of src.rows("creature_ai_scripts")) {
+        const cr = Number(r[iCr]);
+        if (!cr) continue;
+        for (const [t, p] of acts) if (Number(r[t]) === 11) ne += add(cr, Number(r[p]) || 0, "e", null, null, null, 0);
+      }
+    })();
+  }
+
+  // 'a' -- passive auras (a space/comma-separated spell id list). Turtle carries them
+  // on creature_template.auras; cmangos in creature_template_addon.
+  const addAuras = (entry, list) => {
+    String(list ?? "").split(/[\s,]+/).forEach((s, k) => { na += add(entry, Number(s) || 0, "a", null, null, null, k); });
+  };
+  db.transaction(() => {
+    for (const cr of db.prepare(`SELECT entry, auras FROM creatures WHERE auras IS NOT NULL AND auras <> ''`).all()) addAuras(cr.entry, cr.auras);
+  })();
+  if (src.has("creature_template_addon")) {
+    const c = src.columns("creature_template_addon");
+    const iE = c.indexOf("entry"), iA = c.indexOf("auras");
+    if (iE >= 0 && iA >= 0) db.transaction(() => {
+      for (const r of src.rows("creature_template_addon")) if (r[iA]) addAuras(Number(r[iE]), r[iA]);
+    })();
+  }
+
+  db.exec(`CREATE INDEX idx_creature_ability_spell ON creature_ability(spell)`);
+  // The raw source columns have served their purpose -- keep the shipped row narrow.
+  for (const c of ["spell_id1", "spell_id2", "spell_id3", "spell_id4", "spell_list_id", "auras"]) {
+    db.exec(`ALTER TABLE creatures DROP COLUMN ${c}`);
+  }
+  const nc = db.prepare(`SELECT COUNT(DISTINCT creature) n FROM creature_ability`).get().n;
+  console.log(`  creature_ability: list ${nl}, template ${nt}, eventai ${ne}, auras ${na} -> ${nc} creatures`);
 }
 
 // ---- Quests + quest link tables (items, creature/GO objectives, rep rewards) ----
