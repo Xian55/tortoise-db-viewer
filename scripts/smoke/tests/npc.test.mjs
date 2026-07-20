@@ -25,7 +25,9 @@ async function testNpc(id, expectName, expectTab) {
   await page.waitForSelector(".npc-head h1", { timeout: T });
   const name = await page.$eval(".npc-head h1", (e) => e.textContent);
   const tabsList = await page.$$eval(".tab", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
-  const sortableH = await page.$$eval(".tabpane:not(.hidden) th.sortable", (e) => e.length);
+  // Across ALL panes, not just the visible one: the first tab is now "Stats", whose
+  // pane is a key/value block rather than a sortable table.
+  const sortableH = await page.$$eval(".npc-page .tabpane th.sortable", (e) => e.length);
   // Every creature has a display_id -> the meta line must carry the model thumb hook.
   const display = await page.$eval(".npc-meta .model-link", (e) => e.getAttribute("data-display")).catch(() => null);
   console.log(`npc ${id}: name="${name}" tabs=[${tabsList.join(", ")}] sortableHdrs=${sortableH} model=${display}`);
@@ -216,7 +218,67 @@ async function testNpcFocusZone(id, areaid) {
   return src.includes(`/${areaid}.webp`);
 }
 
+// Combat stats (creature_template -> creatures, see build-db): the FIRST tab, no
+// count badge, a real grouped table (Defense / Offense / Resources & loot), and a
+// "vs. typical" column holding each stat against the median of its peers
+// (Q_NPC_PEERS). Lucifron (12118) is a level 63 boss -> a 227-strong cohort.
+async function testNpcStats(id, wantStats) {
+  await nav(`?npc=${id}`);
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: T });
+  const firstTab = await page.$eval(".npc-page .tab", (e) => e.textContent.trim());
+  const noBadge = await page.$eval(".npc-page .tab", (e) => !e.querySelector(".tabn"));
+  const pane = ".npc-page .tabpane:not(.hidden)";
+  const headers = await page.$$eval(`${pane} th`, (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const groups = await page.$$eval(`${pane} tr.grouprow`, (e) => e.map((g) => g.textContent.replace(/[▸▾]/g, "").trim()));
+  const stats = await page.$$eval(`${pane} tbody tr:not(.grouprow) td:first-child`, (e) => e.map((c) => c.textContent.trim()));
+  // ratio cells: "×1.20" + a bar whose fill sits on one side of the median tick
+  const ratios = await page.$$eval(`${pane} .cmp-num`, (e) => e.map((c) => c.textContent.trim()));
+  const bars = await page.$$eval(`${pane} .cmp-bar i`, (e) => e.length);
+  const note = await page.$eval(`${pane} .npc-stat-note`, (e) => e.textContent.replace(/\s+/g, " ").trim()).catch(() => "");
+  const missing = wantStats.filter((s) => !stats.includes(s));
+  const peerCol = headers.some((h) => /^vs\. typical Lvl \d+/.test(h));
+  console.log(`npc-stats ${id}: firstTab="${firstTab}" noBadge=${noBadge} headers=[${headers.join(",")}] groups=[${groups.join(",")}] stats=[${stats.join(",")}] ratios=[${ratios.join(",")}] bars=${bars} note="${note}" missing=[${missing.join(",")}]`);
+  return firstTab === "Stats" && noBadge && peerCol && !missing.length
+    && groups.includes("Defense") && groups.includes("Offense")
+    && ratios.length >= 3 && ratios.every((r) => /^×\d+\.\d\d$/.test(r)) && bars > 0
+    && /median of [\d,]+ level \d+ \w/i.test(note);
+}
+
+// Too small a cohort must NOT quote a made-up median: Hogger (448) is one of only 7
+// level 11 elites, under NPC_PEER_MIN, so every ratio cell is empty and the table's
+// hideEmpty drops the whole comparison column.
+async function testNpcStatsNoPeers(id) {
+  await nav(`?npc=${id}`);
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) table tbody tr", { timeout: T });
+  const pane = ".npc-page .tabpane:not(.hidden)";
+  const headers = await page.$$eval(`${pane} th`, (e) => e.map((h) => h.textContent.replace(/[▲▼]/g, "").trim()));
+  const ratios = await page.$$eval(`${pane} .cmp-num`, (e) => e.length);
+  const note = await page.$eval(`${pane} .npc-stat-note`, (e) => e.textContent.replace(/\s+/g, " ").trim()).catch(() => "");
+  const rows = await page.$$eval(`${pane} tbody tr:not(.grouprow)`, (e) => e.length);
+  console.log(`npc-stats-nopeers ${id}: headers=[${headers.join(",")}] ratioCells=${ratios} rows=${rows} note="${note}"`);
+  return rows > 0 && ratios === 0 && !headers.some((h) => /^vs\. typical/.test(h)) && /too few/i.test(note);
+}
+
+// Abilities: the spells a creature casts, unioned from the template slots, its
+// shared spell list and its EventAI script (build-db `creature_ability`). Bolvar
+// (1748) draws from all three, so the Source column must show more than one value.
+async function testNpcAbilities(id, minRows) {
+  await nav(`?npc=${id}`);
+  await page.waitForSelector(".npc-page .tab", { timeout: T });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".npc-page .tab")].find((t) => t.textContent.includes("Abilities")); if (b) b.click(); });
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) tbody tr", { timeout: T }).catch(() => {});
+  const rows = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr", (r) => r.length).catch(() => 0);
+  const spellLinks = await page.$$eval('.npc-page .tabpane:not(.hidden) tbody a.ilink[href^="?spell="]', (e) => e.length).catch(() => 0);
+  const sources = await page.$$eval(".npc-page .tabpane:not(.hidden) tbody tr", (trs) =>
+    [...new Set(trs.map((r) => r.children[1]?.textContent.trim()).filter(Boolean))]).catch(() => []);
+  console.log(`npc-abilities ${id}: rows=${rows} spellLinks=${spellLinks} sources=[${sources.join(",")}]`);
+  return rows >= minRows && spellLinks === rows && sources.length > 1;
+}
+
 smoke("npc-load 15379 perf", () => testNpcLoad(15379, 400));
+smoke("npc stats 12118 Lucifron", () => testNpcStats(12118, ["Health", "Mana", "Armor", "Melee damage", "Melee DPS", "Attack speed"]));
+smoke("npc stats no-peers 448 Hogger", () => testNpcStatsNoPeers(448));
+smoke("npc abilities 1748 Bolvar", () => testNpcAbilities(1748, 4));
 smoke("npc 2376 Torn Fin Oracle", () => testNpc(2376, "Torn Fin Oracle"));
 smoke("npc 80402 trainer Teaches", () => testNpc(80402, "Aemara Sunsorrow", "Teaches"));
 smoke("npc 10981 Skinning", () => testNpc(10981, "", "Skinning"));

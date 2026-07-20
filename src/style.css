@@ -449,6 +449,33 @@ h1 { font-size: 22px; }
 .npc-meta { margin-top: 8px; }
 .npc-boss { color: #ff8000; } .npc-rare { color: #a335ee; } .npc-elite { color: #ffd100; }
 .npc-meta .dim { opacity: .88; }
+/* NPC combat stats -- the "Stats" tab (npcStatsPane in main.js). The peer column
+   reads a stat against the median of same-level, same-rank creatures: warm = hits
+   harder / is tougher than typical, green = softer. Semantic, not the gold accent. */
+td.npc-stat-v { font-variant-numeric: tabular-nums; }
+/* pills here sit loose in a cell, not in a flex .stat-pills row -- inline-block +
+   margin so a wrapped second line can't collapse onto the first */
+td.npc-stat-v .stat-pill, td.npc-stat-v .pill-more > summary {
+  display: inline-block; margin: 1px 4px 1px 0; font-variant-numeric: tabular-nums;
+}
+.npc-stat-note { margin: 10px 0 0; font-size: 13px; }
+/* "+12 more" fold for a boss's stock block of effect immunities */
+.pill-more { display: inline; }
+.pill-more > summary { display: inline-block; padding: 2px 10px; border: 1px dashed var(--border);
+  border-radius: 12px; font-size: 13px; color: var(--muted); cursor: pointer; list-style: none; }
+.pill-more > summary::-webkit-details-marker { display: none; }
+.pill-more > summary:hover { color: var(--text); border-color: var(--muted); }
+.pill-more[open] > summary { display: none; }
+.cmp { display: inline-flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.cmp-num { font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
+.cmp-num.over { color: #e8705f; } .cmp-num.under { color: #63a86f; }
+.cmp-bar { position: relative; width: 92px; height: 7px; background: var(--panel2); border-radius: 3px; flex: none; }
+.cmp-bar i { position: absolute; top: 0; height: 7px; border-radius: 3px; }
+.cmp-bar i.over { left: 50%; background: #e8705f; }
+.cmp-bar i.under { right: 50%; background: #63a86f; }
+/* centre tick = the median the bar diverges from */
+.cmp-bar::after { content: ""; position: absolute; left: 50%; top: -2px; width: 1px; height: 11px; background: var(--muted); opacity: .55; }
+@media (max-width: 720px) { .cmp-bar { display: none; } }
 .model-link { cursor: help; border-bottom: 1px dotted var(--muted); }
 .model-card { text-align: center; }
 /* NPC-page model thumbnail: floats right of the header so it doesn't push the map */

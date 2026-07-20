@@ -529,8 +529,41 @@ export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, rank, school, m
 // pet_family/tameable + the family name drive the "Tameable · <family>" badge and
 // the pet-abilities block on the NPC page (a tameable beast is a hunter pet source).
 export const Q_NPC = `SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.type, c.faction, c.health_min, c.health_max, c.npc_flags, c.display_id,
-    c.tameable, c.pet_family, pf.name AS pet_family_name, pf.custom AS pet_family_custom
+    c.tameable, c.pet_family, pf.name AS pet_family_name, pf.custom AS pet_family_custom,
+    c.mana_min, c.mana_max, c.armor, c.dmg_min, c.dmg_max, c.dmg_school, c.attack_power, c.base_attack_time,
+    c.ranged_dmg_min, c.ranged_dmg_max, c.ranged_attack_time, c.ranged_attack_power, c.unit_class,
+    c.holy_res, c.fire_res, c.nature_res, c.frost_res, c.shadow_res, c.arcane_res,
+    c.gold_min, c.gold_max, c.mechanic_immune_mask, c.school_immune_mask
   FROM creatures c LEFT JOIN pet_families pf ON pf.id = c.pet_family WHERE c.entry = ?1`;
+
+// Peer baseline for the NPC Stats tab: the MEDIAN health/armor/DPS/attack power of
+// every non-hidden creature at the same level and rank, so a stat can be read as
+// "×1.2 of a typical level 63 boss". Median, not average -- a handful of raid bosses
+// with a huge dmg_multiplier drags the mean far off (lvl-63 boss mean DPS ~4990 vs
+// median ~1277). The (level_max, rank) index keeps this to the cohort's rows.
+export const Q_NPC_PEERS = `
+  WITH peers AS (
+    SELECT health_max hp, armor ar, attack_power ap,
+      (dmg_min + dmg_max) / 2.0 / (base_attack_time / 1000.0) dps
+    FROM creatures
+    WHERE level_max = ?1 AND rank = ?2 AND hidden = 0
+      AND base_attack_time > 0 AND health_max > 0 AND dmg_max > 0
+  ), c AS (SELECT COUNT(*) n FROM peers)
+  SELECT (SELECT n FROM c) AS n,
+    (SELECT hp  FROM peers ORDER BY hp  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS health,
+    (SELECT ar  FROM peers ORDER BY ar  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS armor,
+    (SELECT dps FROM peers ORDER BY dps LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS dps,
+    (SELECT ap  FROM peers ORDER BY ap  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS attack_power`;
+
+// Spells an NPC casts / passive auras it carries (see build-db "NPC abilities").
+// src: l = shared spell list (has prob + cd, seconds), t = template slot,
+// e = EventAI scripted cast, a = passive aura.
+export const Q_NPC_ABILITIES = `
+  SELECT a.spell, a.src, a.prob, a.cd_min, a.cd_max, s.name, s.icon, s.rank, s.school,
+    s.cast_ms, s.range_max, s.spell_level
+  FROM creature_ability a JOIN spells s ON s.entry = a.spell
+  WHERE a.creature = ?1 AND s.name <> ''
+  ORDER BY (a.src = 'a'), a.src, a.ord, s.name`;
 
 const npcLoot = (src, ownerCol) => `
   SELECT i.entry, i.name, i.quality, di.icon, d.chance, d.mincount, d.maxcount, i.world_drop

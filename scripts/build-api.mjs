@@ -19,12 +19,12 @@ import { openDatabase } from "./lib/sqlite.mjs";
 import * as Q from "../src/queries.js";
 import { renderTooltip, spellTooltip, esc } from "../src/render.js";
 import { QUALITY, ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, BONDING,
-  CREATURE_TYPE, CREATURE_RANK, QUEST_TYPE, questZoneLabel, npcRoles } from "../src/constants.js";
+  CREATURE_TYPE, CREATURE_RANK, QUEST_TYPE, questZoneLabel, npcRoles, DMG_SCHOOL, RESISTANCES } from "../src/constants.js";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT = resolve(ROOT, process.env.OUT_DIR || "dist");
 const DB = process.env.DB_PATH || join(ROOT, "public", "data", "tortoise.sqlite");
-const API_VERSION = "1"; // bump when the JSON shape changes (shifts the CI hash-gate)
+const API_VERSION = "2"; // bump when the JSON shape changes (shifts the CI hash-gate)
 const HASH_ONLY = process.env.HASH_ONLY === "1";
 const ONLY = new Set((process.env.API_ONLY || "").split(",").map((s) => s.trim()).filter(Boolean));
 const LIMIT = Number(process.env.API_LIMIT) || 0;
@@ -142,6 +142,7 @@ const nq = {
   npc: db.prepare(Q.Q_NPC), loot: db.prepare(Q.Q_NPC_LOOT), skin: db.prepare(Q.Q_NPC_SKIN), pick: db.prepare(Q.Q_NPC_PICK),
   sells: db.prepare(Q.Q_NPC_SELLS), trains: db.prepare(Q.Q_NPC_TRAINS), starts: db.prepare(Q.Q_NPC_STARTS),
   ends: db.prepare(Q.Q_NPC_ENDS), maps: db.prepare(Q.Q_NPC_MAPS), objectiveOf: db.prepare(Q.Q_NPC_OBJECTIVE_OF),
+  abilities: db.prepare(Q.Q_NPC_ABILITIES),
 };
 // npc/quest tooltip cards (pure, mirrored from src/hovercard.js which doesn't export them)
 function npcCardHtml(c) {
@@ -162,6 +163,19 @@ function npcJson(id) {
     level: lvlRange(c), rank: CREATURE_RANK[c.rank] || null, creatureType: CREATURE_TYPE[c.type] || null,
     faction: c.faction || 0, health: { min: c.health_min || 0, max: c.health_max || 0 },
     roles: npcRoles(c.npc_flags),
+    // Combat stats + cast list, same source as the page's Stats/Abilities tabs.
+    stats: {
+      armor: c.armor || 0, attackPower: c.attack_power || 0, attackSpeed: c.base_attack_time || 0,
+      mana: { min: c.mana_min || 0, max: c.mana_max || 0 },
+      damage: { min: c.dmg_min || 0, max: c.dmg_max || 0, school: DMG_SCHOOL[c.dmg_school] || null },
+      ranged: { min: c.ranged_dmg_min || 0, max: c.ranged_dmg_max || 0, attackSpeed: c.ranged_attack_time || 0 },
+      resistances: Object.fromEntries(RESISTANCES.map(([col, label]) => [label.toLowerCase(), c[col] || 0])),
+      money: { min: c.gold_min || 0, max: c.gold_max || 0 },
+    },
+    abilities: cap(nq.abilities.all(id)).map((r) => ({
+      spell: { id: r.spell, name: r.name }, source: r.src,
+      chance: r.prob ?? null, cooldown: r.cd_max ? { min: r.cd_min, max: r.cd_max } : null,
+    })),
     drops: cap(nq.loot.all(id)).map(lootRow),
     skinned: cap(nq.skin.all(id)).map(lootRow),
     pickpocketed: cap(nq.pick.all(id)).map(lootRow),
