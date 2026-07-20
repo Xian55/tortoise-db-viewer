@@ -1157,6 +1157,7 @@ const NPC_ABILITY_SRC = {
   l: ["Spell list", "Cast from the creature's shared spell list (creature_spells)"],
   t: ["Ability", "One of the four spell slots on the creature template"],
   e: ["Scripted", "Cast by an EventAI script (on aggro, at a health threshold, on a timer, …)"],
+  c: ["Boss script", "Hardcoded in the server's C++ fight script (ScriptDev2)"],
   a: ["Aura", "A passive aura the creature spawns with"],
 };
 
@@ -1231,7 +1232,6 @@ async function showNpc(id) {
   if (CREATURE_TYPE[npc.type]) bits.push(`<a class="nav" href="?browse=npcs&type=${npc.type}">${CREATURE_TYPE[npc.type]}</a>`);
   if (npc.tameable) bits.push(`<span class="npc-tame" title="Tameable by hunters">🐾 Tameable${npc.pet_family ? ` · ${petFamilyLink(npc.pet_family, npc.pet_family_name)}${npc.pet_family_custom ? ' <span class="tagx tw-tag" title="Turtle-WoW custom pet family">TW</span>' : ""}` : ""}</span>`);
   if (npcFaction) bits.push(npcFaction.has_page ? factionLink(npcFaction.id, npcFaction.name) : esc(npcFaction.name));
-  const hp = npc.health_max ? `${npc.health_min}–${npc.health_max} HP` : "";
   const roles = npcRoles(npc.npc_flags);
   const rankClass = npc.rank === 3 ? "npc-boss" : (npc.rank === 2 || npc.rank === 4) ? "npc-rare" : npc.rank === 1 ? "npc-elite" : "";
 
@@ -1349,7 +1349,7 @@ async function showNpc(id) {
         ${modelThumb}
         <h1 class="${rankClass}">${esc(npc.name)}</h1>
         ${npc.subname ? `<span class="npc-sub muted">&lt;${esc(npc.subname)}&gt;</span>` : ""}
-        <div class="npc-meta muted">${bits.join(" · ")}${hp ? " · " + hp : ""}
+        <div class="npc-meta muted">${bits.join(" · ")}
           ${roles.map((r) => `<span class="tagx">${esc(r)}</span>`).join("")}
           <span class="dim">· NPC #${npc.entry}</span>${npc.display_id ? `<span class="dim"> · </span><span class="model-link" data-display="${npc.display_id}" tabindex="0" title="Hover to preview the 3D model">Model #${npc.display_id}</span>` : ""}</div>
         ${mapHtml ? `<div class="npc-meta muted">Location: ${mapHtml}</div>`

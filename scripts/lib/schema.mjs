@@ -38,10 +38,12 @@ export const IMPORTS = [
       "ranged_attack_power", "unit_class", "holy_res", "fire_res", "nature_res", "frost_res",
       "shadow_res", "arcane_res", "gold_min", "gold_max", "mechanic_immune_mask", "school_immune_mask",
       // Ability sources -> the derived creature_ability table, then dropped.
-      "spell_id1", "spell_id2", "spell_id3", "spell_id4", "spell_list_id", "auras"],
+      "spell_id1", "spell_id2", "spell_id3", "spell_id4", "spell_list_id", "auras",
+      // script_name keys the ScriptDev2 C++ fights (script-abilities.json).
+      "script_name"],
     // display_id1 -> renamed to display_id in build-db; vendor_id -> npc_vendor_template;
     // beast_family -> renamed pet_family; type_flags -> derives tameable then dropped.
-    text: ["name", "subname", "auras"],
+    text: ["name", "subname", "auras", "script_name"],
     real: ["dmg_min", "dmg_max", "dmg_multiplier", "ranged_dmg_min", "ranged_dmg_max"],
     pk: "entry",
     indexes: ["loot_id", "pickpocket_loot_id", "skinning_loot_id"],

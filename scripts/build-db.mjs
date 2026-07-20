@@ -989,7 +989,7 @@ console.log("Deriving NPC abilities...");
     ins.run(creature, spell, src, prob ?? null, cdMin ?? null, cdMax ?? null, ord);
     return 1;
   };
-  let nl = 0, nt = 0, ne = 0, na = 0;
+  let nl = 0, nt = 0, ne = 0, na = 0, ncpp = 0;
 
   // 'l' -- shared spell lists, keyed by creature_template.spell_list_id.
   const lists = new Map(); // listId -> [{spell, prob, cdMin, cdMax, ord}]
@@ -1113,6 +1113,27 @@ console.log("Deriving NPC abilities...");
     })();
   }
 
+  // 'c' -- ScriptDev2 C++ fights. A boss whose fight lives in code has no spell list,
+  // no template slots and no EventAI events, so it listed nothing at all (Ragnaros,
+  // Nefarian, Onyxia...). scripts/data/script-abilities.json maps
+  // creature_template.script_name -> the spell ids that script hardcodes; see
+  // scripts/extract-script-abilities.mjs. Turtle only: cmangos' ScriptName refers to
+  // its own, separate C++ implementations, so attributing Turtle's spells there would
+  // be a guess (and cmangos covers those fights with EventAI anyway).
+  if (SQL_SOURCE !== "cmangos") {
+    const f = join(ROOT, "scripts", "data", "script-abilities.json");
+    if (existsSync(f)) {
+      const map = JSON.parse(readFileSync(f, "utf8"));
+      db.transaction(() => {
+        for (const cr of db.prepare(`SELECT entry, script_name FROM creatures WHERE script_name IS NOT NULL AND script_name <> ''`).all()) {
+          (map[cr.script_name] || []).forEach((sp, k) => { ncpp += add(cr.entry, sp, "c", null, null, null, k); });
+        }
+      })();
+    } else {
+      console.warn("  script-abilities.json missing -- C++ boss abilities skipped");
+    }
+  }
+
   // 'a' -- passive auras (a space/comma-separated spell id list). Turtle carries them
   // on creature_template.auras; cmangos in creature_template_addon.
   const addAuras = (entry, list) => {
@@ -1131,11 +1152,11 @@ console.log("Deriving NPC abilities...");
 
   db.exec(`CREATE INDEX idx_creature_ability_spell ON creature_ability(spell)`);
   // The raw source columns have served their purpose -- keep the shipped row narrow.
-  for (const c of ["spell_id1", "spell_id2", "spell_id3", "spell_id4", "spell_list_id", "auras"]) {
+  for (const c of ["spell_id1", "spell_id2", "spell_id3", "spell_id4", "spell_list_id", "auras", "script_name"]) {
     db.exec(`ALTER TABLE creatures DROP COLUMN ${c}`);
   }
   const nc = db.prepare(`SELECT COUNT(DISTINCT creature) n FROM creature_ability`).get().n;
-  console.log(`  creature_ability: list ${nl}, template ${nt}, eventai ${ne}, auras ${na} -> ${nc} creatures`);
+  console.log(`  creature_ability: list ${nl}, template ${nt}, eventai ${ne}, c++ ${ncpp}, auras ${na} -> ${nc} creatures`);
 }
 
 // ---- Quests + quest link tables (items, creature/GO objectives, rep rewards) ----
