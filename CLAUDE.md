@@ -150,6 +150,44 @@ stage), **not** a general SQL engine. CI sparse-checks out both `sql/base` **and
 `sql/database_updates` (see `deploy.yml`); a missing updates dir falls back to
 base-only.
 
+### NPC stats + abilities
+
+The NPC page's **Stats** tab and **Abilities** tab (wowhead-style) come from
+`creature_template` columns the build used to drop, plus one derived table.
+
+- **Stats** live on `creatures`: `armor`, `mana_min/max`, `dmg_min/max`,
+  `dmg_school`, `attack_power`, `base_attack_time`, the ranged trio, `unit_class`,
+  the six `*_res`, `gold_min/max`, `mechanic_immune_mask`, `school_immune_mask`.
+  `dmg_multiplier` is **folded into `dmg_min/max` and dropped** — the server applies
+  it when it builds the creature (`Creature::SelectLevel` → `SetBaseWeaponDamage`),
+  so the stored numbers are what the mob actually hits for. Like `health_*`, they're
+  pre-`rate.*`-config values (the world data doesn't expose those rates).
+- The Stats tab is a **grouped table** (Defense / Offense / Resources & loot) whose
+  third column reads each stat against its **peers**: `Q_NPC_PEERS` takes the
+  **median** health/armor/DPS/attack-power of every non-hidden creature at the same
+  `level_max` + `rank` (index `idx_creatures_peer`), so "3,379 armor" becomes
+  "×0.80 of a typical level 63 boss". Median, **not** average — a few raid bosses
+  with a big `dmg_multiplier` drag the lvl-63-boss mean DPS to ~4990 vs a ~1277
+  median. Under `NPC_PEER_MIN` (10) peers the cohort isn't representative, so every
+  ratio cell renders empty and the table's `hideEmpty` drops the column outright
+  rather than quoting a made-up median.
+- **Abilities** land in `creature_ability(creature, spell, src, prob, cd_min,
+  cd_max, ord)`, unioned from four sources; `(creature, spell)` is unique and the
+  first source to claim a pair wins, in this order:
+  `l` the shared spell list (`creature_template.spell_list_id` → `creature_spells`;
+  carries a cast chance + repeat cooldown, stored by the server in **seconds**),
+  `t` the four `spell_id1..4` template slots, `e` EventAI scripted casts
+  (`creature_ai_events.action{1,2,3}_script` → `creature_ai_scripts` command 15,
+  `datalong` = the spell), `a` the passive `auras` list. Rows whose spell isn't in
+  the shipped `spells` table are dropped, so this runs **after** the spells import.
+  Bosses placed by ScriptDev2 **C++** keep their spells in code, so they list none.
+- **cmangos** carries the same data in different shapes, so the derivation branches
+  on the staged **column names**, not on `SQL_SOURCE`: the template slots are a
+  separate `creature_template_spells` table, `creature_spell_list` is row-per-spell
+  with cooldowns in **milliseconds**, `creature_ai_scripts` *is* the EventAI event
+  table (action type 11 = cast) rather than dbscripts, and auras live in
+  `creature_template_addon`. The adapter stages those under their own names.
+
 ### Custom icons
 
 Turtle adds items whose icons are **not on Blizzard's CDN**; they live only in
@@ -223,6 +261,7 @@ Re-run `extract-minimap.py` + commit on client map changes.
   `spells` table (incl. `icon` from `spell-icon-map.json`, `skill` profession, and
   detailed combat columns resolved via `spell-lookups.json`), the spell teach
   sources (`spell_trainer` NPCs + `spell_taught_item` books, plus `spells.learnable`),
+  the `creature_ability` table (the spells an NPC casts — see "NPC stats + abilities"),
   an `item_display_info` icon map, the `*_fts` search indexes (items/creatures/
   quests/spells), and `version.json`. Staging tables are dropped before the final VACUUM.
 - `scripts/lib/staging.mjs` — stages the consumed raw tables (`stg_<table>`),
