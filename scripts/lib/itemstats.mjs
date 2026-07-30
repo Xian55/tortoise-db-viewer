@@ -43,12 +43,18 @@ export const AURA_STAT = {
 // MOD_SKILL (aura 30) misc value = skill-line id -> stat key. Fishing (356) is
 // included so fishing poles can show their "+N Fishing" bonus (the Fishing-Pole
 // browse swaps DPS/Speed for this column); it is NOT a gear criterion (not in
-// GEAR_CRITERIA), so it never appears in the stat dropdown. The other professions
-// (Mining 186, …) and Fist Weapons (162, no reference option) stay excluded.
+// GEAR_CRITERIA), so it never appears in the stat dropdown -- browse already owns
+// a `fishing` column, and a second one would collide with it.
+// The other GATHERING professions are criteria (GEAR_CRITERIA "Profession Skill"):
+// a skinner wanting the 61+ bosses needs more than the 300 cap, so "which items
+// give +Skinning" is a real question -- likewise +Herbalism/+Mining. Fist Weapons
+// (162, no reference option) and the crafting professions (no items grant them)
+// stay excluded.
 export const MOD_SKILL_AURA = 30;
 export const SKILL_STAT = {
   95: "def",
   356: "fishing",
+  393: "skinning", 182: "herbalism", 186: "mining",
   43: "wSwords", 44: "wAxes", 54: "wMaces", 173: "wDaggers", 229: "wPolearms",
   55: "w2hSwords", 172: "w2hAxes", 160: "w2hMaces", 45: "wBows", 46: "wGuns", 226: "wCrossbows",
 };

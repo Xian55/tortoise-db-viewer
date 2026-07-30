@@ -196,7 +196,10 @@ The NPC page's **Stats** tab and **Abilities** tab (wowhead-style) come from
   the creature's level (`constants.js` `skinningReq`) — no DB column. Server-exact
   (`Spell::CheckCast` SPELL_EFFECT_SKINNING: `level*5`, or `(level-10)*10` while the
   skinner is under 100 skill; the branches cross at level 20). A level *range* shows a
-  range, and anything over the 300 profession cap (61+ bosses) says so.
+  range, and anything over the 300 profession cap (61+ bosses) says so and links to
+  `?browse=items&stats=skinning,>=,1` — the gathering-skill bonuses (`skinning`/
+  `herbalism`/`mining`, derived into `item_stats` from each item's MOD_SKILL equip
+  aura) are GEAR_CRITERIA stats, so the existing stat filter lists the +Skinning gear.
 - **cmangos** carries the same data in different shapes, so the derivation branches
   on the staged **column names**, not on `SQL_SOURCE`: the template slots are a
   separate `creature_template_spells` table, `creature_spell_list` is row-per-spell

@@ -115,6 +115,11 @@ export const GEAR_CRITERIA = [
   { group: "Spell School", options: [["spHoly", "Holy Dmg"], ["spFire", "Fire Dmg"], ["spFrost", "Frost Dmg"], ["spShadow", "Shadow Dmg"], ["spNature", "Nature Dmg"], ["spArcane", "Arcane Dmg"]] },
   { group: "Utility", options: [["mp5", "Mana per 5"], ["hp5", "Health per 5"], ["haste", "Haste %"], ["leech", "Vampirism %"], ["runSpeed", "Run Speed %"], ["swimSpeed", "Swim Speed %"], ["mountSpeed", "Mount Speed %"]] },
   { group: "Weapon Skill", options: [["wSwords", "Swords"], ["wAxes", "Axes"], ["wMaces", "Maces"], ["wDaggers", "Daggers"], ["wPolearms", "Polearms"], ["w2hSwords", "2H Swords"], ["w2hAxes", "2H Axes"], ["w2hMaces", "2H Maces"], ["wBows", "Bows"], ["wGuns", "Guns"], ["wCrossbows", "Crossbows"]] },
+  // Gathering-skill bonuses (MOD_SKILL auras, see itemstats.mjs SKILL_STAT). They
+  // gate content rather than combat: skinning a level 61+ boss needs more than the
+  // 300 cap, so the NPC page's Skinning requirement links here. Fishing is absent
+  // on purpose -- browse has a dedicated `fishing` column for poles.
+  { group: "Profession Skill", options: [["skinning", "Skinning"], ["herbalism", "Herbalism"], ["mining", "Mining"]] },
 ];
 
 // flat key -> label (column headers + valid-key whitelist for the stats= URL param)
