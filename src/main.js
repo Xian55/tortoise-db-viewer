@@ -3,7 +3,7 @@ import { query, queryOne, preconnect, getMeta } from "./db.js";
 import * as Q from "./queries.js";
 import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
 import { createTable } from "./table.js";
-import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, QUALITY, ITEM_CLASS, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, DMG_SCHOOL, RESISTANCES, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA } from "./constants.js";
+import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, QUALITY, ITEM_CLASS, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, DMG_SCHOOL, RESISTANCES, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA, MAX_SKILL, skinningReq } from "./constants.js";
 import { showBrowse } from "./browse.js";
 import { showCharacters, showCharacter, showSharedLoadout } from "./character.js";
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
@@ -1152,6 +1152,26 @@ function npcStatsPane(npc, peers) {
   return { count: rows.length, noCount: true, html: t.html + note };
 }
 
+// The Skinning tab's headline: the Skinning skill a player needs for THIS
+// creature. It's a pure function of the creature's level (see `skinningReq`), and
+// a creature that rolls a level range spans a range of requirements — show both
+// ends, since a skinner has to plan for the worst case.
+function skinReqNote(npc) {
+  const lo = npc.level_min || npc.level_max || 0;
+  const hi = npc.level_max || lo;
+  if (!hi) return "";
+  const reqLo = skinningReq(lo), reqHi = skinningReq(hi);
+  const req = reqLo === reqHi ? `${reqHi}` : `${reqLo}–${reqHi}`;
+  const lvl = lo === hi ? `level ${hi}` : `level ${lo}–${hi}`;
+  // 99 skinnable creatures (the 61+ raid/dungeon bosses) sit above the profession
+  // cap, so the plain number would read as "impossible" without this.
+  const over = reqHi > MAX_SKILL
+    ? ` <span class="dim">— above the ${MAX_SKILL} skill cap, so it needs +Skinning gear.</span>`
+    : "";
+  return `<p class="skin-req" title="Server formula: level × 5 (or (level − 10) × 10 while your Skinning is under 100)">`
+    + `Requires <b>Skinning ${req}</b> <span class="dim">(${lvl})</span>${over}</p>`;
+}
+
 // How an ability reaches the creature (creature_ability.src), for the Source column.
 const NPC_ABILITY_SRC = {
   l: ["Spell list", "Cast from the creature's shared spell list (creature_spells)"],
@@ -1302,6 +1322,10 @@ async function showNpc(id) {
     { label: "Chance", num: true, cls: "muted", hideEmpty: true, cell: (a) => (a.prob != null && a.prob < 100 ? `${a.prob}%` : ""), value: (a) => (a.prob != null && a.prob < 100 ? a.prob : 0) },
     { label: "Cooldown", num: true, cls: "muted", hideEmpty: true, cell: (a) => (a.cd_max ? (a.cd_min === a.cd_max ? `${a.cd_min}s` : `${a.cd_min}–${a.cd_max}s`) : ""), value: (a) => a.cd_min || 0 },
   ];
+  // Skinning leads with the skill requirement (what a skinner opens this tab for),
+  // then the hide/leather table.
+  const skinPane = regTable(lootCols, skin);
+  if (skinPane.count) skinPane.html = skinReqNote(npc) + skinPane.html;
   const tabDefs = [
     { id: "stats", label: "Stats", ...npcStatsPane(npc, peers) },
     { id: "abilities", label: "Abilities", ...regTable(abilityCols, abilities, { groupable: true }) },
@@ -1309,7 +1333,7 @@ async function showNpc(id) {
     { id: "teaches", label: "Teaches", ...regTable(teachesCols, trains) },
     { id: "drops", label: "Drops", ...regTable(lootCols, drops) },
     { id: "worlddrops", label: "World Drops", ...regTable(lootCols, worldDrops) },
-    { id: "skinning", label: "Skinning", ...regTable(lootCols, skin) },
+    { id: "skinning", label: "Skinning", ...skinPane },
     { id: "pickpocketing", label: "Pickpocketing", ...regTable(lootCols, pick) },
     { id: "sells", label: "Sells", ...regTable(sellCols, sells) },
     { id: "starts", label: "Starts quests", ...regTable(questCols, starts) },

@@ -192,6 +192,11 @@ The NPC page's **Stats** tab and **Abilities** tab (wowhead-style) come from
   `ScriptName` points at its own separate C++, so attributing Turtle's spells there
   would be a guess (and cmangos covers those fights with EventAI). Shared scripts that
   cast from DB data (`generic_spell_ai`, 338 creatures) correctly resolve to zero.
+- The **Skinning** tab leads with the skill a skinner needs, derived on the client from
+  the creature's level (`constants.js` `skinningReq`) — no DB column. Server-exact
+  (`Spell::CheckCast` SPELL_EFFECT_SKINNING: `level*5`, or `(level-10)*10` while the
+  skinner is under 100 skill; the branches cross at level 20). A level *range* shows a
+  range, and anything over the 300 profession cap (61+ bosses) says so.
 - **cmangos** carries the same data in different shapes, so the derivation branches
   on the staged **column names**, not on `SQL_SOURCE`: the template slots are a
   separate `creature_template_spells` table, `creature_spell_list` is row-per-spell

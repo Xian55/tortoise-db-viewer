@@ -84,6 +84,17 @@ export const PROFESSION_LABEL = Object.fromEntries(PROFESSION);
 export const GATHERING_SKILLS = new Set([356, 182, 393]); // Fishing, Herbalism, Skinning
 // Trade-skill proficiency tiers, for sorting the learnable-abilities table.
 export const SKILL_RANK_ORDER = { Apprentice: 1, Journeyman: 2, Expert: 3, Artisan: 4, Master: 5 };
+// Max skill a profession can reach: World::GetConfigMaxSkillValue() = maxPlayerLevel*5
+// (60 * 5 on Tortoise). Anything requiring more needs +Skinning gear.
+export const MAX_SKILL = 300;
+// Minimum Skinning skill needed to skin a creature of `level`. Server-exact --
+// mangos `Spell::CheckCast` (SPELL_EFFECT_SKINNING) computes
+//   ReqValue = (skillValue < 100 ? (level - 10) * 10 : level * 5)
+// and fails with SPELL_FAILED_LOW_CASTLEVEL when ReqValue > skillValue. Which
+// branch applies depends on the SKINNER's own skill, so the real gate is the
+// easier of the two reachable requirements: the branches cross at level 20, so a
+// level>=20 creature effectively needs level*5 and a lower one (level-10)*10.
+export const skinningReq = (level) => (level >= 20 ? level * 5 : Math.max(1, (level - 10) * 10));
 
 // resistance column -> tooltip label
 export const RESISTANCES = [

@@ -293,6 +293,22 @@ async function testNpcScriptAbilities(id, wantSpells) {
   return !missing.length && sources.includes("Boss script");
 }
 
+// The Skinning tab leads with the Skinning skill the creature's level demands
+// (server formula, constants.js `skinningReq`): a level range yields a range, and
+// a 61+ boss lands above the 300 profession cap and must say so.
+async function testNpcSkinReq(id, expect, wantCapNote) {
+  await nav(`?npc=${id}`);
+  await page.waitForSelector(".npc-page .tab", { timeout: T });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".npc-page .tab")].find((t) => t.textContent.includes("Skinning")); if (b) b.click(); });
+  const pane = ".npc-page .tabpane:not(.hidden)";
+  await page.waitForSelector(`${pane} .skin-req`, { timeout: T }).catch(() => {});
+  const txt = await page.$eval(`${pane} .skin-req`, (e) => e.textContent.replace(/\s+/g, " ").trim()).catch(() => "");
+  const rows = await page.$$eval(`${pane} tbody tr`, (e) => e.length).catch(() => 0);
+  const cap = txt.includes("skill cap");
+  console.log(`npc-skin-req ${id}: "${txt}" rows=${rows} capNote=${cap}`);
+  return txt.includes(expect) && rows > 0 && cap === wantCapNote;
+}
+
 smoke("npc-load 15379 perf", () => testNpcLoad(15379, 400));
 smoke("npc stats 12118 Lucifron", () => testNpcStats(12118, ["Health", "Mana", "Armor", "Melee damage", "Melee DPS", "Attack speed"]));
 smoke("npc stats no-peers 448 Hogger", () => testNpcStatsNoPeers(448));
@@ -301,6 +317,8 @@ smoke("npc abilities 11502 Ragnaros (C++ script)", () => testNpcScriptAbilities(
 smoke("npc 2376 Torn Fin Oracle", () => testNpc(2376, "Torn Fin Oracle"));
 smoke("npc 80402 trainer Teaches", () => testNpc(80402, "Aemara Sunsorrow", "Teaches"));
 smoke("npc 10981 Skinning", () => testNpc(10981, "", "Skinning"));
+smoke("npc skin-req 10430 The Beast", () => testNpcSkinReq(10430, "Skinning 310", true));
+smoke("npc skin-req 10447 level range", () => testNpcSkinReq(10447, "Skinning 295–300", false));
 smoke("questgiver-prune", () => testQuestGiverPrune());
 smoke("trainer-cols 5038", () => testTrainerCols(5038));
 smoke("npc type-link 2376", () => testNpcTypeLink(2376));
