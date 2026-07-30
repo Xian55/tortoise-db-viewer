@@ -1165,8 +1165,11 @@ function skinReqNote(npc) {
   const lvl = lo === hi ? `level ${hi}` : `level ${lo}–${hi}`;
   // 99 skinnable creatures (the 61+ raid/dungeon bosses) sit above the profession
   // cap, so the plain number would read as "impossible" without this.
+  // …and link that to the items that provide it (the derived `skinning` stat, from
+  // the item's MOD_SKILL equip aura -- Zulian Slicer, Finkle's Skinner, …).
   const over = reqHi > MAX_SKILL
-    ? ` <span class="dim">— above the ${MAX_SKILL} skill cap, so it needs +Skinning gear.</span>`
+    ? ` <span class="dim">— above the ${MAX_SKILL} skill cap, so it needs `
+      + `<a href="?browse=items&stats=${encodeURIComponent("skinning,>=,1")}">+Skinning gear</a>.</span>`
     : "";
   return `<p class="skin-req" title="Server formula: level × 5 (or (level − 10) × 10 while your Skinning is under 100)">`
     + `Requires <b>Skinning ${req}</b> <span class="dim">(${lvl})</span>${over}</p>`;

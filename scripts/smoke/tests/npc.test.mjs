@@ -305,8 +305,21 @@ async function testNpcSkinReq(id, expect, wantCapNote) {
   const txt = await page.$eval(`${pane} .skin-req`, (e) => e.textContent.replace(/\s+/g, " ").trim()).catch(() => "");
   const rows = await page.$$eval(`${pane} tbody tr`, (e) => e.length).catch(() => 0);
   const cap = txt.includes("skill cap");
-  console.log(`npc-skin-req ${id}: "${txt}" rows=${rows} capNote=${cap}`);
-  return txt.includes(expect) && rows > 0 && cap === wantCapNote;
+  // The over-cap note links to the items that grant +Skinning (item_stats stat).
+  const href = await page.$eval(`${pane} .skin-req a`, (a) => a.getAttribute("href")).catch(() => "");
+  console.log(`npc-skin-req ${id}: "${txt}" rows=${rows} capNote=${cap} href="${href}"`);
+  return txt.includes(expect) && rows > 0 && cap === wantCapNote
+    && (!wantCapNote || (href.includes("browse=items") && href.includes("skinning")));
+}
+
+// …and that link must actually resolve to the +Skinning items (build-db derives the
+// `skinning` item_stats rows from each item's MOD_SKILL equip aura).
+async function testSkinGearFilter(minRows, wantItem) {
+  await nav(`?browse=items&stats=${encodeURIComponent("skinning,>=,1")}`);
+  await page.waitForSelector(".browse tbody tr", { timeout: T });
+  const names = await page.$$eval(".browse tbody tr td:nth-child(2)", (e) => e.map((c) => c.textContent.trim()));
+  console.log(`skin-gear-filter: ${names.length} items [${names.join(", ")}]`);
+  return names.length >= minRows && names.some((n) => n.includes(wantItem));
 }
 
 smoke("npc-load 15379 perf", () => testNpcLoad(15379, 400));
@@ -319,6 +332,7 @@ smoke("npc 80402 trainer Teaches", () => testNpc(80402, "Aemara Sunsorrow", "Tea
 smoke("npc 10981 Skinning", () => testNpc(10981, "", "Skinning"));
 smoke("npc skin-req 10430 The Beast", () => testNpcSkinReq(10430, "Skinning 310", true));
 smoke("npc skin-req 10447 level range", () => testNpcSkinReq(10447, "Skinning 295–300", false));
+smoke("skin-gear filter", () => testSkinGearFilter(5, "Zulian Slicer"));
 smoke("questgiver-prune", () => testQuestGiverPrune());
 smoke("trainer-cols 5038", () => testTrainerCols(5038));
 smoke("npc type-link 2376", () => testNpcTypeLink(2376));
