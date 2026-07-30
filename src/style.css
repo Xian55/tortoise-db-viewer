@@ -459,6 +459,8 @@ td.npc-stat-v .stat-pill, td.npc-stat-v .pill-more > summary {
   display: inline-block; margin: 1px 4px 1px 0; font-variant-numeric: tabular-nums;
 }
 .npc-stat-note { margin: 10px 0 0; font-size: 13px; }
+/* Skinning tab headline: the skill this creature's level demands. */
+.skin-req { margin: -4px 0 12px; font-size: 13.5px; }
 /* "+12 more" fold for a boss's stock block of effect immunities */
 .pill-more { display: inline; }
 .pill-more > summary { display: inline-block; padding: 2px 10px; border: 1px dashed var(--border);
