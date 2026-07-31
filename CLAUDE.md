@@ -151,6 +151,33 @@ stage), **not** a general SQL engine. CI sparse-checks out both `sql/base` **and
 `sql/database_updates` (see `deploy.yml`); a missing updates dir falls back to
 base-only.
 
+### Peer baselines ("vs. typical …")
+
+A raw stat means nothing alone, so a stat is shown next to the **median of a
+comparable cohort** plus its rank in it. Two cohorts exist; `src/context.js` renders
+both (ratio bar + the outlier headline).
+
+- **NPCs** — cohort = every non-hidden creature of the same `level_max` + `rank`,
+  computed at runtime (`Q_NPC_PEERS`, index `idx_creatures_peer`). Params `?3..?6`
+  pass the creature's own health/armor/DPS/AP back in so the query also returns its
+  competition rank, which drives the headline ("More melee DPS than 98% of level 54
+  mobs — ×3.0 the median", NPC 9176).
+- **Items** — cohort = same class/subclass/slot/quality/ilvl band. No index can group
+  that at runtime, so `scripts/lib/itempeers.mjs` precomputes it into `item_peer`
+  (one row per gear item: its armor/DPS/base-stats + rank) and `item_peer_cohort`
+  (label, member counts, medians); the page does one PK lookup (`Q_ITEM_PEERS`).
+  The key **coarsens** through `COHORT_LEVELS` until a cohort clears `PEER_MIN` (10) —
+  widening the ilvl band first and giving up quality last, since "vs. typical Epic
+  ilvl 60–79 Dagger" beats a band that mixes greens in. ~99% of gear lands on the top
+  two levels. A cohort's members are ALL items sharing its key (not just the ones that
+  fell through to it), dev artifacts (`item_sources` `unobtainable`) and hidden rows
+  excluded. Weapon DPS sums **both** damage lines, matching the tooltip's own
+  "(53.9 damage per second)". "Base stats" = the five 1.12 primaries only —
+  deliberately not a score (that's the browse stat-weight ranking's job).
+
+Medians, never means, on both sides: a few outliers (a raid boss's `dmg_multiplier`,
+one absurd test weapon) drag a mean far off the thing players compare against.
+
 ### NPC stats + abilities
 
 The NPC page's **Stats** tab and **Abilities** tab (wowhead-style) come from
@@ -428,6 +455,10 @@ Re-run `extract-minimap.py` + commit on client map changes.
   `item_display_info`/`skill_line_ability`). Fills the DBC tables cmangos's world DB omits
   so the `SQL_SOURCE=cmangos` build gets zone names, dungeon names, faction data + NPC team
   alignment, and item icons. CI has no client ⇒ committed. `CLIENT` env overrides the path.
+- `scripts/lib/itempeers.mjs` — derives the `item_peer` / `item_peer_cohort` tables
+  (the item page's "vs. typical …" card): cohort key + coarsening fallback, per-cohort
+  medians and competition ranks. Pure; imports only `src/constants.js` for the labels.
+  See "Peer baselines".
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
 - `scripts/lib/sqlite.mjs` — Bun/Node SQLite wrapper.
@@ -447,6 +478,11 @@ Re-run `extract-minimap.py` + commit on client map changes.
   `questLink`/`factionLink`, `iconImg`, `moneyHtml`, helpers. Factions are linked
   wherever named (quest reward rep, item tooltip reputation requirement).
 - `src/hovercard.js` — item + quest tooltip on hover.
+- `src/context.js` — comparative context ("is this number big?"): the ratio-to-median
+  bar cell (`ratioCell`, `positive: true` flips the colour for more-is-better stats),
+  `pctBeaten`, and `outlierLine` — the one-line "More melee DPS than 98% of level 54
+  mobs" headline, which only fires on a top/bottom-decile stat ≥15% off the median.
+  Shared by the NPC Stats tab and the item page's peer card. See "Peer baselines".
 - `src/constants.js` — WoW 1.12 enum maps (quality, class/slot/stat, creature
   type/rank, quest type/sort, etc.) + `questZoneLabel`/`classRestrictions`/
   `raceRestrictions` helpers.

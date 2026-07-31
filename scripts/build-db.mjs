@@ -12,6 +12,7 @@ import { parseColumns, iterRows, NULL } from "./lib/sqldump.mjs";
 import { IMPORTS, LOOT_TABLES, LOOT_COLUMNS } from "./lib/schema.mjs";
 import { openDatabase, RUNTIME } from "./lib/sqlite.mjs";
 import { statsFromColumns, statsFromAuras } from "./lib/itemstats.mjs";
+import { deriveItemPeers } from "./lib/itempeers.mjs";
 import { buildStaging } from "./lib/staging.mjs";
 import { buildCmangosStaging } from "./lib/cmangos-adapter.mjs";
 
@@ -1914,6 +1915,39 @@ flagJunk("creatures", "name");
 flagJunk("quests", "title");
 flagJunk("spells", "name", "rank");
 flagJunk("maps", "name");
+
+// ---- Derived item peer baseline (powers the item page's "vs. typical …" card) ----
+// The cohort key (class/subclass/slot/quality/ilvl band, with a coarsening fallback)
+// can't be grouped by any index at runtime, so the medians + ranks are precomputed
+// here and the page reads one primary-key row. See lib/itempeers.mjs.
+console.log("Deriving item_peer...");
+{
+  db.exec(`CREATE TABLE item_peer_cohort (id INTEGER PRIMARY KEY, label TEXT, n INTEGER,
+    n_armor INTEGER, n_dps INTEGER, n_stats INTEGER, armor REAL, dps REAL, stats REAL)`);
+  db.exec(`CREATE TABLE item_peer (item INTEGER PRIMARY KEY, cohort INTEGER,
+    armor REAL, dps REAL, stats REAL, armor_rank INTEGER, dps_rank INTEGER, stats_rank INTEGER)`);
+  // Dev artifacts are excluded from the cohorts as well as hidden rows: the medians
+  // survive them (that's the point of a median), but they inflate the "of N items"
+  // counts the card quotes.
+  const gear = db.prepare(`SELECT entry, class, subclass, inventory_type, quality, item_level,
+    armor, dmg_min1, dmg_max1, dmg_min2, dmg_max2, delay
+    FROM items WHERE inventory_type > 0 AND class IN (2, 4) AND hidden = 0
+      AND entry NOT IN (SELECT item FROM item_sources WHERE source = 'unobtainable')`).all();
+  // "Base stats" = the five 1.12 primaries; comparable across a slot in a way that
+  // mixing in +spell power / +crit would not be.
+  const statTotal = new Map();
+  for (const r of db.prepare(`SELECT item, SUM(value) v FROM item_stats
+      WHERE stat IN ('str','agi','sta','int','spi') GROUP BY item`).all()) statTotal.set(r.item, r.v);
+  const { cohorts, peers, unassigned } = deriveItemPeers(gear, statTotal);
+  const insC = db.prepare(`INSERT INTO item_peer_cohort VALUES (?,?,?,?,?,?,?,?,?)`);
+  const insP = db.prepare(`INSERT INTO item_peer VALUES (?,?,?,?,?,?,?,?)`);
+  db.transaction(() => {
+    for (const c of cohorts) insC.run(c.id, c.label, c.n, c.n_armor, c.n_dps, c.n_stats, c.armor, c.dps, c.stats);
+    for (const p of peers) insP.run(p.item, p.cohort, p.armor, p.dps, p.stats, p.armor_rank, p.dps_rank, p.stats_rank);
+  })();
+  console.log(`  item_peer: ${peers.length} items in ${cohorts.length} cohorts | ${unassigned} too niche to compare`);
+}
+
 
 // Turtle-WoW custom content flag ("not in vanilla 1.12") for items/creatures/quests,
 // so the item/NPC/quest finder can isolate Turtle additions (browse.js origin filter +

@@ -553,7 +553,23 @@ export const Q_NPC_PEERS = `
     (SELECT hp  FROM peers ORDER BY hp  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS health,
     (SELECT ar  FROM peers ORDER BY ar  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS armor,
     (SELECT dps FROM peers ORDER BY dps LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS dps,
-    (SELECT ap  FROM peers ORDER BY ap  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS attack_power`;
+    (SELECT ap  FROM peers ORDER BY ap  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS attack_power,
+    -- ...and where THIS creature sits in the cohort (?3..?6 = its own hp/armor/dps/ap),
+    -- so the page can say "hits harder than 97% of them" rather than only "×3.02".
+    -- Counting strictly-greater peers gives a competition rank (ties share it).
+    (SELECT COUNT(*) + 1 FROM peers WHERE hp  > ?3) AS rank_health,
+    (SELECT COUNT(*) + 1 FROM peers WHERE ar  > ?4) AS rank_armor,
+    (SELECT COUNT(*) + 1 FROM peers WHERE dps > ?5) AS rank_dps,
+    (SELECT COUNT(*) + 1 FROM peers WHERE ap  > ?6) AS rank_attack_power`;
+
+// Item peer baseline for the item page's "vs. typical …" card: the precomputed
+// cohort (same class/subclass/slot/quality/ilvl band -- see scripts/lib/itempeers.mjs)
+// with this item's own values + competition ranks inside it. One PK lookup.
+export const Q_ITEM_PEERS = `
+  SELECT p.armor, p.dps, p.stats, p.armor_rank, p.dps_rank, p.stats_rank,
+    c.label, c.n, c.n_armor, c.n_dps, c.n_stats,
+    c.armor AS med_armor, c.dps AS med_dps, c.stats AS med_stats
+  FROM item_peer p JOIN item_peer_cohort c ON c.id = p.cohort WHERE p.item = ?1`;
 
 // Spells an NPC casts / passive auras it carries (see build-db "NPC abilities").
 // src: l = shared spell list (has prob + cd, seconds), t = template slot,

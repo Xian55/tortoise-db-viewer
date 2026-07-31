@@ -323,8 +323,20 @@ async function testSkinGearFilter(minRows, wantItem) {
 }
 
 smoke("npc-load 15379 perf", () => testNpcLoad(15379, 400));
+// Outlier headline above the Stats table (context.js outlierLine): the one stat that
+// makes this creature unusual, in words. Gor'tesh (9176) hits for ~3x the median
+// level-54 mob, so his page must lead with it.
+async function testNpcOutlier(id, wantWord) {
+  await nav(`?npc=${id}`);
+  await page.waitForSelector(".npc-page .tabpane:not(.hidden) .trivia", { timeout: T });
+  const trivia = await page.$eval(".npc-page .tabpane:not(.hidden) .trivia", (e) => e.textContent.replace(/\s+/g, " ").trim());
+  console.log(`npc-outlier ${id}: trivia="${trivia}"`);
+  return trivia.includes(wantWord) && /×[\d.]+ the median\.$/.test(trivia);
+}
+
 smoke("npc stats 12118 Lucifron", () => testNpcStats(12118, ["Health", "Mana", "Armor", "Melee damage", "Melee DPS", "Attack speed"]));
 smoke("npc stats no-peers 448 Hogger", () => testNpcStatsNoPeers(448));
+smoke("npc outlier 9176 Gor'tesh", () => testNpcOutlier(9176, "melee DPS"));
 smoke("npc abilities 1748 Bolvar", () => testNpcAbilities(1748, 4));
 smoke("npc abilities 11502 Ragnaros (C++ script)", () => testNpcScriptAbilities(11502, ["Wrath of Ragnaros", "Magma Blast"]));
 smoke("npc 2376 Torn Fin Oracle", () => testNpc(2376, "Torn Fin Oracle"));

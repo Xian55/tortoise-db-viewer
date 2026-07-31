@@ -334,6 +334,35 @@ async function testReagentFor(id, minRows) {
   return rows >= minRows && badLinks === 0;
 }
 
+// Peer baseline card ("vs. typical Epic ilvl 75-79 Plate Head"): the precomputed
+// cohort from build-db's item_peer, with a ratio-to-median cell per metric and a
+// baseline note naming the cohort size. Flurry Axe (871) is the top-DPS one-handed
+// axe of its band, so it also gets the outlier headline.
+async function testItemPeerCard(id, wantMetric, wantOutlier) {
+  await nav(`?item=${id}`);
+  await page.waitForSelector(".item-main .peer-card", { timeout: T });
+  const head = await page.$eval(".peer-card .peer-head", (e) => e.textContent.replace(/\s+/g, " ").trim());
+  const metrics = await page.$$eval(".peer-tbl th", (e) => e.map((h) => h.textContent.trim()));
+  const ratios = await page.$$eval(".peer-card .cmp-num", (e) => e.map((c) => c.textContent.trim()));
+  const note = await page.$eval(".peer-card .peer-note", (e) => e.textContent.replace(/\s+/g, " ").trim());
+  const trivia = await page.$eval(".peer-card .trivia", (e) => e.textContent.replace(/\s+/g, " ").trim()).catch(() => "");
+  console.log(`item-peer ${id}: head="${head}" metrics=[${metrics.join(",")}] ratios=[${ratios.join(",")}] trivia="${trivia}" note="${note}"`);
+  return /^vs\. typical /.test(head) && metrics.includes(wantMetric)
+    && ratios.length === metrics.length && ratios.every((r) => /^×\d+\.\d\d$/.test(r))
+    && /median of [\d,]+ comparable items/.test(note)
+    && (!wantOutlier || /% of|Highest/.test(trivia));
+}
+
+// An item with no comparable cohort (a non-equippable trade good) shows no card at
+// all rather than an empty one.
+async function testItemNoPeerCard(id) {
+  await nav(`?item=${id}`);
+  await page.waitForSelector(".item-main .item-meta", { timeout: T });
+  const cards = await page.$$eval(".item-main .peer-card", (e) => e.length).catch(() => 0);
+  console.log(`item-peer-none ${id}: cards=${cards}`);
+  return cards === 0;
+}
+
 smoke("item 7909 Aquamarine", () => testItem(7909, "Aquamarine"));
 smoke("item 2770 Copper Ore", () => testItem(2770, "Copper Ore"));
 smoke("item 55356 Netherwrought", () => testItem(55356, "Netherwrought"));
@@ -367,3 +396,6 @@ smoke("item spell-link 70204", () => testItemSpellLink(70204));
 smoke("item crafted 2575", () => testCrafted(2575, "Tailoring"));
 smoke("item reagent-for 11176", () => testReagentFor(11176, 17));
 smoke("share item 2770", () => testShareButton("item", 2770, "i"));
+smoke("item peer-card 871 DPS outlier", () => testItemPeerCard(871, "DPS", true));
+smoke("item peer-card 16963 armor", () => testItemPeerCard(16963, "Armor", false));
+smoke("item peer-card none 2770", () => testItemNoPeerCard(2770));
