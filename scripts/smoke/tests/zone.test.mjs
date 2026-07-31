@@ -268,6 +268,33 @@ smoke("zone 12 Elwynn", () => testZone(12, "Elwynn"));
 smoke("zone 5561 Balor", () => testZone(5561, "Balor"));
 smoke("zone object-link 400", () => testZoneObjectLink(400));
 smoke("zone dot-menu 12", () => testZoneDotMenu(12));
+// Zone profile strip (zoneStatsCard <- build-db zone_stats): counts + level spread
+// above the map, plus the continent rank line. Silithus (1377) is a top-quest
+// Kalimdor zone, so it also gets the outlier headline.
+async function testZoneStats(id, wantLabels, wantHeadline) {
+  await nav(`?zone=${id}`);
+  await page.waitForSelector(".zone-page .zone-stats .zs", { timeout: T });
+  const labels = await page.$$eval(".zone-stats .zs span", (e) => e.map((x) => x.textContent.replace(/\s+/g, " ").trim()));
+  const values = await page.$$eval(".zone-stats .zs b", (e) => e.map((x) => x.textContent.trim()));
+  const rank = await page.$eval(".zone-stats .zs-rank", (e) => e.textContent.replace(/\s+/g, " ").trim()).catch(() => "");
+  const trivia = await page.$eval(".zone-stats .trivia", (e) => e.textContent.replace(/\s+/g, " ").trim()).catch(() => "");
+  const missing = wantLabels.filter((l) => !labels.some((x) => x.startsWith(l)));
+  console.log(`zone-stats ${id}: values=[${values.join(",")}] labels=[${labels.join(",")}] rank="${rank}" trivia="${trivia}" missing=[${missing.join(",")}]`);
+  return !missing.length && values.every((v) => v.length)
+    && /of \d+ \w[\w ]+ zones\.$/.test(rank)
+    && (!wantHeadline || /% of .+ zones — ×[\d.]+ the median\.$/.test(trivia));
+}
+
+// An instance page is NOT ranked against open-world zones (a dungeon having fewer
+// quests than Stranglethorn is not a fact about the dungeon).
+async function testZoneStatsInstance(id) {
+  await nav(`?zone=${id}`);
+  await page.waitForSelector(".zone-page .npc-head h1", { timeout: T });
+  const cards = await page.$$eval(".zone-page .zone-stats", (e) => e.length).catch(() => 0);
+  console.log(`zone-stats-instance ${id}: cards=${cards}`);
+  return cards === 0;
+}
+
 smoke("farm-route 17 copper", () => testFarmRoute(17, 2770));
 smoke("zone farm 17", () => testZoneFarm(17));
 smoke("zone gather-granular 17", () => testZoneGatherGranular(17));
@@ -280,3 +307,6 @@ smoke("worldmap", () => testWorldMap());
 smoke("worldmap state", () => testWorldMapState());
 smoke("browse zones", () => testBrowse("zones", "", "Continent"));
 smoke("browse zones cont=0", () => testBrowse("zones", "&cont=0", "Zone"));
+smoke("zone stats 1377 Silithus", () => testZoneStats(1377, ["mob spawns", "mob levels", "quests", "gather nodes"], true));
+smoke("zone stats 46 Burning Steppes", () => testZoneStats(46, ["mob spawns", "elite spawns", "rare mobs"], false));
+smoke("zone stats none 1581 instance", () => testZoneStatsInstance(1581));

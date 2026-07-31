@@ -2160,6 +2160,55 @@ async function showFaction(id) {
   wireTabs();
 }
 
+// Zone profile strip: what the zone IS before you read a single table -- how busy,
+// what levels live there, how much of it is elite, how much there is to do. The
+// counts come from build-db's `zone_stats`; the continent ranks are the part a page
+// can't derive for itself (it only ever loads its own zone).
+const ordinal = (n) => {
+  const s = ["th", "st", "nd", "rd"][(n % 100 - n % 10 !== 10 && n % 10 < 4) ? n % 10 : 0];
+  return `${n}${s}`;
+};
+
+function zoneStatsCard(s, mapid) {
+  // Zones with no spawns of their own are stubs, not empty zones: a city's NPCs are
+  // attributed to its parent zone (Ironforge -> Dun Morogh), and an instance's
+  // "entrance" WorldMap area holds nothing but its quests. A lone quest count there
+  // is noise, and ranking it against real zones would be a lie.
+  if (!s || (!s.spawns && !s.objects)) return "";
+  const num = (v) => v.toLocaleString();
+  const cell = (v, label) => `<div class="zs"><b>${v}</b><span>${label}</span></div>`;
+  const cells = [];
+  if (s.spawns) cells.push(cell(num(s.spawns), "mob spawns"));
+  if (s.npcs) cells.push(cell(num(s.npcs), "distinct NPCs"));
+  if (s.lvl_hi) {
+    cells.push(cell(s.lvl_lo === s.lvl_hi ? `${s.lvl_hi}` : `${s.lvl_lo}–${s.lvl_hi}`,
+      `mob levels <span class="dim" title="Levels are weighted by spawn count and trimmed to the 10th–90th percentile, so one stray high-level rare doesn't stretch the range">(median ${s.lvl_med})</span>`));
+  }
+  if (s.spawns && s.elites) cells.push(cell(`${Math.round((s.elites / s.spawns) * 100)}%`, "elite spawns"));
+  if (s.rares) cells.push(cell(num(s.rares), s.rares === 1 ? "rare mob" : "rare mobs"));
+  if (s.bosses) cells.push(cell(num(s.bosses), s.bosses === 1 ? "world boss" : "world bosses"));
+  if (s.quests) cells.push(cell(num(s.quests), "quests"));
+  if (s.gather) cells.push(cell(num(s.gather), "gather nodes"));
+  if (!cells.length) return "";
+
+  // Ranks only mean something against a real field of zones -- an instance's one or
+  // two interior "zones" is not one.
+  const continent = CONTINENT[mapid] || "";
+  const ranked = s.n_zones >= PEER_MIN && continent;
+  const ranks = [];
+  if (ranked && s.spawns) ranks.push(`${ordinal(s.rank_spawns)} busiest`);
+  if (ranked && s.quests) ranks.push(`${ordinal(s.rank_quests)} by quest count`);
+  const rankLine = ranks.length
+    ? `<p class="zs-rank muted">${ranks.join(" · ")} of ${s.n_zones} ${esc(continent)} zones.</p>` : "";
+  // High side only: "the 6th busiest zone on the continent" is trivia, "this zone has
+  // fewer quests than most" is just a small zone being small.
+  const head = ranked ? outlierLine([
+    { label: "mob spawns", sup: "Most", ratio: s.med_spawns ? s.spawns / s.med_spawns : 0, rank: s.rank_spawns, n: s.n_zones },
+    { label: "quests", sup: "Most", ratio: s.med_quests ? s.quests / s.med_quests : 0, rank: s.rank_quests, n: s.n_zones },
+  ].filter((m) => pctBeaten(m.rank, s.n_zones) >= 90), `${esc(continent)} zones`) : "";
+  return `<div class="zone-stats">${head}<div class="zs-grid">${cells.join("")}</div>${rankLine}</div>`;
+}
+
 async function showZone(id, gatherItem = null) {
   app.innerHTML = `<div class="loading">Loading zone ${id}…</div>`;
   let z;
@@ -2188,6 +2237,9 @@ async function showZone(id, gatherItem = null) {
     isInstance ? query(Q.Q_DUNGEON_QUESTS, [z.mapid, z.name]) : query(Q.Q_ZONE_QUESTS, az),
     isInstance ? query(Q.Q_MAP_FLOORS, mz) : [],
   ]);
+  // Zone profile (absent on a DB built before zone_stats -- dev / cMaNGOS datasets
+  // rebuild on their own schedule, and the strip is not worth breaking the page for).
+  const zstats = await queryOne(Q.Q_ZONE_STATS, az).catch(() => null);
   // focus mode: only the gathered node's spawns, drawn with the item's icon
   const focus = focusPts.length
     ? { label: (focusItem && focusItem.name) || focusPts[0].name || "Node", icon: focusItem && focusItem.icon, points: focusPts }
@@ -2325,6 +2377,7 @@ async function showZone(id, gatherItem = null) {
         <h1>${esc(z.name)}</h1>
         <div class="npc-meta muted">${meta.join(" · ")}<span class="dim"> · Zone #${z.areaid}</span></div>
       </div>
+      ${isInstance ? "" : zoneStatsCard(zstats, z.mapid)}
       ${floorSwitch}
       <div id="zonemap"></div>
       ${body}

@@ -175,6 +175,18 @@ both (ratio bar + the outlier headline).
   "(53.9 damage per second)". "Base stats" = the five 1.12 primaries only —
   deliberately not a score (that's the browse stat-weight ranking's job).
 
+- **Zones** — the profile strip above the map (`zoneStatsCard`): spawn/NPC/quest/
+  gather counts, the p10–p90 **level spread** (spawn-weighted, so it reads as "what
+  you meet here"; min–max would let one stray level-60 rare make a starting zone say
+  "1–60"), elite share, rares/world bosses — plus the continent rank ("13th busiest ·
+  3rd by quest count of 30 Kalimdor zones"), which a page that loads only its own zone
+  can't know. Derived into `zone_stats` (`Q_ZONE_STATS`, one PK lookup). Ranks are per
+  `mapid` over zones that have spawns. Only the **high** side gets a headline (a small
+  zone being small is not trivia), and a zone with no spawns of its own gets no card:
+  a city's NPCs are attributed to its parent zone (Ironforge → Dun Morogh) and an
+  instance-entrance WorldMap area holds only quests, so both would otherwise be ranked
+  against real zones on a quest count alone. Instance pages skip the strip entirely.
+
 Medians, never means, on both sides: a few outliers (a raid boss's `dmg_multiplier`,
 one absurd test weapon) drag a mean far off the thing players compare against.
 
@@ -482,7 +494,8 @@ Re-run `extract-minimap.py` + commit on client map changes.
   bar cell (`ratioCell`, `positive: true` flips the colour for more-is-better stats),
   `pctBeaten`, and `outlierLine` — the one-line "More melee DPS than 98% of level 54
   mobs" headline, which only fires on a top/bottom-decile stat ≥15% off the median.
-  Shared by the NPC Stats tab and the item page's peer card. See "Peer baselines".
+  Shared by the NPC Stats tab, the item page's peer card and the zone profile strip.
+  See "Peer baselines".
 - `src/constants.js` — WoW 1.12 enum maps (quality, class/slot/stat, creature
   type/rank, quest type/sort, etc.) + `questZoneLabel`/`classRestrictions`/
   `raceRestrictions` helpers.

@@ -1948,6 +1948,85 @@ console.log("Deriving item_peer...");
   console.log(`  item_peer: ${peers.length} items in ${cohorts.length} cohorts | ${unassigned} too niche to compare`);
 }
 
+// ---- Derived zone profile (powers the zone page's stat strip) ----
+// What a zone IS at a glance: how busy, what levels you meet there, how much of it
+// is elite, how many quests and gather nodes -- plus where it ranks among the other
+// zones of its continent ("6th busiest of 45"). Everything comes from tables that
+// already exist; the ranks are what a page can't work out for itself, since it only
+// ever loads its own zone. Same shape as item_peer: precompute, then one PK lookup.
+console.log("Deriving zone_stats...");
+{
+  db.exec(`CREATE TABLE zone_stats (zone INTEGER PRIMARY KEY, mapid INTEGER,
+    spawns INTEGER, objects INTEGER, npcs INTEGER, elites INTEGER, rares INTEGER, bosses INTEGER,
+    gather INTEGER, quests INTEGER, lvl_lo INTEGER, lvl_med INTEGER, lvl_hi INTEGER,
+    rank_spawns INTEGER, rank_quests INTEGER, n_zones INTEGER, med_spawns REAL, med_quests REAL)`);
+  const zoneRows = db.prepare(`SELECT areaid, mapid FROM zones WHERE name <> ''`).all();
+  const st = new Map();
+  for (const z of zoneRows) st.set(z.areaid, { zone: z.areaid, mapid: z.mapid, spawns: 0, objects: 0,
+    npcs: new Set(), elites: 0, rares: new Set(), bosses: new Set(), gather: 0, quests: 0, levels: [] });
+
+  // Creature spawn points, joined to the creature so each POINT carries its level and
+  // rank -- the levels are weighted by spawn count on purpose: what you actually run
+  // into in the zone, not what its rarest mob happens to be.
+  for (const r of db.prepare(`SELECT s.zone, s.id, c.level_min, c.level_max, c.rank
+      FROM spawn_points s JOIN creatures c ON c.entry = s.id
+      WHERE s.kind = 'c' AND c.hidden = 0`).all()) {
+    const z = st.get(r.zone); if (!z) continue;
+    z.spawns++;
+    z.npcs.add(r.id);
+    if (r.rank === 1) z.elites++;
+    else if (r.rank === 2) z.rares.add(r.id);
+    else if (r.rank === 3) z.bosses.add(r.id);
+    const lvl = r.level_max || r.level_min;
+    if (lvl > 0) z.levels.push(lvl);
+  }
+  for (const r of db.prepare(`SELECT s.zone, g.gather FROM spawn_points s
+      JOIN gameobjects g ON g.entry = s.id WHERE s.kind = 'o'`).all()) {
+    const z = st.get(r.zone); if (!z) continue;
+    z.objects++;
+    if (r.gather) z.gather++;
+  }
+  for (const r of db.prepare(`SELECT zone, COUNT(*) n FROM quests WHERE hidden = 0 GROUP BY zone`).all()) {
+    const z = st.get(r.zone); if (z) z.quests = r.n;
+  }
+
+  // Level SPREAD as p10-p90, not min-max: one stray level-60 rare would otherwise
+  // make a starting zone read "levels 1-60".
+  const pct = (sorted, p) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] : 0);
+  // Ranks are per continent (mapid) over zones that have any spawns -- comparing a
+  // populated zone against empty client-only areas would flatter it.
+  const byMap = new Map();
+  for (const z of st.values()) {
+    if (!(z.spawns + z.objects + z.quests)) continue;
+    if (!byMap.has(z.mapid)) byMap.set(z.mapid, []);
+    byMap.get(z.mapid).push(z);
+  }
+  const median = (a) => (a.length ? [...a].sort((x, y) => x - y)[a.length >> 1] : 0);
+  const ins = db.prepare(`INSERT INTO zone_stats VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  let n = 0;
+  db.transaction(() => {
+    for (const [, zs] of byMap) {
+      const bySpawns = [...zs].sort((a, b) => b.spawns - a.spawns);
+      const byQuests = [...zs].sort((a, b) => b.quests - a.quests);
+      const rankOf = (list, key) => { // competition rank, ties share
+        const m = new Map();
+        list.forEach((z, i) => { if (!m.has(z[key])) m.set(z[key], i + 1); });
+        return (z) => m.get(z[key]);
+      };
+      const rs = rankOf(bySpawns, "spawns"), rq = rankOf(byQuests, "quests");
+      const medS = median(zs.map((z) => z.spawns)), medQ = median(zs.map((z) => z.quests));
+      for (const z of zs) {
+        const lv = z.levels.sort((a, b) => a - b);
+        ins.run(z.zone, z.mapid, z.spawns, z.objects, z.npcs.size, z.elites, z.rares.size, z.bosses.size,
+          z.gather, z.quests, pct(lv, 0.1), pct(lv, 0.5), pct(lv, 0.9),
+          rs(z), rq(z), zs.length, medS, medQ);
+        n++;
+      }
+    }
+  })();
+  console.log(`  zone_stats: ${n} zones across ${byMap.size} maps`);
+}
+
 
 // Turtle-WoW custom content flag ("not in vanilla 1.12") for items/creatures/quests,
 // so the item/NPC/quest finder can isolate Turtle additions (browse.js origin filter +

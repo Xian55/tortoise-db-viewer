@@ -509,6 +509,17 @@ td.npc-stat-v .stat-pill, td.npc-stat-v .pill-more > summary {
 .peer-chip.hi { color: #63a86f; background: rgba(99, 168, 111, .13); }
 .peer-chip.lo { color: #e8705f; background: rgba(232, 112, 95, .13); }
 .peer-note { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; }
+
+/* Zone profile strip (zoneStatsCard): the zone at a glance, above its map. Wraps to
+   as many rows as the width allows; each cell is a number over its label. */
+.zone-stats { margin: 10px 0 14px; }
+.zs-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.zs { flex: 1 1 auto; min-width: 116px; padding: 8px 12px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--panel); }
+.zs b { display: block; font-size: 19px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.zs span { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.zs-rank { margin: 7px 0 0; font-size: 12.5px; }
+@media (max-width: 720px) { .zs { min-width: 96px; padding: 6px 9px; } .zs b { font-size: 16px; } }
 .model-link { cursor: help; border-bottom: 1px dotted var(--muted); }
 .model-card { text-align: center; }
 /* NPC-page model thumbnail: floats right of the header so it doesn't push the map */

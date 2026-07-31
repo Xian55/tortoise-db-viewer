@@ -38,8 +38,10 @@ export const pctBeaten = (rank, n) => (n > 1 ? Math.round(((n - rank) / (n - 1))
 // headline on every page would be noise, and a page with nothing remarkable
 // deserves nothing.
 //
-// `metrics`: [{ label, ratio, rank, n }] -- rank/n from the cohort, ratio vs its
-// median. `cohortPlural`: "level 54 mobs", "Epic ilvl 60–64 One-Hand Swords".
+// `metrics`: [{ label, ratio, rank, n, sup? }] -- rank/n from the cohort, ratio vs
+// its median; `sup` is the superlative for the rank-1 phrasing when "Highest" reads
+// wrong ("Most quests", not "Highest quests").
+// `cohortPlural`: "level 54 mobs", "Epic ilvl 60–64 One-Hand Swords".
 export function outlierLine(metrics, cohortPlural) {
   let best = null, bestScore = 0;
   for (const m of metrics) {
@@ -53,7 +55,7 @@ export function outlierLine(metrics, cohortPlural) {
   const high = best.pct >= 90;
   const times = best.ratio >= 10 ? Math.round(best.ratio) : best.ratio.toFixed(1);
   const what = best.rank === 1
-    ? `<b>Highest ${best.label}</b> of all ${best.n.toLocaleString()} ${cohortPlural}`
+    ? `<b>${best.sup || "Highest"} ${best.label}</b> of all ${best.n.toLocaleString()} ${cohortPlural}`
     : high
       ? `More <b>${best.label}</b> than <b>${best.pct}%</b> of ${cohortPlural}`
       : `Less <b>${best.label}</b> than <b>${100 - best.pct}%</b> of ${cohortPlural}`;
