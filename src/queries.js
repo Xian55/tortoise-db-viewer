@@ -553,7 +553,23 @@ export const Q_NPC_PEERS = `
     (SELECT hp  FROM peers ORDER BY hp  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS health,
     (SELECT ar  FROM peers ORDER BY ar  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS armor,
     (SELECT dps FROM peers ORDER BY dps LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS dps,
-    (SELECT ap  FROM peers ORDER BY ap  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS attack_power`;
+    (SELECT ap  FROM peers ORDER BY ap  LIMIT 1 OFFSET (SELECT n / 2 FROM c)) AS attack_power,
+    -- ...and where THIS creature sits in the cohort (?3..?6 = its own hp/armor/dps/ap),
+    -- so the page can say "hits harder than 97% of them" rather than only "×3.02".
+    -- Counting strictly-greater peers gives a competition rank (ties share it).
+    (SELECT COUNT(*) + 1 FROM peers WHERE hp  > ?3) AS rank_health,
+    (SELECT COUNT(*) + 1 FROM peers WHERE ar  > ?4) AS rank_armor,
+    (SELECT COUNT(*) + 1 FROM peers WHERE dps > ?5) AS rank_dps,
+    (SELECT COUNT(*) + 1 FROM peers WHERE ap  > ?6) AS rank_attack_power`;
+
+// Item peer baseline for the item page's "vs. typical …" card: the precomputed
+// cohort (same class/subclass/slot/quality/ilvl band -- see scripts/lib/itempeers.mjs)
+// with this item's own values + competition ranks inside it. One PK lookup.
+export const Q_ITEM_PEERS = `
+  SELECT p.armor, p.dps, p.stats, p.armor_rank, p.dps_rank, p.stats_rank,
+    c.label, c.n, c.n_armor, c.n_dps, c.n_stats,
+    c.armor AS med_armor, c.dps AS med_dps, c.stats AS med_stats
+  FROM item_peer p JOIN item_peer_cohort c ON c.id = p.cohort WHERE p.item = ?1`;
 
 // Spells an NPC casts / passive auras it carries (see build-db "NPC abilities").
 // src: l = shared spell list (has prob + cd, seconds), t = template slot,
@@ -1053,6 +1069,11 @@ export const Q_ZONES = `SELECT areaid, name, mapid, spawns FROM zones WHERE name
 // Zones on one continent that have spawns -> the world-map zone-focus dropdown.
 export const Q_CONTINENT_ZONES = `SELECT areaid, name FROM zones WHERE mapid = ?1 AND spawns > 0 AND name <> '' ORDER BY name`;
 export const Q_ZONE = `SELECT * FROM zones WHERE areaid = ?1`;
+
+// Zone profile strip: precomputed counts, level spread and continent ranks for one
+// zone (build-db `zone_stats`). A zone page only ever loads its own spawns, so the
+// "6th busiest of 37" reading has to come from the build.
+export const Q_ZONE_STATS = `SELECT * FROM zone_stats WHERE zone = ?1`;
 // All WorldMap floors of an instance map (a multi-floor dungeon/raid has several),
 // ordered by how many spawns each holds -> the zone page's floor switcher.
 export const Q_MAP_FLOORS = `

@@ -478,6 +478,48 @@ td.npc-stat-v .stat-pill, td.npc-stat-v .pill-more > summary {
 /* centre tick = the median the bar diverges from */
 .cmp-bar::after { content: ""; position: absolute; left: 50%; top: -2px; width: 1px; height: 11px; background: var(--muted); opacity: .55; }
 @media (max-width: 720px) { .cmp-bar { display: none; } }
+/* .pos flips the colour meaning for stats where MORE is better (item armor, DPS);
+   the bar still grows to the right of the median tick either way. */
+.cmp.pos .cmp-num.over { color: #63a86f; } .cmp.pos .cmp-num.under { color: #e8705f; }
+.cmp.pos .cmp-bar i.over { background: #63a86f; } .cmp.pos .cmp-bar i.under { background: #e8705f; }
+
+/* Outlier headline above a stat table (context.js outlierLine): the one number that
+   makes this creature/item unusual, in words. */
+.trivia { margin: 0 0 10px; padding: 7px 11px; border-left: 3px solid var(--gold);
+  background: var(--panel2); border-radius: 0 5px 5px 0; font-size: 13.5px; }
+.trivia.lo { border-left-color: #6d7a8c; }
+.trivia b { color: var(--text); }
+
+/* Item-page peer card: "vs. typical Epic ilvl 60-64 Dagger" (itemPeerCard). Sits in
+   the narrow tooltip column, so the ratio bar has to stay compact. */
+.peer-card { margin: 14px 0 0; padding: 11px 13px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--panel); }
+.peer-head { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.peer-head b { color: var(--text); }
+.peer-card .trivia { font-size: 12.5px; padding: 6px 9px; }
+.peer-tbl { width: 100%; border-collapse: collapse; }
+.peer-tbl th { text-align: left; font-weight: 500; color: var(--muted); font-size: 13px; padding: 3px 0;
+  text-transform: none; letter-spacing: 0; }
+.peer-tbl td { padding: 3px 0; font-variant-numeric: tabular-nums; }
+.peer-tbl td.peer-v { text-align: right; padding-right: 10px; white-space: nowrap; }
+.peer-tbl .cmp { gap: 6px; }
+.peer-tbl .cmp-bar { width: 62px; }
+.peer-tbl .cmp-num { min-width: 44px; font-size: 13px; }
+.peer-chip { margin-left: 6px; padding: 1px 6px; border-radius: 9px; font-size: 11px; font-weight: 600; }
+.peer-chip.hi { color: #63a86f; background: rgba(99, 168, 111, .13); }
+.peer-chip.lo { color: #e8705f; background: rgba(232, 112, 95, .13); }
+.peer-note { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; }
+
+/* Zone profile strip (zoneStatsCard): the zone at a glance, above its map. Wraps to
+   as many rows as the width allows; each cell is a number over its label. */
+.zone-stats { margin: 10px 0 14px; }
+.zs-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.zs { flex: 1 1 auto; min-width: 116px; padding: 8px 12px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--panel); }
+.zs b { display: block; font-size: 19px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.zs span { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.zs-rank { margin: 7px 0 0; font-size: 12.5px; }
+@media (max-width: 720px) { .zs { min-width: 96px; padding: 6px 9px; } .zs b { font-size: 16px; } }
 .model-link { cursor: help; border-bottom: 1px dotted var(--muted); }
 .model-card { text-align: center; }
 /* NPC-page model thumbnail: floats right of the header so it doesn't push the map */

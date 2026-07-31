@@ -16,6 +16,7 @@ import { showLeveling, showGuide } from "./guide.js";
 import { showPets, showPetFamily, showPetAbility } from "./pets.js";
 import { showProfPlan } from "./profplan.js";
 import { showTalents } from "./talents.js";
+import { ratioCell, outlierLine, pctBeaten, PEER_MIN } from "./context.js";
 // Seamless-minimap transform manifest (tile/adt/grid + per-continent bbox). Tiny,
 // committed; bundled at build time. The tile pyramid itself lives on R2.
 // Dataset-scoped minimap transform manifest (like the maps/minimap tiles): the vanilla
@@ -471,6 +472,49 @@ function suffixSection(rows) {
     <ul class="suf-list">${lis.join("")}</ul></div>`;
 }
 
+// "vs. typical Epic ilvl 60–64 Dagger" -- the item-page twin of the NPC Stats tab's
+// peer column. The cohort (same class/subclass/slot/quality/ilvl band) and this item's
+// rank inside it are precomputed by build-db (see scripts/lib/itempeers.mjs), so this
+// is pure formatting. A metric is shown only when the cohort actually HAS it (a chest
+// has no DPS) and enough members carry it to make a median mean something.
+function itemPeerCard(peer) {
+  if (!peer || !peer.label) return "";
+  // `word` is the label as it reads mid-sentence in the headline / baseline note
+  // ("Highest DPS of all 22 …", "median … — 27.3 DPS").
+  const metrics = [
+    { key: "dps", label: "DPS", word: "DPS", n: peer.n_dps, val: peer.dps, med: peer.med_dps, rank: peer.dps_rank, fmt: (v) => v.toFixed(1) },
+    { key: "armor", label: "Armor", word: "armor", n: peer.n_armor, val: peer.armor, med: peer.med_armor, rank: peer.armor_rank, fmt: (v) => Math.round(v).toLocaleString() },
+    // The five 1.12 primaries summed. Deliberately NOT a "score": +Spell Damage and
+    // +Crit live on the item too, and adding them to a stat total would compare
+    // unlike things (see the stat-weight ranking in Browse for that job).
+    { key: "stats", label: "Base stats", word: "base stats", n: peer.n_stats, val: peer.stats, med: peer.med_stats, rank: peer.stats_rank, fmt: (v) => Math.round(v).toLocaleString(),
+      hint: "Strength + Agility + Stamina + Intellect + Spirit" },
+  ].filter((m) => m.val > 0 && m.rank && m.n >= PEER_MIN && m.med > 0);
+  if (!metrics.length) return "";
+
+  // Slot names are already plural or irregular ("Legs", "Hands", "Feet") -- only the
+  // singular ones take an "s" ("Fingers", "One-Handed Axes").
+  const plural = `${esc(peer.label)}${/(s|Feet)$/i.test(peer.label) ? "" : "s"}`;
+  const head = outlierLine(metrics.map((m) => ({ label: m.word, ratio: m.val / m.med, rank: m.rank, n: m.n })), plural);
+  const rows = metrics.map((m) => {
+    const beat = pctBeaten(m.rank, m.n);
+    // Only the ends of the distribution get a chip -- "top 47%" is not information.
+    const chip = beat >= 90 ? `<span class="peer-chip hi">top ${Math.max(1, 100 - beat)}%</span>`
+      : beat <= 10 ? `<span class="peer-chip lo">bottom ${Math.max(1, beat === 0 ? 1 : beat)}%</span>` : "";
+    return `<tr title="Rank ${m.rank} of ${m.n} — median ${m.fmt(m.med)}${m.hint ? ` · ${m.hint}` : ""}">
+      <th>${m.label}</th>
+      <td class="peer-v">${m.fmt(m.val)}${chip}</td>
+      <td>${ratioCell(m.val / m.med, { positive: true })}</td></tr>`;
+  }).join("");
+  const medNote = metrics.map((m) => `${m.fmt(m.med)} ${m.word}`).join(" · ");
+  return `<div class="peer-card">
+    <div class="peer-head">vs. typical <b>${esc(peer.label)}</b></div>
+    ${head}
+    <table class="peer-tbl">${rows}</table>
+    <p class="peer-note muted">Baseline: median of ${peer.n.toLocaleString()} comparable items — ${medNote}.</p>
+  </div>`;
+}
+
 async function showItem(id) {
   app.innerHTML = `<div class="loading">Loading item ${id}…</div>`;
   let it;
@@ -499,6 +543,12 @@ async function showItem(id) {
       query(Q.Q_TEACHES, [id]), query(Q.Q_ITEM_SOURCES, [id]), query(Q.Q_ITEM_OBJECT_SPAWNS, [id]),
       it.display_id ? query(Q.Q_SAME_MODEL, [it.display_id, id]) : Promise.resolve([]),
     ]);
+  // Peer baseline (equippable gear only; everything else has no cohort row). The
+  // dev / cMaNGOS datasets are rebuilt on their own schedule, so a DB predating the
+  // item_peer tables must lose the card, not the page.
+  const peer = it.inventory_type > 0
+    ? await queryOne(Q.Q_ITEM_PEERS, [id]).catch(() => null)
+    : null;
   // random suffixes this item can roll ("of the Bear", …)
   const suffixes = it.rolls_suffix ? await query(Q.Q_ITEM_SUFFIXES, [id]) : [];
   const srcCsv = srcRows.map((r) => r.source).join(",");
@@ -672,6 +722,7 @@ async function showItem(id) {
         ${classLine ? `<div class="item-classline">${classLine}</div>` : ""}
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}${it.world_drop ? ' · <span class="tagx">World Drop</span>' : ""}${it.rolls_suffix ? ' · <span class="tagx" title="Can drop with a random suffix">🎲 Random suffix</span>' : ""}</div>
         ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}
+        ${itemPeerCard(peer)}
         ${suffixSection(suffixes)}
         ${readableText(readablePages)}
       </div>
@@ -1042,19 +1093,10 @@ const NPC_STAT_CATS = ["Defense", "Offense", "Resources & loot"];
 // A stat's value next to the median of the creature's peers -- every non-hidden
 // creature of the same level and rank (Q_NPC_PEERS). "3,379 armor" says nothing on
 // its own; "×0.80 of a typical level 63 boss" is the read a hardcore player wants.
-// Under this many peers the cohort isn't representative and the column is dropped
-// (the cells render empty, so the table's hideEmpty takes it out).
-const NPC_PEER_MIN = 10;
-const NPC_BAR_HALF = 46;   // px; half the bar's width, = a ±100% deviation
-
-function npcRatioCell(ratio) {
-  if (ratio == null || !isFinite(ratio) || ratio <= 0) return "";
-  // Within ±2% of the median is "typical" -- show the number, skip the bar.
-  const dir = ratio > 1.02 ? "over" : ratio < 0.98 ? "under" : "";
-  const w = Math.min(NPC_BAR_HALF, Math.round(Math.abs(ratio - 1) * 100));
-  return `<span class="cmp"><span class="cmp-num${dir ? " " + dir : ""}">×${ratio.toFixed(2)}</span>` +
-    `<span class="cmp-bar">${dir ? `<i class="${dir}" style="width:${w}px"></i>` : ""}</span></span>`;
-}
+// Under PEER_MIN peers the cohort isn't representative and the column is dropped
+// (the cells render empty, so the table's hideEmpty takes it out). The ratio bar +
+// the outlier headline are shared with the item page -- see context.js.
+const NPC_PEER_MIN = PEER_MIN;
 
 const npcPills = (list) => list.map((v) => `<span class="stat-pill">${esc(v)}</span>`).join("");
 // Long pill lists fold past `keep` into a native <details> -- no JS, keyboard-operable.
@@ -1139,17 +1181,27 @@ function npcStatsPane(npc, peers) {
     { key: "value", label: "Value", cls: "npc-stat-v", cell: (r) => r.value, value: (r) => r.sort, num: true },
     {
       key: "peer", label: `vs. typical ${npcPeerLabel(npc)}`, num: true, hideEmpty: true,
-      cell: (r) => npcRatioCell(r.ratio), value: (r) => r.ratio || 0,
+      cell: (r) => ratioCell(r.ratio), value: (r) => r.ratio || 0,
     },
   ];
   const t = regTable(columns, rows, { groupable: true, group: "cat" });
   const med = peers && peers.n >= NPC_PEER_MIN ? peers : null;
+  // Headline the one stat that makes this creature unusual (Gor'tesh hits for ~3x a
+  // typical level 54 mob) -- the ratio column already carries it, but only a reader
+  // who scans every row finds it.
+  const dps = npc.base_attack_time ? (npc.dmg_min + npc.dmg_max) / 2 / (npc.base_attack_time / 1000) : 0;
+  const head = med ? outlierLine([
+    { label: "melee DPS", ratio: dps / med.dps, rank: peers.rank_dps, n: med.n },
+    { label: "health", ratio: npc.health_max / med.health, rank: peers.rank_health, n: med.n },
+    { label: "armor", ratio: npc.armor / med.armor, rank: peers.rank_armor, n: med.n },
+    { label: "attack power", ratio: npc.attack_power / med.attack_power, rank: peers.rank_attack_power, n: med.n },
+  ], esc(npcPeerPlural(npc))) : "";
   const note = med
     ? `<p class="npc-stat-note muted">Baseline: median of ${med.n.toLocaleString()} ${esc(npcPeerPlural(npc))} —
        ${Math.round(med.health).toLocaleString()} HP · ${Math.round(med.armor).toLocaleString()} armor ·
        ~${Math.round(med.dps).toLocaleString()} DPS · ${Math.round(med.attack_power).toLocaleString()} AP.</p>`
     : `<p class="npc-stat-note muted">Too few ${esc(npcPeerPlural(npc))} in the data for a meaningful comparison.</p>`;
-  return { count: rows.length, noCount: true, html: t.html + note };
+  return { count: rows.length, noCount: true, html: head + t.html + note };
 }
 
 // The Skinning tab's headline: the Skinning skill a player needs for THIS
@@ -1197,7 +1249,12 @@ async function showNpc(id) {
     query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]),
     query(Q.Q_NPC_TRAINS, [id]), query(Q.Q_NPC_SPAWNS, [id]), queryOne(Q.Q_NPC_FACTION, [id]),
     query(Q.Q_MOUNT_SOURCE, [id]), query(Q.Q_NPC_ABILITIES, [id]),
-    queryOne(Q.Q_NPC_PEERS, [npc.level_max || npc.level_min || 0, npc.rank || 0]),
+    // ?3..?6 are the creature's own health/armor/DPS/AP -- the query returns its rank
+    // inside the cohort alongside the medians (see the Stats tab's outlier headline).
+    queryOne(Q.Q_NPC_PEERS, [npc.level_max || npc.level_min || 0, npc.rank || 0,
+      npc.health_max || 0, npc.armor || 0,
+      npc.base_attack_time ? (npc.dmg_min + npc.dmg_max) / 2 / (npc.base_attack_time / 1000) : 0,
+      npc.attack_power || 0]),
     npc.tameable && npc.pet_family ? query(Q.Q_PET_FAMILY_ABIL, [npc.pet_family]) : Promise.resolve([]),
     npc.tameable && npc.pet_family ? query(Q.Q_PET_ABILITY_RANKS) : Promise.resolve([]),
   ]);
@@ -2103,6 +2160,55 @@ async function showFaction(id) {
   wireTabs();
 }
 
+// Zone profile strip: what the zone IS before you read a single table -- how busy,
+// what levels live there, how much of it is elite, how much there is to do. The
+// counts come from build-db's `zone_stats`; the continent ranks are the part a page
+// can't derive for itself (it only ever loads its own zone).
+const ordinal = (n) => {
+  const s = ["th", "st", "nd", "rd"][(n % 100 - n % 10 !== 10 && n % 10 < 4) ? n % 10 : 0];
+  return `${n}${s}`;
+};
+
+function zoneStatsCard(s, mapid) {
+  // Zones with no spawns of their own are stubs, not empty zones: a city's NPCs are
+  // attributed to its parent zone (Ironforge -> Dun Morogh), and an instance's
+  // "entrance" WorldMap area holds nothing but its quests. A lone quest count there
+  // is noise, and ranking it against real zones would be a lie.
+  if (!s || (!s.spawns && !s.objects)) return "";
+  const num = (v) => v.toLocaleString();
+  const cell = (v, label) => `<div class="zs"><b>${v}</b><span>${label}</span></div>`;
+  const cells = [];
+  if (s.spawns) cells.push(cell(num(s.spawns), "mob spawns"));
+  if (s.npcs) cells.push(cell(num(s.npcs), "distinct NPCs"));
+  if (s.lvl_hi) {
+    cells.push(cell(s.lvl_lo === s.lvl_hi ? `${s.lvl_hi}` : `${s.lvl_lo}–${s.lvl_hi}`,
+      `mob levels <span class="dim" title="Levels are weighted by spawn count and trimmed to the 10th–90th percentile, so one stray high-level rare doesn't stretch the range">(median ${s.lvl_med})</span>`));
+  }
+  if (s.spawns && s.elites) cells.push(cell(`${Math.round((s.elites / s.spawns) * 100)}%`, "elite spawns"));
+  if (s.rares) cells.push(cell(num(s.rares), s.rares === 1 ? "rare mob" : "rare mobs"));
+  if (s.bosses) cells.push(cell(num(s.bosses), s.bosses === 1 ? "world boss" : "world bosses"));
+  if (s.quests) cells.push(cell(num(s.quests), "quests"));
+  if (s.gather) cells.push(cell(num(s.gather), "gather nodes"));
+  if (!cells.length) return "";
+
+  // Ranks only mean something against a real field of zones -- an instance's one or
+  // two interior "zones" is not one.
+  const continent = CONTINENT[mapid] || "";
+  const ranked = s.n_zones >= PEER_MIN && continent;
+  const ranks = [];
+  if (ranked && s.spawns) ranks.push(`${ordinal(s.rank_spawns)} busiest`);
+  if (ranked && s.quests) ranks.push(`${ordinal(s.rank_quests)} by quest count`);
+  const rankLine = ranks.length
+    ? `<p class="zs-rank muted">${ranks.join(" · ")} of ${s.n_zones} ${esc(continent)} zones.</p>` : "";
+  // High side only: "the 6th busiest zone on the continent" is trivia, "this zone has
+  // fewer quests than most" is just a small zone being small.
+  const head = ranked ? outlierLine([
+    { label: "mob spawns", sup: "Most", ratio: s.med_spawns ? s.spawns / s.med_spawns : 0, rank: s.rank_spawns, n: s.n_zones },
+    { label: "quests", sup: "Most", ratio: s.med_quests ? s.quests / s.med_quests : 0, rank: s.rank_quests, n: s.n_zones },
+  ].filter((m) => pctBeaten(m.rank, s.n_zones) >= 90), `${esc(continent)} zones`) : "";
+  return `<div class="zone-stats">${head}<div class="zs-grid">${cells.join("")}</div>${rankLine}</div>`;
+}
+
 async function showZone(id, gatherItem = null) {
   app.innerHTML = `<div class="loading">Loading zone ${id}…</div>`;
   let z;
@@ -2131,6 +2237,9 @@ async function showZone(id, gatherItem = null) {
     isInstance ? query(Q.Q_DUNGEON_QUESTS, [z.mapid, z.name]) : query(Q.Q_ZONE_QUESTS, az),
     isInstance ? query(Q.Q_MAP_FLOORS, mz) : [],
   ]);
+  // Zone profile (absent on a DB built before zone_stats -- dev / cMaNGOS datasets
+  // rebuild on their own schedule, and the strip is not worth breaking the page for).
+  const zstats = await queryOne(Q.Q_ZONE_STATS, az).catch(() => null);
   // focus mode: only the gathered node's spawns, drawn with the item's icon
   const focus = focusPts.length
     ? { label: (focusItem && focusItem.name) || focusPts[0].name || "Node", icon: focusItem && focusItem.icon, points: focusPts }
@@ -2268,6 +2377,7 @@ async function showZone(id, gatherItem = null) {
         <h1>${esc(z.name)}</h1>
         <div class="npc-meta muted">${meta.join(" · ")}<span class="dim"> · Zone #${z.areaid}</span></div>
       </div>
+      ${isInstance ? "" : zoneStatsCard(zstats, z.mapid)}
       ${floorSwitch}
       <div id="zonemap"></div>
       ${body}

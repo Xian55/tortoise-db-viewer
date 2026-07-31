@@ -12,6 +12,7 @@ import { parseColumns, iterRows, NULL } from "./lib/sqldump.mjs";
 import { IMPORTS, LOOT_TABLES, LOOT_COLUMNS } from "./lib/schema.mjs";
 import { openDatabase, RUNTIME } from "./lib/sqlite.mjs";
 import { statsFromColumns, statsFromAuras } from "./lib/itemstats.mjs";
+import { deriveItemPeers } from "./lib/itempeers.mjs";
 import { buildStaging } from "./lib/staging.mjs";
 import { buildCmangosStaging } from "./lib/cmangos-adapter.mjs";
 
@@ -1914,6 +1915,118 @@ flagJunk("creatures", "name");
 flagJunk("quests", "title");
 flagJunk("spells", "name", "rank");
 flagJunk("maps", "name");
+
+// ---- Derived item peer baseline (powers the item page's "vs. typical …" card) ----
+// The cohort key (class/subclass/slot/quality/ilvl band, with a coarsening fallback)
+// can't be grouped by any index at runtime, so the medians + ranks are precomputed
+// here and the page reads one primary-key row. See lib/itempeers.mjs.
+console.log("Deriving item_peer...");
+{
+  db.exec(`CREATE TABLE item_peer_cohort (id INTEGER PRIMARY KEY, label TEXT, n INTEGER,
+    n_armor INTEGER, n_dps INTEGER, n_stats INTEGER, armor REAL, dps REAL, stats REAL)`);
+  db.exec(`CREATE TABLE item_peer (item INTEGER PRIMARY KEY, cohort INTEGER,
+    armor REAL, dps REAL, stats REAL, armor_rank INTEGER, dps_rank INTEGER, stats_rank INTEGER)`);
+  // Dev artifacts are excluded from the cohorts as well as hidden rows: the medians
+  // survive them (that's the point of a median), but they inflate the "of N items"
+  // counts the card quotes.
+  const gear = db.prepare(`SELECT entry, class, subclass, inventory_type, quality, item_level,
+    armor, dmg_min1, dmg_max1, dmg_min2, dmg_max2, delay
+    FROM items WHERE inventory_type > 0 AND class IN (2, 4) AND hidden = 0
+      AND entry NOT IN (SELECT item FROM item_sources WHERE source = 'unobtainable')`).all();
+  // "Base stats" = the five 1.12 primaries; comparable across a slot in a way that
+  // mixing in +spell power / +crit would not be.
+  const statTotal = new Map();
+  for (const r of db.prepare(`SELECT item, SUM(value) v FROM item_stats
+      WHERE stat IN ('str','agi','sta','int','spi') GROUP BY item`).all()) statTotal.set(r.item, r.v);
+  const { cohorts, peers, unassigned } = deriveItemPeers(gear, statTotal);
+  const insC = db.prepare(`INSERT INTO item_peer_cohort VALUES (?,?,?,?,?,?,?,?,?)`);
+  const insP = db.prepare(`INSERT INTO item_peer VALUES (?,?,?,?,?,?,?,?)`);
+  db.transaction(() => {
+    for (const c of cohorts) insC.run(c.id, c.label, c.n, c.n_armor, c.n_dps, c.n_stats, c.armor, c.dps, c.stats);
+    for (const p of peers) insP.run(p.item, p.cohort, p.armor, p.dps, p.stats, p.armor_rank, p.dps_rank, p.stats_rank);
+  })();
+  console.log(`  item_peer: ${peers.length} items in ${cohorts.length} cohorts | ${unassigned} too niche to compare`);
+}
+
+// ---- Derived zone profile (powers the zone page's stat strip) ----
+// What a zone IS at a glance: how busy, what levels you meet there, how much of it
+// is elite, how many quests and gather nodes -- plus where it ranks among the other
+// zones of its continent ("6th busiest of 45"). Everything comes from tables that
+// already exist; the ranks are what a page can't work out for itself, since it only
+// ever loads its own zone. Same shape as item_peer: precompute, then one PK lookup.
+console.log("Deriving zone_stats...");
+{
+  db.exec(`CREATE TABLE zone_stats (zone INTEGER PRIMARY KEY, mapid INTEGER,
+    spawns INTEGER, objects INTEGER, npcs INTEGER, elites INTEGER, rares INTEGER, bosses INTEGER,
+    gather INTEGER, quests INTEGER, lvl_lo INTEGER, lvl_med INTEGER, lvl_hi INTEGER,
+    rank_spawns INTEGER, rank_quests INTEGER, n_zones INTEGER, med_spawns REAL, med_quests REAL)`);
+  const zoneRows = db.prepare(`SELECT areaid, mapid FROM zones WHERE name <> ''`).all();
+  const st = new Map();
+  for (const z of zoneRows) st.set(z.areaid, { zone: z.areaid, mapid: z.mapid, spawns: 0, objects: 0,
+    npcs: new Set(), elites: 0, rares: new Set(), bosses: new Set(), gather: 0, quests: 0, levels: [] });
+
+  // Creature spawn points, joined to the creature so each POINT carries its level and
+  // rank -- the levels are weighted by spawn count on purpose: what you actually run
+  // into in the zone, not what its rarest mob happens to be.
+  for (const r of db.prepare(`SELECT s.zone, s.id, c.level_min, c.level_max, c.rank
+      FROM spawn_points s JOIN creatures c ON c.entry = s.id
+      WHERE s.kind = 'c' AND c.hidden = 0`).all()) {
+    const z = st.get(r.zone); if (!z) continue;
+    z.spawns++;
+    z.npcs.add(r.id);
+    if (r.rank === 1) z.elites++;
+    else if (r.rank === 2) z.rares.add(r.id);
+    else if (r.rank === 3) z.bosses.add(r.id);
+    const lvl = r.level_max || r.level_min;
+    if (lvl > 0) z.levels.push(lvl);
+  }
+  for (const r of db.prepare(`SELECT s.zone, g.gather FROM spawn_points s
+      JOIN gameobjects g ON g.entry = s.id WHERE s.kind = 'o'`).all()) {
+    const z = st.get(r.zone); if (!z) continue;
+    z.objects++;
+    if (r.gather) z.gather++;
+  }
+  for (const r of db.prepare(`SELECT zone, COUNT(*) n FROM quests WHERE hidden = 0 GROUP BY zone`).all()) {
+    const z = st.get(r.zone); if (z) z.quests = r.n;
+  }
+
+  // Level SPREAD as p10-p90, not min-max: one stray level-60 rare would otherwise
+  // make a starting zone read "levels 1-60".
+  const pct = (sorted, p) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] : 0);
+  // Ranks are per continent (mapid) over zones that have any spawns -- comparing a
+  // populated zone against empty client-only areas would flatter it.
+  const byMap = new Map();
+  for (const z of st.values()) {
+    if (!(z.spawns + z.objects + z.quests)) continue;
+    if (!byMap.has(z.mapid)) byMap.set(z.mapid, []);
+    byMap.get(z.mapid).push(z);
+  }
+  const median = (a) => (a.length ? [...a].sort((x, y) => x - y)[a.length >> 1] : 0);
+  const ins = db.prepare(`INSERT INTO zone_stats VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  let n = 0;
+  db.transaction(() => {
+    for (const [, zs] of byMap) {
+      const bySpawns = [...zs].sort((a, b) => b.spawns - a.spawns);
+      const byQuests = [...zs].sort((a, b) => b.quests - a.quests);
+      const rankOf = (list, key) => { // competition rank, ties share
+        const m = new Map();
+        list.forEach((z, i) => { if (!m.has(z[key])) m.set(z[key], i + 1); });
+        return (z) => m.get(z[key]);
+      };
+      const rs = rankOf(bySpawns, "spawns"), rq = rankOf(byQuests, "quests");
+      const medS = median(zs.map((z) => z.spawns)), medQ = median(zs.map((z) => z.quests));
+      for (const z of zs) {
+        const lv = z.levels.sort((a, b) => a - b);
+        ins.run(z.zone, z.mapid, z.spawns, z.objects, z.npcs.size, z.elites, z.rares.size, z.bosses.size,
+          z.gather, z.quests, pct(lv, 0.1), pct(lv, 0.5), pct(lv, 0.9),
+          rs(z), rq(z), zs.length, medS, medQ);
+        n++;
+      }
+    }
+  })();
+  console.log(`  zone_stats: ${n} zones across ${byMap.size} maps`);
+}
+
 
 // Turtle-WoW custom content flag ("not in vanilla 1.12") for items/creatures/quests,
 // so the item/NPC/quest finder can isolate Turtle additions (browse.js origin filter +
