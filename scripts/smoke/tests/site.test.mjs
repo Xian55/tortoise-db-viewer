@@ -20,7 +20,13 @@ async function testTalents() {
   await nav(`?talents`);
   await page.waitForSelector(".talent-classlist .talent-cls-icon", { timeout: T });
   const icons = await page.$$eval(".talent-classlist .talent-cls-icon", (e) => e.length);
-  const iconOk = await page.$eval(".talent-classlist .talent-cls-icon", (e) => e.complete && e.naturalWidth > 0);
+  // waitForSelector only proves the <img> is in the DOM -- the class emblems are fetched
+  // over the network (ASSETS_BASE -> R2), so asserting .complete right away is a race a
+  // slower machine loses. This failed on a CI runner while passing locally every time.
+  const iconOk = await page.waitForFunction(() => {
+    const e = document.querySelector(".talent-classlist .talent-cls-icon");
+    return !!(e && e.complete && e.naturalWidth > 0);
+  }, { timeout: T }).then(() => true).catch(() => false);
   console.log(`talent-picker: classIcons=${icons} firstLoaded=${iconOk}`);
   await nav(`?talents=warrior`);
   const sel = "a.talent-cell:not(.locked)"; // a row-0 talent, unlocked at load

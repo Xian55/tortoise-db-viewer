@@ -201,5 +201,13 @@ printProfile(results, elapsed);
 console.log("------------------------------------------------------");
 console.log(`TOTAL: ${totalPass} pass, ${totalFail} fail  |  ${elapsed}s wall  |  ${K} shard(s)`);
 console.log(totalFail || hookCrash ? "SMOKE: FAIL" : "SMOKE: PASS");
-for (const r of results) if (r.code !== 0 && !r.cases.some((c) => c.failed)) { console.log(`\n----- [s${r.idx}] full output -----\n${r.out}`); }
+// Dump the output of any shard that didn't come back clean. Previously this only fired
+// for a hook crash (non-zero exit with no failed case), so an ordinary test failure
+// printed its NAME and nothing else -- which on CI, where you can't just re-run it
+// locally, left no way to tell why it failed. Each test's single console.log diagnostic
+// lives in this output, so it is the whole point of having one.
+for (const r of results) {
+  if (r.code === 0 && !r.cases.some((c) => c.failed)) continue;
+  console.log(`\n----- [s${r.idx}] full output -----\n${r.out}`);
+}
 process.exit(totalFail || hookCrash ? 1 : 0);
