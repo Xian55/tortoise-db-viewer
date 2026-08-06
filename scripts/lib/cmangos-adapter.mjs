@@ -13,15 +13,19 @@
 // different words) need an explicit RENAMES entry; a Turtle column absent from cmangos
 // becomes NULL.
 //
-// SCOPE (core slice): DBC-derived tables are absent from the cmangos world DB (cmangos
-// reads DBCs from the client at runtime) -> item_display_info, area_template, faction,
-// faction_template, map_template, skill_line_ability come through EMPTY, so icons, zone
-// names, faction data, dungeon names and spell professions are blank for now.
-// spell_template is deferred to the same DBC phase (its tooltip text lives in Spell.dbc,
-// not the world DB) -> EMPTY stub. Fill these from a vanilla 1.12 client next phase.
+// DBC-derived tables are absent from the cmangos world DB (cmangos reads DBCs from the
+// client at runtime) -> item_display_info, area_template, faction, faction_template,
+// map_template, skill_line_ability are filled instead from the committed client-DBC JSON
+// (scripts/data/cmangos-dbc*.json, see extract-cmangos-dbc.py). spell_template maps from
+// cmangos directly; only its tooltip text comes from the DBC JSON (Spell.dbc).
+//
+// A NULLed column is a silent failure mode: a Turtle name differing from cmangos' by an
+// underscore (loot_id vs LootId) does NOT match case-insensitively, so it stages empty
+// and only surfaces as missing content much later. The all-NULL audit at the end of
+// buildCmangosStaging flags exactly that, checked against EXPECTED_ABSENT.
 
 import { readFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PFX = "stg_";
@@ -80,7 +84,10 @@ const T_QUEST = ["entry", "Method", "ZoneOrSort", "MinLevel", "MaxLevel", "Quest
   ...seq(4, "ReqSourceId"), ...seq(4, "ReqSourceCount"), ...seq(4, "ReqCreatureOrGOId"),
   ...seq(4, "ReqCreatureOrGOCount"), ...seq(4, "ReqSpellCast"), ...seq(6, "RewChoiceItemId"),
   ...seq(6, "RewChoiceItemCount"), ...seq(4, "RewItemId"), ...seq(4, "RewItemCount"),
-  ...seq(5, "RewRepFaction"), ...seq(5, "RewRepValue"), "RewXP", "RewOrReqMoney", "RewMoneyMaxLevel",
+  // NB: no "RewXP" -- neither cmangos world DB (Classic or TBC) has that column, and
+  // staging it as an all-NULL placeholder would hide its absence from build-db, which
+  // reconstructs quest XP from RewMoneyMaxLevel precisely when RewXP is missing.
+  ...seq(5, "RewRepFaction"), ...seq(5, "RewRepValue"), "RewOrReqMoney", "RewMoneyMaxLevel",
   "RewSpell", "RewSpellCast", "RewMailTemplateId", "RewMailDelaySecs", "RewMailMoney", "PointMapId",
   "PointX", "PointY", "PointOpt", ...seq(4, "DetailsEmote"), ...seq(4, "DetailsEmoteDelay"),
   "IncompleteEmote", "CompleteEmote", ...seq(4, "OfferRewardEmote"), ...seq(4, "OfferRewardEmoteDelay"),
@@ -99,7 +106,7 @@ const LOOT = ["entry", "item", "ChanceOrQuestChance", "groupid", "mincountOrRef"
 
 // target column list per staged table (Turtle names). Missing entries fall back to the
 // STAGE_SPECS `columns` (small relation/vendor tables share cmangos' own names).
-const TARGET = {
+export const TARGET = {
   item_template: T_ITEM,
   creature_template: T_CREATURE_TPL,
   creature: T_CREATURE,
@@ -146,7 +153,7 @@ for (const t of ["creature_loot_template", "gameobject_loot_template", "item_loo
 
 // explicit renames: turtleCol -> cmangos column (or SQL expr). Only names that don't
 // match case-insensitively. Absent-in-cmangos columns need no entry (they become NULL).
-const RENAMES = {
+export const RENAMES = {
   item_template: {
     display_id: "displayid", buy_count: "BuyCount", buy_price: "BuyPrice", sell_price: "SellPrice",
     inventory_type: "InventoryType", allowable_class: "AllowableClass", allowable_race: "AllowableRace",
@@ -159,7 +166,7 @@ const RENAMES = {
     start_quest: "startquest", lock_id: "lockid", random_property: "RandomProperty", set_id: "itemset",
     max_durability: "MaxDurability", area_bound: "area", map_bound: "Map", bag_family: "BagFamily",
     disenchant_id: "DisenchantID", food_type: "FoodType", min_money_loot: "minMoneyLoot",
-    max_money_loot: "maxMoneyLoot",
+    max_money_loot: "maxMoneyLoot", extra_flags: "ExtraFlags", script_name: "ScriptName",
   },
   creature_template: {
     display_id1: "DisplayId1", display_id2: "DisplayId2", display_id3: "DisplayId3", display_id4: "DisplayId4",
@@ -177,6 +184,16 @@ const RENAMES = {
     vendor_id: "VendorTemplateId", flags_extra: "ExtraFlags", unit_class: "UnitClass",
     ranged_attack_power: "RangedAttackPower", mechanic_immune_mask: "MechanicImmuneMask",
     school_immune_mask: "SchoolImmuneMask",
+    // These differ from cmangos only by an underscore, so the case-insensitive fallback
+    // never matched them and they silently staged as NULL. `loot_id` in particular zeroed
+    // out shared-loot attribution and ALL skinning drops (drops src 's' was empty).
+    // The all-NULL guard below now catches this class of miss.
+    speed_walk: "SpeedWalk", speed_run: "SpeedRun", unit_flags: "UnitFlags",
+    dynamic_flags: "DynamicFlags", trainer_type: "TrainerType", trainer_spell: "TrainerSpell",
+    trainer_class: "TrainerClass", trainer_race: "TrainerRace", loot_id: "LootId",
+    pickpocket_loot_id: "PickpocketLootId", skinning_loot_id: "SkinningLootId",
+    movement_type: "MovementType", inhabit_type: "InhabitType", racial_leader: "RacialLeader",
+    script_name: "ScriptName",
   },
   creature: { wander_distance: "spawndist", movement_type: "MovementType" },
   // cmangos spell_template carries names/ranks/mechanics/icons; entry is `Id`, name/rank
@@ -191,7 +208,44 @@ const FORCE_EMPTY = new Set();
 
 // Turtle-only tables with no cmangos counterpart: left unstaged (build-db's source
 // branches key off `src.has(...)`), not warned about -- their absence is expected.
-const NO_CMANGOS = new Set(["creature_spells", "creature_ai_events"]);
+// collection_mount is a Turtle feature table; build-db handles its absence.
+const NO_CMANGOS = new Set(["creature_spells", "creature_ai_events", "collection_mount"]);
+
+// Turtle columns cmangos genuinely doesn't have. The all-NULL guard below reports every
+// OTHER column that staged empty, so a missed rename can't hide again (`loot_id` vs
+// `LootId` sat NULL for the whole life of the vanilla dataset -- it differs by an
+// underscore, which the case-insensitive fallback doesn't bridge).
+const EXPECTED_ABSENT = new Set([
+  "creature_template.mount_display_id", "creature_template.pet_spell_list_id",
+  "creature_template.spawn_spell_id", "creature_template.civilian",
+  "creature_template.immunity_flags", "creature_template.phase_quest_id",
+  "creature_template.auras", // cmangos keeps these on creature_template_addon
+  "creature_template.spell_id1", "creature_template.spell_id2",
+  "creature_template.spell_id3", "creature_template.spell_id4", // -> creature_template_spells
+  "creature.health_percent", "creature.mana_percent", "creature.spawn_flags",
+  "creature.visibility_mod",
+  "gameobject.animprogress", "gameobject.state", "gameobject.spawn_flags",
+  "gameobject.visibility_mod",
+  "item_template.wrapped_gift", "item_template.other_team_entry",
+  "quest_template.RequiredCondition",
+]);
+
+// Columns computed from a differently-shaped source column, when neither the direct
+// name nor a RENAMES entry applies. Value is a SQL expression over the cmangos row;
+// `cols` is the set of lowercased source column names, so a derivation can opt out
+// (return null) on a schema that doesn't need it.
+const DERIVE = {
+  spell_template: {
+    // TBC (2.0) dropped the `School` scalar; only the SchoolMask bitfield survives.
+    // school = index of the set bit: 1->0 physical, 2->1 holy, 4->2 fire, 8->3 nature,
+    // 16->4 frost, 32->5 shadow, 64->6 arcane. Non-physical bits are tested first so a
+    // combined mask reports the magic school rather than "physical".
+    school: (cols) => (cols.has("schoolmask") ? `(CASE
+        WHEN SchoolMask & 2  THEN 1 WHEN SchoolMask & 4  THEN 2 WHEN SchoolMask & 8  THEN 3
+        WHEN SchoolMask & 16 THEN 4 WHEN SchoolMask & 32 THEN 5 WHEN SchoolMask & 64 THEN 6
+        ELSE 0 END)` : null),
+  },
+};
 
 // DBC-derived tables cmangos omits, filled from scripts/data/cmangos-dbc.json
 // (extract-cmangos-dbc.py, from a vanilla 1.12 client). staging table -> JSON key.
@@ -202,7 +256,15 @@ const DBC_KEY = {
 };
 
 export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
-  const dbcFile = join(dirname(fileURLToPath(import.meta.url)), "..", "data", "cmangos-dbc.json");
+  // Which client's DBC dump to graft on. Per-expansion, because the tables cmangos omits
+  // (zones, maps, factions, item icons, spell text) are all version-specific:
+  //   CMANGOS_DBC=scripts/data/cmangos-dbc-tbc.json  for the TBC row.
+  const scriptsDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const dbcEnv = process.env.CMANGOS_DBC;
+  const dbcFile = dbcEnv
+    ? (isAbsolute(dbcEnv) ? dbcEnv : join(scriptsDir, "..", dbcEnv))
+    : join(scriptsDir, "data", "cmangos-dbc.json");
+  if (dbcEnv && !existsSync(dbcFile)) throw new Error(`CMANGOS_DBC not found: ${dbcFile}`);
   const DBC = existsSync(dbcFile) ? JSON.parse(readFileSync(dbcFile, "utf8")) : null;
 
   const p = cmangosPath.replace(/\\/g, "/").replace(/'/g, "''");
@@ -220,6 +282,7 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
 
   const colsByTable = {};
   const staged = new Set();
+  const nullCols = []; // [table, col] pairs that mapped to NULL -- audited after staging
   const stats = { files: 0, applied: 0, skipped: 0, errors: 0, dbc: [], empty: [] };
 
   for (const table of tables) {
@@ -239,9 +302,16 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
     if (!FORCE_EMPTY.has(table) && cmHas(table)) {
       const src = cmCols(table);
       const rn = RENAMES[table] || {};
+      // A rename whose target is absent falls through to NULL rather than failing the
+      // whole INSERT: one shared rename map has to cover every expansion's schema, and
+      // e.g. spell_template.school exists in Classic but not TBC (SchoolMask only).
+      const dv = DERIVE[table] || {};
       const exprs = cols.map((c) => {
-        if (rn[c]) return `\`${rn[c]}\` AS \`${c}\``;
-        if (src.has(c.toLowerCase())) return `\`${c}\` AS \`${c}\``;
+        if (rn[c] && src.has(rn[c].toLowerCase())) return `\`${rn[c]}\` AS \`${c}\``;
+        if (!rn[c] && src.has(c.toLowerCase())) return `\`${c}\` AS \`${c}\``;
+        const d = dv[c] && dv[c](src);
+        if (d) return `${d} AS \`${c}\``;
+        nullCols.push([table, c]);
         return `NULL AS \`${c}\``;
       });
       db.exec(`INSERT OR REPLACE INTO \`${PFX}${table}\` (${cols.map((c) => `\`${c}\``).join(",")}) SELECT ${exprs.join(", ")} FROM cm.\`${table}\``);
@@ -261,6 +331,51 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
     // 3) nothing available -> staged empty
     stats.empty.push(table);
   }
+
+  // ---- multi-entry spawns (TBC+) ----------------------------------------------------
+  // Vanilla cmangos keeps a pooled spawn's alternate creature ids in creature.id2..id4.
+  // TBC moved them to creature_spawn_entry(guid, entry) AND -- the part that bites --
+  // sets creature.id to 0 for those rows: 7696 of 7731 pooled guids. Left alone, every
+  // one of those spawns joins to no creature at all, so those NPCs would render as
+  // "no known spawn location". Fold the list back into the id..id4 slots.
+  if (staged.has("creature") && cmHas("creature_spawn_entry")) {
+    db.exec(`CREATE TEMP TABLE _se AS
+      SELECT guid, entry, ROW_NUMBER() OVER (PARTITION BY guid ORDER BY entry) rn
+      FROM cm.creature_spawn_entry`);
+    db.exec(`CREATE INDEX _se_g ON _se(guid, rn)`);
+    const pick = (n) => `(SELECT entry FROM _se WHERE guid = \`${PFX}creature\`.guid AND rn = ${n})`;
+    // Turtle's schema has 4 slots; a handful of guids list up to 8 entries, so the tail
+    // is dropped. Report it rather than silently truncating.
+    const over = db.prepare(`SELECT COUNT(*) n FROM (SELECT guid FROM _se GROUP BY guid HAVING COUNT(*) > 4)`).get().n;
+    db.exec(`UPDATE \`${PFX}creature\` SET
+        id = COALESCE(${pick(1)}, id), id2 = ${pick(2)}, id3 = ${pick(3)}, id4 = ${pick(4)}
+      WHERE guid IN (SELECT guid FROM _se)`);
+    const fixed = db.prepare(`SELECT COUNT(DISTINCT guid) n FROM _se`).get().n;
+    db.exec(`DROP TABLE _se`);
+    stats.spawnEntry = fixed;
+    console.log(`  cmangos-adapter: creature_spawn_entry -> id..id4 for ${fixed} pooled spawns`
+      + (over ? ` (${over} list >4 entries; extras dropped — schema has 4 slots)` : ""));
+  }
+
+  // ---- all-NULL audit -------------------------------------------------------------
+  // A Turtle column that differs from cmangos' by more than case (loot_id vs LootId)
+  // maps to NULL silently, and the resulting hole only shows up as missing content
+  // pages later. Flag every NULLed column whose name matches a real source column once
+  // underscores are ignored -- that is a missed RENAMES entry, not an absent field.
+  const squash = (s) => s.replace(/_/g, "").toLowerCase();
+  const suspects = [];
+  for (const [table, col] of nullCols) {
+    if (EXPECTED_ABSENT.has(`${table}.${col}`)) continue;
+    const near = db.prepare(`SELECT name FROM pragma_table_info('${table}','cm')`).all()
+      .find((r) => squash(r.name) === squash(col));
+    if (near) suspects.push(`${table}.${col} -> ${near.name}`);
+  }
+  if (suspects.length) {
+    console.warn(`  cmangos-adapter: ${suspects.length} column(s) staged all-NULL but have a`
+      + ` near-match in the source -- add a RENAMES entry (or EXPECTED_ABSENT if intended):`);
+    for (const s of suspects) console.warn(`    ${s}`);
+  }
+  stats.nullSuspects = suspects;
 
   // spell tooltip text lives only in the client Spell.dbc (not cmangos' world DB):
   // inject description/auraDescription into the cmangos-mapped spell_template.

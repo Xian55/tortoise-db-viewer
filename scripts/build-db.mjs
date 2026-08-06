@@ -30,6 +30,30 @@ const DATA_SUBDIR = process.env.DATA_SUBDIR || "data";
 // lib/cmangos-adapter.mjs instead. See notes/plan-content-origin-and-variants.md.
 const SQL_SOURCE = process.env.SQL_SOURCE || "turtle";
 const CMANGOS_DB = process.env.CMANGOS_DB || "C:/Users/poler/Downloads/classic-sqlite-db/classicmangos.sqlite";
+// Game version of the dataset ("vanilla" | "tbc"). Orthogonal to SQL_SOURCE: it selects
+// version-dependent BUILD behaviour, not where the rows come from. Two things key off it
+// today -- the Turtle-custom flag (only meaningful against a vanilla-1.12 id list) and
+// the Turtle instance-map bounds fallback (vanilla art must not stand in for TBC
+// dungeons). The frontend has its own copy in the config.js dataset registry.
+const EXPANSION = process.env.EXPANSION || "vanilla";
+
+// Client-derived lookup JSONs under scripts/data are version-specific: SpellIcon ids,
+// the four index->value spell lookup DBCs, item sets, lock ids, creature families and
+// random suffixes all renumber between expansions. Resolve "<name>.json" to
+// "<name>-<expansion>.json" when one exists, else fall back to the vanilla file and say
+// so -- a silent fallback is how TBC's Mangle (Bear) ended up drawing inv_letter_13.
+const dataFileWarned = new Set();
+function clientData(name) {
+  const base = join(ROOT, "scripts", "data", name);
+  if (EXPANSION === "vanilla") return base;
+  const scoped = join(ROOT, "scripts", "data", name.replace(/\.json$/, `-${EXPANSION}.json`));
+  if (existsSync(scoped)) return scoped;
+  if (existsSync(base) && !dataFileWarned.has(name)) {
+    dataFileWarned.add(name);
+    console.warn(`  NOTE: no ${name.replace(/\.json$/, `-${EXPANSION}.json`)} — falling back to the vanilla ${name}`);
+  }
+  return base;
+}
 // Single DB file, fetched whole by the browser and loaded into sqlite-wasm.
 // GitHub Pages gzips it on the wire (~27 MB -> ~8.6 MB), decompressed by the browser.
 const OUT = join(ROOT, "public", DATA_SUBDIR, "tortoise.sqlite");
@@ -223,16 +247,24 @@ db.exec("ALTER TABLE creatures ADD COLUMN team INTEGER NOT NULL DEFAULT 0");
 // items (both custom AND standard icons). The supplement -- extracted once from
 // the client ItemDisplayInfo.dbc (scripts/extract-icons.py) and committed --
 // corrects those display->icon rows so every item resolves its real icon.
+// It is a TURTLE-client artefact, so on any other source it may only FILL GAPS, never
+// override: a cmangos build already has an authoritative display->icon table straight
+// from that expansion's own ItemDisplayInfo.dbc, and blanket REPLACE corrupts it (on the
+// TBC dataset, 126 display ids collide and 1661 would flip from the correct INV_Hammer_03
+// to Turtle's inv_pet_broom).
 {
   const f = join(ROOT, "scripts", "data", "item-display-supplement.json");
   if (existsSync(f)) {
     const map = JSON.parse(readFileSync(f, "utf8"));
-    const stmt = db.prepare(`INSERT OR REPLACE INTO item_display_info (ID, icon) VALUES (?, ?)`);
+    const authoritative = SQL_SOURCE === "turtle";
+    const stmt = db.prepare(authoritative
+      ? `INSERT OR REPLACE INTO item_display_info (ID, icon) VALUES (?, ?)`
+      : `INSERT OR IGNORE  INTO item_display_info (ID, icon) VALUES (?, ?)`);
     let n = 0;
     db.transaction(() => {
-      for (const [id, icon] of Object.entries(map)) { stmt.run([Number(id), icon]); n++; }
+      for (const [id, icon] of Object.entries(map)) { n += stmt.run([Number(id), icon]).changes ?? 0; }
     })();
-    console.log(`  item_display_info: +${n} corrective rows`);
+    console.log(`  item_display_info: +${n} ${authoritative ? "corrective" : "gap-fill (non-Turtle source: existing rows kept)"} rows`);
   } else {
     console.log("  (no item-display-supplement.json -- run scripts/extract-icons.py for Turtle icons)");
   }
@@ -318,9 +350,13 @@ console.log("Importing maps + spawns...");
 console.log("Loading instance bosses...");
 {
   db.exec(`CREATE TABLE creature_instance (entry INTEGER, map INTEGER)`);
-  const f = join(ROOT, "scripts", "data", "instance-bosses.json");
+  // Turtle-only, for the same reason script-abilities.json is: it was parsed out of
+  // Turtle's ScriptDev2 C++, and cmangos' instance scripts are a different codebase with
+  // different entry->instance placements. Attributing Turtle's to a cmangos dataset would
+  // be a guess dressed up as data.
+  const f = SQL_SOURCE === "turtle" ? join(ROOT, "scripts", "data", "instance-bosses.json") : null;
   let n = 0;
-  if (existsSync(f)) {
+  if (f && existsSync(f)) {
     const rows = JSON.parse(readFileSync(f, "utf8"));
     const ins = db.prepare(`INSERT INTO creature_instance VALUES (?,?)`);
     db.transaction(() => {
@@ -510,7 +546,7 @@ console.log("Importing spells + crafting graph...");
   // skill_id -> { cat, name } from the client SkillLine.dbc (committed JSON), used to
   // categorize spells for the browse filter (class skill / profession / weapon / ...).
   const skillLines = (() => {
-    const f = join(ROOT, "scripts", "data", "skill-lines.json");
+    const f = clientData("skill-lines.json");
     return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : {};
   })();
   // Map a skill's category id (+ name) to a viewer filter bucket. Cat 9 mixes
@@ -549,7 +585,7 @@ console.log("Importing spells + crafting graph...");
   // the CDN by basename; absent map = text/CDN-fallback links (graceful).
   let spellIconMap = {};
   {
-    const f = join(ROOT, "scripts", "data", "spell-icon-map.json");
+    const f = clientData("spell-icon-map.json");
     if (existsSync(f)) {
       spellIconMap = JSON.parse(readFileSync(f, "utf8"));
       console.log(`  spell-icon-map: ${Object.keys(spellIconMap).length} icons`);
@@ -562,7 +598,7 @@ console.log("Importing spells + crafting graph...");
   // resolve to null (graceful). Keyed by string id (JSON object).
   let spellLookups = { castTime: {}, duration: {}, radius: {}, range: {} };
   {
-    const f = join(ROOT, "scripts", "data", "spell-lookups.json");
+    const f = clientData("spell-lookups.json");
     if (existsSync(f)) {
       spellLookups = JSON.parse(readFileSync(f, "utf8"));
       console.log(`  spell-lookups: cast ${Object.keys(spellLookups.castTime).length}, range ${Object.keys(spellLookups.range).length}, duration ${Object.keys(spellLookups.duration).length}, radius ${Object.keys(spellLookups.radius).length}`);
@@ -764,7 +800,7 @@ console.log("Deriving item enchants...");
 console.log("Loading random suffixes...");
 {
   db.exec(`CREATE TABLE random_suffix (id INTEGER PRIMARY KEY, name TEXT, stats TEXT)`);
-  const f = join(ROOT, "scripts", "data", "random-suffix.json");
+  const f = clientData("random-suffix.json");
   let n = 0;
   if (existsSync(f)) {
     const map = JSON.parse(readFileSync(f, "utf8"));
@@ -1174,6 +1210,24 @@ console.log("Importing quests + quest links...");
     requesttext: at("RequestItemsText"), offertext: at("OfferRewardText"), endtext: at("EndText"),
     money: at("RewOrReqMoney"), xp: at("RewXP"), rewspell: at("RewSpell"),
     srcitem: at("SrcItemId"), prevquest: at("PrevQuestId"), nextquest: at("NextQuestId"),
+    moneymax: at("RewMoneyMaxLevel"),
+  };
+  // XP fallback. Neither cmangos world DB (Classic or TBC) has a RewXP column, and 2.4.3
+  // has no QuestXP.dbc either -- so every quest showed no XP at all. But patch 1.10.0
+  // added the max-level "quest XP -> gold" conversion, and the server stores its result
+  // in RewMoneyMaxLevel (see Quest::GetRewMoneyMaxLevelAtComplete), so RewXP is
+  // recoverable by inverting it. Rate measured, not assumed: over Turtle's dump (which
+  // has BOTH columns) the money/XP ratio has a hard mode at exactly 0.6, and inverting
+  // 0.6 lands on a whole number for 3489/3493 (99.9%) of cmangos quests.
+  // Only used when the source LACKS the column -- a source that has RewXP always wins,
+  // so the Turtle datasets are untouched (Turtle also rescales some quests to a 6.0
+  // ratio, which this would misread).
+  const XP_TO_GOLD = 0.6;
+  const xpOf = (row) => {
+    if (cols.xp >= 0) return clean(row[cols.xp]);
+    if (cols.moneymax < 0) return null;
+    const m = clean(row[cols.moneymax]);
+    return m > 0 ? Math.round(m / XP_TO_GOLD) : null;
   };
   const objText = [1, 2, 3, 4].map((n) => at(`ObjectiveText${n}`));
   const reqItem = [1, 2, 3, 4].map((n) => [at(`ReqItemId${n}`), at(`ReqItemCount${n}`)]);
@@ -1211,7 +1265,7 @@ console.log("Importing quests + quest links...");
         clean(row[cols.reqskill]), clean(row[cols.reqskillvalue]),
         clean(row[cols.details]), clean(row[cols.objectives]), clean(row[cols.requesttext]),
         clean(row[cols.offertext]), clean(row[cols.endtext]), ot,
-        clean(row[cols.money]), clean(row[cols.xp]), clean(row[cols.rewspell]),
+        clean(row[cols.money]), xpOf(row), clean(row[cols.rewspell]),
         clean(row[cols.srcitem]), clean(row[cols.prevquest]), clean(row[cols.nextquest]),
       );
       nq++;
@@ -1438,7 +1492,7 @@ console.log("Importing item sets...");
   // so one index per column lets the planner do a MULTI-INDEX OR instead of scanning
   // every item per spell (the API build's spell pass was the worst offender).
   for (let k = 1; k <= 5; k++) db.exec(`CREATE INDEX idx_items_spellid_${k} ON items(spellid_${k})`);
-  const f = join(ROOT, "scripts", "data", "item-sets.json");
+  const f = clientData("item-sets.json");
   if (existsSync(f)) {
     const sets = JSON.parse(readFileSync(f, "utf8"));
     const sS = db.prepare(`INSERT INTO item_sets VALUES (?,?)`);
@@ -1600,8 +1654,14 @@ console.log("Importing zones + spawn points...");
     // dungeon page renders with bounds and the frontend falls the IMAGE back to Turtle's
     // interior parchment (config.js MAPS_BASE_MAIN). Aligns for dungeons Turtle didn't
     // re-lay; a reworked interior (Molten Core) may drift -- accepted vs no map.
+    // ONLY within the same expansion. Turtle's zones.json is 1.12 art: standing it in for
+    // a TBC dungeon would render the wrong instance, which is worse than rendering none
+    // (a missing parchment degrades to the existing tab-only page). TBC also has no
+    // interior WorldMapAreas of its own -- those arrived in WotLK.
     const baseZf = join(ROOT, "scripts", "data", "zones.json");
-    if (process.env.ZONES_FILE && existsSync(baseZf) && baseZf !== zf) {
+    if (EXPANSION !== "vanilla") {
+      console.log(`  zones: Turtle instance-interior fallback skipped (EXPANSION=${EXPANSION} — 1.12 art would be wrong, not missing)`);
+    } else if (process.env.ZONES_FILE && existsSync(baseZf) && baseZf !== zf) {
       const have = new Set(zones.map((z) => z.areaId));
       const instMaps = new Set(db.prepare(`SELECT id FROM maps WHERE type IN (1,2)`).all().map((r) => r.id));
       let nf = 0;
@@ -1724,8 +1784,9 @@ console.log("Importing zones + spawn points...");
   // Mapping is committed (CI has no server src/); see scripts/data/scripted-spawn-links.json.
   let nlink = 0;
   {
-    const lf = join(ROOT, "scripts", "data", "scripted-spawn-links.json");
-    if (existsSync(lf)) {
+    // Turtle-only: hand-maintained from Turtle's ScriptDev2 enums (see instance-bosses).
+    const lf = SQL_SOURCE === "turtle" ? join(ROOT, "scripts", "data", "scripted-spawn-links.json") : null;
+    if (lf && existsSync(lf)) {
       const { links = {} } = JSON.parse(readFileSync(lf, "utf8"));
       const copy = db.prepare(`INSERT INTO spawn_points (kind, id, map, x, y, zone)
         SELECT 'c', ?1, map, x, y, zone FROM spawn_points INDEXED BY idx_spawn_id WHERE kind = 'c' AND id = ?2`);
@@ -1799,7 +1860,7 @@ console.log("Importing zones + spawn points...");
   // dumped to scripts/data/locks.json by extract-locks.py. Absent file -> all NULL
   // (the map falls back to one "Obj: Chest" bucket).
   db.exec(`ALTER TABLE gameobjects ADD COLUMN gather TEXT`);
-  const lf = join(ROOT, "scripts", "data", "locks.json");
+  const lf = clientData("locks.json");
   if (existsSync(lf)) {
     const locks = JSON.parse(readFileSync(lf, "utf8"));
     const ids = (kind) => Object.keys(locks).filter((k) => locks[k] === kind).map(Number).filter(Number.isFinite);
@@ -2047,9 +2108,16 @@ console.log("Deriving zone_stats...");
 const vanillaIdsFile = join(ROOT, "scripts", "data", "vanilla-ids.json");
 const vanillaIds = existsSync(vanillaIdsFile) ? JSON.parse(readFileSync(vanillaIdsFile, "utf8")) : null;
 if (vanillaIds) console.log(`  vanilla-ids: ${vanillaIds.db_version || "cmangos"} (items ${vanillaIds.items?.length}, creatures ${vanillaIds.creatures?.length}, quests ${vanillaIds.quests?.length})`);
+// The flag answers "is this row absent from vanilla 1.12?", so it is only meaningful for
+// a vanilla-era dataset. On a TBC dataset every one of the ~5.4k TBC additions is
+// legitimately not in the vanilla list, and flagging them all "Turtle custom" would be
+// nonsense -- leave the column 0 and let the UI show no origin badge.
+const flagCustom = EXPANSION === "vanilla";
+if (!flagCustom) console.log(`  custom flag: skipped (EXPANSION=${EXPANSION}; the vanilla id list doesn't apply)`);
 for (const [tbl, key, cutoff] of [["items", "items", 24283], ["creatures", "creatures", 17999], ["quests", "quests", 9999]]) {
   db.exec(`ALTER TABLE ${tbl} ADD COLUMN custom INTEGER NOT NULL DEFAULT 0`);
-  const ids = vanillaIds?.[key];
+  const ids = flagCustom ? vanillaIds?.[key] : null;
+  if (!flagCustom) continue;
   if (ids?.length) {
     db.exec(`CREATE TEMP TABLE _van(id INTEGER PRIMARY KEY)`);
     const ins = db.prepare(`INSERT OR IGNORE INTO _van(id) VALUES (?)`);
@@ -2312,8 +2380,8 @@ db.exec(`INSERT INTO spells_tg(rowid, name) SELECT entry, name FROM spells WHERE
 // line -- the last auto-covers TW-custom families (Serpent/Fox) whose Poison Spit/Grace
 // aren't in the curated data. Only families with >=1 tameable creature get a row.
 {
-  const famFile = join(ROOT, "scripts", "data", "creature-families.json");
-  const petFile = join(ROOT, "scripts", "data", "pet-families.json");
+  const famFile = clientData("creature-families.json");
+  const petFile = clientData("pet-families.json");
   const famDbc = existsSync(famFile) ? JSON.parse(readFileSync(famFile, "utf8")) : {};
   const petCur = existsSync(petFile) ? JSON.parse(readFileSync(petFile, "utf8")) : {};
   const STANDARD = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 20, 21, 24, 25, 26, 27]); // vanilla 1.12 hunter families
