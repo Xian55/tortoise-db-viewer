@@ -2,7 +2,7 @@ name: Deploy tbc/cmangos dataset
 
 # Builds ONLY the tbc/cmangos dataset DB and uploads it to R2 under the
 # data-tbc-cmangos/ prefix. Same shape as deploy-cmangos.yml, but the source is
-# cmangos's published TBC world DB (tbc-world-db.zip) and the build runs with
+# cmangos's published TBC world DB as SQLite (tbc-sqlite-db.zip) and the build runs with
 # EXPANSION=tbc, which selects the TBC client-derived lookups committed under
 # scripts/data/*-tbc.json (cmangos-dbc, zones, minimap, talents, spell-icon-map,
 # spell-lookups, item-sets, skill-lines, locks, creature-families, random-suffix).
@@ -41,9 +41,12 @@ jobs:
       # cmangos ships the TBC world DB as SQLite on every release. Grab the latest.
       - name: Download cmangos TBC SQLite DB
         run: |
-          curl -fL -o tbc-world-db.zip \
-            https://github.com/cmangos/tbc-db/releases/latest/download/tbc-world-db.zip
-          unzip -o tbc-world-db.zip -d cmangos-db
+          # tbc-sqlite-db.zip, NOT tbc-world-db.zip: the latter ships a raw
+          # tbcmangos.SQL MySQL dump this build cannot read. Mirrors the
+          # classic-sqlite-db.zip asset the Classic job uses.
+          curl -fL -o tbc-sqlite-db.zip \
+            https://github.com/cmangos/tbc-db/releases/latest/download/tbc-sqlite-db.zip
+          unzip -o tbc-sqlite-db.zip -d cmangos-db
           ls -la cmangos-db
           # the zip ships several DBs (characters/logs/world/realmd) -- we need the WORLD
           # DB specifically, not `ls | head -1` (the same trap fixed in 6c2c9a8 for the
