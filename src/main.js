@@ -9,7 +9,7 @@ import { showCharacters, showCharacter, showSharedLoadout } from "./character.js
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
-import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, getAtlasUrls } from "./config.js";
+import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
@@ -198,15 +198,20 @@ function addShareButton() {
   // the name in a tooltip card, not an <h1>).
   const anchor = app.querySelector("h1, .item-meta, .spell-sub");
   if (!anchor || (anchor.nextElementSibling && anchor.nextElementSibling.classList.contains("share-btn"))) return;
-  // Unfurl-capable share link (see OG_BASE). Falls back to the plain app URL if
-  // no OG origin is configured, so a fork without the Worker still shares something.
-  const url = OG_BASE
+  // Unfurl-capable share link (see OG_BASE / HAS_OG_API). Falls back to the plain app
+  // URL when no OG origin is configured (a fork without the Worker) or when this dataset
+  // has no unfurl coverage -- the fallback is built from location.pathname, NOT
+  // BASE_URL, so it keeps the dataset directory (/tbc/cmangos/) instead of silently
+  // sending the recipient to main's copy of a different item.
+  const url = OG_BASE && HAS_OG_API
     ? `${OG_BASE}/${SHARE_PREFIX[param]}/${id}`
-    : `${location.origin}${import.meta.env.BASE_URL}?${param}=${id}`;
+    : `${location.origin}${location.pathname}?${param}=${id}`;
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "share-btn";
-  btn.title = "Copy a link that shows a rich preview in Discord, Twitter, etc.";
+  btn.title = HAS_OG_API
+    ? "Copy a link that shows a rich preview in Discord, Twitter, etc."
+    : "Copy a link to this page";
   btn.textContent = "🔗 Share";
   btn.addEventListener("click", async () => {
     try {
@@ -219,7 +224,7 @@ function addShareButton() {
   // "{ } JSON" — open the entity's rich JSON API endpoint (item/npc/quest/spell
   // only): the same data the page shows. Cross-origin / not .nav|.ilink, so the SPA
   // interceptor leaves it; opens in a new tab.
-  if (API_PREFIX[param]) {
+  if (API_PREFIX[param] && HAS_OG_API) {
     const j = document.createElement("a");
     j.className = "share-btn json-btn";
     j.href = `${API_BASE}/${API_PREFIX[param]}/${id}`;
@@ -362,7 +367,7 @@ function showHome() {
       <h2>Static JSON endpoints</h2>
       <p class="muted">No backend — the data ships as plain static files you can <code>fetch()</code> directly (CORS-open, served from the CDN). Handy for bots, addons, or your own tools:</p>
       <ul class="api-list">
-        <li><code>${API_BASE.replace(/^https?:\/\//, "")}/&lt;i|n|q|s&gt;/&lt;id&gt;</code> — the <b>public API</b>: full per-entity data (item / npc / quest / spell) — stats, sources, and the rendered tooltip — as JSON. <a class="nav-ext" href="${API_BASE}/i/2770" target="_blank" rel="noopener">example: i/2770</a></li>
+        <li><code>${API_BASE.replace(/^https?:\/\//, "")}/&lt;i|n|q|s&gt;/&lt;id&gt;</code> — the <b>public API</b>: full per-entity data (item / npc / quest / spell) — stats, sources, and the rendered tooltip — as JSON. <a class="nav-ext" href="${API_BASE}/i/2770" target="_blank" rel="noopener">example: i/2770</a>${HAS_OG_API ? "" : ` <em class="muted">(ids are from the Main dataset — this endpoint doesn't cover ${esc(DATASETS.find((d) => d.id === DATASET)?.label || DATASET)})</em>`}</li>
         <li><code>tt/&lt;i|n|q|s&gt;/&lt;id&gt;.json</code> — compact name/icon/level tooltip data (a lightweight subset of the API). <a class="nav-ext" href="${ASSETS_BASE}tt/i/2770.json" target="_blank" rel="noopener">example</a></li>
         <li><code>data/version.json</code> — current build hash + timestamp. <a class="nav-ext" href="${DATA_BASE}version.json" target="_blank" rel="noopener">open</a></li>
         <li><code>data-dev/changelog.json</code> — per-deploy "What's new" for the <b>dev</b> dataset. <a class="nav" href="${import.meta.env.BASE_URL}dev/?changelog">view</a></li>
