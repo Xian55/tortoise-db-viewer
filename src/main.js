@@ -77,7 +77,12 @@ export function navigate(url, replace = false) {
   renderRoute();
   window.scrollTo(0, 0); // new view starts at the top (SPA nav keeps scroll otherwise)
 }
-window.addEventListener("popstate", renderRoute);
+// Back/Forward must land at the top of the new view, exactly like an in-app click.
+// navigate() scrolls itself, but the popstate path only re-rendered -- so going Back
+// from a page you had scrolled down left you mid-document on the next one. (The
+// replaceState callers -- browse filters, talents, the zone map -- don't route through
+// here, so they keep their scroll position as intended.)
+window.addEventListener("popstate", () => { renderRoute(); window.scrollTo(0, 0); });
 
 document.addEventListener("click", (e) => {
   const a = e.target.closest("a.ilink, a.nav");
