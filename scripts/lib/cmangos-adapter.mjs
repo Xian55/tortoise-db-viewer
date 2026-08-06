@@ -50,6 +50,13 @@ T_ITEM.push("bonding", "page_text", "page_language", "page_material", "start_que
   "sheath", "random_property", "set_id", "max_durability", "area_bound", "map_bound", "duration",
   "bag_family", "disenchant_id", "food_type", "min_money_loot", "max_money_loot", "wrapped_gift",
   "extra_flags", "other_team_entry", "script_name");
+// TBC (2.0) additions. Absent from a 1.12 source -> staged NULL, which is why they are
+// safe to list unconditionally. socketColor_N is a colour mask matching GemProperties
+// (1 meta, 2 red, 4 yellow, 8 blue); socketBonus and a gem's GemProperties both resolve
+// through SpellItemEnchantment for their display text.
+T_ITEM.push("socketColor_1", "socketContent_1", "socketColor_2", "socketContent_2",
+  "socketColor_3", "socketContent_3", "socketBonus", "GemProperties",
+  "RequiredDisenchantSkill", "TotemCategory", "ArmorDamageModifier");
 
 const T_CREATURE_TPL = [
   "entry", "display_id1", "display_id2", "display_id3", "display_id4", "mount_display_id", "name", "subname",
@@ -122,6 +129,10 @@ export const TARGET = {
     "ghost_entrance_map", "ghost_entrance_x", "ghost_entrance_y", "map_name", "script_name"],
   skill_line_ability: ["id", "skill_id", "spell_id", "race_mask", "class_mask", "req_skill_value",
     "superseded_by_spell", "learn_on_get_skill", "max_value", "min_value", "req_train_points"],
+  // Socket/gem lookups, DBC-only (no world-DB table anywhere). Both are expansion-gated:
+  // a 1.12 client has no GemProperties at all, so these stage empty on vanilla.
+  gem_properties: ["id", "enchant_id", "color"],
+  spell_item_enchantment: ["id", "name"],
   npc_vendor: ["entry", "item", "maxcount", "incrtime"],
   npc_vendor_template: ["entry", "item", "maxcount", "incrtime"],
   page_text: ["entry", "text", "next_page"],
@@ -149,7 +160,10 @@ export const TARGET = {
 };
 for (const t of ["creature_loot_template", "gameobject_loot_template", "item_loot_template",
   "disenchant_loot_template", "fishing_loot_template", "pickpocketing_loot_template",
-  "skinning_loot_template", "reference_loot_template"]) TARGET[t] = LOOT;
+  "skinning_loot_template", "reference_loot_template",
+  // TBC: jewelcrafting prospecting + quest/event mail. Same LOOT shape; absent from a
+  // 1.12 source, where cmHas() simply stages them empty.
+  "prospecting_loot_template", "mail_loot_template"]) TARGET[t] = LOOT;
 
 // explicit renames: turtleCol -> cmangos column (or SQL expr). Only names that don't
 // match case-insensitively. Absent-in-cmangos columns need no entry (they become NULL).
@@ -253,6 +267,7 @@ const DBC_KEY = {
   area_template: "areas", map_template: "maps", faction: "faction",
   faction_template: "faction_template", item_display_info: "item_display_info",
   skill_line_ability: "skill_line_ability",
+  gem_properties: "gem_properties", spell_item_enchantment: "spell_item_enchantment",
 };
 
 export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
@@ -275,7 +290,9 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
   // the srcRows dump fallback in the Turtle build, so it must be provided here too) +
   // the cmangos-only NPC-ability tables (no Turtle dump file, so not in STAGE_SPECS).
   const tables = [...new Set([...STAGE_SPECS.map((s) => s.table), "item_enchantment_template",
-    "creature_template_spells", "creature_spell_list", "creature_template_addon"])];
+    "creature_template_spells", "creature_spell_list", "creature_template_addon",
+    // DBC-only socket/gem lookups (no world-DB table exists for these anywhere)
+    "gem_properties", "spell_item_enchantment"])];
 
   const cmHas = (t) => !!db.prepare(`SELECT 1 FROM cm.sqlite_master WHERE type='table' AND name=?`).get(t);
   const cmCols = (t) => new Set(db.prepare(`SELECT name FROM pragma_table_info('${t}','cm')`).all().map((r) => r.name.toLowerCase()));

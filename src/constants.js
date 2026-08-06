@@ -65,6 +65,25 @@ export const STAT_TYPE = {
   43: "Mana Regeneration", 44: "Armor Penetration Rating", 45: "Spell Power",
 };
 
+// TBC socket colours. item_template.socketColor_N and GemProperties.Type share this
+// bitmask, and a gem may satisfy several colours at once (a purple gem is Red|Blue=10,
+// a prismatic 14). A socket is drawn by its single colour; a GEM is described by the
+// set of sockets it fits, hence the mask handling in socketColorName.
+export const SOCKET_COLOR = { 1: "Meta", 2: "Red", 4: "Yellow", 8: "Blue" };
+export const SOCKET_HEX = { 1: "#d8d8d8", 2: "#ff4d4d", 4: "#ffd34d", 8: "#4d9bff" };
+/**
+ * "Red", or "Red, Yellow or Blue" for a multi-colour gem; null when nothing is set.
+ * Phrased the way the client does it ("Matches a Red, Yellow or Blue Socket.") rather
+ * than with ampersands -- a gem matches ANY of its colours, it doesn't need all of them.
+ */
+export function socketColorName(mask) {
+  if (!mask) return null;
+  const names = Object.entries(SOCKET_COLOR).filter(([b]) => mask & b).map(([, n]) => n);
+  if (!names.length) return null;
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+
 export const BONDING = {
   1: "Binds when picked up", 2: "Binds when equipped",
   3: "Binds when used", 4: "Quest Item",

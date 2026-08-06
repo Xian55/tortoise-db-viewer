@@ -56,6 +56,9 @@ VANILLA_DBC = {
     "talenttab_class_mask": 12, "talenttab_order": 13,
     # ItemSet.dbc: ID, Name_lang(block), ItemID[17], SetSpellID[8], SetThreshold[8], ...
     "itemset_items": 10, "itemset_spells": 27, "itemset_thresholds": 35,
+    # SpellItemEnchantment.dbc name: field 13 in BOTH 1.12 (24f) and 2.4.3 (34f) --
+    # the locale block that widened sits after it.
+    "sie_name": 13,
 }
 
 # TBC 2.4.3. Nearly everything kept its index -- the localized blocks that widened all sit

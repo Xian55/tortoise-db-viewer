@@ -1,7 +1,7 @@
 import {
   QUALITY, ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, STAT_TYPE,
   BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, ITEM_SOURCE, REP_STANDING, POWER_TYPE, classRestrictions, setClassMask, money,
-  PROFESSION_LABEL,
+  PROFESSION_LABEL, SOCKET_HEX, socketColorName,
 } from "./constants.js";
 // skill_id -> name for item equip requirements (professions + a few non-profession skills).
 const REQ_SKILL_LABEL = { ...PROFESSION_LABEL, 762: "Riding", 433: "Cooking", 129: "First Aid" };
@@ -135,7 +135,7 @@ export function resolveSpellText(text, sp) {
 // Build the item tooltip card. spellMap: Map<spellId, spellRow>. linkSpells wraps
 // the green effect lines in spell links (on for the item page, off for transient
 // hovercards so a popover never holds a nested link).
-export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, set = null, mount = null } = {}) {
+export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, set = null, mount = null, sockets = null } = {}) {
   const L = [];
   const line = (html, cls = "") => L.push(`<div class="tt-line ${cls}">${html}</div>`);
 
@@ -206,6 +206,32 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, se
   // resistances
   for (const [col, label] of RESISTANCES) {
     if (it[col]) line(`+${it[col]} ${label} Resistance`, "tt-stat");
+  }
+
+  // TBC sockets. In game these sit between the resistances and the durability line:
+  // one row per socket, then the bonus you get for matching every colour. `sockets`
+  // comes from Q_ITEM_SOCKETS (a dataset built before those tables just omits the
+  // text, and a 1.12 dataset has no socketColor at all, so this block never fires).
+  for (const n of [1, 2, 3]) {
+    const c = it[`socketColor_${n}`];
+    if (!c) continue;
+    const name = socketColorName(c);
+    const dot = `<span class="tt-socket-dot" style="background:${SOCKET_HEX[c] || "#888"}"></span>`;
+    line(`${dot}${esc(name || "Prismatic")} Socket`, "tt-socket");
+  }
+  if (it.socketColor_1 && sockets?.socket_bonus) {
+    line(`Socket Bonus: ${esc(sockets.socket_bonus)}`, "tt-socket-bonus");
+  }
+  // A gem itself carries NO stat_type rows (verified: 0 of 256 on the TBC dataset) --
+  // everything it grants lives in the enchant, so without this a gem's tooltip shows
+  // no stats at all. The "matches" line, though, is already in 229/256 gems' own
+  // description text, so only add it for the handful that lack it.
+  if (sockets?.gem_effect) {
+    line(esc(sockets.gem_effect), "tt-stat");
+    const fits = socketColorName(sockets.gem_color);
+    if (fits && !/matches a/i.test(it.description || "")) {
+      line(`Matches a ${esc(fits)} Socket`, "tt-req");
+    }
   }
 
   if (it.max_durability) line(`Durability ${it.max_durability} / ${it.max_durability}`);

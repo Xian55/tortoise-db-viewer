@@ -554,6 +554,12 @@ async function showItem(id) {
   const peer = it.inventory_type > 0
     ? await queryOne(Q.Q_ITEM_PEERS, [id]).catch(() => null)
     : null;
+  // Socket/gem display text (TBC). Same graceful-degradation contract as the peer
+  // card: a dataset predating enchant_text/gem_properties -- or any 1.12 one, where
+  // the item simply has no sockets -- drops the lines, never the page.
+  const sockets = (it.socketColor_1 || it.GemProperties)
+    ? await queryOne(Q.Q_ITEM_SOCKETS, [it.socketBonus || 0, it.GemProperties || 0]).catch(() => null)
+    : null;
   // random suffixes this item can roll ("of the Bear", …)
   const suffixes = it.rolls_suffix ? await query(Q.Q_ITEM_SUFFIXES, [id]) : [];
   const srcCsv = srcRows.map((r) => r.source).join(",");
@@ -723,7 +729,7 @@ async function showItem(id) {
 
   app.innerHTML =
     `<div class="item-view">
-      <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true, set: setOpt, mount: mountOpt })}
+      <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true, set: setOpt, mount: mountOpt, sockets })}
         ${classLine ? `<div class="item-classline">${classLine}</div>` : ""}
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}${it.world_drop ? ' · <span class="tagx">World Drop</span>' : ""}${it.rolls_suffix ? ' · <span class="tagx" title="Can drop with a random suffix">🎲 Random suffix</span>' : ""}</div>
         ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}

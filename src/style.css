@@ -250,6 +250,14 @@ a.set-bonus-link:hover { text-decoration: underline; }
 .tt-split { display: flex; justify-content: space-between; }
 .tt-l { text-align: left; } .tt-r { color: var(--muted); }
 .tt-stat { color: #ffffff; }
+/* TBC sockets: an empty socket reads grey like in game; the bonus is green only when
+   you'd actually earn it by matching every colour. */
+.tt-socket { color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.tt-socket-dot {
+  width: 11px; height: 11px; border-radius: 2px; display: inline-block;
+  border: 1px solid rgba(0, 0, 0, .6); box-shadow: 0 0 0 1px rgba(255, 255, 255, .18);
+}
+.tt-socket-bonus { color: #1eff00; }
 .tt-req { color: #ffffff; }
 .tt-set { margin-top: 8px; border-top: 1px solid var(--tooltip-border); padding-top: 6px; }
 .tt-set-name, .tt-set-name a.ilink { color: var(--gold); font-weight: 600; }
