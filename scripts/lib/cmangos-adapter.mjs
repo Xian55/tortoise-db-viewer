@@ -349,29 +349,68 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
     stats.empty.push(table);
   }
 
-  // ---- multi-entry spawns (TBC+) ----------------------------------------------------
-  // Vanilla cmangos keeps a pooled spawn's alternate creature ids in creature.id2..id4.
-  // TBC moved them to creature_spawn_entry(guid, entry) AND -- the part that bites --
-  // sets creature.id to 0 for those rows: 7696 of 7731 pooled guids. Left alone, every
-  // one of those spawns joins to no creature at all, so those NPCs would render as
-  // "no known spawn location". Fold the list back into the id..id4 slots.
-  if (staged.has("creature") && cmHas("creature_spawn_entry")) {
-    db.exec(`CREATE TEMP TABLE _se AS
-      SELECT guid, entry, ROW_NUMBER() OVER (PARTITION BY guid ORDER BY entry) rn
-      FROM cm.creature_spawn_entry`);
-    db.exec(`CREATE INDEX _se_g ON _se(guid, rn)`);
-    const pick = (n) => `(SELECT entry FROM _se WHERE guid = \`${PFX}creature\`.guid AND rn = ${n})`;
-    // Turtle's schema has 4 slots; a handful of guids list up to 8 entries, so the tail
-    // is dropped. Report it rather than silently truncating.
-    const over = db.prepare(`SELECT COUNT(*) n FROM (SELECT guid FROM _se GROUP BY guid HAVING COUNT(*) > 4)`).get().n;
+  // ---- pooled spawns (TBC+) ----------------------------------------------------------
+  // Vanilla cmangos keeps a pooled spawn's alternate ids in creature.id2..id4. TBC moved
+  // them out AND -- the part that bites -- sets the spawn row's `id` to 0, so those
+  // spawns join to no template at all and the entity renders as "no known spawn
+  // location". There are TWO such mechanisms and both must be read:
+  //   <kind>_spawn_entry(guid, entry)      the direct list
+  //   spawn_group_spawn -> spawn_group_entry  groups of candidates sharing a point,
+  //                                        keyed by spawn_group.Type (0 creature, 1 GO)
+  // Missing the second one is what hid every Outland ore vein: Khorium (1229 points),
+  // Fel Iron (618), Adamantite (611), Rich Adamantite (611) are placed ONLY as groups.
+  const poolSql = (kind, groupType) => {
+    const parts = [];
+    if (cmHas(`${kind}_spawn_entry`)) parts.push(`SELECT guid, entry FROM cm.\`${kind}_spawn_entry\``);
+    if (cmHas("spawn_group_spawn") && cmHas("spawn_group_entry") && cmHas("spawn_group")) {
+      parts.push(`SELECT sgs.Guid AS guid, sge.Entry AS entry
+        FROM cm.spawn_group_spawn sgs
+        JOIN cm.spawn_group sg ON sg.Id = sgs.Id AND sg.Type = ${groupType}
+        JOIN cm.spawn_group_entry sge ON sge.Id = sgs.Id`);
+    }
+    return parts.length ? parts.join("\nUNION\n") : null;
+  };
+
+  // Creatures keep the id..id4 shape the rest of the build expects.
+  const cPool = staged.has("creature") && poolSql("creature", 0);
+  if (cPool) {
+    db.exec(`CREATE TEMP TABLE _cp AS SELECT guid, entry,
+      ROW_NUMBER() OVER (PARTITION BY guid ORDER BY entry) rn FROM (${cPool})`);
+    db.exec(`CREATE INDEX _cp_g ON _cp(guid, rn)`);
+    const pick = (n) => `(SELECT entry FROM _cp WHERE guid = \`${PFX}creature\`.guid AND rn = ${n})`;
+    const over = db.prepare(`SELECT COUNT(*) n FROM (SELECT guid FROM _cp GROUP BY guid HAVING COUNT(*) > 4)`).get().n;
     db.exec(`UPDATE \`${PFX}creature\` SET
         id = COALESCE(${pick(1)}, id), id2 = ${pick(2)}, id3 = ${pick(3)}, id4 = ${pick(4)}
-      WHERE guid IN (SELECT guid FROM _se)`);
-    const fixed = db.prepare(`SELECT COUNT(DISTINCT guid) n FROM _se`).get().n;
-    db.exec(`DROP TABLE _se`);
+      WHERE guid IN (SELECT guid FROM _cp)`);
+    const fixed = db.prepare(`SELECT COUNT(DISTINCT guid) n FROM _cp`).get().n;
+    db.exec(`DROP TABLE _cp`);
     stats.spawnEntry = fixed;
-    console.log(`  cmangos-adapter: creature_spawn_entry -> id..id4 for ${fixed} pooled spawns`
+    console.log(`  cmangos-adapter: pooled creature spawns -> id..id4 for ${fixed} guids`
       + (over ? ` (${over} list >4 entries; extras dropped — schema has 4 slots)` : ""));
+  }
+
+  // Gameobjects have no id2..id4 column, so a point that can hold any of N nodes is
+  // EXPANDED into one staged row per candidate (synthetic guids past the real max).
+  // That is also the truthful rendering: each ore type really can appear there.
+  const gPool = staged.has("gameobject") && poolSql("gameobject", 1);
+  if (gPool) {
+    db.exec(`CREATE TEMP TABLE _gp AS SELECT guid, entry,
+      ROW_NUMBER() OVER (PARTITION BY guid ORDER BY entry) rn FROM (${gPool})`);
+    db.exec(`CREATE INDEX _gp_g ON _gp(guid, rn)`);
+    const cols = colsByTable.gameobject;
+    const rest = cols.filter((c) => c !== "guid" && c !== "id").map((c) => `g.\`${c}\``).join(", ");
+    const base = (db.prepare(`SELECT MAX(guid) m FROM \`${PFX}gameobject\``).get().m || 0) + 1e7;
+    // candidates 2..N become extra rows...
+    db.exec(`INSERT INTO \`${PFX}gameobject\` (${cols.map((c) => `\`${c}\``).join(",")})
+      SELECT ${base} + ROW_NUMBER() OVER (ORDER BY p.guid, p.rn), p.entry, ${rest}
+      FROM _gp p JOIN \`${PFX}gameobject\` g ON g.guid = p.guid WHERE p.rn > 1`);
+    // ...and candidate 1 fills the original row's empty id.
+    db.exec(`UPDATE \`${PFX}gameobject\` SET
+        id = COALESCE((SELECT entry FROM _gp WHERE guid = \`${PFX}gameobject\`.guid AND rn = 1), id)
+      WHERE guid IN (SELECT guid FROM _gp)`);
+    const n = db.prepare(`SELECT COUNT(DISTINCT guid) g, COUNT(*) c FROM _gp`).get();
+    db.exec(`DROP TABLE _gp`);
+    console.log(`  cmangos-adapter: pooled object spawns -> ${n.g} points expanded to ${n.c} rows`);
   }
 
   // ---- all-NULL audit -------------------------------------------------------------
