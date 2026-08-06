@@ -24,9 +24,16 @@
 // mirror branch/tag are dataset-aware. Maps/minimap stay on ASSETS_BASE (R2/Pages),
 // are not mirrored, and degrade to blank if R2 is unreachable (documented).
 
-const BASE = import.meta.env.BASE_URL; // e.g. "/tortoise-db-viewer/"
-const relPath = location.pathname.startsWith(BASE) ? location.pathname.slice(BASE.length) : "";
-const qs = new URLSearchParams(location.search);
+// NODE-SAFE MODULE SCOPE. This is a browser module, but src/constants.js imports
+// EXPANSION from here and constants.js is in turn imported by the BUILD scripts
+// (scripts/lib/itempeers.mjs, scripts/build-api.mjs) which run under plain Bun/Node --
+// no `location`, no Vite `import.meta.env`. Touching either unguarded up here crashes
+// `bun scripts/build-db.mjs` outright, so keep this block defensive.
+const ENV = import.meta.env ?? {};
+const BASE = ENV.BASE_URL ?? "/"; // e.g. "/tortoise-db-viewer/"
+const LOC = typeof location !== "undefined" ? location : { pathname: "", search: "" };
+const relPath = LOC.pathname.startsWith(BASE) ? LOC.pathname.slice(BASE.length) : "";
+const qs = new URLSearchParams(LOC.search);
 
 // Dataset registry. The site serves several DB copies chosen by URL path. Today:
 // "main" (vanilla/tortoise, at /) and "dev" (Turtle 1181dev branch, at /dev/). The
@@ -66,8 +73,13 @@ const DS =
   DATASETS[0];
 export const DATASET = DS.id;
 // Game version of the active dataset. Drives the handful of 1.12-vs-TBC enum
-// differences in constants.js -- see EXPANSION there.
-export const EXPANSION = DS.expansion || "vanilla";
+// differences in constants.js -- see EXPANSION there. In the browser it comes from the
+// resolved dataset; under the build scripts there is no URL to resolve, so honour the
+// same EXPANSION env build-db.mjs uses (keeps a Node-side consumer of constants.js on
+// the right enum tables).
+export const EXPANSION =
+  (typeof location === "undefined" ? globalThis.process?.env?.EXPANSION : null)
+  || DS.expansion || "vanilla";
 const IS_DEV = DATASET === "dev";
 
 const REPO = import.meta.env.VITE_GH_REPO || "Xian55/tortoise-db-viewer";
