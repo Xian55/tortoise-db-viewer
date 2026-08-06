@@ -1141,6 +1141,21 @@ a.ext { color: var(--gold); }
 .gt-ench { color: #b07fce; } .gt-suf { color: #74c98a; } .gt-unobt { color: #d0a94a; }
 .tt-line.tt-ench { color: #b07fce; margin-top: 3px; }
 .tt-line.tt-suffix { color: #74c98a; }
+/* TBC sockets. On a tile: a row of dots along the bottom-right, each ringed in its
+   socket's colour (--sc) so an empty or mismatched socket reads at a glance. */
+.gt-gems { position: absolute; right: 1px; bottom: 1px; display: flex; gap: 2px; }
+.gt-gemdot { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--sc);
+  background: rgba(0, 0, 0, .55); overflow: hidden; display: block; }
+.gt-gemdot.gd-empty { background: transparent; border-style: dashed; }
+.gt-gemdot.gd-off { box-shadow: 0 0 0 1px #d05b5b; }
+.gt-gemdot .gd-img { width: 100%; height: 100%; display: block; border-radius: 50%; }
+/* In the detail list: one line per socket, dot in the socket's colour. */
+.det-socket { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--sc);
+  display: inline-block; vertical-align: -1px; margin-right: 5px; }
+.det-sub.det-gem { color: var(--muted); }
+.det-gem-off { color: #d05b5b; cursor: help; }
+.det-gembonus { color: var(--muted); }
+.det-gembonus.is-on { color: #74c98a; }
 .gt-actions { position: absolute; top: -7px; right: -7px; gap: 2px; display: none; }
 .gear-tile:hover .gt-actions { display: flex; }
 .gt-btn { background: var(--panel); border: 1px solid var(--border); color: var(--text);

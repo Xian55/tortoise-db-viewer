@@ -4,11 +4,12 @@
 // { itemId, obtained } } }. Everything persists to localStorage -- there is no
 // backend -- so loadouts survive reloads on this browser.
 import { query, queryOne } from "./db.js";
-import { qItemsIn, qItemStatsIn, qEnchantsIn, qRandomSuffixIn, qItemSearchInv, qInstanceDropsIn, Q_ITEM_SET, Q_ITEMSET_BONUSES, Q_ITEMSET_MEMBERS } from "./queries.js";
+import { EXPANSION } from "./config.js";
+import { qItemsIn, qItemStatsIn, qEnchantsIn, qRandomSuffixIn, qItemSocketsIn, qEnchantTextIn, qItemSearchInv, qInstanceDropsIn, Q_ITEM_SET, Q_ITEMSET_BONUSES, Q_ITEMSET_MEMBERS } from "./queries.js";
 import { itemLink, questLink, spellLink, sourceTags, dungeonLink, npcLink, pct, iconImg, qualityColor, resolveSpellText, esc } from "./render.js";
 import { ftsQuery, trigramQuery } from "./search.js";
 import { loadSets, resolveWeights } from "./weightsets.js";
-import { GEAR_STAT_LABEL, STAT_WEIGHT_PRESETS, STAT_WEIGHT_PRESET_MAP, CLASS_MASK } from "./constants.js";
+import { GEAR_STAT_LABEL, STAT_WEIGHT_PRESETS, STAT_WEIGHT_PRESET_MAP, CLASS_MASK, MAX_LEVEL, SOCKET_COLOR, SOCKET_HEX, RACE_MASK, RACE_ALLIANCE_ALL, RACE_HORDE_ALL } from "./constants.js";
 
 const KEY = "tw_characters";
 
@@ -64,15 +65,20 @@ function slotInvFor(k, eqInv) {
   return SLOT_INV[k];
 }
 
-// Playable races (1.12 cores + Turtle customs High Elf 512 / Goblin 256) with the
-// allowable_race bit + side. Lets upgrades drop items a race can't use and
-// opposite-faction quest rewards. Only applied when the character's race is set.
-const RACES = [
-  { bit: 1, name: "Human", side: "A" }, { bit: 4, name: "Dwarf", side: "A" },
-  { bit: 8, name: "Night Elf", side: "A" }, { bit: 64, name: "Gnome", side: "A" }, { bit: 512, name: "High Elf", side: "A" },
-  { bit: 2, name: "Orc", side: "H" }, { bit: 16, name: "Undead", side: "H" }, { bit: 32, name: "Tauren", side: "H" },
-  { bit: 128, name: "Troll", side: "H" }, { bit: 256, name: "Goblin", side: "H" },
-];
+// Playable races with the allowable_race bit + side. Lets upgrades drop items a race
+// can't use and opposite-faction quest rewards. Only applied when the race is set.
+//
+// Derived from RACE_MASK rather than listed here, because the bits are NOT stable
+// across expansions: 512 is Turtle's High Elf (Alliance) but TBC's Blood Elf (HORDE).
+// A hardcoded copy of this table is how a Draenei/Blood Elf import silently lost its
+// race -- the name matched nothing -- and how 512 would have been filed on the wrong
+// faction. RACE_MASK carries the 1.12 cores plus, on TBC, Blood Elf + Draenei; the
+// Turtle-custom playables are additions to the vanilla eight. Side comes from the same
+// masks quest gating uses, so the two can't disagree.
+const RACE_EXTRA = EXPANSION === "tbc" ? [] : [[512, "High Elf"], [256, "Goblin"]];
+const RACES = [...RACE_MASK, ...RACE_EXTRA]
+  .map(([bit, name]) => ({ bit, name, side: (bit & RACE_ALLIANCE_ALL) ? "A" : (bit & RACE_HORDE_ALL) ? "H" : null }))
+  .sort((a, b) => (a.side === b.side ? a.name.localeCompare(b.name) : (a.side === "A" ? -1 : 1)));
 const sideOfRace = (bit) => RACES.find((r) => r.bit === bit)?.side || null;
 // accept a race from the addon JSON as a bit number or a name ("Night Elf"/"NightElf")
 function raceBitFrom(v) {
@@ -124,7 +130,9 @@ const round1 = (n) => Math.round(n * 10) / 10;
 // always win). Draws from the Leveling presets below 58, else Max level. Just a
 // default -- the picker overrides it.
 function guessSpec(totals, level) {
-  const group = level < 58 ? "Leveling" : "Max level";
+  // "near the cap" is where max-level itemisation starts mattering: 58 on 1.12, 68 on
+  // TBC. Hardcoding 58 would have filed every level 60-67 TBC character as a leveler.
+  const group = level < MAX_LEVEL - 2 ? "Leveling" : "Max level";
   let best = null, bestScore = -Infinity;
   for (const p of STAT_WEIGHT_PRESETS) {
     if (p.group !== group) continue;
@@ -141,12 +149,25 @@ let _gear = null;
 async function gearData() {
   if (_gear) return _gear;
   const [cands, stats] = await Promise.all([
+    // "Obtainable" is four conditions, and the third is the one that bit:
+    //  - not a dev/junk row (hidden)
+    //  - not TEMPORARY: `duration` is a self-destruct timer, so these are encounter
+    //    props, not gear -- Kael'thas' Warp Slicer & co (15 min), Andonisus (5 min),
+    //    the Hallow's End masks. 35 items on TBC, all correctly caught, none legit.
+    //  - not flagged 'unobtainable'. This USED to be only an EXISTS check for *any*
+    //    item_sources row -- but 'unobtainable' IS such a row, so being marked junk
+    //    was itself accepted as proof the item had a source, and every test/
+    //    placeholder item sailed through into the suggestions.
+    //  - and still has at least one real source.
     query(`SELECT i.entry, i.name, i.quality, i.inventory_type AS inv, i.item_level AS ilvl, i.required_level AS req,
                   i.quest_min_level AS qml, i.quest_faction AS qf, i.allowable_race AS ar,
                   i.class AS icls, i.subclass AS isub, i.allowable_class AS ac, i.delay AS delay, di.icon
            FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
            WHERE i.inventory_type IN (${ALL_INV.join(",")}) AND i.name <> ''
-             AND EXISTS (SELECT 1 FROM item_sources s WHERE s.item = i.entry)`, []),
+             AND i.hidden = 0
+             AND COALESCE(i.duration, 0) = 0
+             AND NOT EXISTS (SELECT 1 FROM item_sources s WHERE s.item = i.entry AND s.source = 'unobtainable')
+             AND EXISTS (SELECT 1 FROM item_sources s WHERE s.item = i.entry AND s.source <> 'unobtainable')`, []),
     query(`SELECT item, stat, value FROM item_stats WHERE stat IN (${SCORE_KEYS.map((k) => `'${k}'`).join(",")})`, []),
   ]);
   const statMap = new Map();
@@ -513,10 +534,23 @@ function upsert(ch) { const l = load(); const i = l.findIndex((c) => c.id === ch
 function remove(id) { persist(load().filter((c) => c.id !== id)); }
 function newId() { return "c" + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
 
+// Hover text for a tile's socket dots: what is in each socket and whether the item's
+// socket bonus is being earned.
+const socketTitle = (si) => {
+  const parts = si.colors.map((c, i) => {
+    if (!si.gems[i]) return `${SOCKET_COLOR[c] || "?"} socket: empty`;
+    return `${SOCKET_COLOR[c] || "?"} socket${si.matched[i] ? "" : " (colour mismatch)"}`;
+  });
+  if (si.bonus) parts.push(`Socket bonus ${si.bonusActive ? "active" : "inactive"}: ${si.bonus.name || ""}`);
+  return parts.join("\n");
+};
+
 const filledCount = (ch) => Object.values(ch.slots || {}).filter((s) => s && s.itemId).length;
 
 // GearExport-compatible export: array of { name, race?, class?, slots } (drop our
-// internal id/settings). race/class round-trip as names; slots keep enchantId.
+// internal id/settings). race/class round-trip as names; slots are passed through
+// whole, so enchantId/suffixId/gems survive a round trip without being enumerated
+// here (the same reason the ?loadout= share link can just carry ch.slots).
 const toExportJson = (ch) => {
   const out = { name: ch.name };
   if (ch.race) out.race = RACES.find((r) => r.bit === ch.race)?.name;
@@ -526,8 +560,8 @@ const toExportJson = (ch) => {
 };
 
 // Normalize one imported { name, race?, class?, slots } loadout into a stored
-// character. Keeps only known slot keys; accepts { itemId, enchantId?, obtained }
-// or a bare numeric item id.
+// character. Keeps only known slot keys; accepts { itemId, enchantId?, gems?,
+// obtained } or a bare numeric item id.
 function normalize(entry) {
   const slots = {};
   const src = entry && typeof entry.slots === "object" && entry.slots ? entry.slots : {};
@@ -539,15 +573,27 @@ function normalize(entry) {
     if (!itemId) continue;
     const enchantId = obj && v.enchantId ? Number(v.enchantId) : 0;
     const suffixId = obj && v.suffixId ? Number(v.suffixId) : 0;
-    slots[k] = { itemId, obtained: obj && "obtained" in v ? !!v.obtained : true, ...(enchantId ? { enchantId } : {}), ...(suffixId ? { suffixId } : {}) };
+    const gems = obj ? normGems(v.gems) : null;
+    slots[k] = { itemId, obtained: obj && "obtained" in v ? !!v.obtained : true, ...(enchantId ? { enchantId } : {}), ...(suffixId ? { suffixId } : {}), ...(gems ? { gems } : {}) };
   }
   const race = raceBitFrom(entry && entry.race);
   const cls = classBitFrom(entry && entry.class);
   const level = Math.round(Number(entry && entry.level)) || 0;
   return {
     id: newId(), name: String((entry && entry.name) || "Imported character").slice(0, 60), slots,
-    ...(race ? { race } : {}), ...(cls ? { cls } : {}), ...(level > 0 && level <= 60 ? { level } : {}),
+    ...(race ? { race } : {}), ...(cls ? { cls } : {}), ...(level > 0 && level <= MAX_LEVEL ? { level } : {}),
   };
+}
+
+// GearExport reports a socketed item's gems as enchant ids, POSITIONALLY -- index i is
+// socket i, so an empty socket has to stay a hole rather than shift the rest left (the
+// socket's colour is what decides whether the item's socket bonus is active). Trailing
+// empties are dropped; anything past the 3rd socket is not a thing in TBC.
+function normGems(v) {
+  if (!Array.isArray(v)) return null;
+  const g = v.slice(0, 3).map((x) => Number(x) || 0);
+  while (g.length && !g[g.length - 1]) g.pop();
+  return g.length ? g : null;
 }
 
 function exportChar(ch, msgEl) {
@@ -648,6 +694,69 @@ export async function showCharacter(idOrChar, navigate) {
   }
   // suffix stat bonus per slot (added to the equipped item's stats)
   const slotBonus = (k) => { const sid = ch.slots?.[k]?.suffixId; return sid ? (suffixMap.get(sid)?.stats || {}) : null; };
+
+  // ---- TBC sockets ------------------------------------------------------------
+  // Two lookups, both TBC-only and both optional: the socket LAYOUT of each equipped
+  // item (colours + the bonus for filling them), and the display text/derived stats
+  // of every enchant involved -- the gems the loadout has socketed AND those socket
+  // bonuses, which are the same kind of row. On a 1.12 dataset the tables/columns
+  // don't exist, the catch fires, and the sheet renders exactly as it always did.
+  const gemIds = [...new Set(SLOTS.flatMap((s) => ch.slots?.[s.k]?.gems || []).filter(Boolean))];
+  const socketMap = new Map();  // item id -> { s1, s2, s3, bonus }
+  const gemMap = new Map();     // enchant id -> { name, stats, color, item, item_name, quality, icon }
+  if (ids.length) {
+    try { for (const r of await query(qItemSocketsIn(ids.length), ids)) if (r.s1) socketMap.set(r.entry, r); }
+    catch { /* pre-TBC dataset: no socket columns */ }
+  }
+  {
+    const bonusIds = [...new Set([...socketMap.values()].map((r) => r.bonus).filter(Boolean))];
+    const want = [...new Set([...gemIds, ...bonusIds])];
+    if (want.length) {
+      try {
+        for (const r of await query(qEnchantTextIn(want.length), want)) {
+          let stats = null;
+          try { stats = r.stats ? JSON.parse(r.stats) : null; } catch { stats = null; }
+          gemMap.set(r.id, { ...r, stats });
+        }
+      } catch { /* pre-TBC dataset: no enchant_text/gem_properties */ }
+    }
+  }
+
+  // What's socketed in one slot, and whether that earns the item's socket bonus.
+  // The bonus needs EVERY socket filled with a colour-matching gem; a gem's colour is
+  // a mask (purple = red|blue) so matching is a bitwise test, not equality.
+  const socketInfo = (k) => {
+    const slot = ch.slots?.[k];
+    const sk = slot?.itemId ? socketMap.get(slot.itemId) : null;
+    if (!sk) return null;
+    const colors = [sk.s1, sk.s2, sk.s3].filter(Boolean);
+    if (!colors.length) return null;
+    const gems = slot.gems || [];
+    const matched = colors.map((c, i) => {
+      const g = gems[i] ? gemMap.get(gems[i]) : null;
+      return !!(g && g.color && (g.color & c));
+    });
+    const filled = colors.every((_, i) => !!gems[i]);
+    const bonus = sk.bonus ? gemMap.get(sk.bonus) : null;
+    return { colors, gems, matched, filled, bonus, bonusActive: filled && matched.every(Boolean) };
+  };
+
+  // Stats the gems in a slot contribute, plus its socket bonus when active. Kept OUT
+  // of slotBonus deliberately: slotBonus is also the upgrade finder's baseline, and
+  // scoring a gemmed item against un-gemmed candidates would hide real upgrades (you
+  // would re-socket the replacement). Totals below want them; the comparison doesn't.
+  const slotGemStats = (k) => {
+    const si = socketInfo(k);
+    if (!si) return null;
+    const out = {};
+    for (const gid of si.gems) {
+      const g = gid ? gemMap.get(gid) : null;
+      if (g?.stats) for (const s in g.stats) out[s] = (out[s] || 0) + g.stats[s];
+    }
+    if (si.bonusActive && si.bonus?.stats) for (const s in si.bonus.stats) out[s] = (out[s] || 0) + si.bonus.stats[s];
+    return Object.keys(out).length ? out : null;
+  };
+
   if (ids.length) {
     let items, stats;
     try { [items, stats] = await Promise.all([query(qItemsIn(ids.length), ids), query(qItemStatsIn(ids.length), ids)]); }
@@ -662,6 +771,8 @@ export async function showCharacter(idOrChar, navigate) {
       if (m) for (const k in m) statTotals[k] = (statTotals[k] || 0) + m[k];
       const bonus = slotBonus(s.k); // random-suffix stats
       if (bonus) for (const k in bonus) statTotals[k] = (statTotals[k] || 0) + bonus[k];
+      const gemSt = slotGemStats(s.k); // socketed gems + an earned socket bonus
+      if (gemSt) for (const k in gemSt) statTotals[k] = (statTotals[k] || 0) + gemSt[k];
     }
   }
 
@@ -678,6 +789,14 @@ export async function showCharacter(idOrChar, navigate) {
       slot?.obtained === false ? `<span class="gt-badge gt-unobt" title="Not yet obtained">◇</span>` : "",
     ].join("");
     const sufStatStr = suf?.stats ? Object.entries(suf.stats).map(([k, v]) => `+${v} ${GEAR_STAT_LABEL[k] || k}`).join(", ") : "";
+    // one dot per socket, in the socket's own colour: filled shows the gem, an empty
+    // or colour-mismatched socket is what the player actually wants to see at a glance.
+    const si = socketInfo(s.k);
+    const gemDots = si ? `<span class="gt-gems" title="${esc(socketTitle(si))}">${si.colors.map((c, i) => {
+      const g = si.gems[i] ? gemMap.get(si.gems[i]) : null;
+      const cls = !si.gems[i] ? "gd-empty" : si.matched[i] ? "gd-on" : "gd-off";
+      return `<span class="gt-gemdot ${cls}" style="--sc:${SOCKET_HEX[c] || "#888"}">${g?.icon ? iconImg(g.icon, "gd-img") : ""}</span>`;
+    }).join("")}</span>` : "";
     const ttData = [
       slot?.enchantId ? `data-tt-ench="${esc(ench?.name || `Enchant #${slot.enchantId}`)}"` : "",
       slot?.suffixId ? `data-tt-suffix="${esc(suf?.name || `Random suffix #${slot.suffixId}`)}"` : "",
@@ -689,7 +808,7 @@ export async function showCharacter(idOrChar, navigate) {
         ? `<span class="gear-icon miss" title="Item #${slot.itemId} — not in DB">?</span>`
         : `<span class="gear-icon empty"></span>`;
     return `<div class="gear-tile${slot?.itemId ? "" : " is-empty"}" data-slot="${s.k}">
-      <div class="gt-wrap">${icon}${badges ? `<span class="gt-badges">${badges}</span>` : ""}
+      <div class="gt-wrap">${icon}${gemDots}${badges ? `<span class="gt-badges">${badges}</span>` : ""}
         <span class="gt-actions">
           <button type="button" class="slot-set gt-btn" data-slot="${s.k}" title="Change ${esc(s.label)}">✎</button>
           ${slot?.itemId ? `<button type="button" class="slot-clr gt-btn" data-slot="${s.k}" title="Clear">✕</button>` : ""}
@@ -710,13 +829,31 @@ export async function showCharacter(idOrChar, navigate) {
       : slot?.itemId ? `<span class="muted">Item #${slot.itemId} — not in DB</span>` : `<span class="muted">empty</span>`;
     const enchLine = slot?.enchantId ? `<div class="det-sub det-ench">⚚ ${ench ? spellLink(ench.spell, ench.name) : `Enchant #${slot.enchantId}`}</div>` : "";
     const sufLine = suf?.stats ? `<div class="det-sub det-suf">✦ ${esc(suf.name || "")} <span class="muted">(${Object.entries(suf.stats).map(([k, v]) => `+${v} ${esc(GEAR_STAT_LABEL[k] || k)}`).join(", ")})</span></div>` : "";
+    // one line per socket (gem or "empty"), then the socket bonus with whether it's
+    // earned -- the whole reason socket colours matter.
+    const si2 = socketInfo(s.k);
+    const gemLines = si2 ? si2.colors.map((c, i) => {
+      const gid = si2.gems[i];
+      const g = gid ? gemMap.get(gid) : null;
+      const dot = `<span class="det-socket" style="--sc:${SOCKET_HEX[c] || "#888"}"></span>`;
+      if (!gid) return `<div class="det-sub det-gem">${dot}<span class="muted">Empty ${esc(SOCKET_COLOR[c] || "")} Socket</span></div>`;
+      const label = g?.item
+        ? itemLink(g.item, g.item_name, g.quality, g.icon)
+        : `<span>${esc(g?.name || `Gem #${gid}`)}</span>`;
+      const eff = g?.name ? ` <span class="muted">${esc(g.name)}</span>` : "";
+      const warn = si2.matched[i] ? "" : ` <span class="det-gem-off" title="This gem's colour does not match the socket, so the item's socket bonus is not active">✕</span>`;
+      return `<div class="det-sub det-gem">${dot}${label}${eff}${warn}</div>`;
+    }).join("") : "";
+    const bonusLine = si2?.bonus
+      ? `<div class="det-sub det-gembonus${si2.bonusActive ? " is-on" : ""}">◈ Socket bonus: ${esc(si2.bonus.name || "")} <span class="muted">(${si2.bonusActive ? "active" : si2.filled ? "colours don't match" : "sockets not filled"})</span></div>`
+      : "";
     const icon = it
       ? `<a class="ilink det-icon" href="?item=${it.entry}" style="border-color:${qualityColor(it.quality)}">${iconImg(it.icon, "gt-img")}</a>`
       : `<span class="det-icon empty"></span>`;
     return `<div class="det-slot${slot?.itemId ? "" : " is-empty"}" data-slot="${s.k}">
       ${icon}
       <div class="det-body"><span class="det-slot-label">${esc(s.label)}</span>
-        <div class="det-name">${nameLine}</div>${enchLine}${sufLine}</div>
+        <div class="det-name">${nameLine}</div>${enchLine}${sufLine}${gemLines}${bonusLine}</div>
       <span class="det-actions">
         <button type="button" class="slot-set gt-btn" data-slot="${s.k}" title="Change">✎</button>
         ${slot?.itemId ? `<button type="button" class="slot-clr gt-btn" data-slot="${s.k}" title="Clear">✕</button>` : ""}</span>
@@ -744,7 +881,7 @@ export async function showCharacter(idOrChar, navigate) {
     setsHtml = setsSection(data.filter(Boolean).sort((a, b) => b.have - a.have));
   }
 
-  const defaultSpec = ch.spec || guessSpec(statTotals, ch.level || 60);
+  const defaultSpec = ch.spec || guessSpec(statTotals, ch.level || MAX_LEVEL);
   app.innerHTML = `<div class="char-view">
     <h1 class="char-title">${esc(ch.name)}</h1>
     <div class="char-toolbar">
@@ -785,7 +922,7 @@ export async function showCharacter(idOrChar, navigate) {
       </div>
       <div id="charSpecWeights" class="spec-weights"></div>
       <div id="charCustom" class="cw-editor"${defaultSpec === "custom" ? "" : " hidden"}>${customEditor(ch.customWeights)}</div>
-      <p class="muted up-note">Ranks obtainable items you could equip by level ${(ch.level || 60) + (ch.lookAhead ?? 3)} (your level + look-ahead).</p>
+      <p class="muted up-note">Ranks obtainable items you could equip by level ${(ch.level || MAX_LEVEL) + (ch.lookAhead ?? 3)} (your level + look-ahead).</p>
       <div id="charUpList"></div>
     </div>
   </div>`;
@@ -842,7 +979,7 @@ export async function showCharacter(idOrChar, navigate) {
   const clamp = (v, lo, hi, dflt) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : dflt; };
   const runUpgrades = async () => {
     const specId = specSel.value;
-    const level = clamp(lvlIn.value, 1, 60, 60);
+    const level = clamp(lvlIn.value, 1, MAX_LEVEL, MAX_LEVEL);
     const lookAhead = clamp(aheadIn.value, 0, 20, 3);
     const topN = clamp(topNIn.value, 1, 30, 5);
     const includeDowngrades = downIn.checked;

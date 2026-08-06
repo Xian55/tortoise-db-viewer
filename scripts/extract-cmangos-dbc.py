@@ -175,13 +175,33 @@ def main():
     # socketBonus and a gem's granted effect actually say ("+6 Stamina"). Name is
     # field 13 in BOTH 1.12 (24f) and 2.4.3 (34f): the locale block that widened sits
     # after it. Verified: 2868 -> "+6 Stamina" (Cursed Vision of Sargeras' bonus).
+    #
+    # The numeric block ahead of the name is three parallel triples, and is likewise
+    # identical in both versions (it has to be -- the name sits right after it at 13):
+    #   1..3  type    4..6  amount_min    7..9  amount_max    10..12  arg
+    # Verified against the client: 2693 -> type 5 / amount 6 / arg 3, which reads
+    # "+6 Agility" (type 5 = STAT, arg 3 = ITEM_MOD agility) and matches its own name.
+    # Carrying these lets build-db derive REAL stats for gems instead of parsing the
+    # display string -- see statsFromEnchant in lib/itemstats.mjs. Most TBC gems are
+    # type 3 (the effect is a spell), so the string would not have been enough anyway.
     rows = dbc_opt("SpellItemEnchantment.dbc")
     if rows:
         v, s, nf = rows
-        ench = [{"id": r[0], "name": s(r[F["sie_name"]])} for r in v if s(r[F["sie_name"]])]
+        ench = []
+        for r in v:
+            nm = s(r[F["sie_name"]])
+            if not nm:
+                continue
+            eff = [{"type": r[1 + i], "amount": r[4 + i] or r[7 + i], "arg": r[10 + i]}
+                   for i in range(3) if r[1 + i]]
+            e = {"id": r[0], "name": nm}
+            if eff:
+                e["eff"] = eff
+            ench.append(e)
         out["spell_item_enchantment"] = ench
-        sample = next((e for e in ench if e["id"] == 2868), ench[0])
-        print(f"SpellItemEnchantment [{nf}f] {len(v)} rows -> {len(ench)} named | sample: {sample}")
+        sample = next((e for e in ench if e["id"] == 2693), ench[0])
+        neff = sum(1 for e in ench if "eff" in e)
+        print(f"SpellItemEnchantment [{nf}f] {len(v)} rows -> {len(ench)} named, {neff} w/effects | sample: {sample}")
 
     rows, s, nf = dbc("Spell.dbc")
     _d, _a = F["spell_description"], F["spell_aura_description"]

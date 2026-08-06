@@ -68,7 +68,31 @@ const SCHOOL_MAGIC = 126; // 2|4|8|16|32|64
 const SP_SCHOOL = { 2: "spHoly", 4: "spFire", 8: "spNature", 16: "spFrost", 32: "spShadow", 64: "spArcane" };
 
 // item_template stat_type id -> base stat key (see STAT_TYPE in src/constants.js).
+// The five 1.12 primaries are the only ids a vanilla item ever sets in these columns
+// -- everything else (crit, hit, ...) is an equip-spell aura there, read by
+// statsFromAuras. TBC moved the rest ONTO these columns as ratings, so the wider
+// ITEM_MOD_STAT map is folded in below; see statsFromColumns.
 const STAT_TYPE_KEY = { 4: "str", 3: "agi", 7: "sta", 5: "int", 6: "spi" };
+
+// ITEM_MOD id -> gear stat key. Ids match src/constants.js STAT_TYPE. Shared by two
+// readers: TBC item COLUMNS (statsFromColumns) and SpellItemEnchantment's type-5
+// effects (statsFromEnchant) -- both speak this same enum. Ids omitted here are the
+// ones with no GEAR_CRITERIA counterpart (resilience, expertise, armor pen, spell
+// penetration): 1.12 has no such stat, so there is no key to score them against.
+export const ITEM_MOD_STAT = {
+  3: "agi", 4: "str", 5: "int", 6: "spi", 7: "sta",
+  12: "def", 13: "dodge", 14: "parry", 15: "block",
+  16: "hit", 17: "hit", 18: "spHit",
+  19: "crit", 20: "crit", 21: "spCrit",
+  28: "haste", 29: "haste", 30: "haste", 36: "haste",
+  31: "hit", 32: "crit",
+  38: "ap", 39: "rangedAp", 40: "feralAp",
+  41: "heal", 42: "sp", 43: "mp5", 45: "sp", 46: "hp5",
+  // TBC-only stats. Safe to map unconditionally: a 1.12 item never sets these ids
+  // (measured across all of Turtle), so on a vanilla build they simply never fire --
+  // and GEAR_CRITERIA only offers them as filters on a TBC dataset.
+  35: "resil", 37: "expertise",
+};
 // resistance column -> stat key (no holy: the reference has no Holy Resistance option).
 const RES_COL = {
   fire_res: "firRes", nature_res: "natRes", frost_res: "froRes",
@@ -80,9 +104,16 @@ function add(out, key, v) {
   if (key && v) out[key] = (out[key] || 0) + v;
 }
 
+// Every stat_type id we can read off an item's columns. Vanilla items only ever set
+// the five primaries, so this is identical to STAT_TYPE_KEY on a 1.12 dataset (measured:
+// one stray Health row across all of Turtle). On TBC it recovers the ~4,700 rating rows
+// -- resilience, crit, spell crit, hit, defense, haste, expertise -- that item scoring
+// was otherwise blind to, since TBC itemises them as columns rather than equip auras.
+const COLUMN_STAT_KEY = { ...ITEM_MOD_STAT, ...STAT_TYPE_KEY };
+
 // Stats readable directly from item columns (base stats, armor, resistances, DPS).
 export function statsFromColumns(it, out = {}) {
-  for (let i = 1; i <= 10; i++) add(out, STAT_TYPE_KEY[it[`stat_type${i}`]], it[`stat_value${i}`] || 0);
+  for (let i = 1; i <= 10; i++) add(out, COLUMN_STAT_KEY[it[`stat_type${i}`]], it[`stat_value${i}`] || 0);
   add(out, "armor", it.armor || 0);
   for (const col in RES_COL) add(out, RES_COL[col], it[col] || 0);
   if (it.delay > 0) {
@@ -98,11 +129,30 @@ export function statsFromColumns(it, out = {}) {
 // `stances` is the spell's shapeshift-form mask: a non-zero mask means the whole
 // spell only applies while shapeshifted, so its attack power is druid-form-only
 // ("feral") AP that must NOT be scored as generic AP for other classes.
-export function statsFromAuras(effects, out = {}, spellName = "", stances = 0) {
+// MOD_STAT (aura 29) misc = base-stat index; -1 (0xFFFFFFFF unsigned) = all five.
+// MOD_RESISTANCE (aura 22) misc = a school MASK, like aura 13.
+const MOD_STAT_AURA = 29, MOD_RESISTANCE_AURA = 22;
+const MOD_STAT_KEY = { 0: "str", 1: "agi", 2: "sta", 3: "int", 4: "spi" };
+const RES_MASK = { 2: "firRes", 4: "natRes", 8: "froRes", 16: "shaRes", 64: "arcRes" };
+
+// `opts.baseStats` opts IN to auras 29/22 -- "+8 Strength" or "+3 Resist All" granted
+// by an equip SPELL rather than by an item column. Off by default, and deliberately:
+// item_stats reads base stats and resistances from the item's own columns, and ~120
+// Turtle / ~170 TBC items also carry one of these auras, so switching it on globally
+// would move existing item scores, peer medians and upgrade rankings. Gems need it
+// (most TBC base-stat gems ARE such a spell), so the enchant pass opts in; items keep
+// their long-standing behaviour. Enabling it for items is a real fix, but its own one.
+export function statsFromAuras(effects, out = {}, spellName = "", stances = 0, opts = {}) {
   const isVampirism = /^vampirism\b/i.test(spellName || ""); // "Vampirism 1".."Vampirism 5"
   for (const e of effects) {
     const v = (e.base || 0) + 1; // $sN convention: basePoints + 1
-    if (e.aura === MOD_SKILL_AURA) add(out, SKILL_STAT[e.misc], v);
+    if (opts.baseStats && e.aura === MOD_STAT_AURA) {
+      // misc arrives unsigned; -1 means "all stats" (Increased All Stats N).
+      if (e.misc === -1 || e.misc === 0xffffffff) for (const k in MOD_STAT_KEY) add(out, MOD_STAT_KEY[k], v);
+      else add(out, MOD_STAT_KEY[e.misc], v);
+    } else if (opts.baseStats && e.aura === MOD_RESISTANCE_AURA) {
+      for (const bit in RES_MASK) if (e.misc & bit) add(out, RES_MASK[bit], v);
+    } else if (e.aura === MOD_SKILL_AURA) add(out, SKILL_STAT[e.misc], v);
     else if (e.aura === 4) { if (isVampirism) add(out, "leech", v); } // % damage dealt -> healing
     else if (e.aura === 13) { // MOD_DAMAGE_DONE: split school-specific vs generic sp
       const school = e.misc & SCHOOL_MAGIC;   // magic-school bits only
@@ -110,5 +160,63 @@ export function statsFromAuras(effects, out = {}, spellName = "", stances = 0) {
     } else if (e.aura === 99) add(out, stances ? "feralAp" : "ap", v); // form-gated AP = feral
     else add(out, AURA_STAT[e.aura], v);
   }
+  return out;
+}
+
+// ---- SpellItemEnchantment effects (TBC gems + socket bonuses) ----------------
+//
+// A gem's granted effect and an item's socketBonus are both SpellItemEnchantment
+// rows, whose DBC carries three (type, amount, arg) triples. Only three of the
+// types can contribute a gear stat:
+//
+//   5 STAT       arg = ITEM_MOD id (the same enum item_template.stat_type uses),
+//                amount = the value. "+6 Agility" -> {type:5, amount:6, arg:3}.
+//   4 RESISTANCE arg = spell-school index, amount = the value.
+//   3 EQUIP_SPELL arg = a spell id, and the STATS ARE THE SPELL'S. Most TBC gems
+//                are this shape -- "+8 Spell Damage" is spell 9398, not a stat --
+//                so they resolve through the very same spell-aura derivation that
+//                produced item_stats. That is the point of routing it here: a gem
+//                and an item granting the same effect can never disagree.
+//
+// Everything else (2 DAMAGE, 6 TOTEM, 7 USE_SPELL, 8 PRISMATIC_SOCKET) and any
+// ITEM_MOD without a gear-criteria key (resilience, expertise, armor pen, spell
+// penetration -- 1.12 has no such stats, so GEAR_CRITERIA has no key for them)
+// contribute nothing. They still SHOW, via the enchant's own display text; they
+// just don't move a score. Widening GEAR_CRITERIA for them would ripple into the
+// browse filter UI and every stat-weight preset, which is a separate change.
+const ENCH_STAT = 5, ENCH_RESISTANCE = 4, ENCH_EQUIP_SPELL = 3;
+
+// (ITEM_MOD_STAT is declared near the top -- statsFromColumns needs it too.)
+
+// spell-school index -> resistance stat key (0 = physical/armor, 1 = holy: neither
+// is a gear criterion, matching RES_COL above).
+const RES_SCHOOL = { 2: "firRes", 3: "natRes", 4: "froRes", 5: "shaRes", 6: "arcRes" };
+
+// Stats granted by one SpellItemEnchantment. `effects`: [{type, amount, arg}].
+// `spellStats` maps spell id -> already-derived stats (build-db fills it during the
+// spells pass), which is how type-3 effects resolve. Absent entry -> contributes
+// nothing, which is correct: a spell we didn't ship can't be scored.
+export function statsFromEnchant(effects, spellStats, out = {}) {
+  // ITEM_MOD contributions are collected as a per-key MAX, not a sum. TBC splits one
+  // displayed rating across per-attack-type ids -- "+8 Critical Strike Rating" is
+  // stored as CRIT_MELEE_RATING 8 *and* CRIT_RANGED_RATING 8 (enchant 2735), and the
+  // same shape exists for hit and haste. Summing them reads the gem as +16 crit.
+  // Distinct keys are unaffected: melee hit (->hit) and spell hit (->spHit) still both
+  // land, because they are different stats that happen to share an enchant.
+  const mods = {};
+  for (const e of effects || []) {
+    if (!e || !e.type) continue;
+    if (e.type === ENCH_STAT) {
+      const k = ITEM_MOD_STAT[e.arg];
+      if (k) mods[k] = Math.max(mods[k] || 0, e.amount || 0);
+    } else if (e.type === ENCH_RESISTANCE) {
+      const k = RES_SCHOOL[e.arg];
+      if (k) mods[k] = Math.max(mods[k] || 0, e.amount || 0);
+    } else if (e.type === ENCH_EQUIP_SPELL) {
+      const st = spellStats && spellStats.get(e.arg);
+      if (st) for (const k in st) add(out, k, st[k]);
+    }
+  }
+  for (const k in mods) add(out, k, mods[k]);
   return out;
 }

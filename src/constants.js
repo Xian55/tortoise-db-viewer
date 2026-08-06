@@ -127,6 +127,10 @@ export const SKILL_RANK_ORDER = { Apprentice: 1, Journeyman: 2, Expert: 3, Artis
 // (60 * 5 on Tortoise). Anything requiring more needs +Skinning gear.
 // (60 * 5 on Tortoise; TBC raises the cap to 375 at level 70.)
 export const MAX_SKILL = EXPANSION === "tbc" ? 375 : 300;
+// Level cap. Drives the character sheet's level input and its upgrade look-ahead --
+// a TBC loadout is routinely 61-70, and clamping those to 60 silently discarded the
+// level the GearExport addon reported.
+export const MAX_LEVEL = EXPANSION === "tbc" ? 70 : 60;
 // Minimum Skinning skill needed to skin a creature of `level`. Server-exact --
 // mangos `Spell::CheckCast` (SPELL_EFFECT_SKINNING) computes
 //   ReqValue = (skillValue < 100 ? (level - 10) * 10 : level * 5)
@@ -145,15 +149,29 @@ export const RESISTANCES = [
 // Multi-criteria gear filter (item browse): ordered groups mirroring the keys in
 // the derived item_stats table. Keys MUST match item_stats.stat and the maps in
 // scripts/lib/itemstats.mjs.
+// 1.12 itemises avoidance/crit/hit as PERCENTAGES ("+1% Crit"); TBC replaced them with
+// RATINGS ("+20 Crit Rating"), which are the same stat key but a different unit and an
+// order of magnitude larger. The key stays stable so saved filters and weight sets keep
+// resolving -- only the label changes, so the browse column doesn't claim a rating is a
+// percent. Resilience and Expertise exist ONLY in TBC, so they are appended there
+// rather than shown as permanently-empty options on a 1.12 dataset.
+const TBC_RATING_LABEL = {
+  def: "Defense Rating", dodge: "Dodge Rating", parry: "Parry Rating", block: "Block Rating",
+  crit: "Crit Rating", spCrit: "Spell Crit Rating", hit: "Hit Rating", spHit: "Spell Hit Rating",
+  haste: "Haste Rating",
+};
+const rate = (k, label) => [k, EXPANSION === "tbc" ? (TBC_RATING_LABEL[k] || label) : label];
+const tbcOnly = (opts) => (EXPANSION === "tbc" ? opts : []);
+
 export const GEAR_CRITERIA = [
   { group: "Base Stats", options: [["str", "Strength"], ["agi", "Agility"], ["sta", "Stamina"], ["int", "Intellect"], ["spi", "Spirit"]] },
-  { group: "Defense", options: [["armor", "Armor"], ["def", "Defense"], ["dodge", "Dodge %"], ["parry", "Parry %"], ["block", "Block %"], ["firRes", "Fire Res"], ["natRes", "Nature Res"], ["froRes", "Frost Res"], ["shaRes", "Shadow Res"], ["arcRes", "Arcane Res"]] },
-  { group: "Offensive", options: [["ap", "Attack Power"], ["rangedAp", "Ranged Attack Power"], ["feralAp", "Feral Attack Power"], ["sp", "Spell Power"], ["heal", "Healing Power"], ["crit", "Crit %"], ["spCrit", "Spell Crit %"], ["hit", "Hit %"], ["spHit", "Spell Hit %"], ["dps", "Weapon DPS"]] },
+  { group: "Defense", options: [["armor", "Armor"], rate("def", "Defense"), rate("dodge", "Dodge %"), rate("parry", "Parry %"), rate("block", "Block %"), ...tbcOnly([["resil", "Resilience Rating"]]), ["firRes", "Fire Res"], ["natRes", "Nature Res"], ["froRes", "Frost Res"], ["shaRes", "Shadow Res"], ["arcRes", "Arcane Res"]] },
+  { group: "Offensive", options: [["ap", "Attack Power"], ["rangedAp", "Ranged Attack Power"], ["feralAp", "Feral Attack Power"], ["sp", "Spell Power"], ["heal", "Healing Power"], rate("crit", "Crit %"), rate("spCrit", "Spell Crit %"), rate("hit", "Hit %"), rate("spHit", "Spell Hit %"), ...tbcOnly([["expertise", "Expertise Rating"]]), ["dps", "Weapon DPS"]] },
   // School-specific spell power (aura 13, single-school mask). Generic "Spell Power"
   // above is the all-schools bonus; these only help spells of that school, so the
   // gear scorer counts them for matching specs only (e.g. Fire Dmg for a Fire mage).
   { group: "Spell School", options: [["spHoly", "Holy Dmg"], ["spFire", "Fire Dmg"], ["spFrost", "Frost Dmg"], ["spShadow", "Shadow Dmg"], ["spNature", "Nature Dmg"], ["spArcane", "Arcane Dmg"]] },
-  { group: "Utility", options: [["mp5", "Mana per 5"], ["hp5", "Health per 5"], ["haste", "Haste %"], ["leech", "Vampirism %"], ["runSpeed", "Run Speed %"], ["swimSpeed", "Swim Speed %"], ["mountSpeed", "Mount Speed %"]] },
+  { group: "Utility", options: [["mp5", "Mana per 5"], ["hp5", "Health per 5"], rate("haste", "Haste %"), ["leech", "Vampirism %"], ["runSpeed", "Run Speed %"], ["swimSpeed", "Swim Speed %"], ["mountSpeed", "Mount Speed %"]] },
   { group: "Weapon Skill", options: [["wSwords", "Swords"], ["wAxes", "Axes"], ["wMaces", "Maces"], ["wDaggers", "Daggers"], ["wPolearms", "Polearms"], ["w2hSwords", "2H Swords"], ["w2hAxes", "2H Axes"], ["w2hMaces", "2H Maces"], ["wBows", "Bows"], ["wGuns", "Guns"], ["wCrossbows", "Crossbows"]] },
   // Gathering-skill bonuses (MOD_SKILL auras, see itemstats.mjs SKILL_STAT). They
   // gate content rather than combat: skinning a level 61+ boss needs more than the
@@ -170,7 +188,7 @@ export const GEAR_STAT_LABEL = Object.fromEntries(GEAR_CRITERIA.flatMap((g) => g
 // (crit/hit) carry higher weights than raw stats since their values are small, and
 // armor a tiny one since its values are large. Rough starting points -- users tune
 // them freely in the UI. Keys MUST be GEAR_STAT_LABEL keys.
-export const STAT_WEIGHT_PRESETS = [
+const VANILLA_PRESETS = [
   // Max-level class/spec starters (standard 1.12 Classic theorycraft, approximate).
   // Existing ids kept so saved builds keep resolving. Customize any of them.
   { id: "warrior-dps", group: "Max level", label: "Warrior · Fury/Arms", weights: { str: 2, ap: 1, crit: 14, hit: 12, dps: 3, agi: 1 } },
@@ -213,6 +231,80 @@ export const STAT_WEIGHT_PRESETS = [
   // plus a little Intellect for the mana pool. (speed = swing time in seconds.)
   { id: "lvl-pala-tank", group: "Leveling", label: "Leveling · Paladin Tank", weights: { sta: 3, def: 6, dodge: 5, block: 4, str: 1, armor: 0.06, int: 0.5, speed: -3 } },
 ];
+
+// ---- TBC (2.4.3) presets ------------------------------------------------------
+//
+// A separate set is not cosmetic: 1.12 itemises avoidance/crit/hit as PERCENTAGES and
+// TBC as RATINGS, under the SAME stat keys. A vanilla preset's `crit: 14` means "14 per
+// 1% crit"; applied to a TBC item carrying +20 crit RATING it scores 280 instead of ~13,
+// so the vanilla set doesn't merely lose accuracy on TBC -- it mis-ranks gear by ~20x.
+//
+// Rather than hand-pick 20 sets of magic numbers, the weights below are written in the
+// SAME "per 1%" terms as the vanilla presets and converted to per-rating-point by one
+// table. That keeps the two sets directly comparable, puts the conversion in a single
+// auditable place, and means a reviewer only has to check the game constants.
+//
+// Level-70 rating conversions (2.4.3 gameplay constants): rating points per 1% of the
+// thing the stat buys. `def` is the exception and is per 1 point of defense SKILL,
+// because the vanilla weights it converts are themselves per skill point.
+//
+// expertise is 15.77 rather than the more familiar 3.94 on purpose: 3.94 rating = 1
+// expertise, but 1 expertise = 0.25% of attacks no longer dodged, so a full 1% costs
+// 3.94 / 0.25 = 15.77 rating. Using 3.94 here would silently value expertise 4x its
+// worth. That it lands on the same number as hit is the real result, not a coincidence
+// -- both buy "attacks that connect", so a spec's expertise weight equals its hit one.
+const RATING_CONV = {
+  crit: 22.08, spCrit: 22.08, hit: 15.77, spHit: 12.62, haste: 15.77,
+  resil: 39.42, def: 2.37, dodge: 18.92, parry: 23.65, block: 7.88, expertise: 15.77,
+};
+const toRatings = (w) => Object.fromEntries(Object.entries(w).map(([k, v]) =>
+  [k, RATING_CONV[k] ? Math.round((v / RATING_CONV[k]) * 1000) / 1000 : v]));
+const tbc = (id, group, label, weights) => ({ id, group, label, weights: toRatings(weights) });
+
+const TBC_PRESETS = [
+  // Ids match the vanilla set wherever the spec exists in both, so a saved build or a
+  // shared ?weights= link keeps resolving when the dataset changes.
+  // Melee anchor: ap = 1. TBC gives 1 Str = 2 AP for warrior/paladin, 1 for the rest.
+  tbc("warrior-dps", "Max level", "Warrior · Fury/Arms", { str: 2, ap: 1, crit: 14, hit: 18, expertise: 18, haste: 12, dps: 3, agi: 1 }),
+  tbc("warrior-tank", "Max level", "Warrior · Protection", { sta: 2.5, def: 14, dodge: 10, parry: 10, block: 6, resil: 4, str: 0.5, armor: 0.05, expertise: 8 }),
+  tbc("paladin-ret", "Max level", "Paladin · Retribution", { str: 2, ap: 1, crit: 12, hit: 18, expertise: 18, haste: 10, dps: 3, sp: 0.5 }),
+  tbc("paladin-prot", "Max level", "Paladin · Protection", { sta: 2.5, def: 14, dodge: 8, parry: 6, block: 6, str: 1, sp: 0.6, int: 0.3, armor: 0.05 }),
+  tbc("paladin-holy", "Max level", "Paladin · Holy", { heal: 1, mp5: 0.8, int: 0.4, sp: 0.4, spCrit: 6, haste: 6, spi: 0.1 }),
+  // Hunters scale off Agility (crit + ranged AP) and are hit-capped hard; ranged AP is
+  // tracked separately from melee AP (see itemstats.mjs), so both are weighted.
+  tbc("hunter-dps", "Max level", "Hunter · Ranged", { agi: 2, ap: 1, rangedAp: 1, crit: 12, hit: 20, haste: 10, dps: 2, int: 0.3 }),
+  tbc("rogue-dps", "Max level", "Rogue · Combat/Assassination", { agi: 2, ap: 1, crit: 14, hit: 20, expertise: 20, haste: 12, dps: 3 }),
+  tbc("priest-shadow", "Max level", "Priest · Shadow", { sp: 1, spShadow: 1, spCrit: 6, spHit: 14, haste: 8, int: 0.3, mp5: 0.2, sta: 0.5, spi: 0.2 }),
+  tbc("priest-heal", "Max level", "Priest · Holy/Discipline", { heal: 1, mp5: 0.8, int: 0.4, sp: 0.4, spi: 0.4, haste: 6, spCrit: 4 }),
+  tbc("shaman-enh", "Max level", "Shaman · Enhancement", { ap: 1, str: 1, agi: 1.5, crit: 10, hit: 20, expertise: 20, haste: 14, dps: 3, int: 0.3 }),
+  tbc("shaman-ele", "Max level", "Shaman · Elemental", { sp: 1, spNature: 1, spFire: 0.5, spCrit: 10, spHit: 14, haste: 8, int: 0.4, mp5: 0.2 }),
+  tbc("shaman-resto", "Max level", "Shaman · Restoration", { heal: 1, mp5: 0.8, int: 0.4, sp: 0.3, haste: 6, spi: 0.2 }),
+  tbc("mage-fire", "Max level", "Mage · Fire", { sp: 1, spFire: 1, spCrit: 12, spHit: 14, haste: 8, int: 0.4, mp5: 0.2 }),
+  tbc("mage-frost", "Max level", "Mage · Frost/Arcane", { sp: 1, spFrost: 1, spArcane: 0.5, spCrit: 8, spHit: 14, haste: 8, int: 0.5, mp5: 0.2 }),
+  tbc("warlock-dps", "Max level", "Warlock · DPS", { sp: 1, spShadow: 1, spFire: 1, spCrit: 8, spHit: 14, haste: 8, int: 0.4, mp5: 0.2, sta: 0.5 }),
+  tbc("druid-balance", "Max level", "Druid · Balance", { sp: 1, spNature: 1, spArcane: 1, spCrit: 10, spHit: 14, haste: 8, int: 0.4, mp5: 0.2 }),
+  tbc("feral-dps", "Max level", "Druid · Feral DPS", { agi: 2, str: 1.5, ap: 1, feralAp: 1, crit: 12, hit: 18, expertise: 18, haste: 10 }),
+  tbc("druid-feral-tank", "Max level", "Druid · Feral Tank", { sta: 2.5, agi: 2, feralAp: 0.5, armor: 0.06, def: 8, dodge: 10, resil: 4 }),
+  tbc("druid-resto", "Max level", "Druid · Restoration", { heal: 1, mp5: 0.8, int: 0.4, sp: 0.3, haste: 6, spi: 0.2 }),
+  tbc("caster-dps", "Max level", "Caster · DPS (generic)", { sp: 1, spHoly: 1, spFire: 1, spFrost: 1, spShadow: 1, spNature: 1, spArcane: 1, spCrit: 10, spHit: 14, haste: 8, int: 0.3, mp5: 0.3 }),
+  tbc("healer", "Max level", "Healer (generic)", { heal: 1, mp5: 0.8, sp: 0.5, int: 0.4, spi: 0.3, haste: 6 }),
+  tbc("tank-avoid", "Max level", "Tank · Avoidance (generic)", { def: 14, dodge: 10, parry: 10, block: 5, sta: 2, armor: 0.05, resil: 4 }),
+  // Arena/PvP: resilience is TBC's defining PvP stat and has no 1.12 counterpart, so
+  // these three have no vanilla equivalent and use new ids.
+  tbc("pvp-melee", "PvP", "PvP · Melee", { resil: 14, sta: 2.5, ap: 1, str: 1.5, agi: 1.5, crit: 8, hit: 14, expertise: 14, dps: 2 }),
+  tbc("pvp-caster", "PvP", "PvP · Caster", { resil: 14, sta: 2.5, sp: 1, spCrit: 8, spHit: 12, haste: 6, int: 0.3 }),
+  tbc("pvp-healer", "PvP", "PvP · Healer", { resil: 14, sta: 2.5, heal: 1, mp5: 0.6, int: 0.4, haste: 6, spi: 0.2 }),
+  // Leveling 60-70: survival + primary stat + throughput. Ratings are scarce and
+  // near-worthless at these levels, so they stay low.
+  tbc("lvl-melee", "Leveling", "Leveling · Melee (Str)", { sta: 2, str: 2, ap: 1, dps: 4, crit: 5 }),
+  tbc("lvl-melee-agi", "Leveling", "Leveling · Melee (Agi)", { sta: 2, agi: 2, ap: 1, dps: 4, crit: 5 }),
+  tbc("lvl-hunter", "Leveling", "Leveling · Hunter", { agi: 2, sta: 1.5, ap: 1, rangedAp: 1, dps: 3, int: 0.4 }),
+  tbc("lvl-caster", "Leveling", "Leveling · Caster", { sta: 1.5, sp: 1, spHoly: 1, spFire: 1, spFrost: 1, spShadow: 1, spNature: 1, spArcane: 1, int: 0.6, spi: 0.6, spCrit: 5 }),
+  tbc("lvl-healer", "Leveling", "Leveling · Healer", { sta: 1, heal: 1, int: 0.6, spi: 0.6, mp5: 0.6 }),
+  tbc("lvl-tank", "Leveling", "Leveling · Tank", { sta: 3, armor: 0.06, str: 1, def: 6, dodge: 5, block: 4 }),
+];
+
+export const STAT_WEIGHT_PRESETS = EXPANSION === "tbc" ? TBC_PRESETS : VANILLA_PRESETS;
 export const STAT_WEIGHT_PRESET_MAP = Object.fromEntries(STAT_WEIGHT_PRESETS.map((p) => [p.id, p]));
 
 // item acquisition sources (key/label, in display order) — powers the browse
