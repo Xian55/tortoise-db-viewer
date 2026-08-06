@@ -9,7 +9,7 @@ import { showCharacters, showCharacter, showSharedLoadout } from "./character.js
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
-import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, DATASETS, EXPANSION, getAtlasUrls } from "./config.js";
+import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
@@ -193,7 +193,11 @@ function addShareButton() {
   // the name in a tooltip card, not an <h1>).
   const anchor = app.querySelector("h1, .item-meta, .spell-sub");
   if (!anchor || (anchor.nextElementSibling && anchor.nextElementSibling.classList.contains("share-btn"))) return;
-  const url = `${location.origin}${import.meta.env.BASE_URL}${SHARE_PREFIX[param]}/${id}`;
+  // Unfurl-capable share link (see OG_BASE). Falls back to the plain app URL if
+  // no OG origin is configured, so a fork without the Worker still shares something.
+  const url = OG_BASE
+    ? `${OG_BASE}/${SHARE_PREFIX[param]}/${id}`
+    : `${location.origin}${import.meta.env.BASE_URL}?${param}=${id}`;
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "share-btn";

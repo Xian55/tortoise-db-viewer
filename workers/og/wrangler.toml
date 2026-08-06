@@ -1,0 +1,21 @@
+name = "tortoise-og"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# Serves the per-entity link-unfurl pages at og.tortoiseclothing.org/<prefix>/<id>.
+# `custom_domain = true` makes Cloudflare create + manage the DNS record for the
+# subdomain, so this needs no manual DNS entry.
+[[routes]]
+pattern = "og.tortoiseclothing.org"
+custom_domain = true
+
+# og-extra.json is imported by src/index.js. Wrangler bundles JSON imports directly,
+# so there's no rule needed -- it lands inside the script (107 KB of the 1 MB limit).
+
+# Exposes the deployed version id to the script, which keys the edge cache -- so a
+# redeploy invalidates stale renders instead of them sticking for the full s-maxage.
+[version_metadata]
+binding = "CF_VERSION"
+
+[observability]
+enabled = true
