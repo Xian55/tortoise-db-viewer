@@ -355,55 +355,50 @@ jobs:
           sparse-checkout: .github/scripts
           sparse-checkout-cone-mode: false
 
+      # TIMING, measured across runs 31103852579 / 31106167750 / 31111357604: attempt 1
+      # burns EXACTLY 10 minutes every time (deploy-pages' default timeout: 600000) and
+      # then reports failure, while attempts 2+ return in ~6s because they only report
+      # the already-created deployment. The site went live during attempt 4 in the run
+      # that passed. So the sync genuinely takes ~15-20 min for 94,930 OG stub files --
+      # it is SLOW, not failing, and re-deploying on top of an in-flight sync just
+      # thrashes it.
+      #
+      # Hence: create the deployment once with a SHORT timeout (we only need it queued,
+      # not watched), then be patient. Re-deploy only if a long poll shows the site
+      # really isn't updating.
       - id: t1
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 120000
         continue-on-error: true
       - id: c1
         if: always()
-        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 45
+        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 900
         continue-on-error: true
 
       - if: steps.c1.outcome == 'failure'
-        run: sleep 20
+        run: sleep 30
       - id: t2
         if: steps.c1.outcome == 'failure'
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 120000
         continue-on-error: true
       - id: c2
         if: steps.c1.outcome == 'failure'
-        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 45
+        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 900
         continue-on-error: true
 
       - if: steps.c2.outcome == 'failure'
-        run: sleep 40
+        run: sleep 60
       - id: t3
         if: steps.c2.outcome == 'failure'
         uses: actions/deploy-pages@v4
-        continue-on-error: true
-      - id: c3
-        if: steps.c2.outcome == 'failure'
-        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 45
-        continue-on-error: true
-
-      - if: steps.c3.outcome == 'failure'
-        run: sleep 60
-      - id: t4
-        if: steps.c3.outcome == 'failure'
-        uses: actions/deploy-pages@v4
-        continue-on-error: true
-      - id: c4
-        if: steps.c3.outcome == 'failure'
-        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 45
-        continue-on-error: true
-
-      - if: steps.c4.outcome == 'failure'
-        run: sleep 90
-      - id: t5
-        if: steps.c4.outcome == 'failure'
-        uses: actions/deploy-pages@v4
+        with:
+          timeout: 120000
         continue-on-error: true
 
       # THE verdict. Deliberately the only step here without continue-on-error: the job
       # passes iff the live site is serving this commit, whatever the attempts claimed.
       - name: Verify Pages is serving this commit
-        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 120
+        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 900
