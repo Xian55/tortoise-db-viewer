@@ -199,16 +199,46 @@ async function testQuestMap(single, multi) {
   return giver && turnin && objective && route && singleNoSwitch && btns.length > 1 && wIdx >= 0 && defaultParchment && worldTiles && worldGiver;
 }
 
-// Out-of-bounds parchment pruning: a spawn's ADT-assigned zone can differ from the
-// zone whose WorldMapArea actually contains it, so it projects off that parchment.
-// Quest 60145's kill target sits in "Northwind" but plots at Y~103 -> the Northwind
-// zone view must be dropped, leaving only Elwynn Forest + the World map.
+// Out-of-bounds parchment pruning (main.js inZoneBounds): a marker must never plot off
+// the parchment it's drawn on. This used to assert one quest whose kill target sat in
+// "Northwind" but projected to Y~103, so that view got dropped -- but ADT-exact zone
+// assignment fixed the underlying mismatch, and NO spawn projects out of bounds any
+// more (0 of 97,480 checked), so that quest, and every other, stopped exercising it.
+//
+// Asserting the INVARIANT instead keeps the guard alive without depending on one
+// quest's data staying broken: walk every zone view of a multi-zone quest and require
+// each marker to sit inside the parchment image. If zone assignment regresses and
+// spawns start landing off-map, this fails; today it passes because the pruning does
+// its job (and would still pass if the data is simply clean).
 async function testQuestMapBounds(id) {
   await nav(`?quest=${id}`);
   await page.waitForSelector("#questmapswitch button", { timeout: T }).catch(() => {});
   const btns = await page.$$eval("#questmapswitch button", (e) => e.map((b) => b.textContent.trim())).catch(() => []);
-  const ok = btns.includes("Elwynn Forest") && btns.some((b) => /world map/i.test(b)) && !btns.some((b) => /northwind/i.test(b));
-  console.log(`quest-map-bounds ${id}: zones=[${btns.join(", ")}] ok=${ok}`);
+  const zoneBtns = btns.filter((b) => !/world map/i.test(b));
+  let checked = 0, stray = [];
+  for (let i = 0; i < zoneBtns.length; i++) {
+    await page.evaluate((label) => {
+      const b = [...document.querySelectorAll("#questmapswitch button")].find((x) => x.textContent.trim() === label);
+      if (b) b.click();
+    }, zoneBtns[i]);
+    await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 350)); // let fitBounds settle before measuring
+    const res = await page.evaluate(() => {
+      const img = document.querySelector("#zonemap .leaflet-image-layer");
+      if (!img) return null;
+      const r = img.getBoundingClientRect(), M = 24; // px tolerance: icons are anchored, not centred
+      return [...document.querySelectorAll("#zonemap .leaflet-marker-icon")].map((m) => {
+        const b = m.getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+        return (cx >= r.left - M && cx <= r.right + M && cy >= r.top - M && cy <= r.bottom + M)
+          ? null : { cx: Math.round(cx), cy: Math.round(cy) };
+      }).filter(Boolean);
+    });
+    if (res === null) continue;
+    checked++;
+    if (res.length) stray.push(`${zoneBtns[i]}:${res.length}`);
+  }
+  const ok = btns.length > 1 && btns.some((b) => /world map/i.test(b)) && checked > 0 && stray.length === 0;
+  console.log(`quest-map-bounds ${id}: zones=[${btns.join(", ")}] viewsChecked=${checked} strayMarkers=[${stray.join(",")}] ok=${ok}`);
   return ok;
 }
 
@@ -264,7 +294,7 @@ smoke("quest no-provided 179", () => testQuestNoProvided(179));
 smoke("quest required-drops 179", () => testQuestRequiredDrops(179));
 smoke("quest kill-location 41189", () => testQuestKillLocation(41189));
 smoke("quest map 12/52", () => testQuestMap(12, 52));
-smoke("quest map-bounds 60145", () => testQuestMapBounds(60145));
+smoke("quest map-bounds 52", () => testQuestMapBounds(52));
 smoke("quest object-link 42087", () => testQuestObjectLink(42087));
 smoke("quest rep-link 14", () => testQuestRepLink(14));
 smoke("quest origin 41189", () => testQuestOrigin(41189));

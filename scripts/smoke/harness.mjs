@@ -10,8 +10,27 @@
 // Distinct dirs per shard give each process its own OPFS -> no shared SAHPool
 // lock, which is what lets shards run in parallel (see run.mjs).
 import puppeteer from "puppeteer-core";
+import { existsSync } from "node:fs";
 
-const CHROME = process.env.SMOKE_CHROME || "C:/Program Files/Google/Chrome/Application/chrome.exe";
+// Chrome executable. SMOKE_CHROME wins; otherwise probe the usual per-platform spots so
+// the suite runs unchanged on a dev Windows box, a mac, and the Linux CI runner (which
+// ships google-chrome preinstalled). Hardcoding the Windows path meant this could never
+// run in CI -- which is a large part of why the suite went unwatched for so long.
+const CHROME = process.env.SMOKE_CHROME || (() => {
+  const candidates = process.platform === "win32"
+    ? ["C:/Program Files/Google/Chrome/Application/chrome.exe",
+       "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"]
+    : process.platform === "darwin"
+      ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+      : ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+         "/usr/bin/chromium-browser", "/usr/bin/chromium", "/snap/bin/chromium"];
+  const found = candidates.find((p) => existsSync(p));
+  if (!found) {
+    console.error(`[smoke] no Chrome found. Tried:\n  ${candidates.join("\n  ")}\n`
+      + `Set SMOKE_CHROME to its path.`);
+  }
+  return found || candidates[0];
+})();
 export const BASE = process.env.SMOKE_BASE || "http://localhost:4317/tortoise-db-viewer/";
 export const BASE_PATH = new URL(BASE).pathname; // "/tortoise-db-viewer/"
 // domcontentloaded + an explicit waitForSelector is the real ready signal and

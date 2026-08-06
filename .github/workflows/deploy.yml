@@ -184,6 +184,20 @@ jobs:
       - name: Copy custom icons for OG embeds
         run: cp -r assets/icons/custom dist/icons/custom
 
+      # End-to-end gate. The suite existed but ran in NO workflow, so it silently rotted
+      # -- two tests had been failing against production data for some time and nobody
+      # saw it. It runs against the artifact we are about to publish (`dist`, via vite
+      # preview), so it catches a broken build BEFORE it reaches users.
+      #
+      # It needs the map/minimap trees, which are no longer in git, and the map tests
+      # genuinely require tiles to LOAD -- so fetch them first. Verified stable: 3
+      # consecutive full runs, 211 pass / 0 fail, zero flaky tests.
+      - name: Fetch map assets for the smoke suite
+        run: bun scripts/fetch-assets.mjs --only maps,minimap
+
+      - name: Smoke test the built site
+        run: bun run smoke
+
       # Per-entity Open Graph "stub" pages so pasted links (Discord/Twitter/Slack)
       # unfurl with the real title/description instead of index.html's generic meta
       # (crawlers don't run JS, and a static host can't vary a file by ?quest=N).
