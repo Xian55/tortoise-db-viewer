@@ -49,13 +49,14 @@ const ISOLATE = process.env.SMOKE_ISOLATE === "1";
 // ORB-blocks them), intentionally-sparse world-map tiles (empty ADT blocks 404 by
 // design), the main-dataset changelog.json (dev-only feature), and the CDN-mirror
 // probes (raw.githubusercontent / jsDelivr) that 404 until CI pushes the `cdn` branch.
-// wow.zamimg.com = Wowhead's creature webthumb CDN (render.js modelThumbUrl falls back
-// to it for display_ids we don't render ourselves). Exempt for the same reason the icon
-// CDN is: it's a third party whose CURRENT contents we don't control. Wowhead has since
-// dropped thumbs that scripts/data/model-thumb-missing.json still classifies as present
-// (e.g. npc/178/17842.webp now 404s as text/html, which Chrome then blocks via ORB), so
-// without this every NPC test fails on a cosmetic broken image. The real fix is
-// re-running scripts/probe-wowhead-thumbs.mjs to refresh that classification.
+// wow.zamimg.com = Wowhead's creature webthumb CDN, which render.js modelThumbUrl uses
+// for display_ids we don't render ourselves. Exempt for the same reason the icon CDN is:
+// a third party whose CURRENT contents we don't control -- it drops thumbs over time
+// (a re-probe on 2026-08-06 found 12 that had vanished), and a 404 served as text/html
+// gets ORB-blocked by Chrome, which would fail an NPC test over a cosmetic image.
+// NB: if you see a FLOOD of these locally, the cause is usually public/model-thumbs
+// being empty rather than Wowhead -- without its manifest every id falls back to the
+// CDN. `bun run assets -- --only model-thumbs` fixes that.
 export const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|zamimg\.com|minimap\/.+\.webp$|changelog\.json|raw\.githubusercontent\.com|cdn\.jsdelivr\.net/;
 // Benign *pageerror* messages. SPA nav (pushState) swaps #app out from under a
 // Leaflet/Pixi map whose queued animation callbacks then fire once against removed
