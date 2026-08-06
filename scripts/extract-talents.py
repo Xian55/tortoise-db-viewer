@@ -50,10 +50,16 @@ DATA = os.path.join(CLIENT, "Data")
 OUT = os.environ.get("TALENTS_OUT") or os.path.join(ROOT, "scripts", "data", "talents.json")
 if not os.path.isabs(OUT):
     OUT = os.path.join(ROOT, OUT)
-ARCHIVE_ORDER = [
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from clientprofile import PROFILE, archives, dbc_fields  # noqa: E402
+
+ARCHIVE_ORDER = archives([
     "dbc.MPQ", "patch.MPQ", "patch-2.MPQ", "patch-3.mpq", "patch-4.mpq", "patch-5.mpq",
     "patch-6.mpq", "patch-7.mpq", "patch-8.mpq", "patch-9.mpq", "patch-Y.mpq", "_Patch-W.mpq",
-]
+])
+F = dbc_fields()
+# 51 in vanilla, 61 at level 70.
+MAX_POINTS = 61 if PROFILE == "tbc" else 51
 # class bit (allowable_class mask) -> viewer slug (matches src/constants.js CLASS_MASK)
 CLASS_SLUG = {
     1: "warrior", 2: "paladin", 4: "hunter", 8: "rogue", 16: "priest",
@@ -133,14 +139,17 @@ def main():
     tab_rows, tab_str = load_dbc(tab_raw)
     tal_rows, _ = load_dbc(tal_raw)
 
-    # TalentTab (15 fields): id[0], name[1], ClassMask[12], OrderIndex[13] — verified
-    # against the client (every tab's [12] is exactly one class bit; [13] gives the
-    # correct in-game tab order, e.g. Arms/Fury/Protection = 0/1/2).
+    # TalentTab: id[0], name[1], then ClassMask/OrderIndex — verified against the client
+    # (every tab's ClassMask is exactly one class bit; OrderIndex gives the correct
+    # in-game tab order, e.g. Arms/Fury/Protection = 0/1/2). Vanilla (15 fields) puts
+    # them at [12]/[13]; TBC (23 fields) widens the name locale block from 9 to 17, which
+    # pushes them to [20]/[21]. See scripts/lib/clientprofile.py.
     tabs = {}
     for v in tab_rows:
         tid, name = v[0], tab_str(v[1])
-        mask = v[12] if len(v) > 12 else 0
-        order = v[13] if len(v) > 13 else 0
+        _cm, _oi = F["talenttab_class_mask"], F["talenttab_order"]
+        mask = v[_cm] if len(v) > _cm else 0
+        order = v[_oi] if len(v) > _oi else 0
         if mask in CLASS_SLUG:
             tabs[tid] = {"id": tid, "name": name, "mask": mask, "order": order, "talents": []}
 
@@ -170,13 +179,17 @@ def main():
     for c in classes.values():
         c["tabs"].sort(key=lambda t: t["order"])
 
-    out = {"maxPoints": 51, "classes": classes}
+    out = {"maxPoints": MAX_POINTS, "classes": classes}
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
         f.write("\n")
     ntal = sum(len(t["talents"]) for c in classes.values() for t in c["tabs"])
-    print(f"wrote {os.path.relpath(OUT, ROOT)} ({len(classes)} classes, {ntal} talents)")
+    try:
+        shown = os.path.relpath(OUT, ROOT)
+    except ValueError:   # TALENTS_OUT on a different Windows drive than the repo
+        shown = OUT
+    print(f"wrote {shown} ({len(classes)} classes, {ntal} talents)")
 
 
 if __name__ == "__main__":

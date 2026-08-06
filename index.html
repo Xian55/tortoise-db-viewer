@@ -11,11 +11,9 @@
 <body>
   <header class="topbar">
     <a class="brand nav" href="?">🐢<span class="brand-text"> Tortoise DB</span></a>
-    <div id="dsToggle" class="ds-toggle" role="group" aria-label="Data source">
-      <a data-ds="main" class="ds-btn" href="">Main</a>
-      <a data-ds="dev" class="ds-btn" href="">Dev</a>
-      <a data-ds="vanilla-cmangos" class="ds-btn" href="" title="Vanilla 1.12 (cMaNGOS)">cMaNGOS</a>
-    </div>
+    <!-- Pills are rendered from the config.js DATASETS registry by main.js, so adding a
+         matrix row is a one-line registry change instead of four edits in lockstep. -->
+    <div id="dsToggle" class="ds-toggle" role="group" aria-label="Data source"></div>
     <button id="navToggle" class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
     <nav class="topnav" id="topnav"><!-- mega-menu rendered by src/nav.js --></nav>
     <form id="searchForm" autocomplete="off">

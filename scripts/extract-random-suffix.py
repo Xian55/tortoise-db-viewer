@@ -39,13 +39,18 @@ STORMLIB = os.environ.get(
     os.path.join(ROOT, "..", "StormLib", "bin", "StormLib_dll", "x64", "Release", "StormLib.dll"),
 )
 DATA = os.path.join(CLIENT, "Data")
-OUT = os.path.join(ROOT, "scripts", "data", "random-suffix.json")
+OUT = os.environ.get("RANDOM_SUFFIX_OUT") or os.path.join(ROOT, "scripts", "data", "random-suffix.json")
+if not os.path.isabs(OUT):
+    OUT = os.path.join(ROOT, OUT)
 
-ARCHIVE_ORDER = [
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from clientprofile import archives  # noqa: E402
+
+ARCHIVE_ORDER = archives([
     "base.MPQ", "dbc.MPQ", "misc.MPQ", "patch.MPQ", "patch-2.MPQ",
     "patch-3.mpq", "patch-4.mpq", "patch-5.mpq", "patch-6.mpq",
     "patch-7.mpq", "patch-8.mpq", "patch-9.mpq", "patch-Y.mpq", "_Patch-W.mpq",
-]
+])
 
 STREAM_FLAG_READ_ONLY = 0x00000100
 

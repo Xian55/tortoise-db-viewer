@@ -531,6 +531,45 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
   under `scripts/smoke/tests/*.test.mjs` (bun test); see that dir's `CLAUDE.md` for the
   harness API (`nav`/`load`/`smoke`) and how to add one.
 
+### The `/tbc/cmangos` row (TBC 2.4.3)
+
+Second non-Turtle matrix row: cmangos's **TBC** world DB (`tbc-world-db.zip` →
+`tbcmangos.sqlite`) + a TBC 2.4.3 client. Built by the same adapter, selected with
+`EXPANSION=tbc`:
+
+```sh
+SQL_SOURCE=cmangos EXPANSION=tbc CMANGOS_DB=…/tbcmangos.sqlite \
+CMANGOS_DBC=scripts/data/cmangos-dbc-tbc.json \
+DATA_SUBDIR=data-tbc-cmangos ZONES_FILE=scripts/data/zones-tbc-cmangos.json \
+bun scripts/build-db.mjs
+```
+
+`EXPANSION` is what makes it a *version*, not just a source: it resolves the
+`scripts/data/<name>-tbc.json` client lookups (`clientData()`), suppresses the
+Turtle-custom flag (the vanilla id list would mark all 5.4k TBC additions custom), and
+blocks the Turtle instance-interior map fallback (1.12 art would be *wrong* for a TBC
+dungeon, not merely missing).
+
+**Client extraction** — `scripts/lib/clientprofile.py` holds the per-expansion MPQ order
+and DBC field offsets; `CLIENT_PROFILE=tbc` selects it. Two traps it exists to avoid:
+TBC keeps the whole `DBFilesClient\` tree in the **locale** archives (`Data\enGB\…`)
+while `Data\patch.MPQ` still exists, so the "no archives opened" guard passes and the run
+dies later; and localized strings widened from a 9-field block to 17, shifting every
+field after the first name. Offsets were derived by probing the client (locale blocks
+found by their zero-padding signature, numerics checked against known values), not from
+memory — only Spell (Description 138→161, ToolTip 147→178), TalentTab (ClassMask/Order
+12/13→20/21), SkillLineAbility (req_train_points 12→14) and ItemSet (+8) actually moved.
+
+**TBC-specific data shapes** the adapter handles: pooled spawns move to
+`creature_spawn_entry` **and set `creature.id = 0`** (7,696 of 7,733 — left alone those
+NPCs have no spawn at all), and `spell_template.School` is gone in favour of `SchoolMask`
+(derived back via `DERIVE`).
+
+**Known upstream gap:** cmangos's TBC-DB has no Outland spawns for Fel Iron / Adamantite /
+Khorium — they exist only inside Coilfang/Auchindoun. Outland herbs are complete. Not a
+build bug; the nodes are correctly flagged `gather='mining'` and simply have no
+`gameobject` rows on map 530.
+
 ### Binary assets live on R2, not git
 
 Client-derived **image** trees are no longer committed. CI still can't regenerate them

@@ -1,4 +1,9 @@
-// WoW 1.12 enum tables used to render item tooltips.
+// WoW enum tables used to render item tooltips. Baseline is 1.12; the few entries that
+// actually differ in TBC are keyed off EXPANSION (the active dataset's game version --
+// see the config.js DATASETS registry). Everything else is shared: TBC only ADDS ids
+// (gem item class, relic slot, rating stat types), and a vanilla row never carries them,
+// so those tables stay merged rather than forked.
+import { EXPANSION } from "./config.js";
 
 export const QUALITY = [
   { name: "Poor", color: "#9d9d9d" },
@@ -39,10 +44,25 @@ export const INV_TYPE = {
   25: "Thrown", 26: "Ranged (Gun/Wand)", 28: "Relic",
 };
 
-// stat_type -> label (1.12 used a small subset)
+// stat_type -> label. 1.12 only ever uses 0-7; TBC (2.0) introduced the combat-rating
+// stats, which most TBC gear carries. Additive, not forked -- a vanilla item never
+// stores 12+, so listing them here can't affect the vanilla datasets, and omitting them
+// would leave most TBC gear with blank stat lines.
 export const STAT_TYPE = {
   0: "Mana", 1: "Health", 3: "Agility", 4: "Strength", 5: "Intellect",
   6: "Spirit", 7: "Stamina",
+  12: "Defense Rating", 13: "Dodge Rating", 14: "Parry Rating", 15: "Block Rating",
+  16: "Melee Hit Rating", 17: "Ranged Hit Rating", 18: "Spell Hit Rating",
+  19: "Melee Crit Rating", 20: "Ranged Crit Rating", 21: "Spell Crit Rating",
+  22: "Melee Hit Avoidance Rating", 23: "Ranged Hit Avoidance Rating",
+  24: "Spell Hit Avoidance Rating", 25: "Melee Crit Avoidance Rating",
+  26: "Ranged Crit Avoidance Rating", 27: "Spell Crit Avoidance Rating",
+  28: "Melee Haste Rating", 29: "Ranged Haste Rating", 30: "Spell Haste Rating",
+  31: "Hit Rating", 32: "Crit Rating", 33: "Hit Avoidance Rating",
+  34: "Crit Avoidance Rating", 35: "Resilience Rating", 36: "Haste Rating",
+  37: "Expertise Rating", 38: "Attack Power", 39: "Ranged Attack Power",
+  40: "Feral Attack Power", 41: "Spell Healing Done", 42: "Spell Damage Done",
+  43: "Mana Regeneration", 44: "Armor Penetration Rating", 45: "Spell Power",
 };
 
 export const BONDING = {
@@ -86,7 +106,8 @@ export const GATHERING_SKILLS = new Set([356, 182, 393]); // Fishing, Herbalism,
 export const SKILL_RANK_ORDER = { Apprentice: 1, Journeyman: 2, Expert: 3, Artisan: 4, Master: 5 };
 // Max skill a profession can reach: World::GetConfigMaxSkillValue() = maxPlayerLevel*5
 // (60 * 5 on Tortoise). Anything requiring more needs +Skinning gear.
-export const MAX_SKILL = 300;
+// (60 * 5 on Tortoise; TBC raises the cap to 375 at level 70.)
+export const MAX_SKILL = EXPANSION === "tbc" ? 375 : 300;
 // Minimum Skinning skill needed to skin a creature of `level`. Server-exact --
 // mangos `Spell::CheckCast` (SPELL_EFFECT_SKINNING) computes
 //   ReqValue = (skillValue < 100 ? (level - 10) * 10 : level * 5)
@@ -227,11 +248,19 @@ export function setClassMask(members) {
   return m;
 }
 
-// allowable_race bitmask (1.12). Goblin (256) isn't playable.
-export const RACE_MASK = [
+// allowable_race bitmask. The two expansions DISAGREE about bit 512, so this table has
+// to be version-keyed rather than merged: on the 1.12 cores Turtle adds High Elf (512,
+// ALLIANCE) and Goblin (256, Horde) as custom playable races, while retail TBC uses 512
+// for Blood Elf (HORDE) and 1024 for Draenei (ALLIANCE). Treating 512 as Alliance on a
+// TBC dataset would put every Blood-Elf-only quest on the wrong side.
+const RACE_MASK_VANILLA = [
   [1, "Human"], [2, "Orc"], [4, "Dwarf"], [8, "Night Elf"],
   [16, "Undead"], [32, "Tauren"], [64, "Gnome"], [128, "Troll"],
 ];
+const RACE_MASK_TBC = [
+  ...RACE_MASK_VANILLA, [512, "Blood Elf"], [1024, "Draenei"],
+];
+export const RACE_MASK = EXPANSION === "tbc" ? RACE_MASK_TBC : RACE_MASK_VANILLA;
 const RACE_ALL = RACE_MASK.reduce((a, [b]) => a | b, 0);
 
 export function raceRestrictions(mask) {
@@ -246,8 +275,10 @@ export function raceRestrictions(mask) {
 // Turtle adds custom playable races on top of the 1.12 cores — High Elf (512,
 // Alliance) and Goblin (256, Horde) — so the common quest masks are 589 (Alliance)
 // and 434 (Horde). No gate (0), or both sides set, means anyone can pick it up.
-export const RACE_ALLIANCE_ALL = RACE_ALLIANCE | 512;  // + High Elf
-export const RACE_HORDE_ALL = RACE_HORDE | 256;        // + Goblin
+// TBC: 512 is Blood Elf (Horde) and 1024 Draenei (Alliance) -- the opposite side from
+// Turtle's High Elf (512). Observed TBC masks: 690 Alliance, 1101 Horde, 1791 = all ten.
+export const RACE_ALLIANCE_ALL = EXPANSION === "tbc" ? (RACE_ALLIANCE | 1024) : (RACE_ALLIANCE | 512);
+export const RACE_HORDE_ALL = EXPANSION === "tbc" ? (RACE_HORDE | 512) : (RACE_HORDE | 256);
 export function questFaction(reqraces) {
   const a = reqraces & RACE_ALLIANCE_ALL, h = reqraces & RACE_HORDE_ALL;
   if (a && !h) return "Alliance";

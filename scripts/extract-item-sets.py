@@ -33,11 +33,18 @@ STORMLIB = os.environ.get(
     os.path.join(ROOT, "..", "StormLib", "bin", "StormLib_dll", "x64", "Release", "StormLib.dll"),
 )
 DATA = os.path.join(CLIENT, "Data")
-OUT = os.path.join(ROOT, "scripts", "data", "item-sets.json")
-ARCHIVE_ORDER = [
+OUT = os.environ.get("ITEM_SETS_OUT") or os.path.join(ROOT, "scripts", "data", "item-sets.json")
+if not os.path.isabs(OUT):
+    OUT = os.path.join(ROOT, OUT)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from clientprofile import archives, dbc_fields  # noqa: E402
+
+F = dbc_fields()
+
+ARCHIVE_ORDER = archives([
     "dbc.MPQ", "patch.MPQ", "patch-2.MPQ", "patch-3.mpq", "patch-4.mpq", "patch-5.mpq",
     "patch-6.mpq", "patch-7.mpq", "patch-8.mpq", "patch-9.mpq", "patch-Y.mpq", "_Patch-W.mpq",
-]
+])
 
 
 class Storm:
@@ -103,18 +110,19 @@ def main():
             continue
         bonuses = []
         for k in range(8):
-            spell, thr = v[27 + k], v[35 + k]
+            spell, thr = v[F["itemset_spells"] + k], v[F["itemset_thresholds"] + k]
             if spell and thr:
                 bonuses.append([thr, spell])
         bonuses.sort()
-        items = [v[10 + k] for k in range(17) if v[10 + k]]
+        _it = F["itemset_items"]
+        items = [v[_it + k] for k in range(17) if v[_it + k]]
         out[str(sid)] = {"name": name, "bonuses": bonuses, "items": items}
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
         f.write("\n")
-    print(f"wrote {os.path.relpath(OUT, ROOT)} ({len(out)} item sets, "
+    print(f"wrote {os.path.relpath(OUT, ROOT) if os.path.splitdrive(OUT)[0].lower() == os.path.splitdrive(ROOT)[0].lower() else OUT} ({len(out)} item sets, "
           f"{sum(len(v['bonuses']) for v in out.values())} bonuses, "
           f"{sum(len(v['items']) for v in out.values())} members)")
 

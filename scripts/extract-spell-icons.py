@@ -52,20 +52,46 @@ STORMLIB = os.environ.get(
 CDN = os.environ.get("CDN", "https://render-us.worldofwarcraft.com/icons/56/{}.jpg")
 
 DATA = os.path.join(CLIENT, "Data")
-DB_PATH = os.path.join(ROOT, "public", "data", "tortoise.sqlite")
-OUT_ICONS = os.path.join(ROOT, "assets", "icons", "custom")
-OUT_MAP = os.path.join(ROOT, "scripts", "data", "spell-icon-map.json")
-OUT_LOOKUPS = os.path.join(ROOT, "scripts", "data", "spell-lookups.json")
+
+
+def _rel(p):
+    """Repo-relative for display; falls back to the absolute path across Windows drives."""
+    try:
+        return os.path.relpath(p, ROOT)
+    except ValueError:
+        return p
+
+
+def _p(env, *default):
+    """Env-overridable output path, resolved relative to the repo root."""
+    v = os.environ.get(env)
+    if not v:
+        return os.path.join(ROOT, *default)
+    return v if os.path.isabs(v) else os.path.join(ROOT, v)
+
+
+# Per-dataset: point TW_CLIENT + CLIENT_PROFILE at that expansion's client and give it
+# its own outputs. Both files are version-specific -- spellIconId numbering diverges (a
+# TBC-only id collides with a Turtle-custom one, which is how Mangle (Bear) ended up
+# rendering inv_letter_13), and the four index->value lookup DBCs have different row
+# counts per expansion (TBC: cast 60 / range 35 / duration 108 / radius 41).
+DB_PATH = _p("DB_PATH", "public", "data", "tortoise.sqlite")
+OUT_ICONS = _p("SPELL_ICONS_OUT", "assets", "icons", "custom")
+OUT_MAP = _p("SPELL_ICON_MAP_OUT", "scripts", "data", "spell-icon-map.json")
+OUT_LOOKUPS = _p("SPELL_LOOKUPS_OUT", "scripts", "data", "spell-lookups.json")
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from clientprofile import archives  # noqa: E402
 
 # Archive load order, lowest precedence first (a later archive overrides earlier).
-ARCHIVE_ORDER = [
+ARCHIVE_ORDER = archives([
     "base.MPQ", "dbc.MPQ", "misc.MPQ", "model.MPQ", "texture.MPQ",
     "interface.MPQ", "fonts.MPQ", "backup.MPQ",
     "patch.MPQ", "patch-2.MPQ",
     "patch-3.mpq", "patch-4.mpq", "patch-5.mpq", "patch-6.mpq",
     "patch-7.mpq", "patch-8.mpq", "patch-9.mpq",
     "patch-Y.mpq", "_Patch-W.mpq",
-]
+])
 
 # ---------------------------------------------------------------------------
 # StormLib (MPQ) via ctypes  -- same surface as extract-icons.py
@@ -364,7 +390,7 @@ def main():
     for h in open_archives.values():
         if h:
             storm.close(h)
-    print(f"wrote {written} custom spell icons -> {os.path.relpath(OUT_ICONS, ROOT)}")
+    print(f"wrote {written} custom spell icons -> {_rel(OUT_ICONS)}")
 
     # 6. spellIconId -> basename map (CDN + custom). Standard icons resolve from
     # the CDN by basename; custom ones from the atlas. build-db.mjs merges this
@@ -375,7 +401,7 @@ def main():
         json.dump(out, f, indent=0, sort_keys=True)
         f.write("\n")
     print(f"wrote {len(out)} spellIcon rows ({len(custom)} custom) "
-          f"-> {os.path.relpath(OUT_MAP, ROOT)}")
+          f"-> {_rel(OUT_MAP)}")
 
     # 7. index lookup tables (cast time / range / duration / radius) for the
     # detailed spell page -- build-db resolves spell_template indices via these.
@@ -385,7 +411,7 @@ def main():
         json.dump(lookups, f, indent=0, sort_keys=True)
         f.write("\n")
     print(f"wrote lookups: castTime={len(lookups['castTime'])} duration={len(lookups['duration'])} "
-          f"radius={len(lookups['radius'])} range={len(lookups['range'])} -> {os.path.relpath(OUT_LOOKUPS, ROOT)}")
+          f"radius={len(lookups['radius'])} range={len(lookups['range'])} -> {_rel(OUT_LOOKUPS)}")
 
 
 if __name__ == "__main__":

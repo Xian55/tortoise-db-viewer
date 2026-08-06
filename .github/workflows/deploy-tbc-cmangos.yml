@@ -1,0 +1,92 @@
+name: Deploy tbc/cmangos dataset
+
+# Builds ONLY the tbc/cmangos dataset DB and uploads it to R2 under the
+# data-tbc-cmangos/ prefix. Same shape as deploy-cmangos.yml, but the source is
+# cmangos's published TBC world DB (tbc-world-db.zip) and the build runs with
+# EXPANSION=tbc, which selects the TBC client-derived lookups committed under
+# scripts/data/*-tbc.json (cmangos-dbc, zones, minimap, talents, spell-icon-map,
+# spell-lookups, item-sets, skill-lines, locks, creature-families, random-suffix).
+#
+# The frontend + shared assets are owned by deploy.yml; the /tbc/cmangos app shell
+# ships with the main deploy. A new content hash auto-invalidates clients, so no Pages
+# redeploy is needed here.
+#
+# Rollout: run one normal `main` deploy first (ships config.js with the tbc-cmangos
+# registry entry, the app shell and VITE_DATA_BASE_TBC_CMANGOS), THEN run this once to
+# populate R2. After that, refreshes are pure R2 uploads.
+#
+# NOTE: unlike the older revisions of deploy-cmangos.yml, this job does NOT sync
+# maps/minimap. Those trees are no longer in git (R2 is their only copy -- see
+# scripts/lib/assets.mjs) and the old sync passed --delete, which from a checkout that
+# lacks them would erase the whole set. Publish them from a workstation with
+# `bun scripts/publish-assets.mjs` after a client re-extract.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-tbc-cmangos
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout site
+        uses: actions/checkout@v4
+
+      # cmangos ships the TBC world DB as SQLite on every release. Grab the latest.
+      - name: Download cmangos TBC SQLite DB
+        run: |
+          curl -fL -o tbc-world-db.zip \
+            https://github.com/cmangos/tbc-db/releases/latest/download/tbc-world-db.zip
+          unzip -o tbc-world-db.zip -d cmangos-db
+          ls -la cmangos-db
+          # the zip ships several DBs (characters/logs/world/realmd) -- we need the WORLD
+          # DB specifically, not `ls | head -1` (the same trap fixed in 6c2c9a8 for the
+          # Classic job, which picked classiccharacters.sqlite).
+          test -f cmangos-db/tbcmangos.sqlite || { echo "tbcmangos.sqlite missing"; exit 1; }
+          echo "CMANGOS_DB=cmangos-db/tbcmangos.sqlite" >> "$GITHUB_ENV"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Build SQLite database (tbc/cmangos)
+        run: bun scripts/build-db.mjs
+        env:
+          SQL_SOURCE: cmangos
+          # EXPANSION drives the version-specific build behaviour: it resolves the
+          # scripts/data/<name>-tbc.json client lookups, suppresses the Turtle-custom
+          # flag (the vanilla id list doesn't apply to 5.4k TBC additions), and blocks
+          # the Turtle instance-interior map fallback (1.12 art would be wrong, not
+          # missing, for a TBC dungeon).
+          EXPANSION: tbc
+          # CMANGOS_DB is exported to $GITHUB_ENV by the download step above
+          CMANGOS_DBC: scripts/data/cmangos-dbc-tbc.json
+          DATA_SUBDIR: data-tbc-cmangos
+          ZONES_FILE: scripts/data/zones-tbc-cmangos.json
+
+      # Same brotli + R2 layout as the main/dev/vanilla deploys, retargeted to the
+      # data-tbc-cmangos/ prefix. DB is immutable (cache-busted by ?v=); version.json is
+      # no-store so a new hash is picked up immediately.
+      - name: Upload tbc/cmangos DB to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          bun -e 'import {brotliCompressSync,constants} from "node:zlib"; import {readFileSync,writeFileSync} from "node:fs"; const i=readFileSync("public/data-tbc-cmangos/tortoise.sqlite"); const o=brotliCompressSync(i,{params:{[constants.BROTLI_PARAM_QUALITY]:11,[constants.BROTLI_PARAM_SIZE_HINT]:i.length}}); writeFileSync("public/data-tbc-cmangos/tortoise.sqlite.br",o); console.log("brotli",i.length,"->",o.length);'
+          aws s3 cp public/data-tbc-cmangos/tortoise.sqlite.br s3://tortoise-db-viewer/data-tbc-cmangos/tortoise.sqlite \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/octet-stream \
+            --content-encoding br
+          aws s3 cp public/data-tbc-cmangos/version.json s3://tortoise-db-viewer/data-tbc-cmangos/version.json \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json --cache-control "no-store"

@@ -9,7 +9,7 @@ import { showCharacters, showCharacter, showSharedLoadout } from "./character.js
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown } from "./search.js";
-import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, getAtlasUrls } from "./config.js";
+import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, DATASETS, EXPANSION, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
@@ -97,7 +97,12 @@ document.addEventListener("click", (e) => {
 // keeps the entity you're on. A `ds-dev` class on <body> drives the "dev" ribbon.
 {
   const ds = document.getElementById("dsToggle");
-  if (ds) ds.querySelector(`[data-ds="${DATASET}"]`)?.classList.add("on"); // active side (fixed per load)
+  if (ds) {
+    ds.innerHTML = DATASETS.map((d) =>
+      `<a data-ds="${d.id}" class="ds-btn" href=""${d.title ? ` title="${esc(d.title)}"` : ""}>${esc(d.label)}</a>`
+    ).join("");
+    ds.querySelector(`[data-ds="${DATASET}"]`)?.classList.add("on"); // active side (fixed per load)
+  }
   if (DATASET === "dev") document.body.classList.add("ds-dev");
   syncDsToggle();
 }
@@ -278,10 +283,10 @@ function syncDsToggle() {
   const qs = p.toString();
   const suffix = qs ? `?${qs}` : "";
   const B = import.meta.env.BASE_URL;
-  ds.querySelector('[data-ds="main"]').href = `${B}${suffix}`;
-  ds.querySelector('[data-ds="dev"]').href = `${B}dev/${suffix}`;
-  const cm = ds.querySelector('[data-ds="vanilla-cmangos"]');
-  if (cm) cm.href = `${B}vanilla/cmangos/${suffix}`;
+  for (const d of DATASETS) {
+    const a = ds.querySelector(`[data-ds="${d.id}"]`);
+    if (a) a.href = `${B}${d.path ? `${d.path}/` : ""}${suffix}`;
+  }
 }
 
 // route() then drop the Share + compare buttons onto the rendered detail page.
@@ -2018,7 +2023,13 @@ async function showQuest(id) {
   // its videos "[lvl] <title> | <zone> (ID: <questId>)", so we search title + the
   // exact "(ID: <entry>)" token -> the right video lands as the top result. A search
   // (not a hard-coded video id) needs no per-quest data and never goes stale.
-  const ytUrl = `https://www.youtube.com/@TurtleWoWQuests/search?query=${encodeURIComponent(`${q.title} (ID: ${q.entry})`)}`;
+  //
+  // 1.12 datasets only. The channel covers Turtle/vanilla content and indexes by
+  // vanilla quest id, so on a TBC dataset the same id means a DIFFERENT quest -- the
+  // search would confidently surface the wrong walkthrough.
+  const ytUrl = EXPANSION === "vanilla"
+    ? `https://www.youtube.com/@TurtleWoWQuests/search?query=${encodeURIComponent(`${q.title} (ID: ${q.entry})`)}`
+    : null;
 
   app.innerHTML =
     `<div class="npc-page quest-page">
@@ -2026,7 +2037,7 @@ async function showQuest(id) {
         <h1>${esc(q.title)}${q.custom ? ' <span class="tagx tw-tag" title="Added by Turtle WoW (not in vanilla 1.12)">Turtle WoW</span>' : ""}</h1>
         <div class="npc-meta muted">${bits.join(" · ")}<span class="dim"> · Quest #${q.entry}</span></div>
         ${restr.length ? `<div class="npc-meta muted">${restr.map(esc).join(" · ")}</div>` : ""}
-        <div class="npc-meta"><a class="yt-link" href="${ytUrl}" target="_blank" rel="noopener noreferrer">▶ Watch walkthrough on YouTube</a></div>
+        ${ytUrl ? `<div class="npc-meta"><a class="yt-link" href="${ytUrl}" target="_blank" rel="noopener noreferrer">▶ Watch walkthrough on YouTube</a></div>` : ""}
       </div>
       ${desc.length ? `<div class="panel quest-desc">${desc.join("")}</div>` : ""}
       ${mapHtml}

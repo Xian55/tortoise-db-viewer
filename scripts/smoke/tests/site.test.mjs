@@ -61,19 +61,23 @@ async function testDatasetToggle() {
     const main = document.querySelector('#dsToggle [data-ds="main"]');
     const dev = document.querySelector('#dsToggle [data-ds="dev"]');
     const cm = document.querySelector('#dsToggle [data-ds="vanilla-cmangos"]');
+    const tbc = document.querySelector('#dsToggle [data-ds="tbc-cmangos"]');
     return {
       count: document.querySelectorAll("#dsToggle .ds-btn").length,
       mainOn: main?.classList.contains("on"),
       devOn: dev?.classList.contains("on"),
       devHref: dev?.getAttribute("href") || "",
       cmHref: cm?.getAttribute("href") || "",
+      tbcHref: tbc?.getAttribute("href") || "",
       bodyDev: document.body.classList.contains("ds-dev"),
     };
   });
-  console.log(`dataset-toggle: count=${r.count} mainOn=${r.mainOn} devOn=${r.devOn} devHref="${r.devHref}" cmHref="${r.cmHref}" bodyDev=${r.bodyDev}`);
-  // three datasets: main (/), dev (/dev/), vanilla-cmangos (/vanilla/cmangos/) -- see src/config.js DATASETS
-  return r.count === 3 && r.mainOn === true && r.devOn === false
+  console.log(`dataset-toggle: count=${r.count} mainOn=${r.mainOn} devOn=${r.devOn} devHref="${r.devHref}" cmHref="${r.cmHref}" tbcHref="${r.tbcHref}" bodyDev=${r.bodyDev}`);
+  // The pills are rendered from the src/config.js DATASETS registry, so assert on the
+  // paths rather than a hardcoded count (adding a matrix row shouldn't fail this).
+  return r.count >= 3 && r.mainOn === true && r.devOn === false
     && /\/dev\/\?item=2770$/.test(r.devHref) && /\/vanilla\/cmangos\/\?item=2770$/.test(r.cmHref)
+    && /\/tbc\/cmangos\/\?item=2770$/.test(r.tbcHref)
     && r.bodyDev === false;
 }
 

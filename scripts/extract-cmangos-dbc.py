@@ -20,13 +20,20 @@ import os
 import struct
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from clientprofile import PROFILE, archives, dbc_fields  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENT = os.environ.get("CLIENT", r"F:\Game\SoloCraft 1.12.1")
 DATA = os.path.join(CLIENT, "Data")
 STORMLIB = os.environ.get("STORMLIB", os.path.join(ROOT, "..", "StormLib", "bin", "StormLib_dll", "x64", "Release", "StormLib.dll"))
-OUT = os.path.join(ROOT, "scripts", "data", "cmangos-dbc.json")
+OUT = os.environ.get("DBC_OUT") or os.path.join(ROOT, "scripts", "data", "cmangos-dbc.json")
+if not os.path.isabs(OUT):
+    OUT = os.path.join(ROOT, OUT)
 # patches override base; open low->high priority, read() tries the last-opened first.
-ARCHIVE_ORDER = ["base.MPQ", "dbc.MPQ", "misc.MPQ", "patch.MPQ", "patch-2.MPQ"]
+# CLIENT_PROFILE=tbc swaps in the 2.4.3 order (DBCs live in the enGB locale archives).
+ARCHIVE_ORDER = archives(["base.MPQ", "dbc.MPQ", "misc.MPQ", "patch.MPQ", "patch-2.MPQ"])
+F = dbc_fields()
 
 
 class Storm:
@@ -88,6 +95,7 @@ def load_dbc(data):
 
 
 def main():
+    print(f"client profile: {PROFILE}  |  client: {CLIENT}")
     storm = Storm(STORMLIB)
 
     def dbc(name):
@@ -100,29 +108,32 @@ def main():
 
     # AreaTable.dbc — [0]ID [1]ContinentID(map) [2]ParentAreaID(zone) ... [11]AreaName_enUS
     rows, s, nf = dbc("AreaTable.dbc")
-    out["areas"] = [{"entry": v[0], "name": s(v[11]), "map_id": v[1], "zone_id": v[2]} for v in rows]
+    out["areas"] = [{"entry": v[0], "name": s(v[F["area_name"]]), "map_id": v[1], "zone_id": v[2]} for v in rows]
     print(f"AreaTable [{nf}f] {len(rows)} rows | sample: {out['areas'][0]}")
 
     # Map.dbc — [0]ID [1]Directory [2]InstanceType ... MapName_enUS. verify name offset below.
     rows, s, nf = dbc("Map.dbc")
     # 1.12 Map.dbc: name loc block starts at 4 (enUS). instanceType at 2.
-    out["maps"] = [{"entry": v[0], "map_name": s(v[4]), "map_type": v[2]} for v in rows]
+    out["maps"] = [{"entry": v[0], "map_name": s(v[F["map_name"]]), "map_type": v[F["map_type"]]} for v in rows]
     print(f"Map [{nf}f] {len(rows)} rows | sample: {out['maps'][0]} .. {out['maps'][-1]}")
 
     # Faction.dbc (37f) — [0]ID [1]ReputationIndex [2-5]RaceMask [6-9]ClassMask
     #   [10-13]RepBase [14-17]RepFlags [18]ParentFactionID [19]Name_enUS (loc block 19-27)
     rows, s, nf = dbc("Faction.dbc")
-    out["faction"] = [{"id": v[0], "name1": s(v[19]), "reputation_list_id": (v[1] if v[1] != 0xFFFFFFFF else -1)} for v in rows]
+    _fr = F["faction_rep_index"]
+    out["faction"] = [{"id": v[0], "name1": s(v[F["faction_name"]]),
+                       "reputation_list_id": (v[_fr] if v[_fr] != 0xFFFFFFFF else -1)} for v in rows]
     print(f"Faction [{nf}f] {len(rows)} rows | sample: {out['faction'][0]} .. {next((f for f in out['faction'] if 'Argent' in f['name1']), None)}")
 
     # FactionTemplate.dbc — [0]ID [1]Faction [2]Flags [3]FactionGroup(ourMask)
     rows, s, nf = dbc("FactionTemplate.dbc")
-    out["faction_template"] = [{"id": v[0], "faction_id": v[1], "our_mask": v[3]} for v in rows]
+    out["faction_template"] = [{"id": v[0], "faction_id": v[F["ft_faction"]], "our_mask": v[F["ft_group"]]} for v in rows]
     print(f"FactionTemplate [{nf}f] {len(rows)} rows | sample: {out['faction_template'][0]}")
 
     # ItemDisplayInfo.dbc — [0]ID ... [5]InventoryIcon (icon basename)
     rows, s, nf = dbc("ItemDisplayInfo.dbc")
-    out["item_display_info"] = [{"ID": v[0], "icon": s(v[5])} for v in rows if s(v[5])]
+    _ic = F["idi_icon"]
+    out["item_display_info"] = [{"ID": v[0], "icon": s(v[_ic])} for v in rows if s(v[_ic])]
     print(f"ItemDisplayInfo [{nf}f] {len(rows)} rows -> {len(out['item_display_info'])} w/icon | sample: {out['item_display_info'][0]}")
 
     # SkillLineAbility.dbc — [0]ID [1]SkillLine [2]Spell [3]RaceMask [4]ClassMask
@@ -131,7 +142,9 @@ def main():
     out["skill_line_ability"] = [{
         "id": v[0], "skill_id": v[1], "spell_id": v[2], "race_mask": v[3], "class_mask": v[4],
         "req_skill_value": v[7], "superseded_by_spell": v[8], "learn_on_get_skill": v[9],
-        "max_value": v[10], "min_value": v[11], "req_train_points": v[12] if nf > 12 else 0,
+        "max_value": v[10], "min_value": v[11],
+        # 2.4.3 inserts a field before CharacterPoints, moving this from 12 to 14.
+        "req_train_points": v[F["sla_req_train_points"]] if nf > F["sla_req_train_points"] else 0,
     } for v in rows]
     print(f"SkillLineAbility [{nf}f] {len(rows)} rows | sample: {out['skill_line_ability'][0]}")
 
@@ -141,9 +154,10 @@ def main():
     # (offsets pinned by scanning for a known spell). Keep only rows with text -> spell_text
     # (entry, description, auraDescription); the adapter injects it into spell_template.
     rows, s, nf = dbc("Spell.dbc")
+    _d, _a = F["spell_description"], F["spell_aura_description"]
     txt = []
     for v in rows:
-        desc, aura = s(v[138]), s(v[147])
+        desc, aura = s(v[_d]), s(v[_a])
         if desc or aura:
             txt.append({"entry": v[0], "description": desc, "auraDescription": aura})
     out["spell_text"] = txt
@@ -155,7 +169,11 @@ def main():
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
         f.write("\n")
     kb = os.path.getsize(OUT) / 1024
-    print(f"\nwrote {os.path.relpath(OUT, ROOT)} ({kb:.0f} KB)")
+    try:
+        shown = os.path.relpath(OUT, ROOT)
+    except ValueError:   # OUT on a different Windows drive than the repo
+        shown = OUT
+    print(f"\nwrote {shown} ({kb:.0f} KB)")
 
 
 if __name__ == "__main__":

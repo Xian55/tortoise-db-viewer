@@ -49,11 +49,19 @@ if not os.path.isabs(OUT_ZONES):
     OUT_ZONES = os.path.join(ROOT, OUT_ZONES)
 
 # Highest precedence last (a file in a later patch overrides earlier archives).
-ARCHIVE_ORDER = [
+# CLIENT_PROFILE=tbc swaps in the 2.4.3 order (see scripts/lib/clientprofile.py): TBC
+# keeps DBFilesClient\ only in the enGB locale archives while the WorldMap art stays on
+# the non-locale side, so both have to be open. The WorldMapArea/WorldMapOverlay byte
+# layouts this script reads are unchanged in 2.4.3 (WorldMapArea just appends a 9th
+# field, DisplayMapID, after the ones we parse), so no offset changes are needed.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from clientprofile import archives  # noqa: E402
+
+ARCHIVE_ORDER = archives([
     "dbc.MPQ", "interface.MPQ", "patch.MPQ", "patch-2.MPQ",
     "patch-3.mpq", "patch-4.mpq", "patch-5.mpq", "patch-6.mpq",
     "patch-7.mpq", "patch-8.mpq", "patch-9.mpq", "patch-Y.mpq", "_Patch-W.mpq",
-]
+])
 
 TILE = 256        # WorldMap BLP tile size
 COLS, ROWS = 4, 3  # 12 tiles, row-major
