@@ -113,11 +113,35 @@ const ENTITIES = [
   { param: "npc", prefix: "n",
     sql: "SELECT entry id, name, subname, level_min, level_max, rank, type, display_id FROM creatures WHERE name <> '' AND COALESCE(hidden,0) = 0",
     title: (r) => r.name, desc: (r) => trim(npcDesc(r), 180), image: (r) => npcThumb(r.display_id) },
+  // Spells and objects are the two BULK entities -- 27.4k + 20.9k of the 94.9k stubs --
+  // and most of each is content no one links: internal server spells, unnamed doors and
+  // chairs. Pages syncs the artifact file-by-file, and at ~95k files that took 15-20 min
+  // and routinely timed out the deploy, so both are narrowed to what a player can
+  // actually reach. Anything skipped still SHARES fine: public/404.html recovers the id
+  // from the path and hands it to the SPA, so only the crawler-unfurl preview is lost.
+  //
+  // A spell counts if a player can learn it, it belongs to a profession, a trainer or
+  // item teaches it, it crafts something, or an item casts it. 27459 -> ~11.9k.
   { param: "spell", prefix: "s",
-    sql: "SELECT entry id, name, description, icon FROM spells WHERE name <> '' AND COALESCE(hidden,0) = 0",
+    sql: `SELECT s.entry id, s.name, s.description, s.icon FROM spells s
+          WHERE s.name <> '' AND COALESCE(s.hidden,0) = 0 AND (
+               COALESCE(s.learnable,0) = 1 OR s.skill IS NOT NULL
+            OR EXISTS (SELECT 1 FROM spell_trainer t WHERE t.spell = s.entry)
+            OR EXISTS (SELECT 1 FROM spell_taught_item ti WHERE ti.spell = s.entry)
+            OR EXISTS (SELECT 1 FROM spell_creates sc WHERE sc.spell = s.entry)
+            OR EXISTS (SELECT 1 FROM items i WHERE i.spellid_1 = s.entry
+                         OR i.spellid_2 = s.entry OR i.spellid_3 = s.entry))`,
     title: (r) => r.name, desc: (r) => trim(clean(r.description) || "Spell in Tortoise-WoW.", 200), image: (r) => iconUrl(r.icon) },
+  // An object counts if it's browsable, drops something, is a gather node, or starts or
+  // ends a quest. 20906 -> ~1.3k; the rest is scenery.
   { param: "object", prefix: "o",
-    sql: "SELECT entry id, name, type FROM gameobjects WHERE name <> ''",
+    sql: `SELECT go.entry id, go.name, go.type FROM gameobjects go
+          WHERE go.name <> '' AND (
+               EXISTS (SELECT 1 FROM object_browse ob WHERE ob.entry = go.entry)
+            OR EXISTS (SELECT 1 FROM drops d WHERE d.src = 'o' AND d.owner = go.entry)
+            OR go.gather IS NOT NULL
+            OR EXISTS (SELECT 1 FROM gameobject_quest_start qs WHERE qs.id = go.entry)
+            OR EXISTS (SELECT 1 FROM gameobject_quest_end qe WHERE qe.id = go.entry))`,
     title: (r) => r.name, desc: (r) => `${GAMEOBJECT_TYPE[r.type] || "Object"} in Tortoise-WoW.` },
   { param: "zone", prefix: "z",
     sql: "SELECT areaid id, name, spawns FROM zones WHERE name <> ''",

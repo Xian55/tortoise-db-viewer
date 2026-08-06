@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tortoise-WoW Database</title>
+<meta name="robots" content="noindex">
+<style>
+  body { background:#0d0e12; color:#c8ccd4; font:15px/1.5 system-ui,sans-serif;
+         display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
+  a { color:#f0c674; }
+</style>
+<script>
+// Share links are STUB urls (/i/12345 -> the prerendered crawler-unfurl page). Not every
+// entity gets a stub -- scripts/build-og.mjs deliberately skips bulk rows nobody links
+// (unnamed doors, internal server spells) to keep the Pages artifact small enough to
+// sync. Without this file such a link is a hard 404; with it, the id is recovered from
+// the path and handed to the SPA, so a shared link ALWAYS resolves and the stub is
+// purely an unfurl optimisation.
+//
+// Prefixes mirror SHARE_PREFIX in src/main.js -- keep the two in step.
+(function () {
+  var PARAM = { i: "item", n: "npc", q: "quest", s: "spell", o: "object",
+                z: "zone", f: "faction", is: "itemset" };
+  var p = location.pathname.replace(/\/+$/, "");
+  // trailing "<prefix>/<id>", with or without the .html the stub files carry
+  var m = /\/([a-z]{1,2})\/(\d+)(?:\.html)?$/.exec(p);
+  if (m && PARAM[m[1]]) {
+    // everything before the prefix is the app base (handles /dev/, /tbc/cmangos/, ...)
+    var base = p.slice(0, p.length - m[0].length + 1);
+    location.replace(base + "?" + PARAM[m[1]] + "=" + m[2] + location.hash);
+    return;
+  }
+  // not an entity link -> the app root, which renders its own not-found state
+  var b = p.replace(/\/[^/]*$/, "/");
+  if (b !== p + "/") location.replace(b);
+})();
+</script>
+</head>
+<body>
+<p>Redirecting… if nothing happens, <a href="/tortoise-db-viewer/">go to the database</a>.</p>
+</body>
+</html>
