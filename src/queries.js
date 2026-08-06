@@ -16,6 +16,18 @@ export const Q_ITEM = `
   LEFT JOIN faction_names rf ON rf.id = i.required_reputation_faction
   WHERE i.entry = ?1`;
 
+// TBC sockets/gems. The raw socketColor_N / socketBonus / GemProperties columns ride
+// along on Q_ITEM's `i.*`; this resolves the two DISPLAY strings, which live only in
+// client DBCs: the item's socket bonus ("+6 Stamina") and, for a gem, the effect it
+// grants when socketed ("+7 Spell Damage") plus the colour it counts as.
+// Queried separately (not joined into Q_ITEM) so a dataset built before these tables
+// existed loses the socket lines rather than the whole item page -- same reasoning as
+// Q_ITEM_PEERS. ?1 = socketBonus, ?2 = GemProperties.
+export const Q_ITEM_SOCKETS = `
+  SELECT (SELECT name FROM enchant_text WHERE id = ?1)                                   AS socket_bonus,
+         (SELECT name FROM enchant_text WHERE id = (SELECT enchant_id FROM gem_properties WHERE id = ?2)) AS gem_effect,
+         (SELECT color FROM gem_properties WHERE id = ?2)                                AS gem_color`;
+
 // Other items sharing this one's display_id (same in-game model/appearance).
 // ?1 = display_id, ?2 = this item's entry (excluded). LIMIT bounds generic models
 // (a few display_ids are placeholders shared by 300+ items).

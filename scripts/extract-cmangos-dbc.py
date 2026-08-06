@@ -104,6 +104,14 @@ def main():
             sys.exit(f"{name} not found in client MPQs")
         return load_dbc(raw)
 
+    def dbc_opt(name):
+        """Like dbc() but tolerates absence -- some DBCs are expansion-only."""
+        raw = storm.read("DBFilesClient\\" + name)
+        if not raw:
+            print(f"{name}: not in this client — skipped")
+            return None
+        return load_dbc(raw)
+
     out = {}
 
     # AreaTable.dbc — [0]ID [1]ContinentID(map) [2]ParentAreaID(zone) ... [11]AreaName_enUS
@@ -153,6 +161,28 @@ def main():
     #   [120]SpellName_enUS [129]Rank_enUS [138]Description_enUS [147]AuraDescription_enUS
     # (offsets pinned by scanning for a known spell). Keep only rows with text -> spell_text
     # (entry, description, auraDescription); the adapter injects it into spell_template.
+    # --- TBC sockets/gems ---------------------------------------------------------
+    # GemProperties.dbc (5f): ID(0) Enchant_Id(1) MaxCountInv(2) MaxCountItem(3) Type(4).
+    # Type is the socket-colour mask (1 meta, 2 red, 4 yellow, 8 blue) -- same enum as
+    # item_template.socketColor_N. Absent from a 1.12 client, so this is optional.
+    rows = dbc_opt("GemProperties.dbc")
+    if rows:
+        v, s, nf = rows
+        out["gem_properties"] = [{"id": r[0], "enchant_id": r[1], "color": r[4]} for r in v if r[1]]
+        print(f"GemProperties [{nf}f] {len(v)} rows | sample: {out['gem_properties'][0]}")
+
+    # SpellItemEnchantment.dbc: the display text for an enchant id -- what an item's
+    # socketBonus and a gem's granted effect actually say ("+6 Stamina"). Name is
+    # field 13 in BOTH 1.12 (24f) and 2.4.3 (34f): the locale block that widened sits
+    # after it. Verified: 2868 -> "+6 Stamina" (Cursed Vision of Sargeras' bonus).
+    rows = dbc_opt("SpellItemEnchantment.dbc")
+    if rows:
+        v, s, nf = rows
+        ench = [{"id": r[0], "name": s(r[F["sie_name"]])} for r in v if s(r[F["sie_name"]])]
+        out["spell_item_enchantment"] = ench
+        sample = next((e for e in ench if e["id"] == 2868), ench[0])
+        print(f"SpellItemEnchantment [{nf}f] {len(v)} rows -> {len(ench)} named | sample: {sample}")
+
     rows, s, nf = dbc("Spell.dbc")
     _d, _a = F["spell_description"], F["spell_aura_description"]
     txt = []

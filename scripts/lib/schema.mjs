@@ -189,6 +189,10 @@ export const LOOT_TABLES = [
   { file: "tw_world_pickpocketing_loot_template.sql", table: "pickpocketing_loot_template", target: "loot_pickpocket" },
   { file: "tw_world_skinning_loot_template.sql", table: "skinning_loot_template", target: "loot_skinning" },
   { file: "tw_world_reference_loot_template.sql", table: "reference_loot_template", target: "loot_reference" },
+  // TBC additions (jewelcrafting prospecting, quest/event mail). Absent from a 1.12
+  // source -> the importer just finds no table and skips them.
+  { file: "tw_world_prospecting_loot_template.sql", table: "prospecting_loot_template", target: "loot_prospecting" },
+  { file: "tw_world_mail_loot_template.sql", table: "mail_loot_template", target: "loot_mail" },
 ];
 
 export const LOOT_COLUMNS = ["entry", "item", "ChanceOrQuestChance", "groupid", "mincountOrRef", "maxcount"];

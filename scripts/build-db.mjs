@@ -492,11 +492,22 @@ console.log("Resolving loot chances...");
 
   db.exec(`CREATE TABLE drops (src TEXT, owner INTEGER, item INTEGER, chance REAL, mincount INTEGER, maxcount INTEGER)`);
   const ins = db.prepare(`INSERT INTO drops VALUES (?,?,?,?,?,?)`);
+  // src letters: c creature, s skinning, p pickpocket, o object, i item-container,
+  // e disenchant, r pRospecting (TBC jewelcrafting), m mail. The last two are absent
+  // from a 1.12 source and simply contribute nothing there.
   const sources = [["c", "loot_creature"], ["s", "loot_skinning"], ["p", "loot_pickpocket"],
-    ["o", "loot_object"], ["i", "loot_item"], ["e", "loot_disenchant"]];
+    ["o", "loot_object"], ["i", "loot_item"], ["e", "loot_disenchant"],
+    ["r", "loot_prospecting"], ["m", "loot_mail"]];
+  // A source without these loot types never gets the table created at all (the
+  // importer skips a dump file it can't find), and load() does a bare SELECT -- so
+  // filter to what actually exists rather than throwing on a 1.12 build.
+  const hasTable = (t) => !!db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(t);
+  const present = sources.filter(([, t]) => hasTable(t));
+  const absent = sources.filter(([, t]) => !hasTable(t)).map(([, t]) => t);
+  if (absent.length) console.log(`  loot sources absent from this dataset: ${absent.join(", ")}`);
   let nd = 0;
   db.transaction(() => {
-    for (const [src, table] of sources) {
+    for (const [src, table] of present) {
       for (const [owner, rows] of load(table)) {
         for (const [item, r] of resolveRows(rows)) { ins.run(src, owner, item, r.p * 100, r.min, r.max); nd++; }
       }
@@ -518,7 +529,8 @@ console.log("Resolving loot chances...");
 
   // raw loot tables are no longer needed at runtime
   for (const t of ["loot_creature", "loot_skinning", "loot_pickpocket", "loot_object",
-    "loot_item", "loot_disenchant", "loot_fishing", "loot_reference"]) {
+    "loot_item", "loot_disenchant", "loot_fishing", "loot_reference",
+    "loot_prospecting", "loot_mail"]) {
     db.exec(`DROP TABLE IF EXISTS ${t}`);
   }
   console.log(`  drops (resolved): ${nd} rows (raw loot tables dropped)`);
@@ -790,6 +802,39 @@ console.log("Deriving item enchants...");
   const ins = db.prepare(`INSERT OR REPLACE INTO item_enchant VALUES (?,?,?)`);
   db.transaction(() => { for (const [id, v] of best) ins.run(id, v.spell, v.name); })();
   console.log(`  item_enchant: ${best.size}`);
+}
+
+// ---- TBC sockets/gems: enchant display text + gem colour ----
+// An item's socketBonus and a gem's GemProperties are both SpellItemEnchantment ids,
+// and the only place their DISPLAY TEXT exists is the client DBC ("+6 Stamina") --
+// no world DB carries it. Both tables come through the adapter's DBC-JSON path, so
+// they simply stage empty on a source without sockets (any 1.12 dataset).
+console.log("Deriving sockets/gems...");
+{
+  db.exec(`CREATE TABLE enchant_text (id INTEGER PRIMARY KEY, name TEXT)`);
+  db.exec(`CREATE TABLE gem_properties (id INTEGER PRIMARY KEY, enchant_id INTEGER, color INTEGER)`);
+  let ne = 0, ng = 0;
+  if (src.has("spell_item_enchantment")) {
+    const c = srcColumns("spell_item_enchantment"); const at = (n) => c.indexOf(n);
+    const ins = db.prepare(`INSERT OR REPLACE INTO enchant_text VALUES (?,?)`);
+    db.transaction(() => {
+      for (const r of srcRows("spell_item_enchantment")) {
+        const nm = clean(r[at("name")]);
+        if (nm) { ins.run(clean(r[at("id")]), nm); ne++; }
+      }
+    })();
+  }
+  if (src.has("gem_properties")) {
+    const c = srcColumns("gem_properties"); const at = (n) => c.indexOf(n);
+    const ins = db.prepare(`INSERT OR REPLACE INTO gem_properties VALUES (?,?,?)`);
+    db.transaction(() => {
+      for (const r of srcRows("gem_properties")) {
+        ins.run(clean(r[at("id")]), clean(r[at("enchant_id")]), clean(r[at("color")]));
+        ng++;
+      }
+    })();
+  }
+  console.log(`  enchant_text: ${ne} | gem_properties: ${ng}`);
 }
 
 // ---- Random-suffix ("of the Bear", ...) id -> name + stats ----

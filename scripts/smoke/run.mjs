@@ -26,6 +26,20 @@ const JUNIT_DIR = path.resolve(".smoke-cache/junit");
 const DEFAULT_BASE = "http://localhost:4317/tortoise-db-viewer/";
 const PORT = 4317;
 
+// The map/minimap trees are no longer in git (R2 is their source of truth -- see
+// scripts/lib/assets.mjs), so a fresh clone or a branch switch leaves them absent and
+// the map tests fail for a reason that has nothing to do with the code under test
+// (the world-map test needs tiles to actually LOAD, not just be referenced). Say so
+// up front rather than letting it read as a real regression.
+for (const [dir, hint] of [["public/maps", "maps"], ["public/minimap", "minimap"]]) {
+  const abs = path.resolve(dir);
+  const empty = !existsSync(abs) || readdirSync(abs).length === 0;
+  if (empty) {
+    console.warn(`[assets] ${dir} is empty -- map tests will fail.\n`
+      + `[assets] Fetch them first:  bun run assets -- --only ${hint}`);
+  }
+}
+
 // --- args: -j N (shard count) + free-text filename filters ---
 const argv = process.argv.slice(2);
 let jobs = 0, repeat = 1;

