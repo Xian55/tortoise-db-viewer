@@ -51,10 +51,13 @@ DATA = os.path.join(CLIENT, "Data")
 OUT = os.environ.get("FAMILIES_OUT") or os.path.join(ROOT, "scripts", "data", "creature-families.json")
 if not os.path.isabs(OUT):
     OUT = os.path.join(ROOT, OUT)
-ARCHIVE_ORDER = [
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from clientprofile import archives  # noqa: E402
+
+ARCHIVE_ORDER = archives([
     "dbc.MPQ", "patch.MPQ", "patch-2.MPQ", "patch-3.mpq", "patch-4.mpq", "patch-5.mpq",
     "patch-6.mpq", "patch-7.mpq", "patch-8.mpq", "patch-9.mpq", "patch-Y.mpq", "_Patch-W.mpq",
-]
+])
 
 FOOD_BITS = [
     (0x01, "Meat"), (0x02, "Fish"), (0x04, "Cheese"), (0x08, "Bread"),
@@ -166,7 +169,7 @@ def main():
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1, sort_keys=True)
         f.write("\n")
-    print(f"wrote {os.path.relpath(OUT, ROOT)} ({len(out)} families)")
+    print(f"wrote {os.path.relpath(OUT, ROOT) if os.path.splitdrive(OUT)[0].lower() == os.path.splitdrive(ROOT)[0].lower() else OUT} ({len(out)} families)")
 
 
 if __name__ == "__main__":

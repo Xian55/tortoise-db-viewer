@@ -26,11 +26,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENT = os.environ.get("TW_CLIENT", r"F:/Game/Turtle WoW")
 STORMLIB = os.environ.get("STORMLIB", os.path.join(ROOT, "..", "StormLib", "bin", "StormLib_dll", "x64", "Release", "StormLib.dll"))
 DATA = os.path.join(CLIENT, "Data")
-OUT = os.path.join(ROOT, "scripts", "data", "skill-lines.json")
-ARCHIVE_ORDER = [
+OUT = os.environ.get("SKILL_LINES_OUT") or os.path.join(ROOT, "scripts", "data", "skill-lines.json")
+if not os.path.isabs(OUT):
+    OUT = os.path.join(ROOT, OUT)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from clientprofile import archives  # noqa: E402
+
+ARCHIVE_ORDER = archives([
     "dbc.MPQ", "patch.MPQ", "patch-2.MPQ", "patch-3.mpq", "patch-4.mpq", "patch-5.mpq",
     "patch-6.mpq", "patch-7.mpq", "patch-8.mpq", "patch-9.mpq", "patch-Y.mpq", "_Patch-W.mpq",
-]
+])
 
 
 class Storm:
@@ -98,7 +103,7 @@ def main():
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
         f.write("\n")
-    print(f"wrote {os.path.relpath(OUT, ROOT)} ({len(out)} skill lines)")
+    print(f"wrote {os.path.relpath(OUT, ROOT) if os.path.splitdrive(OUT)[0].lower() == os.path.splitdrive(ROOT)[0].lower() else OUT} ({len(out)} skill lines)")
 
 
 if __name__ == "__main__":

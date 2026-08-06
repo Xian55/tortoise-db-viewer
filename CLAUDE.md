@@ -100,6 +100,8 @@ Runs on **Bun** (preferred — native `bun:sqlite`, no native compile) or **Node
 
 ```sh
 bun install
+bun run assets                  # pull the R2-hosted binary assets (maps/minimap/model-thumbs, ~74 MB) into public/. Needed only for a LOCAL run that should render maps -- the deployed site always loads them from R2. `-- --only maps` for one set, `-- --verify` to re-hash. See "Binary assets live on R2"
+bun scripts/publish-assets.mjs  # LOCAL: the reverse -- rescan public/ after an extract-*.py, rewrite scripts/data/assets-manifest.json, upload changed files to R2
 bun scripts/build-db.mjs        # build public/data/tortoise.sqlite (+ version.json)
 bun run dev                     # http://localhost:5173/tortoise-db-viewer/
 bunx --bun vite build           # production build to dist/
@@ -298,11 +300,10 @@ only on toggle), and serves tiles from `${ASSETS_BASE}minimap/`.
 Only overworld continents WITH spawns ship (the `SHIP` map in the script): Outland
 / Kalidar exist as client art but have no spawns → excluded. Scope = maps 0,1.
 
-**The tile pyramid IS committed** (`public/minimap/`, ~2400 webp) — like
-`public/maps`, because CI can't regenerate it (no client), and the deploy workflow
-**syncs it to R2** (`aws s3 sync`, see "Deploy") alongside the other assets. The
-committed `scripts/data/minimap.json` (bundled by Vite) carries the transform.
-Re-run `extract-minimap.py` + commit on client map changes.
+**The tile pyramid is NOT committed** — it lives only on R2 (see "Binary assets live
+on R2"), like `public/maps`. Only the tiny `scripts/data/minimap.json` transform
+manifest is committed (Vite bundles it). Re-run `extract-minimap.py` on client map
+changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
 
 ## File map
 
@@ -530,14 +531,88 @@ Re-run `extract-minimap.py` + commit on client map changes.
   under `scripts/smoke/tests/*.test.mjs` (bun test); see that dir's `CLAUDE.md` for the
   harness API (`nav`/`load`/`smoke`) and how to add one.
 
+### The `/tbc/cmangos` row (TBC 2.4.3)
+
+Second non-Turtle matrix row: cmangos's **TBC** world DB (`tbc-world-db.zip` →
+`tbcmangos.sqlite`) + a TBC 2.4.3 client. Built by the same adapter, selected with
+`EXPANSION=tbc`:
+
+```sh
+SQL_SOURCE=cmangos EXPANSION=tbc CMANGOS_DB=…/tbcmangos.sqlite \
+CMANGOS_DBC=scripts/data/cmangos-dbc-tbc.json \
+DATA_SUBDIR=data-tbc-cmangos ZONES_FILE=scripts/data/zones-tbc-cmangos.json \
+bun scripts/build-db.mjs
+```
+
+`EXPANSION` is what makes it a *version*, not just a source: it resolves the
+`scripts/data/<name>-tbc.json` client lookups (`clientData()`), suppresses the
+Turtle-custom flag (the vanilla id list would mark all 5.4k TBC additions custom), and
+blocks the Turtle instance-interior map fallback (1.12 art would be *wrong* for a TBC
+dungeon, not merely missing).
+
+**Client extraction** — `scripts/lib/clientprofile.py` holds the per-expansion MPQ order
+and DBC field offsets; `CLIENT_PROFILE=tbc` selects it. Two traps it exists to avoid:
+TBC keeps the whole `DBFilesClient\` tree in the **locale** archives (`Data\enGB\…`)
+while `Data\patch.MPQ` still exists, so the "no archives opened" guard passes and the run
+dies later; and localized strings widened from a 9-field block to 17, shifting every
+field after the first name. Offsets were derived by probing the client (locale blocks
+found by their zero-padding signature, numerics checked against known values), not from
+memory — only Spell (Description 138→161, ToolTip 147→178), TalentTab (ClassMask/Order
+12/13→20/21), SkillLineAbility (req_train_points 12→14) and ItemSet (+8) actually moved.
+
+**TBC-specific data shapes** the adapter handles: pooled spawns move to
+`creature_spawn_entry` **and set `creature.id = 0`** (7,696 of 7,733 — left alone those
+NPCs have no spawn at all), and `spell_template.School` is gone in favour of `SchoolMask`
+(derived back via `DERIVE`).
+
+**Known upstream gap:** cmangos's TBC-DB has no Outland spawns for Fel Iron / Adamantite /
+Khorium — they exist only inside Coilfang/Auchindoun. Outland herbs are complete. Not a
+build bug; the nodes are correctly flagged `gather='mining'` and simply have no
+`gameobject` rows on map 530.
+
+### Binary assets live on R2, not git
+
+Client-derived **image** trees are no longer committed. CI still can't regenerate them
+(no game client), but committing them cost ~74 MB / 6.5k files and every new matrix row
+(`vanilla/cmangos`, `tbc/cmangos`, …) multiplied it. **R2 is now their source of truth.**
+
+| set | R2 prefix / local dir |
+|---|---|
+| zone parchments | `maps/`, `maps-<dataset>/` |
+| minimap pyramids | `minimap/`, `minimap-<dataset>/` |
+| creature model thumbs | `model-thumbs/` |
+
+- `scripts/lib/assets.mjs` defines the sets; `scripts/data/assets-manifest.json`
+  (committed, ~250 KB) indexes every file as `[sha256-12, size]`.
+- `bun run assets` downloads them (hash-verified on arrival — a truncated tile is worse
+  than a missing one). Needed only for a LOCAL run that should show maps.
+- `bun run publish` rescans + uploads after an `extract-*.py` run, then rewrites the
+  manifest. Uploads go straight to R2's S3 API, signed in-process by `scripts/lib/r2.mjs`
+  (SigV4 via `node:crypto`) — **no `aws` CLI and no SDK**: the CLI spawns a process per
+  object, unusable for a 3.5k-file tile pyramid. Needs `R2_ACCOUNT_ID`,
+  `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (`R2_BUCKET` optional). Only files whose
+  hash differs from the committed manifest upload, so a re-run resumes; `--dry-run`,
+  `--only <sets>` (prefix match), `--force`, `--manifest-only`.
+- **CI never syncs these.** The old `aws s3 sync … --delete` steps were removed from
+  `deploy.yml` and `deploy-cmangos.yml`: run against a checkout that no longer has the
+  files, `--delete` would erase the whole set off R2. `publish-assets.mjs` likewise never
+  passes `--delete`, and reports files that vanished locally rather than deleting them.
+- **There is no second copy.** Enable R2 object versioning, or keep the extractor outputs
+  archived somewhere, before treating this as durable. (Old revisions do remain in git
+  history, which is why `git rm --cached` didn't shrink the ~318 MB `.git`.)
+- Still committed: `assets/icons/custom/` (the *source* the atlas is packed from) and
+  `public/icons/` (0.95 MB — `config.js` `getAtlasUrls()` keeps a Pages origin in its
+  fallback chain, which only works if they ship in the Pages artifact).
+
 ## Gotchas
 
 - **Don't commit built data.** It's regenerated by CI from the server repo. The
   the exceptions are **client-derived** assets CI can't regenerate, so they're
   committed: custom icons (`assets/icons/custom/`, `public/icons/custom-atlas.*`,
   `scripts/data/item-display-supplement.json`, `scripts/data/spell-icon-map.json`,
-  `scripts/data/spell-lookups.json`), zone maps (`public/maps/*.webp`,
-  `scripts/data/zones.json`), per-area ADT bounds (`scripts/data/subzone-bounds.json`
+  `scripts/data/spell-lookups.json`), zone bounds
+  (`scripts/data/zones.json` — the parchment *images* are R2-only, see above),
+  per-area ADT bounds (`scripts/data/subzone-bounds.json`
   via `extract-area-bounds.py`, for exact coord→zone), and the "minimap" POI sprite
   sheet `public/icons/poi-atlas.webp` (16-col, 32px grid; sourced from the
   WowClassicGrindBot atlas). `Elite` at [11,14] is the boss-marker skull; the zone +
@@ -570,9 +645,8 @@ Re-run `extract-minimap.py` + commit on client map changes.
   beast to learn this rank" panel. Powers `?pets` / `?petfamily=<id>`, the NPC-page
   "Tameable" badge, and the pet-ability spell-page panel),
   and the seamless-world-map transform
-  manifest (`scripts/data/minimap.json` via `extract-minimap.py`) + the world-map
-  **tile pyramid** itself (`public/minimap/`, ~2400 webp — committed like
-  `public/maps`; CI can't rebuild it, deploy.yml syncs it to R2). Plus talent-tree
+  manifest (`scripts/data/minimap.json` via `extract-minimap.py`; the tile pyramid
+  itself is R2-only, NOT committed — see "Binary assets live on R2"). Plus talent-tree
   structure (`scripts/data/talents.json` via `extract-talents.py`, from the client
   `Talent.dbc`/`TalentTab.dbc`; real all-class Turtle trees, re-run on client
   changes) + random-suffix stats (`scripts/data/random-suffix.json` via
@@ -648,12 +722,12 @@ origins (the custom domain uses bucket CORS, unlike the permissive r2.dev defaul
 The S3-API upload steps still target the `tortoise-db-viewer` bucket directly and
 are unaffected.
 
-**World-map tiles sync via CI** like the zone maps: they're committed
-(`public/minimap/`, CI can't rebuild them — no client), and the "Upload assets to
-Cloudflare R2" step `aws s3 sync`s them to `s3://tortoise-db-viewer/minimap`. The
-frontend reads `${VITE_ASSETS_BASE}minimap/<map>/{z}/{x}/{y}.webp`; the committed
+**World-map tiles do NOT sync via CI** — they aren't in the repo (see "Binary assets
+live on R2"), so CI has nothing to upload and, critically, must not try: the old sync
+passed `--delete` and would wipe the set off R2 from an empty checkout. The frontend
+reads `${VITE_ASSETS_BASE}minimap/<map>/{z}/{x}/{y}.webp`; the committed
 `scripts/data/minimap.json` (bundled by Vite) supplies the transform. Re-run
-`extract-minimap.py` + commit on client map changes; the next deploy pushes them.
+`extract-minimap.py` on client map changes, then `bun scripts/publish-assets.mjs`.
 
 ### Two datasets: `main` + `dev` (server `1181dev` branch)
 

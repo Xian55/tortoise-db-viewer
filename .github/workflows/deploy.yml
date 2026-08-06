@@ -73,15 +73,21 @@ jobs:
             --endpoint-url "$R2_ENDPOINT" \
             --content-type application/json --cache-control "no-store"
 
-      # maps / minimap tiles / icons are COMMITTED, client-derived assets that change
-      # only on a client re-extract -- unchanged on a routine (DB-only) deploy, yet the
-      # syncs re-enumerate ~2400 minimap tiles + maps + icons every time. Gate them on a
-      # content hash of the three dirs (same pattern as the OG/tt/API caches): on a hit,
-      # skip the syncs entirely. To force a re-sync (e.g. a manually-cleared R2 object),
-      # bump the key suffix below.
-      - name: Static asset hash (maps/minimap/icons/model-thumbs)
+      # public/icons is the LAST client-derived asset tree still committed (0.95 MB): the
+      # packed atlas + poi/class sprites, small enough to keep in git and needed there so
+      # config.js getAtlasUrls() can keep a Pages origin in its fallback chain.
+      #
+      # maps / minimap / model-thumbs are NO LONGER synced from here -- they are not in
+      # git any more (see scripts/lib/assets.mjs) and R2 is their only copy. Their syncs
+      # passed --delete, so running them against a checkout that no longer contains the
+      # files would DELETE the entire set off R2. They are published from a workstation by
+      # scripts/publish-assets.mjs after a client re-extract instead.
+      #
+      # The hash gate skips the sync on a routine (DB-only) deploy. To force a re-sync
+      # (e.g. a manually-cleared R2 object), bump the key suffix below.
+      - name: Static asset hash (icons)
         id: assetshash
-        run: echo "hash=${{ hashFiles('public/maps/**', 'public/minimap/**', 'public/icons/**', 'public/model-thumbs/**') }}" >> "$GITHUB_OUTPUT"
+        run: echo "hash=${{ hashFiles('public/icons/**') }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore static-asset sync marker
         id: assetcache
@@ -90,7 +96,7 @@ jobs:
           path: .r2-assets-synced
           key: r2-assets-v1-${{ steps.assetshash.outputs.hash }}
 
-      - name: Sync static assets to Cloudflare R2 (changed only)
+      - name: Sync icon atlas to Cloudflare R2 (changed only)
         if: steps.assetcache.outputs.cache-hit != 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -98,21 +104,6 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
-          # The minimap pyramid is ~2400 tiny files. Bump the AWS CLI's S3
-          # parallelism so the bulk upload isn't serialized 10-at-a-time.
-          aws configure set default.s3.max_concurrent_requests 64
-          aws configure set default.s3.max_queue_size 10000
-          # maps: all .webp
-          aws s3 sync public/maps s3://tortoise-db-viewer/maps \
-            --endpoint-url "$R2_ENDPOINT" \
-            --content-type image/webp --delete
-          # seamless world-map tile pyramid: ~2400 .webp. --size-only: a fresh git
-          # checkout re-stamps every file's mtime, so a size+mtime compare would
-          # re-upload ALL tiles; compare by size alone. --no-progress keeps logs readable.
-          aws s3 sync public/minimap s3://tortoise-db-viewer/minimap \
-            --endpoint-url "$R2_ENDPOINT" \
-            --content-type image/webp --size-only --no-progress \
-            --cache-control "public,max-age=31536000,immutable" --delete
           # icons: webp sprites first (exclude the manifest)...
           aws s3 sync public/icons s3://tortoise-db-viewer/icons \
             --endpoint-url "$R2_ENDPOINT" \
@@ -121,17 +112,6 @@ jobs:
           aws s3 sync public/icons s3://tortoise-db-viewer/icons \
             --endpoint-url "$R2_ENDPOINT" \
             --exclude "*" --include "*.json" --content-type application/json
-          # locally-rendered creature model thumbnails (Turtle-custom models):
-          # webp thumbs first (exclude the manifest)...
-          aws s3 sync public/model-thumbs s3://tortoise-db-viewer/model-thumbs \
-            --endpoint-url "$R2_ENDPOINT" \
-            --exclude "*.json" --content-type image/webp --delete
-          # ...then the manifest as JSON (short TTL: it's updated in place, and the
-          # frontend also cache-busts it with ?v=<version> — see loadModelThumbs)
-          aws s3 sync public/model-thumbs s3://tortoise-db-viewer/model-thumbs \
-            --endpoint-url "$R2_ENDPOINT" \
-            --exclude "*" --include "*.json" --content-type application/json \
-            --cache-control "public,max-age=300"
           touch .r2-assets-synced
 
       # Extra DB delivery routes for networks where R2 is blocked or throttled: the
@@ -174,6 +154,7 @@ jobs:
           VITE_DATA_BASE_DEV: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data-dev/
           # Vanilla/cMaNGOS dataset, served at /vanilla/cmangos/ (built by deploy-cmangos.yml).
           VITE_DATA_BASE_VANILLA_CMANGOS: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data-vanilla-cmangos/
+          VITE_DATA_BASE_TBC_CMANGOS: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data-tbc-cmangos/
           VITE_ASSETS_BASE: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/
           # repo slug for the jsDelivr/raw mirror URLs (src/config.js)
           VITE_GH_REPO: ${{ github.repository }}
@@ -191,6 +172,10 @@ jobs:
       # DB) only needs its app-shell path served; query routing handles the rest.
       - name: Emit /vanilla/cmangos app shell
         run: mkdir -p dist/vanilla/cmangos && cp dist/index.html dist/vanilla/cmangos/index.html
+
+      # ...and /tbc/cmangos (deploy-tbc-cmangos.yml populates its R2 DB).
+      - name: Emit /tbc/cmangos app shell
+        run: mkdir -p dist/tbc/cmangos && cp dist/index.html dist/tbc/cmangos/index.html
 
       # Per-icon custom webp for link-unfurl og:image. Turtle-custom icons aren't on
       # Blizzard's CDN and ship only as the packed atlas sprite, which can't be an

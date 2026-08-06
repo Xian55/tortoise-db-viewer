@@ -77,36 +77,8 @@ jobs:
             --endpoint-url "$R2_ENDPOINT" \
             --content-type application/json --cache-control "no-store"
 
-      # Dataset-scoped, client-derived map assets (committed; CI can't rebuild -- no
-      # client). Vanilla outdoor parchments + the vanilla continent minimap, served at the
-      # dataset-suffixed R2 prefixes the frontend reads (config.js MAPS_BASE/MINIMAP_BASE).
-      # Gated on a content hash so a routine (DB-only) cMaNGOS refresh skips the sync.
-      - name: Static asset hash (vanilla maps/minimap)
-        id: vassets
-        run: echo "hash=${{ hashFiles('public/maps-vanilla-cmangos/**', 'public/minimap-vanilla-cmangos/**') }}" >> "$GITHUB_OUTPUT"
-
-      - name: Restore vanilla-asset sync marker
-        id: vassetcache
-        uses: actions/cache@v4
-        with:
-          path: .r2-vanilla-assets-synced
-          key: r2-vanilla-cmangos-assets-v1-${{ steps.vassets.outputs.hash }}
-
-      - name: Sync vanilla/cmangos maps + minimap to R2 (changed only)
-        if: steps.vassetcache.outputs.cache-hit != 'true'
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-        run: |
-          aws configure set default.s3.max_concurrent_requests 64
-          aws configure set default.s3.max_queue_size 10000
-          aws s3 sync public/maps-vanilla-cmangos s3://tortoise-db-viewer/maps-vanilla-cmangos \
-            --endpoint-url "$R2_ENDPOINT" \
-            --content-type image/webp --delete
-          aws s3 sync public/minimap-vanilla-cmangos s3://tortoise-db-viewer/minimap-vanilla-cmangos \
-            --endpoint-url "$R2_ENDPOINT" \
-            --content-type image/webp --size-only --no-progress \
-            --cache-control "public,max-age=31536000,immutable" --delete
-          touch .r2-vanilla-assets-synced
+      # NOTE: this job used to also `aws s3 sync --delete` public/maps-vanilla-cmangos and
+      # public/minimap-vanilla-cmangos to R2. Those trees are no longer in git (R2 is the
+      # only copy -- see scripts/lib/assets.mjs), so syncing them from a checkout that
+      # lacks them would DELETE the whole set off R2. They are published from a
+      # workstation with scripts/publish-assets.mjs after a client re-extract.

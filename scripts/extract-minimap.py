@@ -48,11 +48,15 @@ if not os.path.isabs(MANIFEST):
     MANIFEST = os.path.join(ROOT, MANIFEST)
 
 # Highest precedence last (a file in a later patch overrides earlier archives).
-ARCHIVE_ORDER = [
+# CLIENT_PROFILE=tbc swaps in the 2.4.3 order (scripts/lib/clientprofile.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from clientprofile import PROFILE, archives  # noqa: E402
+
+ARCHIVE_ORDER = archives([
     "dbc.MPQ", "interface.MPQ", "misc.MPQ", "texture.MPQ", "patch.MPQ", "patch-2.MPQ",
     "patch-3.mpq", "patch-4.mpq", "patch-5.mpq", "patch-6.mpq",
     "patch-7.mpq", "patch-8.mpq", "patch-9.mpq", "patch-Y.mpq", "_Patch-W.mpq",
-]
+])
 
 TILE = 256              # ADT-block minimap tile size (1.12)
 ADT = 1600.0 / 3.0      # 533.3333 yards per ADT block
@@ -66,6 +70,10 @@ SHIP = {
     0: {"dir": "Azeroth", "name": "Eastern Kingdoms"},
     1: {"dir": "Kalimdor", "name": "Kalimdor"},
 }
+# TBC adds Outland (map 530, client dir "Expansion01") -- and unlike vanilla's empty
+# Outland art, it has ~32k spawns, so it earns a world map.
+if PROFILE == "tbc":
+    SHIP[530] = {"dir": "Expansion01", "name": "Outland"}
 
 
 class Storm:

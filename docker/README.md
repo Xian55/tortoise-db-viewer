@@ -15,8 +15,8 @@ The **heavy assets are NOT baked in** and are served from a volume you mount at
 | ------------------- | ----- | ---------------------------------------------- |
 | `data/tortoise.sqlite` | ~34 MB | built by `scripts/build-db.mjs`             |
 | `data/version.json` | tiny  | built by `scripts/build-db.mjs`                |
-| `maps/*.webp`       | ~19 MB | committed in the repo (`public/maps`)         |
-| `minimap/**`        | ~23 MB | committed in the repo (`public/minimap`)      |
+| `maps/*.webp`       | ~19 MB | `bun run assets` → `public/maps`              |
+| `minimap/**`        | ~23 MB | `bun run assets` → `public/minimap`           |
 | `tt/**` (optional)  | ~small | `scripts/build-tooltips.mjs` — embed widget only |
 
 The app is built with base `/` and no `VITE_*_BASE`, so `src/config.js` resolves
@@ -25,14 +25,15 @@ maps `/data`, `/maps`, `/minimap` to the mounted volume; `/icons` is baked in.
 
 ## 1. Produce the assets
 
-The DB isn't committed (it's generated); the map/minimap tiles are committed.
-Build the DB and gather the tree once:
+Neither is committed: the DB is generated, and the map/minimap tiles are client-derived
+and live on R2 (see `scripts/lib/assets.mjs`). Build the DB and pull the tiles once:
 
 ```sh
 git clone https://github.com/Xian55/tortoise-db-viewer
 cd tortoise-db-viewer
 bun install
 bun scripts/build-db.mjs          # writes public/data/tortoise.sqlite + version.json
+bun run assets -- --only maps,minimap   # downloads public/maps + public/minimap (~42 MB)
 ```
 
 `public/` now contains `data/`, `maps/`, `minimap/` — that's your assets tree.

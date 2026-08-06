@@ -39,11 +39,21 @@ const qs = new URLSearchParams(location.search);
 //         static-replaces literal refs, not dynamic lookups); falls back to the `sub` convention
 // A new matrix row needs a build target + R2 populate + deploy wiring before it's live (see
 // notes/plan-content-origin-and-variants.md). main/dev reproduce the previous exact config.
-const DATASETS = [
-  { id: "main", path: "",    sub: "",     data: import.meta.env.VITE_DATA_BASE,     label: "Main" },
-  { id: "dev",  path: "dev", sub: "-dev", data: import.meta.env.VITE_DATA_BASE_DEV, label: "Dev"  },
+//   label  text on the top-bar pill; title = its tooltip
+//   expansion  game version ("vanilla" | "tbc"). Mirrors build-db's EXPANSION env and
+//         selects the version-dependent enum tables in constants.js (race bits, max
+//         profession skill). NOT derivable from `path` -- keep the two in step.
+export const DATASETS = [
+  { id: "main", path: "",    sub: "",     data: import.meta.env.VITE_DATA_BASE,
+    label: "Main", title: "Turtle WoW (1.12)", expansion: "vanilla" },
+  { id: "dev",  path: "dev", sub: "-dev", data: import.meta.env.VITE_DATA_BASE_DEV,
+    label: "Dev", title: "Turtle WoW 1.18.1 dev branch", expansion: "vanilla" },
   { id: "vanilla-cmangos", path: "vanilla/cmangos", sub: "-vanilla-cmangos",
-    data: import.meta.env.VITE_DATA_BASE_VANILLA_CMANGOS, label: "Vanilla · cMaNGOS" },
+    data: import.meta.env.VITE_DATA_BASE_VANILLA_CMANGOS,
+    label: "cMaNGOS", title: "Vanilla 1.12 (cMaNGOS)", expansion: "vanilla" },
+  { id: "tbc-cmangos", path: "tbc/cmangos", sub: "-tbc-cmangos",
+    data: import.meta.env.VITE_DATA_BASE_TBC_CMANGOS,
+    label: "TBC", title: "The Burning Crusade 2.4.3 (cMaNGOS)", expansion: "tbc" },
 ];
 
 // Active dataset: ?db=<id> local-dev override, else the longest URL-path match (so "dev"
@@ -55,6 +65,9 @@ const DS =
   DATASETS.filter((d) => matchesPath(d.path)).sort((a, b) => b.path.length - a.path.length)[0] ||
   DATASETS[0];
 export const DATASET = DS.id;
+// Game version of the active dataset. Drives the handful of 1.12-vs-TBC enum
+// differences in constants.js -- see EXPANSION there.
+export const EXPANSION = DS.expansion || "vanilla";
 const IS_DEV = DATASET === "dev";
 
 const REPO = import.meta.env.VITE_GH_REPO || "Xian55/tortoise-db-viewer";

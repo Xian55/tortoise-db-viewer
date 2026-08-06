@@ -41,6 +41,7 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
 .ds-toggle .ds-btn.on { color: #0d0e12; background: var(--gold); }
 .ds-toggle .ds-btn[data-ds="dev"].on { color: #fff; background: #ff4d4d; }
 .ds-toggle .ds-btn[data-ds="vanilla-cmangos"].on { color: #0d0e12; background: #ff8c1a; }
+.ds-toggle .ds-btn[data-ds="tbc-cmangos"].on { color: #0d0e12; background: #4ac94a; } /* TBC fel green */
 
 /* Home: static JSON endpoints note. */
 .home-api { margin-top: 20px; }
