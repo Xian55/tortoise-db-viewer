@@ -5,10 +5,11 @@
 # shell image from GHCR. You must place the heavy assets on the Docker host and
 # bind-mount them at /assets.
 #
-# Prepare the assets on the host ONCE (needs the repo + Bun/Node to build the DB;
-# the map/minimap tiles are committed in the repo):
+# Prepare the assets on the host ONCE (needs the repo + Bun/Node to build the DB; the
+# map/minimap tiles are NOT in the repo -- `bun run assets` pulls them from R2):
 #     git clone https://github.com/Xian55/tortoise-db-viewer
 #     cd tortoise-db-viewer && bun install && bun scripts/build-db.mjs
+#     bun run assets -- --only maps,minimap
 #     mkdir -p /srv/tortoise-db
 #     cp -r public/data public/maps public/minimap /srv/tortoise-db/
 # Then point ASSETS_DIR (below / stack env) at /srv/tortoise-db.

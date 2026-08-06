@@ -13,6 +13,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "assets": "bun scripts/fetch-assets.mjs",
+    "publish": "bun scripts/publish-assets.mjs",
     "smoke": "node scripts/smoke/run.mjs",
     "smoke:test": "bun test --preload ./scripts/smoke/setup.mjs scripts/smoke/tests",
     "smoke:flake": "node scripts/smoke/run.mjs -r 3",
