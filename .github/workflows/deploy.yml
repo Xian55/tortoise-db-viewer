@@ -193,7 +193,9 @@ jobs:
       # genuinely require tiles to LOAD -- so fetch them first. Verified stable: 3
       # consecutive full runs, 211 pass / 0 fail, zero flaky tests.
       - name: Fetch map assets for the smoke suite
-        run: bun scripts/fetch-assets.mjs --only maps,minimap
+        # model-thumbs too: without its manifest every NPC falls back to Wowhead's CDN,
+        # so the suite would exercise a code path production never takes.
+        run: bun scripts/fetch-assets.mjs --only maps,minimap,model-thumbs
 
       - name: Smoke test the built site
         run: bun run smoke
