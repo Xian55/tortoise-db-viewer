@@ -533,7 +533,7 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
 
 ### The `/tbc/cmangos` row (TBC 2.4.3)
 
-Second non-Turtle matrix row: cmangos's **TBC** world DB (`tbc-world-db.zip` →
+Second non-Turtle matrix row: cmangos's **TBC** world DB (`tbc-sqlite-db.zip` →
 `tbcmangos.sqlite`) + a TBC 2.4.3 client. Built by the same adapter, selected with
 `EXPANSION=tbc`:
 
