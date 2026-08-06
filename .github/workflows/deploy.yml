@@ -315,6 +315,11 @@ jobs:
       - name: Trim R2-served assets from the Pages artifact
         run: rm -rf dist/data/tortoise.sqlite dist/data/tortoise.sqlite.br dist/maps dist/minimap dist/model-thumbs
 
+      # Lets the deploy job ask the LIVE SITE whether this build actually published,
+      # instead of trusting actions/deploy-pages' exit code (see the deploy job).
+      - name: Stamp the artifact with this commit
+        run: echo "${{ github.sha }}" > dist/deploy-marker.txt
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -325,38 +330,80 @@ jobs:
     environment:
       name: github-pages
       url: https://xian55.github.io/tortoise-db-viewer/
+    env:
+      SITE: https://xian55.github.io/tortoise-db-viewer
     steps:
       # GitHub Pages' deploy file sync ("syncing_files") is flaky for large sites --
-      # this one ships ~95k OG-unfurl stub files, and Pages returns a terminal
-      # "Deployment failed, try again later" on roughly half of attempts (the SAME
-      # artifact deploys fine on a retry: e8b4fec succeeded, 9e5d23d failed on an
-      # identical stub set). Retry up to 5×, spaced to skip transient backend
-      # hiccups. Each tN is gated on the previous attempt failing, so the chain stops
-      # at the first success; the final attempt has no continue-on-error, so if every
-      # attempt fails the job fails. Each attempt just re-syncs the uploaded artifact.
+      # this one ships ~95k OG-unfurl stub files, and actions/deploy-pages returns a
+      # terminal "Deployment failed, try again later" on roughly half of attempts (the
+      # SAME artifact deploys fine on a retry: e8b4fec succeeded, 9e5d23d failed on an
+      # identical stub set). Hence the retry ladder.
+      #
+      # But the action's exit code is not a trustworthy signal in EITHER direction: on
+      # run 31103852579 all five attempts reported failure for a deployment that
+      # actually published (/tbc/cmangos/ went 404 -> 200 while the ladder was
+      # "failing"). The job went red on a working deploy, and every retry re-deployed a
+      # site that was already live.
+      #
+      # So the ladder asks the LIVE SITE instead: `build` stamps the artifact with
+      # dist/deploy-marker.txt = $GITHUB_SHA, and pages-live.sh polls for it. A retry
+      # fires only while the site is NOT yet serving this commit, and the final verdict
+      # is a site check -- so a "failed" attempt that published passes, and an attempt
+      # that reported success but published nothing still fails.
+      - uses: actions/checkout@v4      # only for .github/scripts/pages-live.sh
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
       - id: t1
         uses: actions/deploy-pages@v4
         continue-on-error: true
-      - if: steps.t1.outcome == 'failure'
+      - id: c1
+        if: always()
+        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 45
+        continue-on-error: true
+
+      - if: steps.c1.outcome == 'failure'
         run: sleep 20
       - id: t2
-        if: steps.t1.outcome == 'failure'
+        if: steps.c1.outcome == 'failure'
         uses: actions/deploy-pages@v4
         continue-on-error: true
-      - if: steps.t2.outcome == 'failure'
+      - id: c2
+        if: steps.c1.outcome == 'failure'
+        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 45
+        continue-on-error: true
+
+      - if: steps.c2.outcome == 'failure'
         run: sleep 40
       - id: t3
-        if: steps.t2.outcome == 'failure'
+        if: steps.c2.outcome == 'failure'
         uses: actions/deploy-pages@v4
         continue-on-error: true
-      - if: steps.t3.outcome == 'failure'
+      - id: c3
+        if: steps.c2.outcome == 'failure'
+        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 45
+        continue-on-error: true
+
+      - if: steps.c3.outcome == 'failure'
         run: sleep 60
       - id: t4
-        if: steps.t3.outcome == 'failure'
+        if: steps.c3.outcome == 'failure'
         uses: actions/deploy-pages@v4
         continue-on-error: true
-      - if: steps.t4.outcome == 'failure'
+      - id: c4
+        if: steps.c3.outcome == 'failure'
+        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 45
+        continue-on-error: true
+
+      - if: steps.c4.outcome == 'failure'
         run: sleep 90
       - id: t5
-        if: steps.t4.outcome == 'failure'
+        if: steps.c4.outcome == 'failure'
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      # THE verdict. Deliberately the only step here without continue-on-error: the job
+      # passes iff the live site is serving this commit, whatever the attempts claimed.
+      - name: Verify Pages is serving this commit
+        run: bash .github/scripts/pages-live.sh "$SITE" "${{ github.sha }}" 120
