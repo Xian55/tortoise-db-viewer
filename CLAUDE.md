@@ -570,6 +570,78 @@ Khorium — they exist only inside Coilfang/Auchindoun. Outland herbs are comple
 build bug; the nodes are correctly flagged `gather='mining'` and simply have no
 `gameobject` rows on map 530.
 
+### Ratings, gems and gear scoring (TBC)
+
+**Where a stat lives moved between expansions, and reading only one place loses most of
+TBC's itemisation.** 1.12 keeps base stats/resistances/armor in `item_template` columns and
+everything else (crit, hit, AP, …) in EQUIP-spell auras. TBC put the combat *ratings* back
+onto the **columns** as `stat_type` 12–45. `statsFromColumns` mapped only the five 1.12
+primaries, so ~4,700 TBC rating rows were silently dropped — resilience, crit, spell crit,
+hit, defense, haste, expertise — and TBC gear scored nearly blind. It now folds in
+`ITEM_MOD_STAT` (`COLUMN_STAT_KEY`); a vanilla item never sets those ids (measured: one
+stray `Health` row across all of Turtle), so the vanilla datasets are bit-identical.
+`resil`/`expertise` are new GEAR_CRITERIA keys, added **TBC-only** so a 1.12 filter
+dropdown doesn't grow permanently-empty options. Armor/spell penetration stay unmapped —
+no 1.12 counterpart to score against.
+
+**The stat keys are shared but the UNITS are not**, which is why `STAT_WEIGHT_PRESETS`
+forks on `EXPANSION`. A vanilla `crit: 14` means "per 1% crit"; a TBC item carries +20 crit
+*rating*, so the vanilla set doesn't degrade on TBC, it mis-ranks by ~20×. The TBC presets
+are written in the same per-1% terms and divided by one `RATING_CONV` table (level-70
+constants), so both sets stay comparable and the conversion is auditable in one place.
+Ids are reused where a spec exists in both, so saved builds and `?weights=` links keep
+resolving. `expertise` uses 15.77, **not** the familiar 3.94: 3.94 rating = 1 expertise,
+but 1 expertise = 0.25% of attacks undodged, so a full 1% costs 15.77 — using 3.94 would
+value it 4× over. Landing on hit's number is the result, not a coincidence.
+
+**Gems** (`enchant_text.stats`, `gem_properties`). A socketed gem and an item's socket
+bonus are both `SpellItemEnchantment` rows, whose DBC carries three `(type, amount, arg)`
+triples — now extracted (`eff`) alongside the display text. Type 5 is a stat (arg =
+ITEM_MOD id), type 4 a resistance, and **type 3 is a SPELL** — which most TBC gems are, so
+"+8 Spell Damage" is spell 9398, not a parseable stat line. Type 3 resolves through the
+very same `statsFromAuras` that builds `item_stats`, so a gem and an item granting the same
+effect can't disagree. Two traps: an enchant may store one displayed rating under several
+per-attack-type ITEM_MODs (2735 "+8 Critical Strike Rating" = melee-crit 8 **and**
+ranged-crit 8), so ITEM_MOD contributions are a per-key **max**, not a sum; and base-stat
+gems are aura 29 (MOD_STAT), which `AURA_STAT` never needed — it's behind a `baseStats`
+opt-in that only the enchant pass uses, because ~120 Turtle / ~170 TBC items also carry
+that aura and enabling it for `item_stats` would move their scores. ~95% of gems derive
+real stats; the rest are procs or stats with no criteria key, and still show their text.
+The character sheet counts gems in **totals** but not in the upgrade finder's baseline —
+scoring a gemmed item against un-gemmed candidates would hide upgrades you'd re-socket.
+
+**Share + JSON links are main-only** (`config.js` `HAS_OG_API`). The unfurl Worker and the
+public JSON API are both generated from the MAIN dataset's DB, and an entry id is not a
+shared namespace: item 23425 is Adamantite Ore on TBC and absent from Turtle entirely, so
+off `main` those links answer about a different game -- the API returns a Cloudflare 404
+HTML page (not JSON) and the unfurl degrades to a generic site card. So on other datasets
+the Share button copies the plain in-app URL (built from `location.pathname`, NOT
+`BASE_URL`, so it keeps the `/tbc/cmangos/` directory) and the JSON button isn't rendered.
+This costs `dev` its rich unfurl, which is the right trade: it previously handed out links
+that sent the recipient to main's copy of the page. Real coverage for the other rows means
+per-dataset build targets + R2 prefixes + Worker routing (a known parity gap, see
+notes/plan-content-origin-and-variants.md).
+
+**Creature thumbnails are per-dataset**, via `config.js` `WEBTHUMB_BRANCH` /
+`OWN_MODEL_THUMBS` (and the new registry field `core`, "turtle" | "cmangos" -- distinct
+from `expansion`, since vanilla/cmangos is 1.12 content but not Turtle). A display_id is
+NOT a shared namespace across games, which breaks `modelThumbUrl` two ways on TBC: Wowhead
+serves a separate webthumb set per branch and the TBC ids 404 on `classic` (measured: only
+60% of sampled TBC display_ids resolve there vs 100% on `tbc`), and our OWN renders are
+Turtle-client models, so serving them on TBC would show a confidently wrong creature --
+1,007 TBC display_ids collide with a Turtle-custom render (display 21015 is Turtle's
+"Keeper Blackforge" but TBC's "Garek"). Hence: own renders only when `core === "turtle"`,
+Wowhead branch from `EXPANSION`. vanilla/cmangos collides on just 2, but is gated the same
+way for the same reason. The `render-model-thumbs.py` worklist is likewise Turtle-scoped.
+
+**"Obtainable" for the upgrade finder** is four conditions, and one was a trap:
+`'unobtainable'` is itself an `item_sources` row, so the finder's `EXISTS (… item_sources …)`
+check treated *being flagged junk* as proof of a source and let every test/placeholder item
+through. It now also requires `hidden = 0`, no `unobtainable` row, and
+`duration = 0` — `duration` is a self-destruct timer, i.e. encounter props rather than gear
+(Kael'thas' Warp Slicer & co at 15 min, Andonisus at 5, the Hallow's End masks). 35 such
+equippable items on TBC, all correctly caught, no permanent gear affected.
+
 ### Binary assets live on R2, not git
 
 Client-derived **image** trees are no longer committed. CI still can't regenerate them
