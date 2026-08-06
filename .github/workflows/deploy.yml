@@ -191,23 +191,13 @@ jobs:
       # hash: a code-only deploy (DB unchanged) restores them from cache in seconds
       # instead of regenerating tens of thousands of files. They still ship in the
       # artifact either way -- the cache only skips the CPU of regenerating.
-      - name: OG stub content hash
-        id: oghash
-        run: echo "hash=$(HASH_ONLY=1 bun scripts/build-og.mjs)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore prerendered OG stubs
-        id: ogcache
-        uses: actions/cache@v4
-        with:
-          path: og-stubs
-          key: og-${{ steps.oghash.outputs.hash }}
-
-      - name: Prerender OG stubs (cache miss only)
-        if: steps.ogcache.outputs.cache-hit != 'true'
-        run: OUT_DIR=og-stubs bun scripts/build-og.mjs
-
-      - name: Merge OG stubs into the site
-        run: cp -r og-stubs/. dist/
+      # NOTE: the per-entity OG stubs are NOT prerendered into the artifact any more.
+      # They were ~95k tiny HTML files, and since Pages syncs an artifact file-by-file
+      # that alone took 15-20 min and routinely timed the deploy out. They are now
+      # rendered on demand by the og.tortoiseclothing.org Worker (workers/og), which
+      # reads the JSON API already on R2 for items/NPCs/quests/spells and a small
+      # bundled map for the other four types. Removing them takes the artifact from
+      # ~60k files to ~6k. See workers/og/README.md.
 
       # Compact per-entity JSON for the embeddable powered-tooltip widget
       # (public/embed/tw-power.js). Same content-hash cache gate as the OG stubs:

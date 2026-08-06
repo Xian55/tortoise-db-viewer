@@ -85,6 +85,11 @@ const IS_DEV = DATASET === "dev";
 const REPO = import.meta.env.VITE_GH_REPO || "Xian55/tortoise-db-viewer";
 // Public JSON API origin (scripts/build-api.mjs → R2). Rotatable via VITE_API_BASE.
 export const API_BASE = import.meta.env.VITE_API_BASE || "https://api.tortoiseclothing.org";
+// Link-unfurl origin: the Share button hands out <OG_BASE>/<prefix>/<id>, which the
+// workers/og Worker renders with real og: meta and then redirects into this app. These
+// used to be ~95k prerendered files inside the Pages artifact; Pages syncs file-by-file,
+// so that alone took 15-20 min and kept timing the deploy out.
+export const OG_BASE = (import.meta.env.VITE_OG_BASE || "https://og.tortoiseclothing.org").replace(/\/+$/, "");
 const CDN_BRANCH = `cdn${DS.sub}`;                       // orphan branch CI force-pushes (cdn, cdn-dev)
 const TAG = `cdn${DS.sub}-v`;                            // jsDelivr pin: `@${TAG}${version}`
 const JSDELIVR = `https://cdn.jsdelivr.net/gh/${REPO}`;

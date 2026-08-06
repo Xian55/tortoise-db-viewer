@@ -186,16 +186,27 @@ function stubHtml(title, desc, appPath, ogUrl, canonical, image) {
 `;
 }
 
+// MAP mode. The OG stubs no longer ship in the Pages artifact -- the og.tortoiseclothing.org
+// Worker renders them on demand instead (workers/og). For items/NPCs/quests/spells it reads
+// the JSON API we already publish, so nothing extra is needed; the other four entity types
+// have no API, so this emits a compact { prefix: { id: [title, desc, image] } } map that the
+// Worker bundles. ~1.9k entries vs the 59.7k HTML files this replaces.
+const MAP_OUT = process.env.OG_MAP_OUT || "";
+const API_BACKED = new Set(["i", "n", "q", "s"]);
+
 const db = await openDatabase(DB);
 const hash = createHash("sha256");
 hash.update(`v${OG_VERSION}|${BASE}|${SITE}|${[...ONLY].sort().join(",")}\n`);
 let total = 0;
+const mapOut = {};
 for (const e of ENTITIES) {
   if (ONLY.size && !ONLY.has(e.prefix)) continue;
+  if (MAP_OUT && API_BACKED.has(e.prefix)) continue;   // the Worker gets these from the API
   let rows;
   try { rows = db.prepare(e.sql).all(); }
   catch (err) { console.warn(`skip ${e.prefix}: ${err.message}`); continue; }
-  if (!HASH_ONLY) mkdirSync(join(OUT, e.prefix), { recursive: true });
+  if (!HASH_ONLY && !MAP_OUT) mkdirSync(join(OUT, e.prefix), { recursive: true });
+  if (MAP_OUT) mapOut[e.prefix] = {};
   for (const r of rows) {
     if (r.id == null) continue;
     const title = e.title(r) || `#${r.id}`;
@@ -204,6 +215,7 @@ for (const e of ENTITIES) {
     hash.update(`${e.prefix}\t${r.id}\t${title}\t${desc}\t${image || ""}\n`);
     total++;
     if (HASH_ONLY) continue;
+    if (MAP_OUT) { mapOut[e.prefix][r.id] = image ? [title, desc, image] : [title, desc]; continue; }
     const appPath = `${BASE}?${e.param}=${r.id}`;
     // flat <prefix>/<id>.html -> GitHub Pages serves it at the extensionless path
     // /<prefix>/<id> (no redirect, no per-id directory). og:url uses that clean path.
@@ -219,6 +231,16 @@ const digest = hash.digest("hex").slice(0, 16);
 if (HASH_ONLY) {
   // print ONLY the hash so the deploy can capture it as a cache key
   process.stdout.write(digest + "\n");
+} else if (MAP_OUT) {
+  // Turtle-custom icons are NOT on Blizzard's CDN -- they ship as per-icon webp served
+  // from the site. The Worker has to know which basenames those are to pick the right
+  // og:image url, so ship the set alongside the entity map (~540 names).
+  mapOut._customIcons = [...customIcons];
+  const abs = resolve(ROOT, MAP_OUT);
+  mkdirSync(dirname(abs), { recursive: true });
+  const json = JSON.stringify(mapOut);
+  writeFileSync(abs, json);
+  console.log(`OG map: ${total} entries -> ${abs} (${(Buffer.byteLength(json) / 1024).toFixed(0)} KB, content hash ${digest})`);
 } else {
   writeFileSync(join(OUT, "og-manifest.json"), JSON.stringify({ count: total, hash: digest }) + "\n");
   console.log(`OG stubs: ${total} pages -> ${OUT} (content hash ${digest})`);
