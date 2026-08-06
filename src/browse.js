@@ -318,7 +318,9 @@ async function browseItems(p) {
   const selectedKeys = chosen.length ? chosen
     : f.mount === "1" ? ["model", "faction", "req", "source"]
     : defaultColKeys(f.class, f.subclass, f.slot);
-  const where = ["i.hidden = 0"], binds = [];
+  // Nameless rows are unshippable stubs the world DB keeps as id placeholders -- they
+  // render as a blank, unclickable line and sort to the very top of a default browse.
+  const where = ["i.hidden = 0", "i.name <> ''"], binds = [];
   const add = (cond, val) => { where.push(cond); binds.push(val); };
   const addIn = (col, csv) => {
     const vals = (csv || "").split(",").filter(Boolean);

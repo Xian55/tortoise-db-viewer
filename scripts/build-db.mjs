@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { parseColumns, iterRows, NULL } from "./lib/sqldump.mjs";
 import { IMPORTS, LOOT_TABLES, LOOT_COLUMNS } from "./lib/schema.mjs";
 import { openDatabase, RUNTIME } from "./lib/sqlite.mjs";
-import { statsFromColumns, statsFromAuras } from "./lib/itemstats.mjs";
+import { statsFromColumns, statsFromAuras, statsFromEnchant } from "./lib/itemstats.mjs";
 import { deriveItemPeers } from "./lib/itempeers.mjs";
 import { buildStaging } from "./lib/staging.mjs";
 import { buildCmangosStaging } from "./lib/cmangos-adapter.mjs";
@@ -541,6 +541,11 @@ console.log("Resolving loot chances...");
 // (build-time only; the raw effect/aura columns are NOT persisted). Used by the
 // item_stats pass below to resolve an item's equip-spell stats.
 const spellStats = new Map();
+// Same thing, but with statsFromAuras' `baseStats` opt-in (auras 29/22: "+8 Strength",
+// "+3 Resist All" granted BY A SPELL). Only the enchant/gem pass reads this -- most TBC
+// base-stat gems are exactly that shape, while item_stats must keep reading base stats
+// from item columns alone or ~120 existing items would silently change score.
+const spellStatsFull = new Map();
 // craftSpell -> [learn spells that trigger it]. Recipe items and trainers reference
 // the learn spell, which teaches the actual trade-skill craft. Used by craft_source.
 const spellTriggers = new Map();
@@ -709,6 +714,8 @@ console.log("Importing spells + crafting graph...");
       const effects = effIdx.map((f) => ({ aura: clean(row[f.a]) || 0, misc: clean(row[f.m]) || 0, base: clean(row[f.b]) || 0 }));
       const st = statsFromAuras(effects, {}, clean(row[iName]), clean(row[iStances]) || 0);
       if (Object.keys(st).length) spellStats.set(e, st);
+      const stFull = statsFromAuras(effects, {}, clean(row[iName]), clean(row[iStances]) || 0, { baseStats: true });
+      if (Object.keys(stFull).length) spellStatsFull.set(e, stFull);
       let madeItem = false;
       for (const ci of creates) {
         const item = clean(row[ci]);
@@ -811,16 +818,32 @@ console.log("Deriving item enchants...");
 // they simply stage empty on a source without sockets (any 1.12 dataset).
 console.log("Deriving sockets/gems...");
 {
-  db.exec(`CREATE TABLE enchant_text (id INTEGER PRIMARY KEY, name TEXT)`);
+  // `stats` is the enchant's effect resolved to the SAME stat keys item_stats uses, so
+  // the character sheet can add a gem's contribution to a loadout's totals and score
+  // upgrades against it. Derived, not parsed: see statsFromEnchant. NULL when the
+  // enchant grants nothing scoreable (a proc, a stat 1.12 has no criteria key for) --
+  // the display text still carries it, it just can't move a number.
+  db.exec(`CREATE TABLE enchant_text (id INTEGER PRIMARY KEY, name TEXT, stats TEXT)`);
   db.exec(`CREATE TABLE gem_properties (id INTEGER PRIMARY KEY, enchant_id INTEGER, color INTEGER)`);
-  let ne = 0, ng = 0;
+  let ne = 0, ng = 0, nes = 0;
   if (src.has("spell_item_enchantment")) {
     const c = srcColumns("spell_item_enchantment"); const at = (n) => c.indexOf(n);
-    const ins = db.prepare(`INSERT OR REPLACE INTO enchant_text VALUES (?,?)`);
+    const iEff = at("eff");
+    const ins = db.prepare(`INSERT OR REPLACE INTO enchant_text VALUES (?,?,?)`);
     db.transaction(() => {
       for (const r of srcRows("spell_item_enchantment")) {
         const nm = clean(r[at("name")]);
-        if (nm) { ins.run(clean(r[at("id")]), nm); ne++; }
+        if (!nm) continue;
+        let stats = null;
+        if (iEff >= 0) {
+          const raw = clean(r[iEff]);
+          let eff = null;
+          try { eff = raw ? JSON.parse(raw) : null; } catch { eff = null; }
+          const st = eff ? statsFromEnchant(eff, spellStatsFull) : null;
+          if (st && Object.keys(st).length) { stats = JSON.stringify(st); nes++; }
+        }
+        ins.run(clean(r[at("id")]), nm, stats);
+        ne++;
       }
     })();
   }
@@ -834,7 +857,7 @@ console.log("Deriving sockets/gems...");
       }
     })();
   }
-  console.log(`  enchant_text: ${ne} | gem_properties: ${ng}`);
+  console.log(`  enchant_text: ${ne} (${nes} w/derived stats) | gem_properties: ${ng}`);
 }
 
 // ---- Random-suffix ("of the Bear", ...) id -> name + stats ----
@@ -1492,8 +1515,11 @@ console.log("Deriving item_sources...");
   // "no known source" — many legit items simply lack loot data (e.g. world drops,
   // rep rewards) and must stay visible. The OLD rules are case-sensitive: all-caps
   // "OLD"/"(OLD)" is a dev marker, while normal-case "Old Blanchy" is a real item.
+  // "Unk Item #12 - Quest" is cmangos' own placeholder name for a row it has no data
+  // for (258 of them on TBC, all quality 6). Anchored to the start so a real item
+  // couldn't match, and paired with the "#<n> - " shape the generator always emits.
   const JUNK = [/^zz/i, /^OLD\b/, /\(OLD\)/, /\bdeprecated\b/i, /^monster\s*-/i,
-    /\[ph\]/i, /\[dep\]/i, /\bunused\b/i, /\btest\b/i];
+    /\[ph\]/i, /\[dep\]/i, /\bunused\b/i, /\btest\b/i, /^unk item\s*#?\d/i];
   const insU = db.prepare(`INSERT INTO item_sources VALUES (?, 'unobtainable')`);
   let nu = 0;
   db.transaction(() => {

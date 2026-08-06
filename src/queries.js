@@ -53,6 +53,31 @@ export const qEnchantsIn = (n) => `SELECT id, spell, name FROM item_enchant
 // random-property (suffix) id -> name + stats json, for the "of the Bear"-style rolls.
 export const qRandomSuffixIn = (n) => `SELECT id, name, stats FROM random_suffix
   WHERE id IN (${Array.from({ length: n }, (_, k) => `?${k + 1}`).join(",")})`;
+
+// ---- TBC sockets: the character sheet's gems -----------------------------------
+// Both of these are TBC-only and the caller runs them inside a try/catch: on a 1.12
+// dataset the socket columns and (before this feature) enchant_text.stats simply
+// don't exist, and losing the gem lines is the correct degradation -- vanilla gear
+// has no sockets to show. Same reasoning as Q_ITEM_SOCKETS above.
+
+// per-item socket layout: the colour of each socket + the bonus for filling them all.
+export const qItemSocketsIn = (n) => `SELECT entry, socketColor_1 AS s1, socketColor_2 AS s2,
+    socketColor_3 AS s3, socketBonus AS bonus FROM items
+  WHERE entry IN (${Array.from({ length: n }, (_, k) => `?${k + 1}`).join(",")})`;
+
+// SpellItemEnchantment id -> its display text, derived stats, and -- when the enchant
+// is one a GEM grants -- the gem's socket colour and the gem item itself (for the icon
+// and a link). Resolves BOTH things the sheet needs: a socketed gem and an item's
+// socket bonus are the same kind of row, the bonus simply having no gem_properties.
+// GROUP BY keeps one row per enchant even if two gem items ever granted the same one.
+export const qEnchantTextIn = (n) => `SELECT e.id, e.name, e.stats, g.color,
+    MIN(gi.entry) AS item, MIN(gi.name) AS item_name, MIN(gi.quality) AS quality, MIN(di.icon) AS icon
+  FROM enchant_text e
+  LEFT JOIN gem_properties g ON g.enchant_id = e.id
+  LEFT JOIN items gi ON gi.GemProperties = g.id
+  LEFT JOIN item_display_info di ON di.ID = gi.display_id
+  WHERE e.id IN (${Array.from({ length: n }, (_, k) => `?${k + 1}`).join(",")})
+  GROUP BY e.id`;
 // Name search for the character sheet's per-slot item picker: FTS prefix (?1) OR
 // trigram substring (?2), restricted to the slot's inventory types (inlined ints),
 // exact-prefix (?3) ranked first. Excludes obvious test/placeholder items.

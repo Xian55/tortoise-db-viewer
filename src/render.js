@@ -3,6 +3,7 @@ import {
   BONDING, DMG_SCHOOL, SPELL_TRIGGER, RESISTANCES, ITEM_SOURCE, REP_STANDING, POWER_TYPE, classRestrictions, setClassMask, money,
   PROFESSION_LABEL, SOCKET_HEX, socketColorName,
 } from "./constants.js";
+import { OWN_MODEL_THUMBS, WEBTHUMB_BRANCH } from "./config.js";
 // skill_id -> name for item equip requirements (professions + a few non-profession skills).
 const REQ_SKILL_LABEL = { ...PROFESSION_LABEL, 762: "Riding", 433: "Cooking", 129: "First Aid" };
 
@@ -380,10 +381,14 @@ export function setModelThumbs(m) { MODEL_THUMBS = m; }
 // (see hovercard.js) so a missing thumb degrades gracefully either way. Our webp
 // carry ?v=<version> so a redeploy busts Cloudflare's edge cache.
 export function modelThumbUrl(displayId) {
-  if (MODEL_THUMBS.ids && MODEL_THUMBS.ids.has(displayId)) {
+  // Our own renders are Turtle-client models, and display_ids mean different creatures
+  // in different games -- so they're only served on a Turtle dataset, and the Wowhead
+  // fallback follows the dataset's expansion. See config.js OWN_MODEL_THUMBS /
+  // WEBTHUMB_BRANCH for the numbers behind both.
+  if (OWN_MODEL_THUMBS && MODEL_THUMBS.ids && MODEL_THUMBS.ids.has(displayId)) {
     return `${MODEL_THUMBS.base}${displayId}.webp${MODEL_THUMBS.ver ? `?v=${MODEL_THUMBS.ver}` : ""}`;
   }
-  return `https://wow.zamimg.com/modelviewer/classic/webthumbs/npc/${displayId % 256}/${displayId}.webp`;
+  return `https://wow.zamimg.com/modelviewer/${WEBTHUMB_BRANCH}/webthumbs/npc/${displayId % 256}/${displayId}.webp`;
 }
 
 export function dungeonLink(id, name) {

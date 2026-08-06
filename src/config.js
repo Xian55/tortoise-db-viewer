@@ -50,17 +50,20 @@ const qs = new URLSearchParams(LOC.search);
 //   expansion  game version ("vanilla" | "tbc"). Mirrors build-db's EXPANSION env and
 //         selects the version-dependent enum tables in constants.js (race bits, max
 //         profession skill). NOT derivable from `path` -- keep the two in step.
+//   core  which server/client the data came from ("turtle" | "cmangos"). Distinct from
+//         `expansion`: vanilla/cmangos is 1.12 content but NOT Turtle, and only Turtle
+//         datasets may use our own creature renders (see OWN_MODEL_THUMBS below).
 export const DATASETS = [
   { id: "main", path: "",    sub: "",     data: import.meta.env.VITE_DATA_BASE,
-    label: "Main", title: "Turtle WoW (1.12)", expansion: "vanilla" },
+    label: "Main", title: "Turtle WoW (1.12)", expansion: "vanilla", core: "turtle" },
   { id: "dev",  path: "dev", sub: "-dev", data: import.meta.env.VITE_DATA_BASE_DEV,
-    label: "Dev", title: "Turtle WoW 1.18.1 dev branch", expansion: "vanilla" },
+    label: "Dev", title: "Turtle WoW 1.18.1 dev branch", expansion: "vanilla", core: "turtle" },
   { id: "vanilla-cmangos", path: "vanilla/cmangos", sub: "-vanilla-cmangos",
     data: import.meta.env.VITE_DATA_BASE_VANILLA_CMANGOS,
-    label: "cMaNGOS", title: "Vanilla 1.12 (cMaNGOS)", expansion: "vanilla" },
+    label: "cMaNGOS", title: "Vanilla 1.12 (cMaNGOS)", expansion: "vanilla", core: "cmangos" },
   { id: "tbc-cmangos", path: "tbc/cmangos", sub: "-tbc-cmangos",
     data: import.meta.env.VITE_DATA_BASE_TBC_CMANGOS,
-    label: "TBC", title: "The Burning Crusade 2.4.3 (cMaNGOS)", expansion: "tbc" },
+    label: "TBC", title: "The Burning Crusade 2.4.3 (cMaNGOS)", expansion: "tbc", core: "cmangos" },
 ];
 
 // Active dataset: ?db=<id> local-dev override, else the longest URL-path match (so "dev"
@@ -80,6 +83,21 @@ export const DATASET = DS.id;
 export const EXPANSION =
   (typeof location === "undefined" ? globalThis.process?.env?.EXPANSION : null)
   || DS.expansion || "vanilla";
+export const CORE = DS.core || "turtle";
+
+// ---- creature thumbnails ------------------------------------------------------
+// Wowhead serves per-expansion webthumb sets and a display_id resolves to a DIFFERENT
+// model in each. The TBC ids simply 404 on the `classic` branch (e.g. 19454, Volatile
+// Mutation), which is why every TBC-only NPC showed a broken portrait.
+export const WEBTHUMB_BRANCH = EXPANSION === "tbc" ? "tbc" : "classic";
+
+// Our own rendered thumbs (public/model-thumbs, R2) were rendered FROM THE TURTLE CLIENT,
+// so they are only meaningful on a Turtle dataset. display_ids are not a shared
+// namespace: 1,007 TBC display_ids collide with a Turtle-custom render, so serving them
+// on TBC would show a confidently wrong creature (display 21015 = Turtle's "Keeper
+// Blackforge" but TBC's "Garek") -- worse than the missing thumbnail that surfaced this.
+export const OWN_MODEL_THUMBS = CORE === "turtle";
+
 const IS_DEV = DATASET === "dev";
 
 const REPO = import.meta.env.VITE_GH_REPO || "Xian55/tortoise-db-viewer";
@@ -90,6 +108,17 @@ export const API_BASE = import.meta.env.VITE_API_BASE || "https://api.tortoisecl
 // used to be ~95k prerendered files inside the Pages artifact; Pages syncs file-by-file,
 // so that alone took 15-20 min and kept timing the deploy out.
 export const OG_BASE = (import.meta.env.VITE_OG_BASE || "https://og.tortoiseclothing.org").replace(/\/+$/, "");
+
+// Both the unfurl Worker and the JSON API are generated from the MAIN dataset's DB
+// (deploy.yml), and an entry id is not a shared namespace across datasets -- item 23425
+// is Adamantite Ore on TBC and does not exist on Turtle at all. So off `main` those two
+// links don't merely lack data, they answer about a different game: the API returns a
+// Cloudflare 404 page (HTML, not JSON) and the unfurl falls back to a generic site card.
+// Rather than hand out a wrong link, the Share button degrades to the plain in-app URL
+// and the JSON button is not offered. Giving the other datasets real coverage means new
+// per-dataset build targets + R2 prefixes + Worker routing -- see the parity-gap list in
+// notes/plan-content-origin-and-variants.md.
+export const HAS_OG_API = DATASET === "main";
 const CDN_BRANCH = `cdn${DS.sub}`;                       // orphan branch CI force-pushes (cdn, cdn-dev)
 const TAG = `cdn${DS.sub}-v`;                            // jsDelivr pin: `@${TAG}${version}`
 const JSDELIVR = `https://cdn.jsdelivr.net/gh/${REPO}`;

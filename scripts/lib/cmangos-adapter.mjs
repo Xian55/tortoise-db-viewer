@@ -132,7 +132,10 @@ export const TARGET = {
   // Socket/gem lookups, DBC-only (no world-DB table anywhere). Both are expansion-gated:
   // a 1.12 client has no GemProperties at all, so these stage empty on vanilla.
   gem_properties: ["id", "enchant_id", "color"],
-  spell_item_enchantment: ["id", "name"],
+  // `eff` = the DBC's three (type, amount, arg) triples as JSON -- what build-db turns
+  // into real gem/socket-bonus stats (statsFromEnchant). Name alone would not do: most
+  // TBC gems grant a SPELL, so "+8 Spell Damage" is not a stat line to be parsed.
+  spell_item_enchantment: ["id", "name", "eff"],
   npc_vendor: ["entry", "item", "maxcount", "incrtime"],
   npc_vendor_template: ["entry", "item", "maxcount", "incrtime"],
   page_text: ["entry", "text", "next_page"],
@@ -340,7 +343,10 @@ export function buildCmangosStaging(db, cmangosPath, STAGE_SPECS) {
     const dbcRows = DBC && DBC[DBC_KEY[table]];
     if (dbcRows && dbcRows.length) {
       const st = db.prepare(`INSERT OR REPLACE INTO \`${PFX}${table}\` (${cols.map((c) => `\`${c}\``).join(",")}) VALUES (${cols.map(() => "?").join(",")})`);
-      db.transaction(() => { for (const r of dbcRows) st.run(cols.map((c) => (r[c] === undefined ? null : r[c]))); })();
+      // A DBC value may be a nested array/object (spell_item_enchantment.eff) -- SQLite
+      // can't bind those, so store them as JSON text for the consumer to parse.
+      const bind = (v) => (v === undefined ? null : (v !== null && typeof v === "object" ? JSON.stringify(v) : v));
+      db.transaction(() => { for (const r of dbcRows) st.run(cols.map((c) => bind(r[c]))); })();
       stats.dbc.push(table);
       continue;
     }
