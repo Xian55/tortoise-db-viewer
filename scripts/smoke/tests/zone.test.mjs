@@ -48,14 +48,30 @@ async function testZoneDotMenu(id) {
   // Ask the app for a visible dot's on-screen position (the window.__zoneDots test
   // hook in zonemap.js) instead of blind-scanning the GPU overlay pixel by pixel --
   // the old nested mouse-move sweep took ~40s (HIT=9 forces a fine grid).
-  const found = await page.waitForFunction(() => {
+  let found = await page.waitForFunction(() => {
     const d = window.__zoneDots && window.__zoneDots();
     return d && d.length ? d[0] : null;
   }, { timeout: T }).then((h) => h.jsonValue()).catch(() => null);
   if (!found) { console.log(`zone-dot-menu ${id}: no dot found`); return false; }
-  await page.mouse.move(found.x, found.y);   // drive the hover hit-test at the dot
-  await page.mouse.click(found.x, found.y, { button: "right" });
-  await page.waitForSelector(".map-ctx", { visible: true, timeout: 5000 }).catch(() => {});
+  // RETRY the click, re-reading the dot each time: the map's fitBounds animation moves
+  // markers, so a position sampled a moment ago can be stale by the time the click
+  // lands -- exactly the flake this dir's CLAUDE.md warns about. One shot passed
+  // locally and failed on a slower CI runner. Re-reading matters more than retrying:
+  // clicking the same stale pixel again would miss just as reliably.
+  let opened = false;
+  for (let attempt = 0; attempt < 5 && !opened; attempt++) {
+    const at = await page.evaluate(() => {
+      const d = window.__zoneDots && window.__zoneDots();
+      return d && d.length ? d[0] : null;
+    });
+    if (!at) break;
+    found = at;
+    await page.mouse.move(at.x, at.y);       // drive the hover hit-test at the dot
+    await page.mouse.click(at.x, at.y, { button: "right" });
+    opened = await page.waitForSelector(".map-ctx", { visible: true, timeout: 2000 })
+      .then(() => true).catch(() => false);
+  }
+  if (!opened) { console.log(`zone-dot-menu ${id}: context menu never opened (last dot ${JSON.stringify(found)})`); return false; }
   const headers = await page.$$eval(".map-ctx .map-ctx-h", (e) => e.map((h) => h.textContent.trim()));
   const items = await page.$$eval(".map-ctx .map-ctx-i", (e) => e.map((b) => b.textContent.trim()));
   await page.click(".map-ctx .map-ctx-i");   // Copy > Coordinates
