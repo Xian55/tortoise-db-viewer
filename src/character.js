@@ -196,7 +196,7 @@ function weightsFor(ch, specId) {
 
 const mergeStats = (a, b) => { const r = { ...a }; for (const k in b) r[k] = (r[k] || 0) + b[k]; return r; };
 
-async function computeUpgrades(ch, specId, { level = 60, lookAhead = 3, slots = [], topN, eqInv = {}, eqBonus = {}, includeDowngrades = false, weaponPref = "auto" } = {}) {
+async function computeUpgrades(ch, specId, { level = MAX_LEVEL, lookAhead = 3, slots = [], topN, eqInv = {}, eqBonus = {}, includeDowngrades = false, weaponPref = "auto" } = {}) {
   const weights = weightsFor(ch, specId);
   const slotSet = slots && slots.length ? new Set(slots) : null; // null = all slots
   const n = topN ?? (slotSet ? 15 : 5); // a narrowed slot search shows a deeper list
@@ -210,8 +210,11 @@ async function computeUpgrades(ch, specId, { level = 60, lookAhead = 3, slots = 
   const maxReq = level + lookAhead;
   // required_level alone doesn't gate content: most raid gear has required_level 0
   // but item_level 80-92. So also cap item level -- dungeon blues run ~8 ilvl over
-  // the intended level; at 60 (endgame) raids open up, so drop the ilvl cap.
-  const ilvlCap = level >= 60 ? Infinity : maxReq + 8;
+  // the intended level; at the CAP (endgame) raids open up, so drop the ilvl cap.
+  // Level-gated on MAX_LEVEL, not a literal 60: on TBC a level-60 character is
+  // mid-Outland, not at endgame, so uncapping there would rank Sunwell gear as a
+  // "soon" upgrade for someone 10 levels short of it.
+  const ilvlCap = level >= MAX_LEVEL ? Infinity : maxReq + 8;
   const race = ch.race || null;         // allowable_race bit; null = Any
   const side = race ? sideOfRace(race) : null;
   const cls = ch.cls || null;           // class bit; null = Any
@@ -913,7 +916,7 @@ export async function showCharacter(idOrChar, navigate) {
         <label>Race ${raceSelect(ch.race || "")}</label>
         ${slotSelect(ch.slotFilter || "")}
         <label>Weapon ${weaponSelect(ch.weaponPref)}</label>
-        <label>My level <input type="number" id="charLevel" min="1" max="60" value="${ch.level || 60}"></label>
+        <label>My level <input type="number" id="charLevel" min="1" max="${MAX_LEVEL}" value="${ch.level || MAX_LEVEL}"></label>
         <label>Look ahead <input type="number" id="charAhead" min="0" max="20" value="${ch.lookAhead ?? 3}"></label>
         <label>Show <input type="number" id="charTopN" min="1" max="30" value="${ch.topN ?? 5}"> / slot</label>
         <label class="up-check"><input type="checkbox" id="charDowngrades"${ch.showDowngrades ? " checked" : ""}> include lower-score</label>
