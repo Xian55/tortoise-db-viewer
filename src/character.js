@@ -186,6 +186,37 @@ async function gearData() {
 // name markers for non-real items (test/placeholder/deprecated) never to suggest.
 const TEST_ITEM_RE = /\b(test|deprecated|placeholder|unused|debug|beta|qa)\b|\[ph\]|\(ph\)|\(test\)|\(old\)|do ?not ?use|monster -/i;
 
+// Item-level ceiling for a character who can equip gear up to required_level `maxReq`.
+//
+// Answered from the data: take the item levels of candidates whose OWN required_level
+// sits in the bracket just below maxReq -- i.e. gear genuinely intended for this point
+// of progression -- and use a high percentile of that, plus a little headroom so the
+// best piece in the bracket isn't excluded by its own percentile.
+//
+// This replaces a flat `maxReq + 8`, which assumed item level tracks character level.
+// That holds in 1.12 (req 60 -> ilvl ~75) and fails badly in TBC (req 70 -> ilvl ~123,
+// max 175), where it hid the entire expansion from anyone below the cap.
+//
+// Falls back to the old constant when the bracket is too thin to be representative
+// (a low-level character in a dataset with sparse gear at that level).
+const ILVL_BRACKET = 6;   // how far below maxReq still counts as "this stage"
+const ILVL_PCTL = 0.95;   // percentile of that bracket to allow
+const ILVL_HEADROOM = 1.1;
+function ilvlCapFor(maxReq, gear) {
+  const lo = maxReq - ILVL_BRACKET;
+  const ilvls = [];
+  for (const list of gear.byInv.values()) {
+    for (const c of list) {
+      const req = c.req || 0;
+      if (req > lo && req <= maxReq && c.ilvl > 0) ilvls.push(c.ilvl);
+    }
+  }
+  if (ilvls.length < 20) return maxReq + 8;
+  ilvls.sort((a, b) => a - b);
+  const p = ilvls[Math.min(ilvls.length - 1, Math.floor(ilvls.length * ILVL_PCTL))];
+  return Math.max(maxReq + 8, Math.round(p * ILVL_HEADROOM));
+}
+
 // For each slot, the top-N obtainable items of that slot that out-score the
 // equipped item (or top-N outright for an empty slot) under the given spec, limited
 // to items the character can equip now or soon: required_level <= level + lookAhead.
@@ -208,13 +239,18 @@ async function computeUpgrades(ch, specId, { level = MAX_LEVEL, lookAhead = 3, s
   const ohIsShield = eqInv.OffHand === 14;
   const suggest2H = wants2H && (weaponPref === "2h" || !ohIsShield); // keep the shield in auto
   const maxReq = level + lookAhead;
-  // required_level alone doesn't gate content: most raid gear has required_level 0
-  // but item_level 80-92. So also cap item level -- dungeon blues run ~8 ilvl over
-  // the intended level; at the CAP (endgame) raids open up, so drop the ilvl cap.
-  // Level-gated on MAX_LEVEL, not a literal 60: on TBC a level-60 character is
-  // mid-Outland, not at endgame, so uncapping there would rank Sunwell gear as a
-  // "soon" upgrade for someone 10 levels short of it.
-  const ilvlCap = level >= MAX_LEVEL ? Infinity : maxReq + 8;
+  // required_level alone doesn't gate content: a lot of raid gear has required_level 0
+  // but a very high item_level, so item level is capped too. At the level cap (endgame)
+  // raids open up and the cap is dropped entirely.
+  //
+  // The cap is MEASURED from the dataset, not a constant. It used to be `maxReq + 8`,
+  // which silently encodes 1.12's ilvl ~= required_level scale. TBC breaks that above
+  // level 58: its level-70 gear sits at ilvl ~123 (up to 175), so `+8` at level 67 gave
+  // a cap of 78 and excluded literally all of Outland -- the finder could only see
+  // level-60-era gear. Taking a high percentile of the item levels ACTUALLY worn at
+  // this required level asks the right question ("what ilvl is normal for gear I can
+  // equip?") and needs no per-expansion tuning.
+  const ilvlCap = level >= MAX_LEVEL ? Infinity : ilvlCapFor(maxReq, await gearData());
   const race = ch.race || null;         // allowable_race bit; null = Any
   const side = race ? sideOfRace(race) : null;
   const cls = ch.cls || null;           // class bit; null = Any
