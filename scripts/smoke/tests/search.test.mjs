@@ -1,4 +1,5 @@
 import { page, nav, T, smoke } from "../harness.mjs";
+import { waitStable } from "./_shared.mjs";
 
 async function testSearch(term) {
   await nav(`?search=${encodeURIComponent(term)}`);
@@ -100,13 +101,18 @@ async function testSearchDropdown(term) {
   await page.click("#search");
   await page.type("#search", term, { delay: 30 });
   await page.waitForSelector(".search-dropdown .sd-row", { timeout: 10000 });
+  // The rows appearing is not the same as the dropdown being DONE: a later response
+  // still re-renders the panel, which clears the keyboard selection and makes the
+  // Enter below a no-op. Wait for the row set to stop changing first.
+  await waitStable(() => page.$$eval(".search-dropdown .sd-row", (e) => e.map((r) => r.textContent)).catch(() => null));
   const rows = await page.$$eval(".search-dropdown .sd-row", (e) => e.length);
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
-  await page.waitForFunction(() => /[?&](item|npc|quest|dungeon|search)=/.test(location.search), { timeout: 10000 }).catch(() => {});
+  const NAV = /[?&](item|npc|quest|spell|object|faction|dungeon|zone|subzone|search)=/;
+  await page.waitForFunction(() => /[?&](item|npc|quest|spell|object|faction|dungeon|zone|subzone|search)=/.test(location.search), { timeout: 10000 }).catch(() => {});
   const url = await page.evaluate(() => location.search);
   console.log(`dropdown "${term}": rows=${rows} navigatedTo="${url}"`);
-  return rows > 1 && /[?&](item|npc|quest|dungeon|search)=/.test(url);
+  return rows > 1 && NAV.test(url);
 }
 
 // search includes factions: a faction name yields a Factions tab with a link.

@@ -100,6 +100,11 @@ let currentMap = null, currentOverlay = null;
 // clipped overflow). No "In-Game Map Pin": the /way map-pin API doesn't exist in 1.12.
 let ctxEl = null;
 function ctxMenuEl() {
+  // Re-attach rather than trust the cache: anything that clears body-level nodes leaves
+  // us holding a detached element, and every later menu would silently fill a node that
+  // isn't in the document. The listeners below are bound to the element, so re-appending
+  // the same node keeps them working -- don't rebuild it.
+  if (ctxEl && !ctxEl.isConnected) document.body.appendChild(ctxEl);
   if (ctxEl) return ctxEl;
   ctxEl = document.createElement("div");
   ctxEl.className = "map-ctx";

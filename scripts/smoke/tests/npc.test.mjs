@@ -1,5 +1,5 @@
 import { page, nav, T, smoke } from "../harness.mjs";
-import { testBrowse } from "./_shared.mjs";
+import { testBrowse, waitMapStill } from "./_shared.mjs";
 
 // Measure the in-app (SPA) navigation render time — the actual "click an NPC"
 // path (DB already in memory; just queries + render). Catches query regressions
@@ -96,13 +96,20 @@ async function testNpcMap(id) {
 async function testNpcMapMenu(id) {
   await nav(`?npc=${id}`);
   await page.waitForSelector("#zonemap .leaflet-marker-icon", { timeout: 30000 });
-  // Right-click a marker to open the copy menu. RETRY: the map may still be running
-  // its fitBounds animation, which shifts marker positions and drops the first
-  // contextmenu -- this was the suite's one flaky test (1 miss in 3 runs).
+  // Right-click a marker to open the copy menu. The map is still running its fitBounds
+  // animation, which slides the marker out from under the click: page.click() measures
+  // the element's box and then clicks that point, so a loaded runner misses every time
+  // and retrying can't fix it. Wait for the position to settle, then click the
+  // coordinate directly. See waitMapStill in _shared.mjs.
+  const markerAt = () => page.$eval("#zonemap .leaflet-marker-icon", (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width ? { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } : null;
+  }).catch(() => null);
   let opened = false;
   for (let i = 0; i < 5 && !opened; i++) {
-    await new Promise((r) => setTimeout(r, 250));
-    await page.click("#zonemap .leaflet-marker-icon", { button: "right" }).catch(() => {});
+    const at = await waitMapStill(markerAt);
+    if (!at) break;
+    await page.mouse.click(at.x, at.y, { button: "right" }).catch(() => {});
     opened = await page.waitForSelector(".map-ctx", { visible: true, timeout: 2000 }).then(() => true).catch(() => false);
   }
   const headers = await page.$$eval(".map-ctx .map-ctx-h", (e) => e.map((h) => h.textContent.trim()));
