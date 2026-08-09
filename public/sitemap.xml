@@ -12,6 +12,7 @@
   <url><loc>https://xian55.github.io/tortoise-db-viewer/?browse=factions</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
   <url><loc>https://xian55.github.io/tortoise-db-viewer/?browse=objects</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://xian55.github.io/tortoise-db-viewer/?browse=zones</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://xian55.github.io/tortoise-db-viewer/?browse=subzones</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://xian55.github.io/tortoise-db-viewer/?worldmap</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://xian55.github.io/tortoise-db-viewer/?dungeons</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://xian55.github.io/tortoise-db-viewer/?guides</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>

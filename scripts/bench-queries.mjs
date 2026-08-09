@@ -37,6 +37,7 @@ const hot = {
   SET: one("SELECT set_id id FROM items WHERE set_id>0 GROUP BY set_id ORDER BY COUNT(*) DESC LIMIT 1")?.id,
   FACTION: one("SELECT id FROM factions ORDER BY items DESC LIMIT 1")?.id,
   ZONE: one("SELECT zone id FROM spawn_points GROUP BY zone ORDER BY COUNT(*) DESC LIMIT 1")?.id,
+  SUBZONE: one("SELECT sub id FROM spawn_points WHERE sub IS NOT NULL GROUP BY sub ORDER BY COUNT(*) DESC LIMIT 1")?.id,
   MAP: one("SELECT map id FROM spawn_points WHERE map IN (0,1) GROUP BY map ORDER BY COUNT(*) DESC LIMIT 1")?.id,
   DUNGEON: one("SELECT map id FROM spawns WHERE map NOT IN (0,1) GROUP BY map ORDER BY COUNT(*) DESC LIMIT 1")?.id,
   DISPLAY: one("SELECT display_id id FROM items WHERE display_id>0 GROUP BY display_id ORDER BY COUNT(*) DESC LIMIT 1")?.id,
@@ -51,8 +52,16 @@ const hot = {
 const SEARCH4 = ["copper*", "Copper", 50, '"opper"'];      // fts, name, limit, trigram
 const SEARCH3 = ["%opper%", "Copper", 50];                  // like, exact, limit
 const K = (kind) => hot[kind];
+// Subzone reads are zone-scoped (?1 = subzone, ?2 = its parent), which is what lets
+// them ride idx_spawn_zone instead of needing an index of their own -- so bench them
+// with a real (sub, zone) pair, not the busiest of each independently.
+const SUB_PAIR = (() => {
+  const r = one("SELECT sub, zone FROM spawn_points WHERE sub IS NOT NULL GROUP BY sub, zone ORDER BY COUNT(*) DESC LIMIT 1");
+  return r ? [r.sub, r.zone] : [undefined, undefined];
+})();
 const SPEC = {
   // 2+ param specials
+  Q_SUBZONE_SPAWNS: SUB_PAIR, Q_SUBZONE_OBJECTS: SUB_PAIR, Q_SUBZONE_LOOT: SUB_PAIR,
   Q_SAME_MODEL: [K("DISPLAY"), K("ITEM")],
   Q_ZONE_FOCUS_SPAWNS: [K("ZONE"), K("ITEM")],
   Q_DUNGEON_QUESTS: [K("DUNGEON"), 255],
@@ -60,18 +69,27 @@ const SPEC = {
   Q_WORLD_NPC_FILTER: ["copper*", '"opper"'],
   Q_SEARCH_ITEMS: SEARCH4, Q_SEARCH_NPCS: SEARCH4, Q_SEARCH_QUESTS: SEARCH4, Q_SEARCH_SPELLS: SEARCH4,
   Q_SEARCH_DUNGEONS: SEARCH3, Q_SEARCH_ZONES: SEARCH3, Q_SEARCH_FACTIONS: SEARCH3,
-  Q_SEARCH_OBJECTS: SEARCH3, Q_SEARCH_ITEMSETS: SEARCH3,
+  Q_SEARCH_OBJECTS: SEARCH3, Q_SEARCH_ITEMSETS: SEARCH3, Q_SEARCH_SUBZONES: SEARCH3,
 };
+// Queries built by a factory (the `withSub` variants) aren't string exports, so the
+// Object.entries(Q) sweep can't see them. Bench the shape the app actually ships.
+const FACTORIES = {
+  "qZoneSpawns(sub)": Q.qZoneSpawns(true),
+  "qZoneObjects(sub)": Q.qZoneObjects(true),
+  "qNpcSpawns(sub)": Q.qNpcSpawns(true),
+};
+const FACTORY_KIND = { "qZoneSpawns(sub)": "ZONE", "qZoneObjects(sub)": "ZONE", "qNpcSpawns(sub)": "NPC" };
 // 1-param queries by kind (name -> kind)
 const KIND = {
   ITEM: ["Q_ITEM","Q_ID_ITEM","Q_ITEM_STATS","Q_ITEM_SOURCES","Q_ITEM_SUFFIXES","Q_ITEM_OBJECT_SPAWNS","Q_ITEM_ICON","Q_DROPPED_BY","Q_SOLD_BY","Q_CONTAINED_IN","Q_CONTAINS","Q_DISENCHANTS_INTO","Q_QUEST_ITEM","Q_STARTS_QUEST","Q_CREATED_BY","Q_REAGENT_FOR","Q_TEACHES","Q_OBJECT_SOURCE","Q_OBJECT_SOURCE_ENTRIES"],
-  NPC: ["Q_NPC","Q_ID_NPC","Q_NPC_CARD","Q_NPC_LOOT","Q_NPC_SKIN","Q_NPC_PICK","Q_NPC_SELLS","Q_NPC_TRAINS","Q_NPC_STARTS","Q_NPC_ENDS","Q_NPC_MAPS","Q_NPC_SPAWNS","Q_NPC_QUEST_ZONES","Q_NPC_OBJECTIVE_OF"],
+  NPC: ["Q_NPC","Q_ID_NPC","Q_NPC_CARD","Q_NPC_LOOT","Q_NPC_SKIN","Q_NPC_PICK","Q_NPC_SELLS","Q_NPC_TRAINS","Q_NPC_STARTS","Q_NPC_ENDS","Q_NPC_MAPS","Q_NPC_QUEST_ZONES","Q_NPC_OBJECTIVE_OF"],
   QUEST: ["Q_QUEST","Q_ID_QUEST","Q_QUEST_BRIEF","Q_QUEST_CHAIN","Q_QUEST_CREATURES","Q_QUEST_ITEMS","Q_QUEST_REP","Q_QUEST_GIVERS_NPC","Q_QUEST_ENDERS_NPC","Q_QUEST_GIVERS_GO","Q_QUEST_ENDERS_GO"],
   SPELL: ["Q_SPELL","Q_ID_SPELL","Q_SPELL_PRODUCES","Q_SPELL_REAGENTS","Q_SPELL_USED_BY","Q_SPELL_TRAINERS","Q_SPELL_BOOKS","Q_SPELL_REWARD_QUESTS","Q_SPELL_SOURCE"],
   OBJECT: ["Q_OBJECT","Q_ID_OBJECT","Q_OBJECT_SIBLINGS"],
   SET: ["Q_ITEM_SET","Q_ITEMSET_MEMBERS","Q_ITEMSET_BONUSES","Q_ITEMSET_STATS"],
   FACTION: ["Q_FACTION","Q_FACTION_ITEMS","Q_FACTION_MOBS","Q_FACTION_NPCS","Q_FACTION_QUESTS","Q_NPC_FACTION"],
-  ZONE: ["Q_ZONE","Q_ZONE_LOOT","Q_ZONE_OBJECTS","Q_ZONE_QUESTS","Q_ZONE_SPAWNS","Q_DUNGEON_ZONE","Q_MAP_FLOORS","Q_MAP_OBJECTS"],
+  ZONE: ["Q_ZONE","Q_ZONE_LOOT","Q_ZONE_QUESTS","Q_ZONE_SUBZONES","Q_DUNGEON_ZONE","Q_MAP_FLOORS","Q_MAP_OBJECTS"],
+  SUBZONE: ["Q_SUBZONE"],
   // instance maps (a real dungeon page) — NOT a continent
   DUNGEON: ["Q_MAP_TYPE","Q_MAP_BOSSES","Q_MAP_SPAWNS","Q_DUNGEON","Q_DUNGEON_NPCS","Q_DUNGEON_LOOT","Q_DUNGEON_BOSS_LOOT"],
   // the seamless world map — continent 0/1, inherently large result sets
@@ -81,7 +99,7 @@ const KIND = {
   SKILL: ["Q_PROFESSION_LEARN"],
   PAGE: ["Q_PAGE_TEXT"],
 };
-const nameKind = {};
+const nameKind = { ...FACTORY_KIND };
 for (const [kind, names] of Object.entries(KIND)) for (const n of names) nameKind[n] = kind;
 
 function paramsFor(name, sql) {
@@ -118,8 +136,8 @@ function bench(stmt, params) {
 
 // ---- run ----
 const results = [], unresolved = [], errored = [];
-for (const [name, sql] of Object.entries(Q)) {
-  if (typeof sql !== "string" || !name.startsWith("Q_")) continue;
+for (const [name, sql] of [...Object.entries(Q), ...Object.entries(FACTORIES)]) {
+  if (typeof sql !== "string" || !(name.startsWith("Q_") || name in FACTORIES)) continue;
   const params = paramsFor(name, sql);
   if (params === null) { unresolved.push(name); continue; }
   if (params.some((p) => p === undefined)) { unresolved.push(name); continue; }

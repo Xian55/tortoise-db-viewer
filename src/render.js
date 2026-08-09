@@ -411,6 +411,12 @@ export function zoneLink(areaid, name) {
   return `<a class="ilink zone" href="?zone=${areaid}">${esc(name)}</a>`;
 }
 
+// A sub-area of a zone (Goldshire in Elwynn Forest). Shares the .zone styling -- it
+// reads as the same kind of place, one level down.
+export function subzoneLink(entry, name) {
+  return `<a class="ilink zone" href="?subzone=${entry}">${esc(name)}</a>`;
+}
+
 // Faction-alignment label/badge for an NPC (creatures.team: 1 Alliance, 2 Horde,
 // 3 both, else neutral). Used where "which side can use this NPC" matters --
 // profession trainers on the crafting browse + spell page.

@@ -1,10 +1,11 @@
 import "./style.css";
-import { query, queryOne, preconnect, getMeta } from "./db.js";
+import { query, queryOne, preconnect, getMeta, caps } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
+import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, QUALITY, ITEM_CLASS, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, DMG_SCHOOL, RESISTANCES, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA, MAX_SKILL, skinningReq } from "./constants.js";
 import { showBrowse } from "./browse.js";
+import { selbarHtml, updateSelbar, wireSelbar } from "./selbar.js";
 import { showCharacters, showCharacter, showSharedLoadout } from "./character.js";
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
@@ -51,14 +52,18 @@ function regTable(columns, rows, opts = {}) {
   if (!rows || !rows.length) return { html: "", count: 0 };
   const id = `t${pendingTables.length}`;
   pendingTables.push({ id, columns, rows, ...opts });
-  return { html: `<div class="tbl" data-table="${id}"></div>`, count: rows.length };
+  // tableId lets a caller reclaim this table's API from mountTables() -- needed by
+  // anything driving the table from outside it (the selection bar).
+  return { html: `<div class="tbl" data-table="${id}"></div>`, count: rows.length, tableId: id };
 }
 function mountTables() {
+  const apis = new Map();
   for (const s of pendingTables) {
     const el = app.querySelector(`[data-table="${s.id}"]`);
-    if (el) createTable(el, s);
+    if (el) apis.set(s.id, createTable(el, s));
   }
   pendingTables = [];
+  return apis;
 }
 function wireTabs() {
   const bar = app.querySelector(".tabbar");
@@ -139,6 +144,7 @@ function route() {
   const itemset = params.get("itemset");
   const faction = params.get("faction");
   const zone = params.get("zone");
+  const subzone = params.get("subzone");
   const dungeon = params.get("dungeon");
   const object = params.get("object");
   const icon = params.get("icon");
@@ -157,6 +163,7 @@ function route() {
   else if (itemset) return showItemSet(Number(itemset));
   else if (faction) return showFaction(Number(faction));
   else if (zone) return showZone(Number(zone), params.get("gather") ? Number(params.get("gather")) : null);
+  else if (subzone) return showSubzone(Number(subzone));
   else if (dungeon) return showDungeon(Number(dungeon));
   else if (object) return showObject(Number(object));
   else if (icon) return showIcon(icon);
@@ -414,8 +421,19 @@ async function showSearch(term) {
     { label: "Name", cell: (r) => zoneLink(r.areaid, r.name), value: (r) => r.name },
     { label: "Continent", cls: "muted", cell: (r) => CONTINENT[r.mapid] || "", value: (r) => CONTINENT[r.mapid] || "" },
   ];
+  // Zone column is load-bearing, not decoration: subzone names repeat across the world.
+  const subzoneCols = [
+    { label: "Name", cell: (r) => subzoneLink(r.entry, r.name), value: (r) => r.name },
+    { label: "Zone", cls: "muted", cell: (r) => (r.zone_id ? zoneLink(r.zone_id, r.zone_name || `#${r.zone_id}`) : ""), value: (r) => r.zone_name || "" },
+    { label: "Continent", cls: "muted", cell: (r) => CONTINENT[r.map_id] || "", value: (r) => CONTINENT[r.map_id] || "" },
+    { label: "Spawns", num: true, cls: "muted", cell: (r) => r.spawns || "", value: (r) => r.spawns || 0 },
+  ];
   const spellCols = [
     { label: "Name", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
+    // spells.rank is the client's subtext: usually "Rank N", but also "Passive",
+    // "Toy", "Game Master". Sort numerically when it IS a rank so Rank 10 follows
+    // Rank 9 rather than Rank 1, and push the non-numeric labels to the end.
+    { label: "Rank", cls: "muted", cell: (r) => esc(r.rank || ""), value: (r) => { const m = /^Rank (\d+)$/.exec(r.rank || ""); return m ? +m[1] : (r.rank ? 1e6 : 0); } },
     { label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
   ];
   const factionCols = [
@@ -427,8 +445,17 @@ async function showSearch(term) {
   ];
 
   const itemsets = res.itemsets || [];
+  // Search results get the same selection ops as ?browse=items -- finding items by
+  // name and then bulk-copying/comparing them is the same job, and it was odd that
+  // only the filter-driven view could do it. `bar` is resolved after innerHTML;
+  // updateSelbar tolerates the null it sees during the table's first render.
+  let bar = null;
+  const itemsTable = regTable(itemCols, res.items, {
+    pageSize: 100, selectable: true, rowKey: (r) => r.entry,
+    onSelectionChange: (count) => updateSelbar(bar, count),
+  });
   const tabDefs = [
-    { id: "items", label: "Items", ...regTable(itemCols, res.items, { pageSize: 100 }) },
+    { id: "items", label: "Items", html: (itemsTable.html ? selbarHtml() : "") + itemsTable.html, count: itemsTable.count },
     { id: "npcs", label: "NPCs", ...regTable(npcCols, res.npcs, { pageSize: 100 }) },
     { id: "quests", label: "Quests", ...regTable(questCols, res.quests, { pageSize: 100 }) },
     { id: "spells", label: "Spells", ...regTable(spellCols, res.spells, { pageSize: 100 }) },
@@ -437,13 +464,17 @@ async function showSearch(term) {
     { id: "dungeons", label: "Dungeons", ...regTable(dungeonCols, res.dungeons) },
     { id: "objects", label: "Objects", ...regTable(objectCols, res.objects || []) },
     { id: "zones", label: "Zones", ...regTable(zoneCols, res.zones) },
+    { id: "subzones", label: "Subzones", ...regTable(subzoneCols, res.subzones || []) },
   ];
-  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + itemsets.length + res.dungeons.length + (res.objects || []).length + res.zones.length;
+  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + itemsets.length + res.dungeons.length + (res.objects || []).length + res.zones.length + (res.subzones || []).length;
   if (!total) { app.innerHTML = `<div class="home"><p>No results for “${esc(term)}”.</p></div>`; return; }
 
   app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${tabs(tabDefs)}</div>`;
-  mountTables();
+  const apis = mountTables();
   wireTabs();
+  bar = app.querySelector("[data-selbar]");
+  const itemsApi = apis.get(itemsTable.tableId);
+  if (bar && itemsApi) wireSelbar(bar, itemsApi, navigate);
 }
 
 // Item-set panel: name (links the set page), members (current item bolded), and
@@ -1091,17 +1122,36 @@ async function resolveNpcLocations(entries, kind = "c") {
   const out = new Map();
   const uniq = [...new Set(entries)].filter(Boolean);
   if (!uniq.length) return out;
-  const rows = await query(Q.qNpcZoneSpawns(uniq.length, kind), uniq);
+  const rows = await query(Q.qNpcZoneSpawns(uniq.length, kind, (await caps()).spawnSub), uniq);
   const byEntry = new Map();
   for (const r of rows) {
     let m = byEntry.get(r.entry); if (!m) { m = new Map(); byEntry.set(r.entry, m); }
-    const e = m.get(r.areaid) || { ...r, n: 0 }; e.n++; m.set(r.areaid, e);
+    const e = m.get(r.areaid) || { ...r, n: 0, subs: new Map() }; e.n++;
+    if (r.subid) e.subs.set(r.subid, { name: r.subname, n: (e.subs.get(r.subid)?.n || 0) + 1 });
+    m.set(r.areaid, e);
   }
   for (const [entry, m] of byEntry) {
     let best = null; for (const e of m.values()) if (!best || e.n > best.n) best = e;
-    out.set(entry, { html: zoneCellHtml(best.areaid, best.name, best.type), text: best.name });
+    // `text` stays the ZONE name: it is this column's sort/group key on six tables,
+    // and grouping by sub-area would shatter them into hundreds of one-row groups.
+    out.set(entry, { html: zoneCellHtml(best.areaid, best.name, best.type) + subSuffix(best), text: best.name });
   }
   return out;
+}
+
+// The sub-area a spawn set actually lives in, when there is a dominant one. A mob
+// roaming all of Elwynn shouldn't claim to live in Goldshire, so require the modal
+// sub-area to hold at least a quarter of the entry's spawns in that zone.
+const SUB_SHARE_MIN = 0.25;
+function dominantSub(entry) {
+  if (!entry.subs || !entry.subs.size) return null;
+  let best = null, id = null;
+  for (const [k, v] of entry.subs) if (!best || v.n > best.n) { best = v; id = k; }
+  return best && best.name && best.n / entry.n >= SUB_SHARE_MIN ? { id, ...best } : null;
+}
+function subSuffix(entry) {
+  const s = dominantSub(entry);
+  return s ? ` <span class="dim">· ${esc(s.name)}</span>` : "";
 }
 
 // ---- NPC combat stats panel (creature_template, see build-db) ----
@@ -1272,7 +1322,7 @@ async function showNpc(id) {
     query(Q.Q_NPC_LOOT, [id]), query(Q.Q_NPC_SKIN, [id]), query(Q.Q_NPC_PICK, [id]),
     query(Q.Q_NPC_SELLS, [id]), query(Q.Q_NPC_STARTS, [id]), query(Q.Q_NPC_ENDS, [id]),
     query(Q.Q_NPC_OBJECTIVE_OF, [id]), query(Q.Q_NPC_MAPS, [id]),
-    query(Q.Q_NPC_TRAINS, [id]), query(Q.Q_NPC_SPAWNS, [id]), queryOne(Q.Q_NPC_FACTION, [id]),
+    query(Q.Q_NPC_TRAINS, [id]), query(Q.qNpcSpawns((await caps()).spawnSub), [id]), queryOne(Q.Q_NPC_FACTION, [id]),
     query(Q.Q_MOUNT_SOURCE, [id]), query(Q.Q_NPC_ABILITIES, [id]),
     // ?3..?6 are the creature's own health/armor/DPS/AP -- the query returns its rank
     // inside the cohort alongside the medians (see the Stats tab's outlier headline).
@@ -1294,11 +1344,15 @@ async function showNpc(id) {
   // the Location label names the top zone for each continent map.
   const zoneCount = new Map();   // areaid -> count
   const byMapZone = new Map();   // map -> Map(areaid -> count)
+  const subByZone = new Map();   // areaid -> { n, subs: Map(subid -> {name, n}) }
   for (const s of npcSpawns) {
     if (!s.zone) continue;
     zoneCount.set(s.zone, (zoneCount.get(s.zone) || 0) + 1);
     let mm = byMapZone.get(s.map); if (!mm) { mm = new Map(); byMapZone.set(s.map, mm); }
     mm.set(s.zone, (mm.get(s.zone) || 0) + 1);
+    let sz = subByZone.get(s.zone); if (!sz) { sz = { n: 0, subs: new Map() }; subByZone.set(s.zone, sz); }
+    sz.n++;
+    if (s.sub) sz.subs.set(s.sub, { name: s.subname, n: (sz.subs.get(s.sub)?.n || 0) + 1 });
   }
   const zoneIds = [...zoneCount.keys()];
   const zinfo = new Map();
@@ -1326,9 +1380,13 @@ async function showNpc(id) {
   const mapHtml = maps.map((m) => {
     const tag = m.type === 2 ? "Raid" : m.type === 1 ? "Dungeon" : null;
     if (tag) return `${dungeonLink(m.id, m.name)} <span class="dim">(${tag})</span>`;
-    // continent: append the resolved zone link -> "Kalimdor › The Barrens"
+    // continent: append the resolved zone, then its sub-area when one dominates ->
+    // "Eastern Kingdoms › Elwynn Forest › Goldshire"
     const z = bestZoneForMap(m.id);
-    return `${esc(m.name)}${z ? ` <span class="dim">›</span> ${zoneLink(z.areaid, z.name)}` : ""}`;
+    if (!z) return esc(m.name);
+    const sub = dominantSub(subByZone.get(z.areaid) || {});
+    return `${esc(m.name)} <span class="dim">›</span> ${zoneLink(z.areaid, z.name)}`
+      + (sub ? ` <span class="dim">›</span> ${subzoneLink(sub.id, sub.name)}` : "");
   }).join(", ");
 
   const lvl = lvlRange(npc) || "??";
@@ -2240,6 +2298,86 @@ function zoneStatsCard(s, mapid) {
   return `<div class="zone-stats">${head}<div class="zs-grid">${cells.join("")}</div>${rankLine}</div>`;
 }
 
+// ---- shared by the zone page and the subzone page ----
+// Both render the same tabs over the same row shapes; only the WHERE clause differs.
+// These live at module scope so ?subzone= reuses them verbatim instead of forking a
+// second copy that would drift.
+
+// dedupe spawn rows into distinct NPCs / objects (with a spawn-point count)
+function dedupeSpawns(rows) {
+  const m = new Map();
+  for (const r of rows) {
+    const g = m.get(r.entry);
+    if (g) g.count++; else m.set(r.entry, { ...r, count: 1 });
+  }
+  return [...m.values()];
+}
+
+// representative in-game icon per object = its highest-chance loot item's icon
+// (idx_drops_owner makes the per-object subquery cheap).
+async function objectIconMap(objs) {
+  const iconByEntry = new Map();
+  if (!objs.length) return iconByEntry;
+  const ph = objs.map(() => "?").join(",");
+  const rows = await query(
+    `SELECT g.entry, (SELECT di.icon FROM drops d JOIN items i ON i.entry = d.item
+       LEFT JOIN item_display_info di ON di.ID = i.display_id
+       WHERE d.src='o' AND d.owner = g.data1 ORDER BY d.chance DESC LIMIT 1) AS icon
+     FROM gameobjects g WHERE g.entry IN (${ph})`, objs.map((o) => o.entry));
+  for (const r of rows) if (r.icon) iconByEntry.set(r.entry, r.icon);
+  return iconByEntry;
+}
+
+// `shown*` are the caller's live Sets, so a map toggle survives a table re-render.
+const zoneNpcCols = (shownNpcs) => [
+  { label: "NPC", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
+  { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
+  { label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
+  { label: "Spawns", num: true, cls: "muted", cell: (r) => r.count, value: (r) => r.count },
+  { label: "Map", cls: "mapcol",
+    cell: (r) => `<label class="mapchk"><input type="checkbox" data-mapnpc="${r.entry}"${shownNpcs.has(r.entry) ? " checked" : ""}></label>`,
+    value: (r) => (shownNpcs.has(r.entry) ? 1 : 0) },
+];
+const zoneObjCols = (shownObjects, iconByEntry) => [
+  { label: "Object", cell: (o) => (iconByEntry.get(o.entry) ? iconImg(iconByEntry.get(o.entry)) : "") + objectLink(o.entry, o.name), value: (o) => o.name },
+  { label: "Type", cls: "muted", cell: (o) => GAMEOBJECT_TYPE[o.type] || "", value: (o) => GAMEOBJECT_TYPE[o.type] || "" },
+  { label: "Spawns", num: true, cls: "muted", cell: (o) => o.count, value: (o) => o.count },
+  { label: "Map", cls: "mapcol",
+    cell: (o) => `<label class="mapchk"><input type="checkbox" data-mapobj="${o.entry}"${shownObjects.has(o.entry) ? " checked" : ""}></label>`,
+    value: (o) => (shownObjects.has(o.entry) ? 1 : 0) },
+];
+const zoneLootCols = () => [
+  { label: "Item", cell: (i) => itemLink(i.entry, i.name, i.quality, i.icon), value: (i) => i.name },
+  { label: "iLvl", num: true, cls: "muted", cell: (i) => i.item_level || "", value: (i) => i.item_level || 0 },
+  { label: "Req", num: true, cls: "muted", cell: (i) => i.required_level || "", value: (i) => i.required_level || 0 },
+];
+const zoneQuestCols = () => [
+  { label: "Quest", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
+  { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
+  { label: "Faction", cell: (r) => { const f = questFaction(r.reqraces); return `<span class="tagx fac-${f.toLowerCase()}">${f}</span>`; }, value: (r) => questFaction(r.reqraces) },
+  { label: "Quest Giver", cls: "muted", cell: (r) => (r.giver_id ? npcLink(r.giver_id, r.giver) : ""), value: (r) => r.giver || "" },
+];
+// Farming: best gold targets, sorted by total expected drop value. Each links to its
+// own page focused on `fz` (the parchment zone) so its map opens here.
+const zoneFarmCols = (fz) => [
+  { label: "Target", cell: (r) => `<a class="ilink ${r.kind === "c" ? "npc" : "object"}" href="?${r.kind === "c" ? "npc" : "object"}=${r.entry}&fz=${fz}">${esc(r.name)}</a>`, value: (r) => r.name },
+  { label: "Type", cls: "muted", cell: (r) => (r.kind === "c" ? "Mob" : (GAMEOBJECT_TYPE[r.type] || "Object")), value: (r) => (r.kind === "c" ? "Mob" : "Object") },
+  { label: "Level", num: true, cls: "muted", cell: (r) => (r.kind === "c" ? lvlRange(r) : ""), value: (r) => r.level_max || r.level_min || 0 },
+  { label: "Spawns", num: true, cls: "muted", cell: (r) => r.count, value: (r) => r.count },
+  { label: "Value/each", num: true, cls: "muted", cell: (r) => moneyHtml(Math.round(r.value)), value: (r) => r.value },
+  { label: "Total value", num: true, cell: (r) => moneyHtml(Math.round(r.total)), value: (r) => r.total },
+];
+// Mobs/objects ranked by total expected drop value (vendor value per kill/gather x
+// spawn count) -- what's worth farming for gold here.
+const farmRowsFrom = (npcs, objs) => [
+  ...npcs.filter((n) => n.loot_value > 0).map((n) => ({ kind: "c", entry: n.entry, name: n.name, level_min: n.level_min, level_max: n.level_max, value: n.loot_value, count: n.count, total: n.loot_value * n.count })),
+  ...objs.filter((o) => o.loot_value > 0).map((o) => ({ kind: "o", entry: o.entry, name: o.name, type: o.type, value: o.loot_value, count: o.count, total: o.loot_value * o.count })),
+].sort((a, b) => b.total - a.total).slice(0, 100);
+const farmPointsFrom = (spawns, objects) => [
+  ...spawns.filter((s) => s.loot_value > 0).map((s) => ({ x: s.x, y: s.y, value: s.loot_value })),
+  ...objects.filter((o) => o.loot_value > 0).map((o) => ({ x: o.x, y: o.y, value: o.loot_value })),
+];
+
 async function showZone(id, gatherItem = null) {
   app.innerHTML = `<div class="loading">Loading zone ${id}…</div>`;
   let z;
@@ -2257,9 +2395,12 @@ async function showZone(id, gatherItem = null) {
   // and a multi-floor dungeon/raid (e.g. Black Morass, Karazhan) gets a floor
   // switcher over the map. Open-world zones load by their single home zone.
   const az = [z.areaid], mz = [z.mapid];
-  const [spawns, objects, loot, focusPts, focusItem, bossLoot, bossEntries, zoneQuests, floors] = await Promise.all([
-    isInstance ? query(Q.Q_MAP_SPAWNS, mz) : query(Q.Q_ZONE_SPAWNS, az),
-    isInstance ? query(Q.Q_MAP_OBJECTS, mz) : query(Q.Q_ZONE_OBJECTS, az),
+  // A dataset built before the subzones work has neither the column nor the table;
+  // the page must still render exactly as it did (see caps() in db.js).
+  const { subzones: hasSubzones, spawnSub } = await caps();
+  const [spawns, objects, loot, focusPts, focusItem, bossLoot, bossEntries, zoneQuests, floors, subRows] = await Promise.all([
+    isInstance ? query(Q.Q_MAP_SPAWNS, mz) : query(Q.qZoneSpawns(spawnSub), az),
+    isInstance ? query(Q.Q_MAP_OBJECTS, mz) : query(Q.qZoneObjects(spawnSub), az),
     isInstance ? query(Q.Q_DUNGEON_LOOT, mz) : query(Q.Q_ZONE_LOOT, az),
     gatherItem ? query(Q.Q_ZONE_FOCUS_SPAWNS, [z.areaid, gatherItem]) : [],
     gatherItem ? queryOne(Q.Q_ITEM_ICON, [gatherItem]) : null,
@@ -2267,6 +2408,7 @@ async function showZone(id, gatherItem = null) {
     isInstance ? query(Q.Q_MAP_BOSSES, mz) : [],
     isInstance ? query(Q.Q_DUNGEON_QUESTS, [z.mapid, z.name]) : query(Q.Q_ZONE_QUESTS, az),
     isInstance ? query(Q.Q_MAP_FLOORS, mz) : [],
+    !isInstance && hasSubzones ? query(Q.Q_ZONE_SUBZONES, az) : [],
   ]);
   // Zone profile (absent on a DB built before zone_stats -- dev / cMaNGOS datasets
   // rebuild on their own schedule, and the strip is not worth breaking the page for).
@@ -2292,103 +2434,43 @@ async function showZone(id, gatherItem = null) {
 
   const meta = [typeLabel || CONTINENT[z.mapid], `${spawns.length + objects.length} spawns`].filter(Boolean);
 
-  // dedupe spawn rows into distinct NPCs / objects (with a spawn-point count)
-  const dedupe = (rows) => {
-    const m = new Map();
-    for (const r of rows) {
-      const g = m.get(r.entry);
-      if (g) g.count++; else m.set(r.entry, { ...r, count: 1 });
-    }
-    return [...m.values()];
-  };
-  const npcs = dedupe(spawns), objs = dedupe(objects);
+  const npcs = dedupeSpawns(spawns), objs = dedupeSpawns(objects);
 
-  // Best farms (open-world): mobs/objects ranked by total expected drop value in the
-  // zone (vendor value per kill/gather x spawn count) -- what's worth farming for
-  // gold. Plus value-weighted points for the map's "Gold route" overlay.
-  const farmRows = isInstance ? [] : [
-    ...npcs.filter((n) => n.loot_value > 0).map((n) => ({ kind: "c", entry: n.entry, name: n.name, level_min: n.level_min, level_max: n.level_max, value: n.loot_value, count: n.count, total: n.loot_value * n.count })),
-    ...objs.filter((o) => o.loot_value > 0).map((o) => ({ kind: "o", entry: o.entry, name: o.name, type: o.type, value: o.loot_value, count: o.count, total: o.loot_value * o.count })),
-  ].sort((a, b) => b.total - a.total).slice(0, 100);
-  const farmPoints = isInstance ? null : [
-    ...spawns.filter((s) => s.loot_value > 0).map((s) => ({ x: s.x, y: s.y, value: s.loot_value })),
-    ...objects.filter((o) => o.loot_value > 0).map((o) => ({ x: o.x, y: o.y, value: o.loot_value })),
-  ];
+  // Best farms (open-world), plus value-weighted points for the map's "Gold route".
+  const farmRows = isInstance ? [] : farmRowsFrom(npcs, objs);
+  const farmPoints = isInstance ? null : farmPointsFrom(spawns, objects);
+  const iconByEntry = await objectIconMap(objs);
 
-  // representative in-game icon per object = its highest-chance loot item's icon
-  // (idx_drops_owner makes the per-object subquery cheap).
-  const iconByEntry = new Map();
-  if (objs.length) {
-    const ph = objs.map(() => "?").join(",");
-    const rows = await query(
-      `SELECT g.entry, (SELECT di.icon FROM drops d JOIN items i ON i.entry = d.item
-         LEFT JOIN item_display_info di ON di.ID = i.display_id
-         WHERE d.src='o' AND d.owner = g.data1 ORDER BY d.chance DESC LIMIT 1) AS icon
-       FROM gameobjects g WHERE g.entry IN (${ph})`, objs.map((o) => o.entry));
-    for (const r of rows) if (r.icon) iconByEntry.set(r.entry, r.icon);
-  }
-
-  // per-NPC map toggles: shownNpcs survives table re-render (sort/page)
+  // per-NPC/object map toggles: the sets survive table re-render (sort/page)
   const shownNpcs = new Set();
-  const npcCols = [
-    { label: "NPC", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
-    { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
-    { label: "Rank", num: true, cls: "muted", cell: (r) => CREATURE_RANK[r.rank] || "Normal", value: (r) => r.rank || 0 },
-    { label: "Spawns", num: true, cls: "muted", cell: (r) => r.count, value: (r) => r.count },
-    { label: "Map", cls: "mapcol",
-      cell: (r) => `<label class="mapchk"><input type="checkbox" data-mapnpc="${r.entry}"${shownNpcs.has(r.entry) ? " checked" : ""}></label>`,
-      value: (r) => (shownNpcs.has(r.entry) ? 1 : 0) },
-  ];
-  const lootCols = [
-    { label: "Item", cell: (i) => itemLink(i.entry, i.name, i.quality, i.icon), value: (i) => i.name },
-    { label: "iLvl", num: true, cls: "muted", cell: (i) => i.item_level || "", value: (i) => i.item_level || 0 },
-    { label: "Req", num: true, cls: "muted", cell: (i) => i.required_level || "", value: (i) => i.required_level || 0 },
-  ];
-  // per-object map toggles: shownObjects survives table re-render (sort/page)
   const shownObjects = new Set();
-  const objCols = [
-    { label: "Object", cell: (o) => (iconByEntry.get(o.entry) ? iconImg(iconByEntry.get(o.entry)) : "") + objectLink(o.entry, o.name), value: (o) => o.name },
-    { label: "Type", cls: "muted", cell: (o) => GAMEOBJECT_TYPE[o.type] || "", value: (o) => GAMEOBJECT_TYPE[o.type] || "" },
-    { label: "Spawns", num: true, cls: "muted", cell: (o) => o.count, value: (o) => o.count },
-    { label: "Map", cls: "mapcol",
-      cell: (o) => `<label class="mapchk"><input type="checkbox" data-mapobj="${o.entry}"${shownObjects.has(o.entry) ? " checked" : ""}></label>`,
-      value: (o) => (shownObjects.has(o.entry) ? 1 : 0) },
-  ];
   const bossCols = [
     { label: "Boss", cell: (r) => npcLink(r.boss, r.boss_name), value: (r) => r.boss_name },
     { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon) + dropQty(r.mincount, r.maxcount), value: (r) => r.name },
     { label: "Chance", num: true, cell: (r) => pct(r.chance), value: (r) => r.chance || 0 },
   ];
-  const questCols = [
-    { label: "Quest", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
-    { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
-    { label: "Faction", cell: (r) => { const f = questFaction(r.reqraces); return `<span class="tagx fac-${f.toLowerCase()}">${f}</span>`; }, value: (r) => questFaction(r.reqraces) },
-    { label: "Quest Giver", cls: "muted", cell: (r) => (r.giver_id ? npcLink(r.giver_id, r.giver) : ""), value: (r) => r.giver || "" },
-  ];
-  // Farming: best gold targets, sorted by total expected drop value. Each links to
-  // its own page where the per-target farming route is shown.
-  const farmCols = [
-    // link to the target's page focused on THIS zone (&fz) so its map opens here
-    { label: "Target", cell: (r) => `<a class="ilink ${r.kind === "c" ? "npc" : "object"}" href="?${r.kind === "c" ? "npc" : "object"}=${r.entry}&fz=${z.areaid}">${esc(r.name)}</a>`, value: (r) => r.name },
-    { label: "Type", cls: "muted", cell: (r) => (r.kind === "c" ? "Mob" : (GAMEOBJECT_TYPE[r.type] || "Object")), value: (r) => (r.kind === "c" ? "Mob" : "Object") },
-    { label: "Level", num: true, cls: "muted", cell: (r) => (r.kind === "c" ? lvlRange(r) : ""), value: (r) => r.level_max || r.level_min || 0 },
-    { label: "Spawns", num: true, cls: "muted", cell: (r) => r.count, value: (r) => r.count },
-    { label: "Value/each", num: true, cls: "muted", cell: (r) => moneyHtml(Math.round(r.value)), value: (r) => r.value },
-    { label: "Total value", num: true, cell: (r) => moneyHtml(Math.round(r.total)), value: (r) => r.total },
+  const subCols = [
+    { label: "Subzone", cell: (r) => subzoneLink(r.entry, r.name), value: (r) => r.name },
+    { label: "NPCs", num: true, cls: "muted", cell: (r) => r.npcs || "", value: (r) => r.npcs || 0 },
+    { label: "Spawns", num: true, cls: "muted", cell: (r) => r.spawns || "", value: (r) => r.spawns || 0 },
+    { label: "Objects", num: true, cls: "muted", cell: (r) => r.objects || "", value: (r) => r.objects || 0 },
+    { label: "Quests", num: true, cls: "muted", cell: (r) => r.quests || "", value: (r) => r.quests || 0 },
   ];
   const tabDefs = [
     ...(isInstance ? [{ id: "bosses", label: "Boss Loot", ...regTable(bossCols, bossLoot, { pageSize: 500, groupable: true, group: 0 }) }] : []),
-    { id: "npcs", label: "NPCs", ...regTable(npcCols, npcs, { pageSize: 100 }) },
-    ...(farmRows.length ? [{ id: "farm", label: "Farming", ...regTable(farmCols, farmRows, { pageSize: 100, sort: "Total value", dir: "d" }) }] : []),
-    { id: "quests", label: "Quests", ...regTable(questCols, zoneQuests, { pageSize: 100 }) },
-    { id: "items", label: "Items", ...regTable(lootCols, loot, { pageSize: 100 }) },
-    { id: "objects", label: "Objects", ...regTable(objCols, objs, { pageSize: 100 }) },
+    { id: "npcs", label: "NPCs", ...regTable(zoneNpcCols(shownNpcs), npcs, { pageSize: 100 }) },
+    ...(farmRows.length ? [{ id: "farm", label: "Farming", ...regTable(zoneFarmCols(z.areaid), farmRows, { pageSize: 100, sort: "Total value", dir: "d" }) }] : []),
+    { id: "quests", label: "Quests", ...regTable(zoneQuestCols(), zoneQuests, { pageSize: 100 }) },
+    { id: "items", label: "Items", ...regTable(zoneLootCols(), loot, { pageSize: 100 }) },
+    { id: "objects", label: "Objects", ...regTable(zoneObjCols(shownObjects, iconByEntry), objs, { pageSize: 100 }) },
+    // Appended LAST on purpose: the default (first) pane stays NPCs.
+    ...(subRows.length ? [{ id: "subzones", label: "Subzones", ...regTable(subCols, subRows, { pageSize: 100, sort: "Spawns", dir: "d" }) }] : []),
   ];
 
   // A few client-defined zones (e.g. not-yet-populated Turtle areas) have a map
   // texture but no spawns recorded within their bounds -> blank tabs. Show
   // an explanatory note instead.
-  const hasData = npcs.length || objs.length || loot.length || bossLoot.length || zoneQuests.length;
+  const hasData = npcs.length || objs.length || loot.length || bossLoot.length || zoneQuests.length || subRows.length;
   const body = hasData
     ? tabs(tabDefs)
     : `<div class="zone-empty muted">No NPCs, items, or objects are recorded within this
@@ -2428,12 +2510,21 @@ async function showZone(id, gatherItem = null) {
       const box = app.querySelector(`input[data-map${kind === "npc" ? "npc" : "obj"}="${entry}"]`);
       if (box) box.checked = on;
     };
+    // Keep the focused sub-area in the URL so the view is shareable and Back-safe.
+    const onSubzone = (sub) => {
+      const p = new URLSearchParams(location.search);
+      if (sub == null) p.delete("sub"); else p.set("sub", String(sub));
+      history.replaceState(null, "", `${location.pathname}?${p}`);
+    };
     // (re)draw the map for a floor: its parchment + the spawns/bosses on it.
     const renderFloor = (fl) => {
       const fs = isInstance ? spawns.filter((s) => s.zone === fl.areaid) : spawns;
       const fo = isInstance ? objects.filter((o) => o.zone === fl.areaid) : objects;
       const fb = isInstance ? bosses.filter((b) => b.zone === fl.areaid) : bosses;
-      zmap = initZoneMap(el, { ...fl, imgUrl: `${MAPS_BASE}${fl.areaid}.webp`, imgFallback: `${MAPS_BASE_MAIN}${fl.areaid}.webp` }, fs, fo, navigate, { focus: fl.areaid === z.areaid ? focus : null, bosses: fb, farm: isInstance ? null : farmPoints, onToggle: syncSel });
+      zmap = initZoneMap(el, { ...fl, imgUrl: `${MAPS_BASE}${fl.areaid}.webp`, imgFallback: `${MAPS_BASE_MAIN}${fl.areaid}.webp` }, fs, fo, navigate, {
+        focus: fl.areaid === z.areaid ? focus : null, bosses: fb, farm: isInstance ? null : farmPoints, onToggle: syncSel,
+        subzones: subRows, initialSub: Number(new URLSearchParams(location.search).get("sub")) || null, onSubzone,
+      });
       app.querySelectorAll("#floorswitch button").forEach((b) => b.classList.toggle("active", Number(b.dataset.floor) === fl.areaid));
     };
     renderFloor(activeFloor);
@@ -2457,6 +2548,111 @@ async function showZone(id, gatherItem = null) {
       const cb = e.target.closest("[data-mapnpc]");
       if (!cb || !zmap) return;
       zmap.toggleNpc(Number(cb.dataset.mapnpc), cb.checked); // syncSel updates shownNpcs + the box
+    });
+  } catch (e) { el.innerHTML = errorBox(e); }
+}
+
+// One sub-area of a zone (?subzone=87 -> Goldshire). Same tabs as the zone page, but
+// every read is narrowed to this leaf area, and the map draws the PARENT's parchment
+// with only these spawns on it -- a subzone has no art of its own.
+async function showSubzone(id) {
+  app.innerHTML = `<div class="loading">Loading subzone ${id}…</div>`;
+  if (!(await caps()).subzones) {
+    app.innerHTML = `<div class="home"><p>Subzones aren't available in this dataset yet —
+      its database predates them. Try the <a href="?db=main">main</a> dataset.</p></div>`;
+    return;
+  }
+  let sz;
+  try { sz = await queryOne(Q.Q_SUBZONE, [id]); } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (!sz) { app.innerHTML = `<div class="home"><p>No subzone with ID ${id}.</p></div>`; return; }
+  document.title = `${sz.name} - Tortoise-WoW DB`;
+
+  const sp = [id, sz.zone_id];
+  const [spawns, objects, loot, subQuests] = await Promise.all([
+    query(Q.Q_SUBZONE_SPAWNS, sp),
+    query(Q.Q_SUBZONE_OBJECTS, sp),
+    query(Q.Q_SUBZONE_LOOT, sp),
+    // Q_ZONE_QUESTS already rolls up `q.zone = ?1 OR a.zone_id = ?1`, which given a
+    // leaf area means "this sub-area's quests, plus any of its own children's".
+    query(Q.Q_ZONE_QUESTS, [id]),
+  ]);
+
+  const npcs = dedupeSpawns(spawns), objs = dedupeSpawns(objects);
+  const farmRows = farmRowsFrom(npcs, objs);
+  const farmPoints = farmPointsFrom(spawns, objects);
+  const iconByEntry = await objectIconMap(objs);
+
+  const shownNpcs = new Set();
+  const shownObjects = new Set();
+  const tabDefs = [
+    { id: "npcs", label: "NPCs", ...regTable(zoneNpcCols(shownNpcs), npcs, { pageSize: 100 }) },
+    ...(farmRows.length ? [{ id: "farm", label: "Farming", ...regTable(zoneFarmCols(sz.zone_id), farmRows, { pageSize: 100, sort: "Total value", dir: "d" }) }] : []),
+    { id: "quests", label: "Quests", ...regTable(zoneQuestCols(), subQuests, { pageSize: 100 }) },
+    { id: "items", label: "Items", ...regTable(zoneLootCols(), loot, { pageSize: 100 }) },
+    { id: "objects", label: "Objects", ...regTable(zoneObjCols(shownObjects, iconByEntry), objs, { pageSize: 100 }) },
+  ];
+  const hasData = npcs.length || objs.length || loot.length || subQuests.length;
+  const body = hasData ? tabs(tabDefs)
+    : `<div class="zone-empty muted">Nothing is recorded inside this sub-area's bounds.</div>`;
+
+  const meta = [
+    sz.zone_id ? zoneLink(sz.zone_id, sz.zone_name || `Zone #${sz.zone_id}`) : "",
+    CONTINENT[sz.map_id],
+    `${spawns.length + objects.length} spawns`,
+  ].filter(Boolean);
+
+  // The parent's parchment is the only art there is. A parent with no map at all
+  // (one such subzone in the current data) degrades to a tabs-only page.
+  const hasMap = sz.zone_id && sz.img_w > 0;
+  app.innerHTML =
+    `<div class="zone-page">
+      <div class="npc-head">
+        <h1>${esc(sz.name)}</h1>
+        <div class="npc-meta muted">${meta.join(" · ")}<span class="dim"> · Subzone #${sz.entry}</span></div>
+      </div>
+      ${hasMap ? `<div id="zonemap"></div>` : ""}
+      ${body}
+    </div>`;
+  mountTables();
+  wireTabs();
+  if (!hasMap) return;
+
+  const el = document.getElementById("zonemap");
+  try {
+    const { initZoneMap } = await import("./zonemap.js");
+    const syncSel = (kind, entry, on) => {
+      const set = kind === "npc" ? shownNpcs : shownObjects;
+      if (on) set.add(entry); else set.delete(entry);
+      const box = app.querySelector(`input[data-map${kind === "npc" ? "npc" : "obj"}="${entry}"]`);
+      if (box) box.checked = on;
+    };
+    // The ADT bbox when we have one; otherwise the extent of what we're plotting, so
+    // the map still opens on the sub-area rather than the whole parent zone.
+    const pts = [...spawns, ...objects];
+    const bounds = sz.x0 != null ? { x0: sz.x0, x1: sz.x1, y0: sz.y0, y1: sz.y1 }
+      : pts.length ? {
+          x0: Math.min(...pts.map((p) => p.x)), x1: Math.max(...pts.map((p) => p.x)),
+          y0: Math.min(...pts.map((p) => p.y)), y1: Math.max(...pts.map((p) => p.y)),
+        } : null;
+    const zmap = initZoneMap(el, {
+      areaid: sz.zone_id, name: sz.zone_name, mapid: sz.mapid,
+      locleft: sz.locleft, locright: sz.locright, loctop: sz.loctop, locbottom: sz.locbottom,
+      img_w: sz.img_w, img_h: sz.img_h,
+      imgUrl: `${MAPS_BASE}${sz.zone_id}.webp`, imgFallback: `${MAPS_BASE_MAIN}${sz.zone_id}.webp`,
+    }, spawns, objects, navigate, { farm: farmPoints, onToggle: syncSel, bounds });
+
+    const objPane = app.querySelector('[data-pane="objects"]');
+    if (objPane) objPane.addEventListener("change", (e) => {
+      const cb = e.target.closest("[data-mapobj]");
+      if (!cb || !zmap) return;
+      const entry = Number(cb.dataset.mapobj);
+      zmap.toggleObject(entry, cb.checked, iconByEntry.get(entry));
+    });
+    const npcPane = app.querySelector('[data-pane="npcs"]');
+    if (npcPane) npcPane.addEventListener("change", (e) => {
+      const cb = e.target.closest("[data-mapnpc]");
+      if (!cb || !zmap) return;
+      zmap.toggleNpc(Number(cb.dataset.mapnpc), cb.checked);
     });
   } catch (e) { el.innerHTML = errorBox(e); }
 }

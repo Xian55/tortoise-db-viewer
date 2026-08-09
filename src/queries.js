@@ -170,7 +170,7 @@ export const Q_SEARCH_QUESTS = `
   LIMIT ?3`;
 
 export const Q_SEARCH_SPELLS = `
-  SELECT s.entry, s.name, s.icon, s.skill
+  SELECT s.entry, s.name, s.icon, s.skill, s.rank
   FROM spells s
   WHERE (s.entry IN (SELECT rowid FROM spells_fts WHERE spells_fts MATCH ?1)
       OR s.entry IN (SELECT rowid FROM spells_tg WHERE spells_tg MATCH ?4))
@@ -188,6 +188,16 @@ export const Q_SEARCH_ZONES = `
   SELECT areaid, name, mapid FROM zones
   WHERE name <> '' AND name LIKE ?1
   ORDER BY (name = ?2) DESC, name
+  LIMIT ?3`;
+
+// Same LIKE treatment for the ~1.1k sub-areas. `zone_name` is not decoration: subzone
+// names repeat across the world (two "The Great Sea"s, several "Southfury River"s), so
+// a bare name is ambiguous. Busiest copy first, since that's the one people mean.
+export const Q_SEARCH_SUBZONES = `
+  SELECT sz.entry, sz.name, sz.zone_id, sz.map_id, sz.spawns, z.name AS zone_name
+  FROM subzones sz LEFT JOIN zones z ON z.areaid = sz.zone_id
+  WHERE sz.name <> '' AND sz.name LIKE ?1
+  ORDER BY (sz.name = ?2) DESC, sz.spawns DESC, sz.name
   LIMIT ?3`;
 
 export const Q_SEARCH_ITEMSETS = `
@@ -740,19 +750,24 @@ export const Q_PET_LEARN_NPCS = `
 
 // This NPC's own spawn points (world coords + map + precomputed home zone), to plot
 // on its zone map. INDEXED BY forces the spawn-first plan (few rows via idx_spawn_id).
-export const Q_NPC_SPAWNS = `
-  SELECT x, y, map, zone FROM spawn_points INDEXED BY idx_spawn_id
-  WHERE kind = 'c' AND id = ?1 LIMIT 2000`;
+// `withSub` adds the sub-area (id + name) so the page can say "Elwynn Forest >
+// Goldshire"; off on datasets built before subzones existed (see caps() in db.js).
+export const qNpcSpawns = (withSub) => `
+  SELECT s.x, s.y, s.map, s.zone${withSub ? ", s.sub, sz.name AS subname" : ", NULL AS sub, NULL AS subname"}
+  FROM spawn_points s INDEXED BY idx_spawn_id
+  ${withSub ? "LEFT JOIN subzones sz ON sz.entry = s.sub" : ""}
+  WHERE s.kind = 'c' AND s.id = ?1 LIMIT 2000`;
 
 const inList = (n) => Array.from({ length: n }, () => "?").join(",");
 // Batch location lookup for a set of creature ('c') / object ('o') entries: one row
 // per spawn with its precomputed home zone (+ zone name & map type to tag
 // Dungeon/Raid). The caller counts per zone and picks the most common.
-export const qNpcZoneSpawns = (n, kind = "c") => `
-  SELECT s.id AS entry, s.zone AS areaid, z.name, z.mapid, m.type
+export const qNpcZoneSpawns = (n, kind = "c", withSub = false) => `
+  SELECT s.id AS entry, s.zone AS areaid, z.name, z.mapid, m.type${withSub ? ", s.sub AS subid, sz.name AS subname" : ", NULL AS subid, NULL AS subname"}
   FROM spawn_points s INDEXED BY idx_spawn_id
   JOIN zones z ON z.areaid = s.zone
   LEFT JOIN maps m ON m.id = z.mapid
+  ${withSub ? "LEFT JOIN subzones sz ON sz.entry = s.sub" : ""}
   WHERE s.kind = '${kind === "o" ? "o" : "c"}' AND s.id IN (${inList(n)}) AND s.zone IS NOT NULL`;
 // Batch spawn COORDINATES for a set of creature ('c') / object ('o') entries -> plot
 // them on a map (quest giver/turn-in/kill/collect markers). Returns one row per spawn.
@@ -1126,19 +1141,57 @@ export const Q_DUNGEON_ZONE = `
 // Spawns assigned to a zone (?1 = areaid; see build-db home-zone assignment).
 // Creature markers carry the inputs the classifier needs (npc_flags + whether the
 // NPC starts/ends a quest).
-export const Q_ZONE_SPAWNS = `
-  SELECT s.x, s.y, s.zone, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags, c.loot_value,
+// `withSub` emits the sub-area id per marker so the map's subzone dropdown can filter
+// in place. A dataset built before the subzones work has no such column, so it must be
+// selectable away rather than assumed -- see caps() in db.js.
+const subCol = (withSub) => (withSub ? "s.sub" : "NULL AS sub");
+export const qZoneSpawns = (withSub) => `
+  SELECT s.x, s.y, s.zone, ${subCol(withSub)}, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags, c.loot_value,
          (EXISTS(SELECT 1 FROM creature_quest_start q WHERE q.id = c.entry)
        OR EXISTS(SELECT 1 FROM creature_quest_end q WHERE q.id = c.entry)) AS questgiver
   FROM spawn_points s JOIN creatures c ON c.entry = s.id
   WHERE s.kind = 'c' AND s.zone = ?1
   LIMIT 8000`;
 
-export const Q_ZONE_OBJECTS = `
-  SELECT s.x, s.y, s.zone, g.entry, g.name, g.type, g.gather, g.gather_icon, g.loot_value
+export const qZoneObjects = (withSub) => `
+  SELECT s.x, s.y, s.zone, ${subCol(withSub)}, g.entry, g.name, g.type, g.gather, g.gather_icon, g.loot_value
   FROM spawn_points s JOIN gameobjects g ON g.entry = s.id
   WHERE s.kind = 'o' AND s.zone = ?1
   LIMIT 4000`;
+
+// ---- subzones (sub-areas of a zone: Elwynn Forest -> Goldshire) ----
+// Derived in build-db from each spawn's exact leaf area; `zone_id` is the RENDER zone,
+// so a subzone page draws its parent's parchment and every spawn read can be scoped to
+// that zone (?2) -- which is why no idx_spawn_sub exists: idx_spawn_zone already narrows
+// to at most ~12k rows before the `sub` filter runs.
+export const Q_SUBZONE = `
+  SELECT sz.*, z.name AS zone_name, z.mapid, z.dir,
+         z.locleft, z.locright, z.loctop, z.locbottom, z.img_w, z.img_h
+  FROM subzones sz LEFT JOIN zones z ON z.areaid = sz.zone_id
+  WHERE sz.entry = ?1`;
+// ?1 = subzone areaid, ?2 = its parent zone (subzones.zone_id).
+export const Q_SUBZONE_SPAWNS = `
+  SELECT s.x, s.y, s.zone, s.sub, c.entry, c.name, c.subname, c.level_min, c.level_max, c.rank, c.npc_flags, c.loot_value,
+         (EXISTS(SELECT 1 FROM creature_quest_start q WHERE q.id = c.entry)
+       OR EXISTS(SELECT 1 FROM creature_quest_end q WHERE q.id = c.entry)) AS questgiver
+  FROM spawn_points s INDEXED BY idx_spawn_zone JOIN creatures c ON c.entry = s.id
+  WHERE s.kind = 'c' AND s.zone = ?2 AND s.sub = ?1
+  LIMIT 8000`;
+export const Q_SUBZONE_OBJECTS = `
+  SELECT s.x, s.y, s.zone, s.sub, g.entry, g.name, g.type, g.gather, g.gather_icon, g.loot_value
+  FROM spawn_points s INDEXED BY idx_spawn_zone JOIN gameobjects g ON g.entry = s.id
+  WHERE s.kind = 'o' AND s.zone = ?2 AND s.sub = ?1
+  LIMIT 4000`;
+// The sub-areas of one zone -> the zone page's Subzones tab and its map dropdown.
+export const Q_ZONE_SUBZONES = `
+  SELECT entry, name, spawns, npcs, objects, quests FROM subzones
+  WHERE zone_id = ?1 ORDER BY spawns DESC, name`;
+// ?browse=subzones loads the lot (~1.1k rows) and filters client-side, like Q_ZONES.
+export const Q_BROWSE_SUBZONES = `
+  SELECT sz.entry, sz.name, sz.zone_id, sz.map_id, sz.spawns, sz.npcs, sz.objects, sz.quests,
+         z.name AS zone_name
+  FROM subzones sz LEFT JOIN zones z ON z.areaid = sz.zone_id
+  ORDER BY sz.name`;
 
 // Same as above but across a whole INSTANCE map (all floors) -> ?1 = mapid. Each
 // row keeps s.zone so the floor switcher can split markers per floor.
@@ -1189,6 +1242,22 @@ export const Q_ZONE_LOOT = `
     FROM spawn_points s INDEXED BY idx_spawn_zone
     JOIN creatures c ON c.entry = s.id
     WHERE s.kind = 'c' AND s.zone = ?1 AND c.loot_id <> 0)
+  SELECT i.entry, i.name, i.quality, i.item_level, i.required_level, di.icon
+  FROM lids
+  JOIN drops d ON d.src = 'c' AND d.owner = lids.lid
+  JOIN items i ON i.entry = d.item AND i.world_drop = 0
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  GROUP BY i.entry
+  ORDER BY i.quality DESC, i.item_level DESC LIMIT 1000`;
+
+// Same, narrowed to one sub-area. ?1 = subzone, ?2 = its parent zone (the CTE still
+// rides idx_spawn_zone; `sub` just trims the row set before the loot join).
+export const Q_SUBZONE_LOOT = `
+  WITH lids(lid) AS (
+    SELECT DISTINCT c.loot_id
+    FROM spawn_points s INDEXED BY idx_spawn_zone
+    JOIN creatures c ON c.entry = s.id
+    WHERE s.kind = 'c' AND s.zone = ?2 AND s.sub = ?1 AND c.loot_id <> 0)
   SELECT i.entry, i.name, i.quality, i.item_level, i.required_level, di.icon
   FROM lids
   JOIN drops d ON d.src = 'c' AND d.owner = lids.lid

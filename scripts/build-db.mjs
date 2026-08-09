@@ -1772,7 +1772,7 @@ console.log("Importing zones + spawn points...");
   };
   const subByMap = new Map();
   {
-    const sf = join(ROOT, "scripts", "data", "subzone-bounds.json");
+    const sf = clientData("subzone-bounds.json");
     if (existsSync(sf)) {
       const sb = JSON.parse(readFileSync(sf, "utf8"));
       for (const [mid, arr] of Object.entries(sb)) {
@@ -1784,8 +1784,17 @@ console.log("Importing zones + spawn points...");
       console.log("  (no subzone-bounds.json -- run scripts/extract-area-bounds.py; falling back to WMA boxes)");
     }
   }
+  // Returns { zone, sub }: the render zone (as before) plus the EXACT leaf area the
+  // point sits in -- the thing the `subzones` feature is built on. `sub` is set ONLY
+  // on the clean ADT path below; every guard that rejects a leaf also drops it, since
+  // a rejected leaf is actively wrong (the Hateforge chunk tagged area 46 would file
+  // its bosses under a Redridge sub-area). INVARIANT, relied on by every subzone
+  // query: when sub != null, zone === renderZone(sub) AND the point lies inside that
+  // zone's own WMA box -- so subzone reads can be zone-scoped (riding idx_spawn_zone,
+  // no extra index) and a subzone's markers always land on its parent's parchment.
+  const NO_HOME = { zone: null, sub: null };
   const homeZone = (map, x, y) => {
-    if (x == null || y == null) return null;
+    if (x == null || y == null) return NO_HOME;
     const subs = subByMap.get(map);
     if (subs) {
       let best = null, bestArea = Infinity;
@@ -1803,22 +1812,22 @@ console.log("Importing zones + spawn points...");
           // so if the point isn't inside the resolved zone's OWN WMA box, prefer the
           // WMA-box search below — the per-floor boxes disambiguate by footprint.
           const bx = (boxesByMap.get(map) || []).find((z) => z.areaid === rz);
-          if (!bx || (x >= bx.locbottom && x <= bx.loctop && y >= bx.locright && y <= bx.locleft)) return rz;
+          if (!bx || (x >= bx.locbottom && x <= bx.loctop && y >= bx.locright && y <= bx.locleft)) return { zone: rz, sub: best.i };
         }
       }
     }
     const boxes = boxesByMap.get(map);
-    if (!boxes) return null;
+    if (!boxes) return NO_HOME;
     let best = null, bestArea = Infinity;
     for (const z of boxes) {
       if (x < z.locbottom || x > z.loctop || y < z.locright || y > z.locleft) continue;
       if (z.area > 0 && z.area < bestArea) { bestArea = z.area; best = z; }
     }
-    return best ? best.areaid : null;
+    return best ? { zone: best.areaid, sub: null } : NO_HOME;
   };
 
-  db.exec(`CREATE TABLE spawn_points (kind TEXT, id INTEGER, map INTEGER, x REAL, y REAL, zone INTEGER)`);
-  const sSp = db.prepare(`INSERT INTO spawn_points VALUES (?,?,?,?,?,?)`);
+  db.exec(`CREATE TABLE spawn_points (kind TEXT, id INTEGER, map INTEGER, x REAL, y REAL, zone INTEGER, sub INTEGER)`);
+  const sSp = db.prepare(`INSERT INTO spawn_points VALUES (?,?,?,?,?,?,?)`);
   const loadSpawns = (file, table, kind) => {
     const cols = srcColumns(table, file);
     // Emit a point per distinct non-zero id slot. creature has id/id2/id3/id4
@@ -1829,13 +1838,13 @@ console.log("Importing zones + spawn points...");
     db.transaction(() => {
       for (const row of srcRows(table, file)) {
         const map = clean(row[iMap]), x = clean(row[iX]), y = clean(row[iY]);
-        const zone = homeZone(map, x, y); // shared by every id at this point
+        const home = homeZone(map, x, y); // shared by every id at this point
         const seen = new Set();
         for (const i of idCols) {
           const id = clean(row[i]);
           if (!id || seen.has(id)) continue;
           seen.add(id);
-          sSp.run(kind, id, map, x, y, zone);
+          sSp.run(kind, id, map, x, y, home.zone, home.sub);
           n++;
         }
       }
@@ -1859,8 +1868,8 @@ console.log("Importing zones + spawn points...");
     const lf = SQL_SOURCE === "turtle" ? join(ROOT, "scripts", "data", "scripted-spawn-links.json") : null;
     if (lf && existsSync(lf)) {
       const { links = {} } = JSON.parse(readFileSync(lf, "utf8"));
-      const copy = db.prepare(`INSERT INTO spawn_points (kind, id, map, x, y, zone)
-        SELECT 'c', ?1, map, x, y, zone FROM spawn_points INDEXED BY idx_spawn_id WHERE kind = 'c' AND id = ?2`);
+      const copy = db.prepare(`INSERT INTO spawn_points (kind, id, map, x, y, zone, sub)
+        SELECT 'c', ?1, map, x, y, zone, sub FROM spawn_points INDEXED BY idx_spawn_id WHERE kind = 'c' AND id = ?2`);
       // Mirror into `spawns` (id,map,cnt) too, so Q_NPC_MAPS (map/Location label) sees them.
       const copyMap = db.prepare(`INSERT INTO spawns (id, map, cnt) SELECT ?1, map, cnt FROM spawns WHERE id = ?2`);
       db.transaction(() => {
@@ -1883,6 +1892,65 @@ console.log("Importing zones + spawn points...");
     SELECT s.zone FROM spawn_points s INDEXED BY idx_spawn_id
     WHERE s.kind = 'c' AND s.id = creatures.entry AND s.zone IS NOT NULL
     GROUP BY s.zone ORDER BY COUNT(*) DESC LIMIT 1)`);
+
+  // Sub-areas ("subzones"): Elwynn Forest -> Goldshire / Northshire Valley / Fargodeep
+  // Mine. The hierarchy has always shipped in `areas` and homeZone now keeps each
+  // spawn's exact leaf, so this is a pure roll-up -- one row per sub-area worth a page,
+  // carrying its parent's RENDER zone (the parchment it draws on), the ADT bounding box
+  // the map fits to, and the counts the search/browse/tab lists sort by. Runtime never
+  // scans spawn_points for these numbers.
+  console.log("Deriving subzones...");
+  db.exec(`CREATE TABLE subzones (entry INTEGER PRIMARY KEY, name TEXT, zone_id INTEGER, map_id INTEGER,
+    x0 REAL, x1 REAL, y0 REAL, y1 REAL,
+    spawns INTEGER, npcs INTEGER, objects INTEGER, quests INTEGER)`);
+  {
+    const bbox = new Map(); // areaId -> the SAME box homeZone resolved against
+    for (const arr of subByMap.values()) for (const b of arr) if (!bbox.has(b.i)) bbox.set(b.i, b);
+    const agg = new Map();
+    const bump = (id, k, v) => {
+      if (id == null) return;
+      let a = agg.get(id);
+      if (!a) agg.set(id, (a = { spawns: 0, npcs: 0, objects: 0, quests: 0 }));
+      a[k] += v;
+    };
+    for (const r of db.prepare(`SELECT sub, COUNT(*) n, COUNT(DISTINCT id) d FROM spawn_points
+      WHERE kind = 'c' AND sub IS NOT NULL GROUP BY sub`).all()) { bump(r.sub, "spawns", r.n); bump(r.sub, "npcs", r.d); }
+    for (const r of db.prepare(`SELECT sub, COUNT(*) n FROM spawn_points
+      WHERE kind = 'o' AND sub IS NOT NULL GROUP BY sub`).all()) bump(r.sub, "objects", r.n);
+    // quests.zone is ALREADY a leaf area id. `quests.hidden` doesn't exist yet at this
+    // point in the build, so count with the same `title <> ''` predicate the Quests tab
+    // itself renders -- the number shown and the number counted then agree.
+    for (const r of db.prepare(`SELECT zone, COUNT(*) n FROM quests WHERE title <> '' GROUP BY zone`).all())
+      bump(r.zone, "quests", r.n);
+
+    const ins = db.prepare(`INSERT INTO subzones VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+    const seenZones = new Set();
+    let n = 0, withBox = 0;
+    db.transaction(() => {
+      // `zone_id > 0` alone already excludes the render zones (none of them has a
+      // parent); the UNUSED filter drops the client's dev leftovers ("Valley of Heroes
+      // UNUSED"), which would otherwise be searchable.
+      for (const a of db.prepare(`SELECT entry, name, map_id FROM areas
+        WHERE zone_id > 0 AND trim(name) <> '' AND name NOT LIKE '%UNUSED%'`).all()) {
+        const c = agg.get(a.entry);
+        if (!c || c.spawns + c.objects + c.quests === 0) continue;
+        // The RENDER zone, not areas.zone_id: it's the parchment the page draws, it
+        // equals spawn_points.zone by the homeZone invariant, and it collapses the
+        // handful of areas whose own parent is itself a sub-area.
+        const rz = renderZone(a.entry);
+        if (!rz) continue;
+        const b = bbox.get(a.entry);
+        if (b) withBox++;
+        ins.run(a.entry, a.name, rz, a.map_id,
+          b ? b.x0 : null, b ? b.x1 : null, b ? b.y0 : null, b ? b.y1 : null,
+          c.spawns, c.npcs, c.objects, c.quests);
+        seenZones.add(rz);
+        n++;
+      }
+    })();
+    db.exec(`CREATE INDEX idx_subzones_zone ON subzones(zone_id)`);
+    console.log(`  subzones: ${n} across ${seenZones.size} zones (${withBox} with a bbox)`);
+  }
 
   // Browsable "objects": interactive gameobjects (have loot via data1, start/end a
   // quest, or are a quest objective), grouped by name so the many per-zone copies of

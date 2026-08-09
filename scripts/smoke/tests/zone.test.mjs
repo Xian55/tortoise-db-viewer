@@ -311,6 +311,62 @@ async function testZoneStatsInstance(id) {
   return cards === 0;
 }
 
+// Subzone page: the PARENT's parchment, breadcrumbed back to it, tabs over the
+// sub-area's own rows only.
+async function testSubzone(id, expectName, parentZone) {
+  await nav(`?subzone=${id}`);
+  await page.waitForSelector(".zone-page .npc-head h1", { timeout: T });
+  const name = await page.$eval(".zone-page .npc-head h1", (e) => e.textContent);
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
+  const crumb = (await page.$(`.zone-page .npc-meta a.ilink.zone[href*="zone=${parentZone}"]`)) !== null;
+  const tabList = await page.$$eval(".zone-page .tabbar .tab", (e) => e.map((t) => t.textContent.replace(/\s+/g, " ").trim()));
+  const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) table tbody tr", (r) => r.length);
+  console.log(`subzone ${id}: name="${name}" parentCrumb=${crumb} tabs=[${tabList.join(", ")}] firstPaneRows=${rows}`);
+  return name.includes(expectName) && crumb && tabList.length >= 3 && rows > 0;
+}
+
+// The zone page lists its sub-areas, each linking to ?subzone=.
+async function testZoneSubzonesTab(id, minRows) {
+  await nav(`?zone=${id}`);
+  await page.waitForSelector(".zone-page .tabbar .tab", { timeout: T });
+  await page.evaluate(() => { const t = [...document.querySelectorAll(".zone-page .tabbar .tab")].find((x) => /Subzones/.test(x.textContent)); if (t) t.click(); });
+  await page.waitForSelector(".zone-page .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
+  const rows = await page.$$eval(".zone-page .tabpane:not(.hidden) table tbody tr", (r) => r.length).catch(() => 0);
+  const link = (await page.$(".zone-page .tabpane:not(.hidden) a.ilink[href*='subzone=']")) !== null;
+  console.log(`zone-subzones ${id}: rows=${rows} subzoneLink=${link}`);
+  return rows >= minRows && link;
+}
+
+// The zone map's subzone dropdown filters the GPU dots IN PLACE (no re-init), keeps
+// the category toggle on, and records the pick in the URL.
+async function testZoneSubzoneFocus(id, sub) {
+  await page.setViewport({ width: 1280, height: 900 });
+  await nav(`?zone=${id}`);
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
+  await page.waitForSelector("#zonemap .wm-panel select.wm-zone", { timeout: T });
+  // turn on the densest category so there is something to filter
+  await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("#zonemap .wm-panel .wm-row")];
+    const num = (r) => +(r.querySelector(".wm-row-n")?.textContent || 0);
+    const target = rows.slice().sort((a, b) => num(b) - num(a))[0];
+    if (target) target.querySelector("input").click();
+  });
+  const before = await page.waitForFunction(() => {
+    const d = window.__zoneDots && window.__zoneDots();
+    return d && d.length ? d.length : null;
+  }, { timeout: T }).then((h) => h.jsonValue()).catch(() => 0);
+  await page.select("#zonemap .wm-panel select.wm-zone", String(sub));
+  // fitBounds animates, so the on-screen dot count settles late -- poll rather than
+  // sample once (see this dir's CLAUDE.md).
+  const after = await page.waitForFunction((n) => {
+    const d = window.__zoneDots && window.__zoneDots();
+    return d && d.length > 0 && d.length < n ? d.length : null;
+  }, { timeout: T }, before).then((h) => h.jsonValue()).catch(() => 0);
+  const url = await page.evaluate(() => location.search);
+  console.log(`zone-subzone-focus ${id}->${sub}: dots ${before} -> ${after} url="${url}"`);
+  return before > 0 && after > 0 && after < before && url.includes(`sub=${sub}`);
+}
+
 smoke("farm-route 17 copper", () => testFarmRoute(17, 2770));
 smoke("zone farm 17", () => testZoneFarm(17));
 smoke("zone gather-granular 17", () => testZoneGatherGranular(17));
@@ -326,3 +382,8 @@ smoke("browse zones cont=0", () => testBrowse("zones", "&cont=0", "Zone"));
 smoke("zone stats 1377 Silithus", () => testZoneStats(1377, ["mob spawns", "mob levels", "quests", "gather nodes"], true));
 smoke("zone stats 46 Burning Steppes", () => testZoneStats(46, ["mob spawns", "elite spawns", "rare mobs"], false));
 smoke("zone stats none 1581 instance", () => testZoneStatsInstance(1581));
+smoke("subzone 9 Northshire Valley", () => testSubzone(9, "Northshire Valley", 12));
+smoke("zone subzones tab 12", () => testZoneSubzonesTab(12, 5));
+smoke("zone subzone focus 12->9", () => testZoneSubzoneFocus(12, 9));
+smoke("browse subzones", () => testBrowse("subzones", "", "Zone"));
+smoke("browse subzones cont=0", () => testBrowse("subzones", "&cont=0", "Subzone"));

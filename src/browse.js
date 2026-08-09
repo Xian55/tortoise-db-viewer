@@ -2,9 +2,10 @@
 // against the in-memory DB; sorting + pagination are handled client-side by the
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query } from "./db.js";
-import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SPELLS, Q_BROWSE_ITEMSETS, Q_BROWSE_OBJECTS, Q_PROFESSION_LEARN } from "./queries.js";
-import { itemLink, npcLink, questLink, factionLink, zoneLink, spellLink, objectLink, sourceTags, moneyHtml, teamBadge, esc } from "./render.js";
+import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SUBZONES, Q_BROWSE_SPELLS, Q_BROWSE_ITEMSETS, Q_BROWSE_OBJECTS, Q_PROFESSION_LEARN } from "./queries.js";
+import { itemLink, npcLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, objectLink, sourceTags, moneyHtml, teamBadge, esc } from "./render.js";
 import { createTable } from "./table.js";
+import { selbarHtml, updateSelbar, wireSelbar } from "./selbar.js";
 import { loadSets, resolveWeights } from "./weightsets.js";
 import {
   ITEM_CLASS, WEAPON_SUBCLASS, ARMOR_SUBCLASS, INV_TYPE, QUALITY,
@@ -259,40 +260,6 @@ function multiField(name, label, entries, csv, raw) {
   return `<div class="fld multi" data-multi="${name}"><label>${esc(label)}</label>
     <button type="button" class="multi-btn" aria-label="${esc(label)}: ${esc(summary)}">${esc(summary)} ▾</button>
     <div class="multi-panel">${boxes}</div></div>`;
-}
-
-// selection operations bar for the item browse: clipboard exports + open on
-// Wowhead (classic). Reads the live selection from the table API on each click.
-const WOWHEAD = "https://www.wowhead.com/classic/item=";
-function wireSelbar(bar, api, navigate) {
-  const status = bar.querySelector("[data-opstatus]");
-  let timer = null;
-  const flash = (msg) => {
-    status.textContent = msg;
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => { status.textContent = ""; }, 2500);
-  };
-  const copy = async (text, n) => {
-    try { await navigator.clipboard.writeText(text); flash(`Copied ${n}`); }
-    catch { flash("Copy failed"); }
-  };
-  bar.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-op]");
-    if (!btn) return;
-    const ids = api.getSelected().map((r) => r.entry);
-    if (!ids.length) return;
-    if (btn.dataset.op === "ids") copy(ids.join("\n"), ids.length);
-    else if (btn.dataset.op === "prefix") {
-      const pfx = bar.querySelector("[data-prefix]").value;
-      copy(ids.map((id) => pfx + id).join("\n"), ids.length);
-    } else if (btn.dataset.op === "wh") {
-      if (ids.length > 15 && !confirm(`Open ${ids.length} Wowhead tabs?`)) return;
-      ids.forEach((id) => window.open(WOWHEAD + id, "_blank", "noopener"));
-    } else if (btn.dataset.op === "compare") {
-      if (ids.length < 2) { flash("Select 2+ items to compare"); return; }
-      navigate(`?compare=${ids.slice(0, 8).join(":")}`);
-    } else if (btn.dataset.op === "clear") api.clearSelection();
-  });
 }
 
 async function browseItems(p) {
@@ -844,6 +811,27 @@ async function browseZones(p) {
   return { rows, cols, filters, noun: "zones" };
 }
 
+// Sub-areas of every zone (~1.1k rows) -- small enough to load whole and filter
+// client-side, like zones. Grouping by parent zone is the natural way to read it,
+// and it doubles as the disambiguator for repeated names.
+async function browseSubzones(p) {
+  const f = { q: p.get("q") || "", cont: p.get("cont") || "", zone: p.get("zone") || "" };
+  let rows = await query(Q_BROWSE_SUBZONES, []).catch(() => []);
+  if (f.cont !== "") rows = rows.filter((r) => String(r.map_id) === f.cont);
+  if (f.zone !== "") rows = rows.filter((r) => String(r.zone_id) === f.zone);
+  if (f.q) { const ql = f.q.toLowerCase(); rows = rows.filter((r) => (r.name || "").toLowerCase().includes(ql)); }
+  const cols = [
+    { key: "name", label: "Subzone", cell: (r) => subzoneLink(r.entry, r.name), value: (r) => r.name || "" },
+    { key: "zone", label: "Zone", cls: "muted", groupable: true, cell: (r) => (r.zone_id ? zoneLink(r.zone_id, r.zone_name || `#${r.zone_id}`) : ""), value: (r) => r.zone_name || "", group: (r) => r.zone_name || "Unknown zone" },
+    { key: "continent", label: "Continent", cls: "muted", hideUniform: true, cell: (r) => CONTINENT[r.map_id] || "", value: (r) => CONTINENT[r.map_id] || "" },
+    { key: "npcs", label: "NPCs", num: true, cls: "muted", cell: (r) => r.npcs || "", value: (r) => r.npcs || 0 },
+    { key: "spawns", label: "Spawns", num: true, cls: "muted", cell: (r) => r.spawns || "", value: (r) => r.spawns || 0 },
+    { key: "quests", label: "Quests", num: true, cls: "muted", cell: (r) => r.quests || "", value: (r) => r.quests || 0 },
+  ];
+  const filters = `<div class="filters">${textField("q", "Name", f.q)}${selectField("cont", "Continent", options(Object.entries(CONTINENT), f.cont, "Any continent"))}<button class="reset" data-reset="1">Reset</button></div>`;
+  return { rows, cols, filters, noun: "subzones" };
+}
+
 async function browseItemsets(p) {
   const f = { q: p.get("q") || "" };
   let rows = await query(Q_BROWSE_ITEMSETS, []);
@@ -891,39 +879,26 @@ export async function showBrowse(kind, navigate) {
   const isQuests = kind === "quests";
   const isFactions = kind === "factions";
   const isZones = kind === "zones";
+  const isSubzones = kind === "subzones";
   const isSpells = kind === "spells";
   const isItemsets = kind === "itemsets";
   const isObjects = kind === "objects";
-  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : isFactions ? "Factions" : isZones ? "Zones" : isSpells ? "Spells" : isItemsets ? "Item Sets" : isObjects ? "Objects" : "Items";
+  const heading = isNpc ? "NPCs" : kind === "crafting" ? "Crafting" : isQuests ? "Quests" : isFactions ? "Factions" : isZones ? "Zones" : isSubzones ? "Subzones" : isSpells ? "Spells" : isItemsets ? "Item Sets" : isObjects ? "Objects" : "Items";
   document.title = `Browse ${heading} - Tortoise-WoW DB`;
   app.innerHTML = `<div class="loading">Loading…</div>`;
   const p = new URLSearchParams(location.search);
   let view;
-  try { view = kind === "crafting" ? await browseCrafting(p) : isZones ? await browseZones(p) : isFactions ? await browseFactions(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : isSpells ? await browseSpells(p) : isItemsets ? await browseItemsets(p) : isObjects ? await browseObjects(p) : await browseItems(p); }
+  try { view = kind === "crafting" ? await browseCrafting(p) : isZones ? await browseZones(p) : isSubzones ? await browseSubzones(p) : isFactions ? await browseFactions(p) : isQuests ? await browseQuests(p) : isNpc ? await browseNpcs(p) : isSpells ? await browseSpells(p) : isItemsets ? await browseItemsets(p) : isObjects ? await browseObjects(p) : await browseItems(p); }
   catch (e) { app.innerHTML = `<div class="error">Failed: ${esc(e.message || e)}</div>`; return; }
 
   // items get row selection + clipboard/external operations on the selection.
-  const selbar = !isItems ? "" : `<div class="selbar" data-selbar>
-    <span class="selcount" data-selcount>0 selected</span>
-    <button type="button" data-op="ids" disabled>Copy IDs</button>
-    <span class="op-prefix"><input type="text" data-prefix value=".additem " aria-label="line prefix">
-      <button type="button" data-op="prefix" disabled>Copy w/ prefix</button></span>
-    <button type="button" data-op="compare" disabled>Compare</button>
-    <button type="button" data-op="wh" disabled>Open on Wowhead</button>
-    <button type="button" data-op="clear" disabled>Clear</button>
-    <span class="op-status" data-opstatus></span>
-  </div>`;
+  const selbar = isItems ? selbarHtml() : "";
   app.innerHTML = `<div class="browse"><h1>Browse ${esc(heading)}</h1>${view.filters}
     <p class="browse-count">${view.rows.length.toLocaleString()} ${view.noun}</p>
     ${selbar}
     <div data-browse></div></div>`;
   const tableEl = app.querySelector("[data-browse]");
   const bar = app.querySelector("[data-selbar]");
-  const updateSelbar = (count) => {
-    if (!bar) return;
-    bar.querySelector("[data-selcount]").textContent = `${count} selected`;
-    bar.querySelectorAll("[data-op]").forEach((b) => { b.disabled = count === 0; });
-  };
   let tableApi = null;
   if (view.rows.length) {
     tableApi = createTable(tableEl, {
@@ -931,7 +906,7 @@ export async function showBrowse(kind, navigate) {
       sort: p.get("sort"), dir: p.get("dir"),
       group: view.noGroup ? (p.get("groupby") || null) : (p.get("groupby") ?? (kind === "crafting" ? "prof" : null)),
       selectable: isItems, rowKey: isItems ? (r) => r.entry : undefined,
-      onSelectionChange: bar ? (count) => updateSelbar(count) : undefined,
+      onSelectionChange: bar ? (count) => updateSelbar(bar, count) : undefined,
       // mirror sort/group into the URL (no re-render) so the view is shareable
       onState: (s) => {
         const np = new URLSearchParams(location.search);

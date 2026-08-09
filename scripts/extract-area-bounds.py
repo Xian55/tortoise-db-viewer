@@ -21,7 +21,20 @@ OUTPUT (committed)
 
 REQUIREMENTS  StormLib.dll (x64) ; the Turtle WoW client.
 ENV           TW_CLIENT (default F:/Game/Turtle WoW) ; STORMLIB
+              CLIENT_PROFILE=tbc + AREA_BOUNDS_OUT for the TBC 2.4.3 client
 Run:          python scripts/extract-area-bounds.py
+
+TBC: the ADT format is unchanged (MCNK areaid still at header +0x34; split
+_obj0/_tex0 ADTs only arrive in Cataclysm), but the MPQ set is completely
+different -- clientprofile handles it. The TBC client is the ONLY source of
+Outland (map 530, Expansion01) bounds, and its maps 0/1 additionally carry the
+Blood Elf / Draenei zones the 1.12 client has never heard of:
+
+  CLIENT_PROFILE=tbc TW_CLIENT="F:/Game/TBC-2.4.3.8606-enGB-Repack" \
+  AREA_BOUNDS_OUT=scripts/data/subzone-bounds-tbc.json \
+  python scripts/extract-area-bounds.py
+
+build-db resolves the per-expansion file through clientData().
 """
 import ctypes as C
 import json
@@ -36,12 +49,17 @@ STORMLIB = os.environ.get(
     os.path.join(ROOT, "..", "StormLib", "bin", "StormLib_dll", "x64", "Release", "StormLib.dll"),
 )
 DATA = os.path.join(CLIENT, "Data")
-OUT = os.path.join(ROOT, "scripts", "data", "subzone-bounds.json")
-ARCHIVE_ORDER = [
+OUT = os.environ.get("AREA_BOUNDS_OUT") or os.path.join(ROOT, "scripts", "data", "subzone-bounds.json")
+if not os.path.isabs(OUT):
+    OUT = os.path.join(ROOT, OUT)
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from clientprofile import archives  # noqa: E402
+
+ARCHIVE_ORDER = archives([
     "dbc.MPQ", "interface.MPQ", "patch.MPQ", "patch-2.MPQ",
     "patch-3.mpq", "patch-4.mpq", "patch-5.mpq", "patch-6.mpq",
     "patch-7.mpq", "patch-8.mpq", "patch-9.mpq", "patch-Y.mpq", "_Patch-W.mpq",
-]
+])
 TILE = 533.3333333  # one ADT tile, yards
 
 
