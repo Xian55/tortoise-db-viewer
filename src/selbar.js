@@ -6,17 +6,24 @@
 // results' Items tab -- and a copy in each would drift the moment one grows an op.
 import { esc } from "./render.js";
 
-const WOWHEAD = "https://www.wowhead.com/classic/item=";
+// Per-entity differences: the Wowhead path, the GM command you'd paste ids into, and
+// whether Compare means anything (it doesn't for spells -- there is no ?compare= view
+// for them, and a button that flashes an error is worse than no button).
+const KINDS = {
+  item: { wowhead: "https://www.wowhead.com/classic/item=", prefix: ".additem ", compare: true },
+  spell: { wowhead: "https://www.wowhead.com/classic/spell=", prefix: ".learn ", compare: false },
+};
 
 // The bar starts disabled: every op needs a non-empty selection, and buttons that do
 // nothing when clicked read as broken.
-export function selbarHtml(prefix = ".additem ") {
-  return `<div class="selbar" data-selbar>
+export function selbarHtml(kind = "item") {
+  const k = KINDS[kind] || KINDS.item;
+  return `<div class="selbar" data-selbar data-selkind="${esc(kind)}">
     <span class="selcount" data-selcount>0 selected</span>
     <button type="button" data-op="ids" disabled>Copy IDs</button>
-    <span class="op-prefix"><input type="text" data-prefix value="${esc(prefix)}" aria-label="line prefix">
+    <span class="op-prefix"><input type="text" data-prefix value="${esc(k.prefix)}" aria-label="line prefix">
       <button type="button" data-op="prefix" disabled>Copy w/ prefix</button></span>
-    <button type="button" data-op="compare" disabled>Compare</button>
+    ${k.compare ? `<button type="button" data-op="compare" disabled>Compare</button>` : ""}
     <button type="button" data-op="wh" disabled>Open on Wowhead</button>
     <button type="button" data-op="clear" disabled>Clear</button>
     <span class="op-status" data-opstatus></span>
@@ -33,7 +40,8 @@ export function updateSelbar(bar, count) {
 
 // Reads the live selection from the table API on each click (not a snapshot), so
 // sorting/paging between selecting and copying can't hand back stale rows.
-export function wireSelbar(bar, api, navigate) {
+export function wireSelbar(bar, api, navigate, kind = bar.dataset.selkind || "item") {
+  const k = KINDS[kind] || KINDS.item;
   const status = bar.querySelector("[data-opstatus]");
   let timer = null;
   const flash = (msg) => {
@@ -56,7 +64,7 @@ export function wireSelbar(bar, api, navigate) {
       copy(ids.map((id) => pfx + id).join("\n"), ids.length);
     } else if (btn.dataset.op === "wh") {
       if (ids.length > 15 && !confirm(`Open ${ids.length} Wowhead tabs?`)) return;
-      ids.forEach((id) => window.open(WOWHEAD + id, "_blank", "noopener"));
+      ids.forEach((id) => window.open(k.wowhead + id, "_blank", "noopener"));
     } else if (btn.dataset.op === "compare") {
       if (ids.length < 2) { flash("Select 2+ items to compare"); return; }
       navigate(`?compare=${ids.slice(0, 8).join(":")}`);
