@@ -193,7 +193,14 @@ export async function resetState() {
     //  - transient overlays (context menu / pixi + embed tooltips) stay in the DOM.
     const hc = document.querySelector(".hovercard");
     if (hc) { hc.style.display = "none"; hc.innerHTML = ""; }
-    document.querySelectorAll(".map-ctx, .pixi-tip, .twp-tip").forEach((e) => e.remove());
+    // .map-ctx is a CACHED singleton too (zonemap.js ctxMenuEl), so removing it left
+    // the module holding a detached node: the first map context-menu test in a page
+    // passed and every later one failed FOREVER, because openMarkerMenu was filling an
+    // element that was no longer in the document. Only visible once two such tests
+    // shared a shard. Hide + empty in place, exactly like the hovercard above.
+    const ctx = document.querySelector(".map-ctx");
+    if (ctx) { ctx.style.display = "none"; ctx.innerHTML = ""; }
+    document.querySelectorAll(".pixi-tip, .twp-tip").forEach((e) => e.remove());
     const s = document.getElementById("search");
     if (s) { s.value = ""; s.blur(); s.dispatchEvent(new Event("input", { bubbles: true })); }
   }).catch(() => {});

@@ -1,7 +1,7 @@
 // Zone pages + world map: parchment maps, category toggles, farming routes,
 // gather granularity, floor switchers, quests, flights, and the seamless world map.
 import { page, nav, T, smoke } from "../harness.mjs";
-import { testBrowse } from "./_shared.mjs";
+import { testBrowse, waitMapStill } from "./_shared.mjs";
 
 // zone page: Leaflet renders the parchment image + per-category marker toggles.
 // (markers use a canvas renderer, so assert the image layer + layer control.)
@@ -53,17 +53,18 @@ async function testZoneDotMenu(id) {
     return d && d.length ? d[0] : null;
   }, { timeout: T }).then((h) => h.jsonValue()).catch(() => null);
   if (!found) { console.log(`zone-dot-menu ${id}: no dot found`); return false; }
-  // RETRY the click, re-reading the dot each time: the map's fitBounds animation moves
-  // markers, so a position sampled a moment ago can be stale by the time the click
-  // lands -- exactly the flake this dir's CLAUDE.md warns about. One shot passed
-  // locally and failed on a slower CI runner. Re-reading matters more than retrying:
-  // clicking the same stale pixel again would miss just as reliably.
+  // WAIT FOR THE MAP TO STOP MOVING, then retry re-reading the dot each time. The
+  // fitBounds animation shifts dots continuously, and the hit radius is 9px, so a
+  // position sampled before the click is stale by the time it lands -- and retrying
+  // alone can't win, because the next sample is just as stale. waitMapStill blocks
+  // until a sampled position repeats. See _shared.mjs.
+  const dotAt = () => page.evaluate(() => {
+    const d = window.__zoneDots && window.__zoneDots();
+    return d && d.length ? d[0] : null;
+  });
   let opened = false;
   for (let attempt = 0; attempt < 5 && !opened; attempt++) {
-    const at = await page.evaluate(() => {
-      const d = window.__zoneDots && window.__zoneDots();
-      return d && d.length ? d[0] : null;
-    });
+    const at = await waitMapStill(dotAt);
     if (!at) break;
     found = at;
     await page.mouse.move(at.x, at.y);       // drive the hover hit-test at the dot
@@ -71,7 +72,17 @@ async function testZoneDotMenu(id) {
     opened = await page.waitForSelector(".map-ctx", { visible: true, timeout: 2000 })
       .then(() => true).catch(() => false);
   }
-  if (!opened) { console.log(`zone-dot-menu ${id}: context menu never opened (last dot ${JSON.stringify(found)})`); return false; }
+  if (!opened) {
+    // `attached:false` means the .map-ctx singleton was removed from the document and
+    // zonemap is filling a detached node -- not a missed click. Worth distinguishing.
+    const diag = await page.evaluate(() => {
+      const m = document.querySelector(".map-ctx");
+      const d = window.__zoneDots && window.__zoneDots();
+      return { attached: !!m, dots: d ? d.length : null };
+    });
+    console.log(`zone-dot-menu ${id}: context menu never opened (last dot ${JSON.stringify(found)}) diag=${JSON.stringify(diag)}`);
+    return false;
+  }
   const headers = await page.$$eval(".map-ctx .map-ctx-h", (e) => e.map((h) => h.textContent.trim()));
   const items = await page.$$eval(".map-ctx .map-ctx-i", (e) => e.map((b) => b.textContent.trim()));
   await page.click(".map-ctx .map-ctx-i");   // Copy > Coordinates

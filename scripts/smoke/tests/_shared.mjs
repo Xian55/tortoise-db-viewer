@@ -19,6 +19,33 @@ export async function testBrowse(kind, query = "", expectHeader) {
   return rows > 0 && filters > 0 && sortable > 0 && active > 0 && (!expectHeader || headers.includes(expectHeader));
 }
 
+// Leaflet runs a fitBounds animation on load, so a marker/dot keeps MOVING for a beat
+// after it exists. The context-menu tests sample a position and then click it, and the
+// hit-test radius is only 9px -- on a loaded runner (CI packs 8 test files into one
+// shard) enough latency lands between the sample and the click that the target has
+// already moved away. Retrying doesn't help: the animation is still running, so every
+// attempt misses for the same reason, which is why this failed DETERMINISTICALLY in CI
+// rather than looking like an ordinary flake. Wait for the position to repeat instead.
+// Also used for async-rendered widgets that can re-render after they first appear (the
+// search dropdown debounces 150ms and drops stale responses by sequence, so a second
+// render can land after the rows exist -- resetting the keyboard selection and
+// swallowing an Enter that was pressed in between).
+export async function waitStable(sample, { tries = 40, gap = 100 } = {}) {
+  let prev = null;
+  for (let i = 0; i < tries; i++) {
+    const cur = await sample();
+    const key = cur == null ? null : JSON.stringify(cur);
+    if (key != null && key === prev) return cur;
+    prev = key;
+    await new Promise((r) => setTimeout(r, gap));
+  }
+  return null;
+}
+
+export async function waitMapStill(sample, opts) {
+  return waitStable(sample, opts);
+}
+
 // Detail pages carry a Share button copying the prerendered /<prefix>/<id> link.
 export async function testShareButton(param, id, prefix) {
   await nav(`?${param}=${id}`);
