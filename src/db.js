@@ -83,7 +83,27 @@ export async function queryOne(sql, params = []) {
   return (await query(sql, params))[0] || null;
 }
 
+// Optional-schema probe. The frontend is shared by every dataset (main / dev /
+// vanilla-cmangos / tbc-cmangos) but each ships its own DB, so a deploy always lands
+// on DBs built before the newest schema change until their workflows are dispatched.
+// One round-trip, memoized, resolved before anything queries the new shapes -- reading
+// them behind a per-call .catch() is not enough, because qNpcZoneSpawns feeds ~10 call
+// sites and runSearch puts one inside a Promise.all where a single rejection would
+// wipe out every other entity's results.
+let capsPromise = null;
+export function caps() {
+  if (!capsPromise) {
+    capsPromise = query(`SELECT
+        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'subzones') AS subzones,
+        (SELECT COUNT(*) FROM pragma_table_info('spawn_points') WHERE name = 'sub') AS spawn_sub`)
+      .then((r) => ({ subzones: !!r[0]?.subzones, spawnSub: !!r[0]?.spawn_sub }))
+      .catch(() => ({ subzones: false, spawnSub: false }));
+  }
+  return capsPromise;
+}
+
 /** Start loading the engine + DB in the background. */
 export function preconnect() {
   ready().catch(() => {});
+  caps().catch(() => {});
 }

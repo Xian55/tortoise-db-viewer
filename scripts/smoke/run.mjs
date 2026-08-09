@@ -12,7 +12,7 @@
 //
 // Each shard writes a JUnit XML (bun's --reporter=junit) which we parse for robust
 // per-test results + durations -- more reliable than scraping the console summary.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readdirSync, statSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import os from "node:os";
 import http from "node:http";
@@ -73,6 +73,23 @@ const ping = (base) => new Promise((res) => {
   req.setTimeout(1500, () => { req.destroy(); res(false); });
 });
 
+// `shell: true` means the child we hold is a shell wrapper (cmd.exe on Windows,
+// bunx -> node vite.js underneath), so proc.kill() terminates the wrapper and ORPHANS
+// the real preview server. The orphan keeps the process group alive: run.mjs prints
+// "SMOKE: PASS", exits, and `bun run smoke` still never returns -- which reads as a
+// hung test suite when the suite actually finished in ~20s. Kill the whole tree.
+// spawnSync, NOT spawn: every caller here is immediately followed by process.exit(),
+// which would tear us down before an async child ever started -- the kill would simply
+// never happen.
+function killTree(proc) {
+  if (!proc || proc.killed) return;
+  if (process.platform === "win32") {
+    try { spawnSync("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { stdio: "ignore" }); return; }
+    catch { /* fall through to the portable path */ }
+  }
+  try { process.kill(-proc.pid); } catch { try { proc.kill(); } catch { /* already gone */ } }
+}
+
 async function ensureServer() {
   const base = process.env.SMOKE_BASE || DEFAULT_BASE;
   if (await ping(base)) { console.log(`[server] using ${base}`); return { base, proc: null }; }
@@ -84,7 +101,7 @@ async function ensureServer() {
     await new Promise((r) => setTimeout(r, 500));
     if (await ping(DEFAULT_BASE)) { console.log(`[server] up at ${DEFAULT_BASE}`); return { base: DEFAULT_BASE, proc }; }
   }
-  proc.kill();
+  killTree(proc);
   console.error(`[server] vite preview did not come up (did you run 'bunx vite build'?)`);
   process.exit(1);
 }
@@ -175,7 +192,7 @@ if (repeat > 1) {
     for (const c of cs) { const o = outcomes.get(c.name) || { pass: 0, fail: 0 }; o[c.failed ? "fail" : "pass"]++; outcomes.set(c.name, o); }
     console.log(`  run ${run}/${repeat}: ${p} pass, ${f} fail  (${elapsed}s)`);
   }
-  if (proc) proc.kill();
+  if (proc) killTree(proc);
   const flaky = [...outcomes].filter(([, o]) => o.pass > 0 && o.fail > 0);
   const always = [...outcomes].filter(([, o]) => o.pass === 0 && o.fail > 0);
   console.log("\n==================== FLAKE REPORT ====================");
@@ -193,7 +210,7 @@ if (repeat > 1) {
 
 // ---- single run (default): full time profile ----
 const { results, elapsed } = await runOnce(base);
-if (proc) proc.kill();
+if (proc) killTree(proc);
 const totalPass = results.flatMap((r) => r.cases).filter((c) => !c.failed).length;
 const totalFail = results.flatMap((r) => r.cases).filter((c) => c.failed).length;
 const hookCrash = results.some((r) => r.code !== 0 && !r.cases.some((c) => c.failed));

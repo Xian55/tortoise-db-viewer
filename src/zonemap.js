@@ -384,8 +384,13 @@ function layerLegendHtml(spec) {
 //   farm   -> value-weighted points for the opt-in "Gold route" overlay.
 //   markerLayers [spec,...] -> N categorized toggleable highlight layers (see buildMarkerLayer).
 //   route { points, start?, end?, color?, label? } -> an opt-in open-path circuit overlay.
+//   subzones [{entry,name,spawns}] + initialSub + onSubzone(id|null) -> a panel-header
+//     dropdown narrowing the category dots to one sub-area (see subFocus below).
+//   bounds { x0,x1,y0,y1 } (WORLD coords) -> outline that rectangle and fit to it;
+//     the subzone page's "here is where this place is".
 export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
   const { focus = null, bosses = [], farm = null, markerLayers = null, route = null, onToggle = null } = opts;
+  const { subzones = null, initialSub = null, onSubzone = null, bounds: worldBounds = null } = opts;
   // destroy the previous overlay first -> frees its WebGL context (browsers cap
   // these, so leaking one per zone navigation would eventually break the map).
   if (currentOverlay) { try { currentOverlay.destroy(); } catch (_) { /* gone */ } currentOverlay = null; }
@@ -468,11 +473,17 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
   // item's real CDN icon for gather nodes (`icon` = CDN basename or null). basePx
   // lets the render loop keep every sprite a fixed screen size regardless of source
   // texture resolution (32px POI cell vs 56px item icon).
-  const addDot = (key, label, ll, html, href, wpt, icon) => {
+  // Which sub-area the dropdown filters on. null = show everything, which is what
+  // every caller that doesn't pass `subzones` gets (sp.sub is then undefined and the
+  // predicate is a no-op).
+  let subFocus = initialSub ?? null;
+  const passSub = (sp) => subFocus == null || sp.sub === subFocus;
+  const addDot = (key, label, ll, html, href, wpt, icon, sub) => {
     const sp = new PIXI.Sprite(poiTexture(key));
     sp.anchor.set(0.5);
     sp.basePx = POI_CELL;
     sp.ll = ll; sp.label = html; sp.href = href; sp.wpt = wpt; sp.visible = false;
+    sp.sub = sub ?? null;
     container.addChild(sp);
     if (icon) requestIcon(icon, sp);
     const g = cat(key, label);
@@ -494,20 +505,20 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
       const wpt = { x: s.x, y: s.y };
       for (const role of npcRolesFor(s)) {
         const def = NPC_CATS.find((c) => c[0] === role);
-        addDot(role, def ? def[1] : role, ll, html, `?npc=${s.entry}`, wpt);
+        addDot(role, def ? def[1] : role, ll, html, `?npc=${s.entry}`, wpt, null, s.sub);
       }
       // rares get an extra dot in their own cross-cutting category (rank 2/4)
       if (s.rank === 2 || s.rank === 4) {
         const rk = s.rank === 4 ? "Rare Elite" : "Rare";
         addDot("rare", "Rare / Rare Elite", ll,
-          `${esc(s.name) || "?"} <span class="dim">(${lvl(s)}) · ${rk}</span>`, `?npc=${s.entry}`, wpt);
+          `${esc(s.name) || "?"} <span class="dim">(${lvl(s)}) · ${rk}</span>`, `?npc=${s.entry}`, wpt, null, s.sub);
       }
     }
   }
   const objByEntry = new Map();
   for (const o of objects) {
     const ll = toLatLng(o.x, o.y);
-    if (!focus) { const key = objLabel(o); addDot(key, key, ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y }, cdnIconOf(o)); }
+    if (!focus) { const key = objLabel(o); addDot(key, key, ll, esc(o.name) || `Object #${o.entry}`, `?object=${o.entry}`, { x: o.x, y: o.y }, cdnIconOf(o), o.sub); }
     let e = objByEntry.get(o.entry);
     if (!e) { e = { name: o.name || `Object #${o.entry}`, lls: [], pts: [] }; objByEntry.set(o.entry, e); }
     e.lls.push(ll); e.pts.push({ x: o.x, y: o.y });
@@ -532,11 +543,27 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
 
   const redraw = () => overlay.redraw();
   whenPoiReady(redraw); // re-render once the atlas texture finishes loading
+  // A category's dots are visible when the category is ON *and* the sprite survives the
+  // subzone filter. Filtering here rather than re-running initZoneMap per dropdown
+  // change is what keeps the category toggles, "Selected" rows and pan/zoom alive --
+  // a re-init would drop the WebGL context and silently reset all of them.
+  const dotLayers = [];
   const DotLayer = L.Layer.extend({
-    initialize(sprites) { this._s = sprites; },
-    onAdd() { for (const s of this._s) s.visible = true; redraw(); },
-    onRemove() { for (const s of this._s) s.visible = false; redraw(); },
+    initialize(sprites) { this._s = sprites; this._on = false; },
+    onAdd() { this._on = true; for (const s of this._s) s.visible = passSub(s); redraw(); },
+    onRemove() { this._on = false; for (const s of this._s) s.visible = false; redraw(); },
   });
+  const applySubFocus = () => {
+    for (const l of dotLayers) if (l._on) for (const s of l._s) s.visible = passSub(s);
+    redraw();
+  };
+  // Bounding box of the dots belonging to one sub-area (mirrors the world map's
+  // focusBounds) -> zoom there instead of sitting on the whole parent zone.
+  const subSpriteBounds = (id) => {
+    const lls = [];
+    for (const sp of container.children) if (sp.sub === id) lls.push(sp.ll);
+    return lls.length ? L.latLngBounds(lls) : null;
+  };
 
   // HTML-marker kit (shared with the world map). bubblingMouseEvents:false keeps a
   // marker's click/contextmenu off the map-level dot hit-test.
@@ -708,11 +735,27 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
   // Gather nodes get a per-node toggle (Mining: Copper Vein, Herb: Peacebloom) with
   // the yielded item's icon -- the same granular filtering as the world map -- split
   // into their own Herbs / Mining Veins groups; the rest stay in Objects.
+  // The sub-area's own footprint, from the client ADT chunks. Drawn rather than merely
+  // fitted-to so a subzone page answers "where in the zone is this?" at a glance.
+  let areaBounds = null;
+  if (worldBounds) {
+    areaBounds = L.latLngBounds(
+      toLatLng(worldBounds.x0, worldBounds.y0),
+      toLatLng(worldBounds.x1, worldBounds.y1),
+    );
+    const rect = L.rectangle(areaBounds, {
+      interactive: false, color: "#7cc4ff", weight: 2, opacity: 0.75, dashArray: "6 5", fill: false,
+    });
+    rect.addTo(map);
+    highlights.push({ label: "Subzone bounds", html: "▭ Subzone bounds", on: true, toggle: toggleLayer(rect) });
+  }
+
   const PFX = /^(Mining: |Herb: |Obj: )/;
   const catRow = (key) => {
     const g = cats.get(key);
     if (!g || !g.sprites.length) return null;
     const layer = new DotLayer(g.sprites);
+    dotLayers.push(layer);
     return { label: g.label, count: g.sprites.length, html: catLabel(key, esc(g.label.replace(PFX, "")), g.icon), on: false, toggle: toggleLayer(layer) };
   };
   const npcKeys = [...NPC_CATS.map((c) => c[0]), "rare"];
@@ -726,9 +769,30 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
     { title: "Mining Veins", rows: keysWith("Mining: ", byName).map(catRow).filter(Boolean) },
     { title: "Objects", rows: keysWith("Obj: ", byCount).map(catRow).filter(Boolean) },
   ].filter(Boolean);
-  const panel = buildLayerPanel(map, { groups });
+  // Panel header: narrow the category dots to one sub-area. Suppressed in focus mode --
+  // a ?zone=X&gather=Y view builds no category sprites at all (see the `if (!focus)`
+  // guards above), so there would be nothing for the dropdown to filter.
+  let header = null;
+  if (!focus && subzones && subzones.length) {
+    header = L.DomUtil.create("div", "wm-filter");
+    const optHtml = ['<option value="">All subzones</option>'].concat(subzones.map((s) =>
+      `<option value="${s.entry}"${s.entry === subFocus ? " selected" : ""}>${esc(s.name)}${s.spawns ? ` (${s.spawns})` : ""}</option>`)).join("");
+    header.innerHTML = `<select class="wm-zone" title="Focus a subzone">${optHtml}</select>`;
+    const sel = header.querySelector(".wm-zone");
+    sel.addEventListener("change", () => {
+      subFocus = sel.value ? Number(sel.value) : null;
+      applySubFocus();
+      const b = subFocus != null && subSpriteBounds(subFocus);
+      map.fitBounds(b && b.isValid() ? b.pad(0.4) : bounds,
+        b && b.isValid() ? { maxZoom: Math.min(map.getMaxZoom(), fitZoom + 2), padding: [30, 30] } : undefined);
+      if (onSubzone) onSubzone(subFocus);
+    });
+  }
+  const panel = buildLayerPanel(map, header ? { groups, header } : { groups });
   map.addControl(panel);
-  const fitTo = (focusBounds && focusBounds.isValid() && focusBounds) || (markerBounds && markerBounds.isValid() && markerBounds);
+  const fitTo = (focusBounds && focusBounds.isValid() && focusBounds)
+    || (markerBounds && markerBounds.isValid() && markerBounds)
+    || (areaBounds && areaBounds.isValid() && areaBounds);
   if (fitTo) {
     // A tight spawn/node cluster would otherwise slam to maxZoom (object pages open
     // zoomed way in, forcing a manual zoom-out). Keep zone context: pad wide and cap

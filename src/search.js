@@ -2,8 +2,8 @@
 // autocomplete dropdown wired onto the top-bar input. Items/NPCs/quests are
 // FTS5-backed; dungeons use LIKE over the ~39 maps. All in-memory (no network).
 import { query } from "./db.js";
-import { Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES, Q_SEARCH_FACTIONS, Q_SEARCH_ITEMSETS, Q_SEARCH_OBJECTS, Q_ID_ITEM, Q_ID_NPC, Q_ID_QUEST, Q_ID_SPELL, Q_ID_OBJECT } from "./queries.js";
-import { itemLink, npcLink, questLink, spellLink, dungeonLink, zoneLink, factionLink, objectLink, esc } from "./render.js";
+import { Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES, Q_SEARCH_SUBZONES, Q_SEARCH_FACTIONS, Q_SEARCH_ITEMSETS, Q_SEARCH_OBJECTS, Q_ID_ITEM, Q_ID_NPC, Q_ID_QUEST, Q_ID_SPELL, Q_ID_OBJECT } from "./queries.js";
+import { itemLink, npcLink, questLink, spellLink, dungeonLink, zoneLink, subzoneLink, factionLink, objectLink, esc } from "./render.js";
 
 // FTS5 prefix MATCH: prefix-match each alnum token ("fire bl" -> "fire* bl*").
 export function ftsQuery(term) {
@@ -45,24 +45,27 @@ function mergeId(base, ids) {
 // Run all entity searches in parallel; `limit` rows per entity.
 export async function runSearch(term, limit) {
   const t = (term || "").trim();
-  const empty = { items: [], npcs: [], quests: [], spells: [], dungeons: [], zones: [], factions: [], itemsets: [], objects: [] };
+  const empty = { items: [], npcs: [], quests: [], spells: [], dungeons: [], zones: [], subzones: [], factions: [], itemsets: [], objects: [] };
   if (!t) return empty;
   const fts = ftsQuery(t);
   const tg = trigramQuery(t);
   const like = `%${t}%`;
-  const [items, npcs, quests, spells, dungeons, zones, factions, itemsets, objects, ids] = await Promise.all([
+  const [items, npcs, quests, spells, dungeons, zones, subzones, factions, itemsets, objects, ids] = await Promise.all([
     fts ? query(Q_SEARCH_ITEMS, [fts, t, limit, tg]) : [],
     fts ? query(Q_SEARCH_NPCS, [fts, t, limit, tg]) : [],
     fts ? query(Q_SEARCH_QUESTS, [fts, t, limit, tg]) : [],
     fts ? query(Q_SEARCH_SPELLS, [fts, t, limit, tg]) : [],
     query(Q_SEARCH_DUNGEONS, [like, t, limit]),
     query(Q_SEARCH_ZONES, [like, t, limit]),
+    // Runs on every keystroke, inside a Promise.all: a dataset whose DB predates the
+    // subzones table must degrade to an empty tab, not take every other entity with it.
+    query(Q_SEARCH_SUBZONES, [like, t, limit]).catch(() => []),
     query(Q_SEARCH_FACTIONS, [like, t, limit]),
     query(Q_SEARCH_ITEMSETS, [like, t, limit]),
     query(Q_SEARCH_OBJECTS, [like, t, limit]),
     idMatches(t),
   ]);
-  return mergeId({ items, npcs, quests, spells, dungeons, zones, factions, itemsets, objects }, ids);
+  return mergeId({ items, npcs, quests, spells, dungeons, zones, subzones, factions, itemsets, objects }, ids);
 }
 
 // Flatten the per-type results into one ranked list (exact > prefix > other,
@@ -81,6 +84,9 @@ function rankFlat(res, term, n) {
   for (const d of res.dungeons) all.push({ type: "dungeon", w: 6, name: d.name, tier: tier(d.name), html: dungeonLink(d.id, d.name), href: `?dungeon=${d.id}` });
   for (const o of res.objects || []) all.push({ type: o._id ? "object #" + o.entry : "object", w: 7, name: o.name, tier: tier(o.name, o), html: objectLink(o.entry, o.name), href: `?object=${o.entry}` });
   for (const z of res.zones) all.push({ type: "zone", w: 8, name: z.name, tier: tier(z.name), html: zoneLink(z.areaid, z.name), href: `?zone=${z.areaid}` });
+  // After zones (w: 8), so searching "Elwynn Forest" surfaces the zone itself first.
+  // The parent name rides along because subzone names repeat across the world.
+  for (const s of res.subzones || []) all.push({ type: "subzone", w: 9, name: s.name, tier: tier(s.name), html: subzoneLink(s.entry, s.name) + (s.zone_name ? ` <span class="muted">${esc(s.zone_name)}</span>` : ""), href: `?subzone=${s.entry}` });
   all.sort((a, b) => a.tier - b.tier || a.w - b.w || (a.name || "").localeCompare(b.name || ""));
   return all.slice(0, n);
 }

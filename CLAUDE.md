@@ -52,8 +52,8 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
   content hash. `db.js` keys the download URL (`?v=`) and the OPFS filename by
   that hash and wipes old copies, so a new deploy auto-refreshes clients.
 - **Routing** is query-param based (SPA, no server rewrites): `?item=`, `?npc=`,
-  `?quest=`, `?faction=`, `?zone=`, `?dungeon=`, `?dungeons`,
-  `?browse=items|npcs|quests|factions|zones|crafting`, `?search=`, `?compare=a:b:c`
+  `?quest=`, `?faction=`, `?zone=`, `?subzone=`, `?dungeon=`, `?dungeons`,
+  `?browse=items|npcs|quests|factions|zones|subzones|crafting`, `?search=`, `?compare=a:b:c`
   (item comparison), `?talents=<class>` (talent calculator), `?random`. `route()`
   checks `?browse=` (and `?compare=`) **before** the singular entity params (browse
   URLs carry filter params like `faction=a` that collide otherwise). See `src/main.js`.
@@ -64,7 +64,8 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
   (`weights=key:w|…` + `STAT_WEIGHT_PRESETS`) add a computed, sortable **Score**
   column — both resolve stats through the derived `item_stats` table. Selecting rows
   → **Compare** builds a `?compare=` URL; a localStorage compare tray (main.js
-  `renderCompareTray`) collects items across pages.
+  `renderCompareTray`) collects items across pages. The selection bar itself is
+  `src/selbar.js`, shared with the search results' Items tab.
 - **Zone maps use Leaflet + a Pixi GPU overlay** (`L.CRS.Simple`,
   `leaflet-pixi-overlay` + `pixi.js`, all npm, lazy-loaded as one chunk via
   `src/zonemap.js`). A zone page renders the in-game parchment image
@@ -77,10 +78,14 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
   click-nav use a throttled nearest-visible-sprite hit-test (no per-marker DOM).
   The previous overlay is `destroy()`ed on re-init to free its WebGL context.
 - **Search is unified + FTS-backed.** `?search=` renders a tabbed page across
-  items/NPCs/quests/dungeons/zones; the top-bar input also shows a live flat
+  items/NPCs/quests/dungeons/zones/subzones; the top-bar input also shows a live flat
   top-5 dropdown (`src/search.js`, `runSearch()` + `initSearchDropdown()`). Items,
   creatures, quests, and spells have FTS5 tables (`*_fts`, `unicode61`, prefix);
-  dungeons (maps) and zones use LIKE over their small tables. Each searchable
+  dungeons (maps), zones and subzones use LIKE over their small tables. The Items tab
+  carries the full `src/selbar.js` selection ops (same as `?browse=items`), and the
+  Spells tab shows `spells.rank` — the client's subtext, which is usually "Rank N" but
+  also "Passive" / "Toy" / "Game Master", so the column sorts on the parsed number and
+  files the non-numeric labels last. Each searchable
   entity also has a **contentless `trigram` index on its name** (`*_tg`) so search
   matches **substrings/infix** ("fang" -> "Shadowfang"); the query OR-matches the
   prefix index (covers <3-char + ranking) and the trigram index. `search.js` builds
@@ -113,7 +118,7 @@ python scripts/extract-icons.py       # LOCAL: client MPQ -> assets/icons/custom
 python scripts/extract-spell-icons.py # LOCAL: client SpellIcon.dbc -> scripts/data/spell-icon-map.json (+ custom spell icons)
 python scripts/build-atlas.py         # assets/icons/custom/*.webp -> public/icons/custom-atlas.{webp,json}
 python scripts/extract-maps.py        # LOCAL: client -> public/maps/*.webp + scripts/data/zones.json
-python scripts/extract-area-bounds.py # LOCAL: client ADTs -> scripts/data/subzone-bounds.json (exact coord->area)
+python scripts/extract-area-bounds.py # LOCAL: client ADTs -> scripts/data/subzone-bounds.json (exact coord->area; also the `subzones` table). CLIENT_PROFILE=tbc + TW_CLIENT + AREA_BOUNDS_OUT=scripts/data/subzone-bounds-tbc.json for the TBC client (the ONLY source of Outland bounds)
 python scripts/extract-item-sets.py   # LOCAL: client ItemSet.dbc -> scripts/data/item-sets.json (set names + bonuses + ItemID_* membership; build-db corrects items.set_id to it)
 python scripts/extract-skill-lines.py # LOCAL: client SkillLine.dbc -> scripts/data/skill-lines.json (skill categories)
 python scripts/extract-creature-families.py # LOCAL: client CreatureFamily.dbc -> scripts/data/creature-families.json (pet family id -> name + diet/PetFoodMask + ability skill line + icon; powers the Hunter Pets section)
@@ -191,6 +196,47 @@ both (ratio bar + the outlier headline).
 
 Medians, never means, on both sides: a few outliers (a raid boss's `dmg_multiplier`,
 one absurd test weapon) drag a mean far off the thing players compare against.
+
+### Subzones (`?subzone=`)
+
+Sub-areas of a zone — Elwynn Forest → Goldshire / Northshire Valley / Fargodeep Mine.
+The hierarchy always shipped (`areas.zone_id`), and `build-db`'s `homeZone()` always
+computed each spawn's exact leaf area — it just **threw the leaf away** and returned
+only the walked-up render zone. Keeping it (`spawn_points.sub`) is what the whole
+feature rests on.
+
+- **`sub` is set only on the clean ADT path.** The cross-map guard (an instance ADT
+  tagged with a continent area id), the multi-floor reject and the WMA-box fallback
+  all store `NULL` — a rejected leaf is actively wrong, and would file Hateforge
+  Quarry's bosses under a Redridge sub-area. 152k of 164k spawns (93%) get one.
+- **Invariant every subzone read depends on:** when `sub` is non-null,
+  `zone == renderZone(sub)` *and* the point is inside that zone's own WMA box. So all
+  subzone queries are **zone-scoped** (`WHERE s.zone = ?2 AND s.sub = ?1`) and ride
+  the existing `idx_spawn_zone`. **There is deliberately no `idx_spawn_sub`**: it
+  would cost ~2.5 MB on the cold whole-DB download and buy nothing (measured
+  `Q_SUBZONE_SPAWNS` 0.95 ms, `Q_SUBZONE_LOOT` 0.94 ms vs `Q_ZONE_LOOT`'s 16 ms).
+  Nothing needs "all spawns of subzone X regardless of zone".
+- **`subzones`** (derived, ~1057 rows / 67 zones) carries name, the **render** zone
+  (not raw `areas.zone_id` — that's the parchment the page draws, and it collapses the
+  few areas whose parent is itself a sub-area), the ADT bbox, and precomputed
+  spawn/npc/object/quest counts, so search, browse, the zone tab and the map dropdown
+  never scan `spawn_points`. Rows with no content and the client's `*UNUSED*` leftovers
+  are dropped. `quests` counts come straight off `quests.zone`, which was **already** a
+  leaf area id.
+- **Names repeat** ("The Great Sea" ×2 with spawns, "Southfury River", …), so every
+  subzone reference — search rows, browse, the page header — carries its parent zone.
+- **UI**: `?subzone=` mirrors the zone page (NPCs / Farming / Quests / Items / Objects)
+  drawing the **parent's** parchment with only this area's spawns, fit to and outlined
+  by the bbox (`initZoneMap` `opts.bounds`). The zone page gains a Subzones tab
+  (appended last, so the default pane stays NPCs) and a map dropdown that filters the
+  Pixi dots **in place** via a `DotLayer` visibility predicate — re-initing the map per
+  change would drop the WebGL context and silently reset category toggles, "Selected"
+  rows and pan/zoom. The dropdown is suppressed in `focus` mode (a `?zone=X&gather=Y`
+  view builds no category sprites at all).
+- **Optional schema.** The frontend is shared by every dataset, so a deploy lands on
+  DBs built before this. `db.js` `caps()` probes for the table + column once and the
+  UI degrades: no Subzones tab, no dropdown, empty search tab, zone-only Location
+  labels. Dispatch `deploy-dev` / `deploy-cmangos` / `deploy-tbc-cmangos` to close it.
 
 ### NPC stats + abilities
 
@@ -361,8 +407,15 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
   continent dir; MCNK terrain chunks carry the real AreaTable id) and accumulates the
   world-coord bounding box per area → committed `scripts/data/subzone-bounds.json`
   (`{mapId: [{i:areaId, x0,x1,y0,y1}]}`). build-db assigns each spawn the smallest
-  box containing it, walked up `area_template.zone_id` to the render zone — exact
-  coord→zone the SQL dumps lack. Re-run on client updates.
+  box containing it, keeping BOTH the leaf area (`spawn_points.sub`, see "Subzones")
+  and that leaf walked up `area_template.zone_id` to the render zone (`.zone`) — exact
+  coord→zone the SQL dumps lack. Re-run on client updates. **Per-expansion**: resolved
+  through `clientData()`, so `CLIENT_PROFILE=tbc` + `AREA_BOUNDS_OUT=…-tbc.json` against
+  a TBC 2.4.3 client yields `subzone-bounds-tbc.json` — the only source of Outland
+  (map 530 `Expansion01`) bounds, and of the TBC-era maps 0/1 that carry Eversong /
+  Ghostlands / Azuremyst / Bloodmyst. ADT format is unchanged from 1.12 (MCNK areaid
+  at header `+0x34`; split `_obj0`/`_tex0` ADTs only arrive in Cataclysm), so only the
+  MPQ set differs.
 - `scripts/extract-minimap.py` — LOCAL: stitches the client's per-ADT-block minimap
   BLPs into the seamless-world-map tile pyramid `public/minimap/<mapId>/{z}/{x}/{y}.webp`
   (committed — CI can't rebuild it; synced to R2 by deploy.yml) + the committed
@@ -482,6 +535,14 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
 - `src/table.js` — the one reusable table: client-side sort + paginate + group
   (collapsible) used everywhere. `createTable(container, {columns, rows, ...})`.
 - `src/browse.js` — filter UI + the item/NPC/quest finder; feeds `createTable`.
+- `src/selbar.js` — the item selection-ops bar (`0 selected` · Copy IDs · `.additem `
+  prefix copy · Compare · Open on Wowhead · Clear), driven by `createTable`'s opt-in
+  row selection. Mounted by **both** `?browse=items` and the search results' Items tab,
+  which is why it's its own module — the two would otherwise drift the moment one grew
+  an op. `selbarHtml()` / `updateSelbar(bar, count)` / `wireSelbar(bar, api, navigate)`;
+  ops read the live selection from the table API per click, so sorting or paging between
+  selecting and copying can't hand back stale rows. Search wires it via `regTable`'s
+  `tableId` + the Map returned by `mountTables()`.
 - `src/search.js` — unified search: `runSearch()` (shared multi-entity query,
   used by the results page) + `initSearchDropdown()` (live flat top-5 panel).
 - `src/zonemap.js` — Leaflet zone map (lazy chunk): `initZoneMap()` draws the

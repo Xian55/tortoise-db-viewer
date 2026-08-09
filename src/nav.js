@@ -113,6 +113,7 @@ const ZONES = {
   label: "Zones", href: "?browse=zones",
   children: [
     ...Object.entries(CONTINENT).map(([id, name]) => ({ label: name, href: `?browse=zones&cont=${id}` })),
+    { label: "Subzones", href: "?browse=subzones" },
     { label: "World Map", href: "?worldmap" },
     { label: "Dungeons & Raids", href: "?dungeons" },
     { label: "Flight Paths", href: "?flights" },
