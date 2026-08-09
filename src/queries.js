@@ -568,9 +568,16 @@ export const Q_ITEM_SUFFIXES = `
   WHERE i.entry = ?1 ORDER BY rs.name, sp.chance DESC`;
 
 // Browse Spells finder: all named spells (profession label resolved client-side).
-// teaches IS NULL drops "learn" stub spells (a recipe's twin of the real craft).
+// A "learn" stub (effect 36, teaches set) is dropped only when the spell it teaches is
+// itself listed -- then it's a pure duplicate, like the 8 stub rows that shadowed the 7
+// real Blessing of Might ranks. When the target is absent the stub is the only handle
+// on that name, so it stays. Same rule as the search index (build-db SPELL_SEARCHABLE);
+// expressed inline rather than as a column so a dataset built before this still runs.
 export const Q_BROWSE_SPELLS = `SELECT entry, name, icon, skill, rank, school, mana_cost, power_type, cast_ms, channeled, range_max, spell_level, category, class_mask
-  FROM spells WHERE name <> '' AND teaches IS NULL AND hidden = 0 ORDER BY name`;
+  FROM spells s WHERE s.name <> '' AND s.hidden = 0
+    AND (s.teaches IS NULL OR NOT EXISTS (
+      SELECT 1 FROM spells t WHERE t.entry = s.teaches AND t.hidden = 0 AND t.name <> ''))
+  ORDER BY s.name`;
 
 // ---- NPC (creature) pages ----
 // pet_family/tameable + the family name drive the "Tameable · <family>" badge and

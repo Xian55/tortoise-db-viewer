@@ -113,6 +113,22 @@ async function testSearchSpellRank(term) {
   return hasCol && anyRank;
 }
 
+// "Learn" stubs (effect 36) duplicate the spell they teach: "Blessing of Might"
+// listed 15 rows -- 7 real ranks plus 8 stubs. A stub is indexed only when its target
+// isn't, so the real rank must be present and its stub absent.
+async function testSearchNoLearnStubs(term, wantReal, wantStubGone) {
+  await nav(`?search=${encodeURIComponent(term)}`);
+  await page.waitForSelector(".results .tabbar .tab", { timeout: T });
+  await page.evaluate(() => { const t = [...document.querySelectorAll(".results .tabbar .tab")].find((x) => /^Spells\b/.test(x.textContent.trim())); if (t) t.click(); });
+  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: T });
+  const ids = await page.$$eval('.results .tabpane:not(.hidden) a[href*="spell="]',
+    (as) => as.map((a) => +(a.getAttribute("href").match(/spell=(\d+)/) || [])[1]).filter(Boolean));
+  const hasReal = ids.includes(wantReal);
+  const hasStub = ids.includes(wantStubGone);
+  console.log(`search learn-stubs "${term}": ${ids.length} spells, real ${wantReal}=${hasReal} stub ${wantStubGone}=${hasStub}`);
+  return hasReal && !hasStub;
+}
+
 // live dropdown: typing yields rows; ArrowDown+Enter navigates to a detail page.
 async function testSearchDropdown(term) {
   await nav(`?`);
@@ -184,6 +200,7 @@ smoke("search subzone Goldshire", () => testSearchSubzone("Goldshire"));
 smoke("search selbar items copper", () => testSearchSelbar("copper", "items", { prefix: ".additem ", compare: true }));
 smoke("search selbar spells blessing of might", () => testSearchSelbar("blessing of might", "spells", { prefix: ".learn ", compare: false }));
 smoke("search spell-rank fireball", () => testSearchSpellRank("fireball"));
+smoke("search no learn-stubs blessing of might", () => testSearchNoLearnStubs("blessing of might", 19838, 19843));
 smoke("search dropdown defias", () => testSearchDropdown("defias"));
 smoke("search faction Darnassus", () => testSearchFaction("Darnassus"));
 smoke("search itemset Dreadnaught", () => testSearchItemSet("Dreadnaught"));

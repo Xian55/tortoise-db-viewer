@@ -990,14 +990,24 @@ console.log("Deriving craft sources...");
   db.exec(`ALTER TABLE spells ADD COLUMN teaches INTEGER`);
   {
     const setTeaches = db.prepare(`UPDATE spells SET teaches = ? WHERE entry = ?`);
-    let n = 0;
+    const seen = new Set();
+    let n = 0, nl = 0;
     db.transaction(() => {
       for (const { spell } of db.prepare(`SELECT spell FROM craft_source`).all()) {
-        for (const learner of (spellTriggers.get(spell) || [])) { setTeaches.run(spell, learner); n++; }
+        for (const learner of (spellTriggers.get(spell) || [])) { setTeaches.run(spell, learner); seen.add(learner); n++; }
+      }
+      // The craft path above only reaches learn-spells for CRAFTS, but the same stubs
+      // exist for every trainer-taught class spell: "Blessing of Might" ships 15 rows,
+      // 7 real ranks and 8 effect-36 stubs that teach them. learnTeaches already holds
+      // every effect-36 spell -> its target (built during the spell import), so fill in
+      // the rest here rather than leaving the column half-populated.
+      for (const [learner, taught] of learnTeaches) {
+        if (seen.has(learner)) continue;
+        setTeaches.run(taught, learner); nl++;
       }
     })();
     db.exec(`CREATE INDEX idx_spells_teaches ON spells(teaches)`);
-    console.log(`  learn spells flagged (teaches set): ${n}`);
+    console.log(`  learn spells flagged (teaches set): ${n} craft + ${nl} other`);
   }
 }
 
@@ -2492,7 +2502,15 @@ db.exec(`INSERT INTO creatures_fts(rowid, name, subname) SELECT entry, name, sub
 db.exec(`CREATE VIRTUAL TABLE quests_fts USING fts5(title, content='quests', content_rowid='entry', tokenize='unicode61')`);
 db.exec(`INSERT INTO quests_fts(rowid, title) SELECT entry, title FROM quests WHERE title IS NOT NULL AND title <> '' AND hidden = 0`);
 db.exec(`CREATE VIRTUAL TABLE spells_fts USING fts5(name, description, content='spells', content_rowid='entry', tokenize='unicode61')`);
-db.exec(`INSERT INTO spells_fts(rowid, name, description) SELECT entry, name, description FROM spells WHERE name IS NOT NULL AND name <> '' AND teaches IS NULL AND hidden = 0`);
+// A learn-stub is dropped only when the spell it TEACHES is itself indexed: then it's
+// a pure duplicate ("Blessing of Might" listed 15 rows, 7 real ranks + 8 stubs). When
+// the target isn't in the index, the stub is the only handle on that name (252 such
+// rows -- "Curse of Archimonde", "Holy Word: Shield" and other unused leftovers), so
+// dropping it would make the name unfindable rather than tidier.
+const SPELL_SEARCHABLE = `name IS NOT NULL AND name <> '' AND hidden = 0
+  AND (teaches IS NULL OR NOT EXISTS (
+    SELECT 1 FROM spells t WHERE t.entry = spells.teaches AND t.hidden = 0 AND t.name IS NOT NULL AND t.name <> ''))`;
+db.exec(`INSERT INTO spells_fts(rowid, name, description) SELECT entry, name, description FROM spells WHERE ${SPELL_SEARCHABLE}`);
 
 // Trigram indexes on the NAME columns -> substring/infix search ("fang" finds
 // "Shadowfang"), which the unicode61 prefix index above can't do. Contentless
@@ -2506,7 +2524,7 @@ db.exec(`INSERT INTO creatures_tg(rowid, name) SELECT entry, name FROM creatures
 db.exec(`CREATE VIRTUAL TABLE quests_tg USING fts5(title, tokenize='trigram', content='')`);
 db.exec(`INSERT INTO quests_tg(rowid, title) SELECT entry, title FROM quests WHERE title IS NOT NULL AND title <> '' AND hidden = 0`);
 db.exec(`CREATE VIRTUAL TABLE spells_tg USING fts5(name, tokenize='trigram', content='')`);
-db.exec(`INSERT INTO spells_tg(rowid, name) SELECT entry, name FROM spells WHERE name IS NOT NULL AND name <> '' AND teaches IS NULL AND hidden = 0`);
+db.exec(`INSERT INTO spells_tg(rowid, name) SELECT entry, name FROM spells WHERE ${SPELL_SEARCHABLE}`);
 
 // ---- Hunter pet families (Hunter Pets section, src/pets.js) ----
 // Family NAME + DIET + ICON come from the client CreatureFamily.dbc
