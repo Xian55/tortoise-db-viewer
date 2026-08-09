@@ -434,6 +434,10 @@ async function showSearch(term) {
     // "Toy", "Game Master". Sort numerically when it IS a rank so Rank 10 follows
     // Rank 9 rather than Rank 1, and push the non-numeric labels to the end.
     { label: "Rank", cls: "muted", cell: (r) => esc(r.rank || ""), value: (r) => { const m = /^Rank (\d+)$/.exec(r.rank || ""); return m ? +m[1] : (r.rank ? 1e6 : 0); } },
+    { label: "Level", num: true, cls: "muted", cell: (r) => r.spell_level || "", value: (r) => r.spell_level || 0 },
+    // school 0 is the default on ~21k rows (learn-stubs and non-damaging spells), so
+    // printing "Physical" for all of them would invent a fact. Blank is honest.
+    { label: "School", cls: "muted", cell: (r) => (r.school > 0 ? esc(SPELL_SCHOOL[r.school] || "") : ""), value: (r) => (r.school > 0 ? SPELL_SCHOOL[r.school] || "" : "") },
     { label: "Profession", cls: "muted", cell: (r) => esc(PROFESSION_LABEL[r.skill] || ""), value: (r) => PROFESSION_LABEL[r.skill] || "" },
   ];
   const factionCols = [
@@ -445,20 +449,25 @@ async function showSearch(term) {
   ];
 
   const itemsets = res.itemsets || [];
-  // Search results get the same selection ops as ?browse=items -- finding items by
-  // name and then bulk-copying/comparing them is the same job, and it was odd that
-  // only the filter-driven view could do it. `bar` is resolved after innerHTML;
-  // updateSelbar tolerates the null it sees during the table's first render.
-  let bar = null;
-  const itemsTable = regTable(itemCols, res.items, {
-    pageSize: 100, selectable: true, rowKey: (r) => r.entry,
-    onSelectionChange: (count) => updateSelbar(bar, count),
-  });
+  // Search results get the same selection ops as ?browse=items -- finding things by
+  // name and bulk-copying their ids is the same job, and it was odd that only the
+  // filter-driven view could do it. Both Items and Spells are selectable; each pane
+  // carries its own bar, so the count/ops target the right table (the bar is looked
+  // up per pane rather than app-wide, which would find whichever came first).
+  const selPanes = [];
+  const selectableTab = (id, label, cols, rows, kind) => {
+    const t = regTable(cols, rows, {
+      pageSize: 100, selectable: true, rowKey: (r) => r.entry,
+      onSelectionChange: (count) => updateSelbar(app.querySelector(`[data-pane="${id}"] [data-selbar]`), count),
+    });
+    if (t.html) selPanes.push({ id, tableId: t.tableId, kind });
+    return { id, label, html: (t.html ? selbarHtml(kind) : "") + t.html, count: t.count };
+  };
   const tabDefs = [
-    { id: "items", label: "Items", html: (itemsTable.html ? selbarHtml() : "") + itemsTable.html, count: itemsTable.count },
+    selectableTab("items", "Items", itemCols, res.items, "item"),
     { id: "npcs", label: "NPCs", ...regTable(npcCols, res.npcs, { pageSize: 100 }) },
     { id: "quests", label: "Quests", ...regTable(questCols, res.quests, { pageSize: 100 }) },
-    { id: "spells", label: "Spells", ...regTable(spellCols, res.spells, { pageSize: 100 }) },
+    selectableTab("spells", "Spells", spellCols, res.spells, "spell"),
     { id: "factions", label: "Factions", ...regTable(factionCols, res.factions) },
     { id: "itemsets", label: "Item Sets", ...regTable(itemsetCols, itemsets) },
     { id: "dungeons", label: "Dungeons", ...regTable(dungeonCols, res.dungeons) },
@@ -472,9 +481,11 @@ async function showSearch(term) {
   app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${tabs(tabDefs)}</div>`;
   const apis = mountTables();
   wireTabs();
-  bar = app.querySelector("[data-selbar]");
-  const itemsApi = apis.get(itemsTable.tableId);
-  if (bar && itemsApi) wireSelbar(bar, itemsApi, navigate);
+  for (const p of selPanes) {
+    const bar = app.querySelector(`[data-pane="${p.id}"] [data-selbar]`);
+    const api = apis.get(p.tableId);
+    if (bar && api) wireSelbar(bar, api, navigate, p.kind);
+  }
 }
 
 // Item-set panel: name (links the set page), members (current item bolded), and

@@ -63,21 +63,36 @@ async function testSearchSubzone(term) {
 // Search results carry the same selection ops as ?browse=items: ticking rows enables
 // the bar, and Compare hands the selection to ?compare=. (Clipboard ops are skipped --
 // headless Chrome gates navigator.clipboard behind a permission prompt.)
-async function testSearchSelbar(term) {
+async function testSearchSelbar(term, pane, { prefix: wantPrefix, compare }) {
   await nav(`?search=${encodeURIComponent(term)}`);
-  await page.waitForSelector('.results [data-pane="items"] [data-selbar]', { timeout: T });
-  const before = await page.$eval(".results [data-selbar] [data-selcount]", (e) => e.textContent);
-  const disabledBefore = await page.$eval('.results [data-selbar] [data-op="ids"]', (e) => e.disabled);
-  await page.$$eval('.results [data-pane="items"] input[data-selrow]', (b) => b.slice(0, 2).forEach((x) => x.click()));
-  const after = await page.$eval(".results [data-selbar] [data-selcount]", (e) => e.textContent);
-  const disabledAfter = await page.$eval('.results [data-selbar] [data-op="ids"]', (e) => e.disabled);
-  const prefix = await page.$eval(".results [data-selbar] [data-prefix]", (e) => e.value);
-  await page.click('.results [data-selbar] [data-op="compare"]');
-  await page.waitForFunction(() => /[?&]compare=/.test(location.search), { timeout: T }).catch(() => {});
-  const url = await page.evaluate(() => location.search);
-  console.log(`search selbar "${term}": "${before}"(disabled=${disabledBefore}) -> "${after}"(disabled=${disabledAfter}) prefix="${prefix}" compare="${url}"`);
+  await page.waitForSelector(".results .tabbar .tab", { timeout: T });
+  await page.evaluate((p) => { const t = [...document.querySelectorAll(".results .tabbar .tab")].find((x) => new RegExp(`^${p}`, "i").test(x.textContent.trim())); if (t) t.click(); }, pane === "items" ? "Items" : "Spells");
+  const sel = `.results [data-pane="${pane}"]`;
+  await page.waitForSelector(`${sel} [data-selbar]`, { timeout: T });
+  const before = await page.$eval(`${sel} [data-selcount]`, (e) => e.textContent);
+  const disabledBefore = await page.$eval(`${sel} [data-op="ids"]`, (e) => e.disabled);
+  await page.$$eval(`${sel} input[data-selrow]`, (b) => b.slice(0, 2).forEach((x) => x.click()));
+  const after = await page.$eval(`${sel} [data-selcount]`, (e) => e.textContent);
+  const disabledAfter = await page.$eval(`${sel} [data-op="ids"]`, (e) => e.disabled);
+  const prefix = await page.$eval(`${sel} [data-prefix]`, (e) => e.value);
+  const hasCompare = (await page.$(`${sel} [data-op="compare"]`)) !== null;
+  // The checkbox column must not eat the row: it's width:1% precisely because a px
+  // width is only a hint in auto table layout (a narrow search table gave it ~60%).
+  const selColPct = await page.evaluate((s) => {
+    const th = document.querySelector(`${s} table th.selcol`);
+    const tbl = document.querySelector(`${s} table`);
+    return th && tbl ? Math.round((th.getBoundingClientRect().width / tbl.getBoundingClientRect().width) * 100) : null;
+  }, sel);
+  let url = "";
+  if (compare) {
+    await page.click(`${sel} [data-op="compare"]`);
+    await page.waitForFunction(() => /[?&]compare=/.test(location.search), { timeout: T }).catch(() => {});
+    url = await page.evaluate(() => location.search);
+  }
+  console.log(`search selbar ${pane} "${term}": "${before}"(disabled=${disabledBefore}) -> "${after}"(disabled=${disabledAfter}) prefix="${prefix}" compareBtn=${hasCompare} selCol=${selColPct}% ${compare ? `compare="${url}"` : ""}`);
   return disabledBefore && before === "0 selected" && after === "2 selected" && !disabledAfter
-    && prefix === ".additem " && /compare=\d+:\d+/.test(url);
+    && prefix === wantPrefix && hasCompare === compare && selColPct !== null && selColPct <= 10
+    && (!compare || /compare=\d+:\d+/.test(url));
 }
 
 // Spell results show the client's rank subtext ("Rank 4"), like Wowhead.
@@ -87,8 +102,12 @@ async function testSearchSpellRank(term) {
   await page.evaluate(() => { const t = [...document.querySelectorAll(".results .tabbar .tab")].find((x) => /^Spells\b/.test(x.textContent.trim())); if (t) t.click(); });
   await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: T }).catch(() => {});
   const heads = await page.$$eval(".results .tabpane:not(.hidden) table thead th", (e) => e.map((h) => h.textContent.replace(/[^\w ]/g, "").trim()));
-  const ranks = await page.$$eval(".results .tabpane:not(.hidden) table tbody tr", (rows) => rows.map((r) => r.children[1]?.textContent.trim()).filter(Boolean));
-  const hasCol = heads.some((h) => /^Rank$/.test(h));
+  // Index by header, not a fixed offset: the Spells table grew a leading .selcol
+  // checkbox column when bulk-selection was added, which shifted every cell by one.
+  const col = heads.findIndex((h) => /^Rank$/.test(h));
+  const ranks = col < 0 ? [] : await page.$$eval(".results .tabpane:not(.hidden) table tbody tr",
+    (rows, i) => rows.map((r) => r.children[i]?.textContent.trim()).filter(Boolean), col);
+  const hasCol = col >= 0;
   const anyRank = ranks.some((v) => /^Rank \d+$/.test(v));
   console.log(`search spell-rank "${term}": heads=[${heads.join(", ")}] rankCol=${hasCol} sample=[${ranks.slice(0, 4).join(" | ")}]`);
   return hasCol && anyRank;
@@ -162,7 +181,8 @@ smoke("search-infix owfang", () => testSearchInfix("owfang", "owfang"));
 smoke("search tabs defias", () => testSearchTabs("defias"));
 smoke("search zone Tanaris", () => testSearchZone("Tanaris"));
 smoke("search subzone Goldshire", () => testSearchSubzone("Goldshire"));
-smoke("search selbar copper", () => testSearchSelbar("copper"));
+smoke("search selbar items copper", () => testSearchSelbar("copper", "items", { prefix: ".additem ", compare: true }));
+smoke("search selbar spells blessing of might", () => testSearchSelbar("blessing of might", "spells", { prefix: ".learn ", compare: false }));
 smoke("search spell-rank fireball", () => testSearchSpellRank("fireball"));
 smoke("search dropdown defias", () => testSearchDropdown("defias"));
 smoke("search faction Darnassus", () => testSearchFaction("Darnassus"));

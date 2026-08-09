@@ -170,7 +170,7 @@ export const Q_SEARCH_QUESTS = `
   LIMIT ?3`;
 
 export const Q_SEARCH_SPELLS = `
-  SELECT s.entry, s.name, s.icon, s.skill, s.rank
+  SELECT s.entry, s.name, s.icon, s.skill, s.rank, s.spell_level, s.school
   FROM spells s
   WHERE (s.entry IN (SELECT rowid FROM spells_fts WHERE spells_fts MATCH ?1)
       OR s.entry IN (SELECT rowid FROM spells_tg WHERE spells_tg MATCH ?4))

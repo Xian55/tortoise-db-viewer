@@ -449,7 +449,12 @@ img.icon-hero { object-fit: cover; }
 .hovercard .tooltip { box-shadow: 0 8px 30px rgba(0, 0, 0, .65); }
 
 h1 { font-size: 22px; }
-.results table td:first-child { width: 60%; }
+/* Give the NAME column the bulk of the row. Written as :first-child back when the name
+   always was the first cell; selectable tables (Items/Spells) now put a checkbox cell
+   in front of it, and the 60% landed on the checkbox -- 636px of a 1060px table, since
+   this outranks .selcol. Target the name cell in both shapes instead. */
+.results table td:first-child:not(.selcol) { width: 60%; }
+.results table td.selcol + td { width: 60%; }
 
 /* npc view */
 .npc-head { margin-bottom: 16px; display: flow-root; }  /* flow-root contains the floated .npc-model so it can't overlap the map below */
