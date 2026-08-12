@@ -210,12 +210,17 @@ db.exec("CREATE INDEX idx_creatures_pet_family ON creatures(pet_family) WHERE ta
 db.exec("CREATE INDEX idx_creatures_peer ON creatures(level_max, rank)");
 
 // Melee/ranged damage: the server multiplies the template's dmg_min/dmg_max by
-// dmg_multiplier when it builds the creature (Creature::SelectLevel ->
-// SetBaseWeaponDamage, then StatSystem's damage calc), so fold it in here and drop
+// dmg_multiplier when it builds the creature (Creature::SelectLevel seeds the base
+// weapon damage from dmg_min/dmg_max, then Creature::UpdateDamagePhysical in
+// StatSystem.cpp scales it by cinfo->dmg_multiplier), so fold it in here and drop
 // the multiplier -- the stored numbers are then what the mob actually hits for
 // (before the per-rank rate.damage.* config mod, which we can't see, exactly like
 // health_min/health_max already ignores rate.health.*). Rounded to 1 decimal -- the
 // raw dump values carry meaningless float precision (19.837, 14.868877, ...).
+// This is a TURTLE-server fact. cmangos' DamageMultiplier means something else
+// entirely (it scales creature_template_classlevelstats, and MinMeleeDmg is its
+// *alternative*, not its operand), so lib/cmangos-adapter.mjs stages a literal 1
+// here -- see the DERIVE comment there. Keep this fold source-agnostic.
 db.exec(`UPDATE creatures SET
     dmg_min = ROUND(dmg_min * dmg_multiplier, 1), dmg_max = ROUND(dmg_max * dmg_multiplier, 1),
     ranged_dmg_min = ROUND(ranged_dmg_min * dmg_multiplier, 1), ranged_dmg_max = ROUND(ranged_dmg_max * dmg_multiplier, 1)`);
