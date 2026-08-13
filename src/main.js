@@ -9,7 +9,7 @@ import { selbarHtml, updateSelbar, wireSelbar } from "./selbar.js";
 import { showCharacters, showCharacter, showSharedLoadout } from "./character.js";
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { initHovercards } from "./hovercard.js";
-import { runSearch, initSearchDropdown } from "./search.js";
+import { runSearch, initSearchDropdown, ftsQuery } from "./search.js";
 import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
@@ -18,6 +18,7 @@ import { showPets, showPetFamily, showPetAbility } from "./pets.js";
 import { showProfPlan } from "./profplan.js";
 import { showTalents } from "./talents.js";
 import { ratioCell, outlierLine, pctBeaten, PEER_MIN } from "./context.js";
+import { soundPlayer, wireAudio, stopAudio, fmtDur } from "./audio.js";
 // Seamless-minimap transform manifest (tile/adt/grid + per-continent bbox). Tiny,
 // committed; bundled at build time. The tile pyramid itself lives on R2.
 // Dataset-scoped minimap transform manifest (like the maps/minimap tiles): the vanilla
@@ -26,6 +27,16 @@ import { ratioCell, outlierLine, pctBeaten, PEER_MIN } from "./context.js";
 // ships no manifest (falls back to the base).
 const MINIMAP_MANIFESTS = import.meta.glob("../scripts/data/minimap*.json", { eager: true, import: "default" });
 const minimapManifest = MINIMAP_MANIFESTS[`../scripts/data/minimap${MAP_SUB}.json`] || MINIMAP_MANIFESTS["../scripts/data/minimap.json"];
+
+// CreatureSoundData slot -> the category it belongs to, wowhead-style. Derived from the
+// slot rather than SoundEntries.type, which is a playback flag (2D/3D/looping) and says
+// nothing about what the sound is.
+const SOUND_KIND = {
+  Loop: "NPC Loops",
+  Greeting: "NPC Greetings", Farewell: "NPC Greetings", Annoyed: "NPC Greetings",
+  Script: "Scripted",
+  "Pet Attack": "Pet", "Pet Order": "Pet", "Pet Dismiss": "Pet",
+};
 
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
@@ -63,6 +74,9 @@ function mountTables() {
     if (el) apis.set(s.id, createTable(el, s));
   }
   pendingTables = [];
+  // Play buttons are delegated off #app, so sorting/paging a table (which replaces its
+  // rows wholesale) can't detach the handler.
+  wireAudio(app);
   return apis;
 }
 function wireTabs() {
@@ -136,6 +150,9 @@ document.getElementById("searchForm").addEventListener("submit", (e) => {
 });
 
 function route() {
+  // Audio must not outlive the page that started it -- a zone track would keep playing
+  // over whatever you navigated to.
+  stopAudio();
   const params = new URLSearchParams(location.search);
   const item = params.get("item");
   const npc = params.get("npc");
@@ -168,6 +185,7 @@ function route() {
   else if (object) return showObject(Number(object));
   else if (icon) return showIcon(icon);
   else if (params.get("icons") !== null) return showIcons();
+  else if (params.get("voicelines") !== null) return showVoiceLines();
   else if (params.get("flights") !== null) return showFlights(params.get("cont") ? Number(params.get("cont")) : 0);
   else if (params.get("worldmap") !== null) return showWorldMap(params.get("worldmap") ? Number(params.get("worldmap")) : 0);
   else if (params.get("dungeons") !== null) return showDungeons();
@@ -361,6 +379,7 @@ function showHome() {
       card("?guides", "inv_misc_book_09", "Leveling Guides", "Step-by-step zone routes."),
       card("?random", "inv_misc_orb_04", "Random Item", "Roll the dice on a random item."),
       card("?icons", "inv_misc_gem_variety_01", "Icons", "Every item & spell icon."),
+      card("?voicelines", "inv_misc_horn_01", "Voice Lines", "Hear what they say — with transcripts."),
     ])}
 
     <p class="muted home-hint">Jump straight to anything with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?zone=ID</code> —
@@ -428,6 +447,24 @@ async function showSearch(term) {
     { label: "Continent", cls: "muted", cell: (r) => CONTINENT[r.map_id] || "", value: (r) => CONTINENT[r.map_id] || "" },
     { label: "Spawns", num: true, cls: "muted", cell: (r) => r.spawns || "", value: (r) => r.spawns || 0 },
   ];
+  // Voice lines matched either by what is SAID or by the sound's name, so both columns
+  // are shown -- a name-only hit (most of Turtle's voice acting has no text row) would
+  // otherwise be a blank row.
+  const voiceSearchCols = [
+    { label: "Play", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+    {
+      label: "Transcript", cls: "snd-text",
+      cell: (r) => (r.text ? esc(r.text) : `<span class="muted">— no transcript —</span>`),
+      value: (r) => r.text || "￿",
+    },
+    {
+      label: "Speaker", hideEmpty: true,
+      cell: (r) => (r.creature ? npcLink(r.creature, r.creature_name) : ""),
+      value: (r) => r.creature_name || "",
+    },
+    { label: "Sound", cls: "muted", cell: (r) => esc(r.name || ""), value: (r) => r.name || "" },
+    { label: "Length", num: true, cls: "muted", cell: (r) => fmtDur(r.ms), value: (r) => r.ms || 0 },
+  ];
   const spellCols = [
     { label: "Name", cell: (r) => spellLink(r.entry, r.name, r.icon), value: (r) => r.name },
     // spells.rank is the client's subtext: usually "Rank N", but also "Passive",
@@ -474,8 +511,9 @@ async function showSearch(term) {
     { id: "objects", label: "Objects", ...regTable(objectCols, res.objects || []) },
     { id: "zones", label: "Zones", ...regTable(zoneCols, res.zones) },
     { id: "subzones", label: "Subzones", ...regTable(subzoneCols, res.subzones || []) },
+    { id: "voice", label: "Voice Lines", ...regTable(voiceSearchCols, res.voice || [], { pageSize: 100 }) },
   ];
-  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + itemsets.length + res.dungeons.length + (res.objects || []).length + res.zones.length + (res.subzones || []).length;
+  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + itemsets.length + res.dungeons.length + (res.objects || []).length + res.zones.length + (res.subzones || []).length + (res.voice || []).length;
   if (!total) { app.innerHTML = `<div class="home"><p>No results for “${esc(term)}”.</p></div>`; return; }
 
   app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${tabs(tabDefs)}</div>`;
@@ -1344,6 +1382,12 @@ async function showNpc(id) {
     npc.tameable && npc.pet_family ? query(Q.Q_PET_FAMILY_ABIL, [npc.pet_family]) : Promise.resolve([]),
     npc.tameable && npc.pet_family ? query(Q.Q_PET_ABILITY_RANKS) : Promise.resolve([]),
   ]);
+  // Sounds are an optional schema (see db.js caps()): a dataset whose DB predates the
+  // audio tables must degrade to no tab, not to a failed query inside the Promise.all
+  // above (one rejection there would wipe out every other pane).
+  const [npcSounds, npcVoice] = (await caps()).sounds
+    ? await Promise.all([query(Q.Q_NPC_SOUNDS, [id]), query(Q.Q_NPC_VOICE, [id])])
+    : [[], []];
   // ability_key -> ascending [{rank, spell, level}], to compute the rank a tamed pet of
   // THIS beast's level starts with (highest rank whose level <= the beast's level).
   const petRankMap = new Map();
@@ -1480,9 +1524,31 @@ async function showNpc(id) {
   // then the hide/leather table.
   const skinPane = regTable(lootCols, skin);
   if (skinPane.count) skinPane.html = skinReqNote(npc) + skinPane.html;
+  // Sounds. The client's slot is the "Activity"; the category above it is derived from
+  // that slot, because the SoundEntries `type` column is a playback-engine flag (2D vs
+  // 3D, looping) and says nothing about what the sound IS.
+  const soundRows = [
+    ...npcSounds.map((r) => ({ ...r, kind: SOUND_KIND[r.slot] || "NPC Combat", activity: r.slot })),
+    // A scripted line has no slot at all -- it is bound to the NPC by its C++ script.
+    ...npcVoice.filter((v) => !npcSounds.some((s) => s.id === v.id))
+      .map((r) => ({ ...r, kind: "Voice Lines", activity: "" })),
+  ];
+  const soundCols = [
+    { label: "Sound", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+    { label: "Name", cell: (r) => esc(r.name || ""), value: (r) => r.name || "" },
+    {
+      label: "Transcript", cls: "snd-text", hideEmpty: true,
+      cell: (r) => (r.text ? esc(r.text) : ""), value: (r) => r.text || "",
+    },
+    { label: "Type", cls: "muted", group: (r) => r.kind, cell: (r) => esc(r.kind), value: (r) => r.kind },
+    { label: "Activity", cls: "muted", hideEmpty: true, cell: (r) => esc(r.activity), value: (r) => r.activity },
+    { label: "Length", num: true, cls: "muted", hideEmpty: true, cell: (r) => fmtDur(r.ms), value: (r) => r.ms || 0 },
+  ];
+
   const tabDefs = [
     { id: "stats", label: "Stats", ...npcStatsPane(npc, peers) },
     { id: "abilities", label: "Abilities", ...regTable(abilityCols, abilities, { groupable: true }) },
+    { id: "sounds", label: "Sounds", ...regTable(soundCols, soundRows, { groupable: true, group: "Type", pageSize: 100 }) },
     { id: "petabilities", label: "Pet Abilities", ...regTable(petAbilCols, petAbil) },
     { id: "teaches", label: "Teaches", ...regTable(teachesCols, trains) },
     { id: "drops", label: "Drops", ...regTable(lootCols, drops) },
@@ -1732,6 +1798,91 @@ async function showIcons() {
   grid.addEventListener("click", (e) => {
     const tile = e.target.closest("[data-icon]"); if (!tile) return;
     navigate(`?icon=${encodeURIComponent(tile.dataset.icon)}`);
+  });
+}
+
+// Voice lines: every extracted sound that carries a transcript, plus Turtle's custom
+// voice acting (most of which the C++ plays with no line attached). Modelled on
+// ?icons -- filter + page live in the URL (?voicelines=<term>) so a view is shareable.
+//
+// The filter is FTS5 over the transcript, not a substring scan: "find the line that goes
+// ..." is the way you actually look for one of these, and sound_text_fts already indexes
+// it. A term that matches no transcript falls back to matching the sound's NAME, which is
+// how you find a VA clip that has no text ("satyrboss").
+async function showVoiceLines() {
+  document.title = "Voice Lines - Tortoise-WoW DB";
+  app.innerHTML = `<div class="loading">Loading voice lines…</div>`;
+  if (!(await caps()).sounds) {
+    app.innerHTML = `<div class="home"><h1>Voice Lines</h1>
+      <p class="muted">This dataset's database was built before audio was extracted.</p></div>`;
+    return;
+  }
+  let all;
+  try { all = await query(Q.Q_VOICE_LINES); } catch (e) { app.innerHTML = errorBox(e); return; }
+
+  const p0 = new URLSearchParams(location.search);
+  let term = (p0.get("voicelines") || "").trim();
+
+  app.innerHTML = `<div class="voice-page">
+    <h1>Voice Lines</h1>
+    <p class="muted">${all.length.toLocaleString()} sounds — search the transcript, or the sound's name.</p>
+    <input type="search" class="icon-search" placeholder="Search what they say… (e.g. “you are already dead”, ragnaros)"
+      aria-label="Search voice lines" value="${esc(term)}">
+    <p class="muted" data-count></p>
+    <div data-out></div>
+  </div>`;
+  const out = app.querySelector("[data-out]");
+  const countEl = app.querySelector("[data-count]");
+  const search = app.querySelector(".icon-search");
+
+  const cols = [
+    { label: "Play", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+    {
+      label: "Transcript", cls: "snd-text",
+      cell: (r) => (r.text ? esc(r.text) : `<span class="muted">— no transcript —</span>`),
+      value: (r) => r.text || "￿",       // untranscribed lines sort last
+    },
+    {
+      label: "Speaker", hideEmpty: true,
+      cell: (r) => (r.creature
+        ? npcLink(r.creature, r.creature_name) + (r.speakers > 1 ? ` <span class="muted">+${r.speakers - 1}</span>` : "")
+        : ""),
+      value: (r) => r.creature_name || "",
+    },
+    { label: "Sound", cls: "muted", cell: (r) => esc(r.name || ""), value: (r) => r.name || "" },
+    { label: "Length", num: true, cls: "muted", cell: (r) => fmtDur(r.ms), value: (r) => r.ms || 0 },
+  ];
+
+  const render = async () => {
+    let rows = all;
+    if (term) {
+      const m = ftsQuery(term);
+      let hits = [];
+      if (m) { try { hits = await query(Q.Q_VOICE_SEARCH, [m]); } catch { hits = []; } }
+      // Name fallback, unioned rather than replacing: a term can legitimately hit both
+      // a transcript and a sound name, and dropping either half would hide results.
+      const lower = term.toLowerCase();
+      const byName = all.filter((r) => (r.name || "").toLowerCase().includes(lower));
+      const seen = new Set(hits.map((h) => h.id));
+      rows = [...hits.map((h) => ({ ...h, speakers: h.creature ? 1 : 0 })),
+        ...byName.filter((r) => !seen.has(r.id))];
+    }
+    countEl.textContent = `${rows.length.toLocaleString()} shown`;
+    out.innerHTML = "";
+    const spec = regTable(cols, rows, { pageSize: 100 });
+    out.innerHTML = spec.html;
+    mountTables();
+  };
+  await render();
+
+  let t = 0;
+  search.addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      term = search.value.trim();
+      history.replaceState({}, "", "?voicelines" + (term ? "=" + encodeURIComponent(term) : ""));
+      render();
+    }, 180);
   });
 }
 
@@ -2269,6 +2420,15 @@ const ordinal = (n) => {
   return `${n}${s}`;
 };
 
+// Zone music / ambience / intro sting. Day and night are separate SoundEntries rows,
+// already collapsed to one row by build-db when they're the same track.
+const zoneSoundCols = () => [
+  { label: "Play", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+  { label: "Track", cell: (r) => esc(r.name || ""), value: (r) => r.name || "" },
+  { label: "Kind", cls: "muted", cell: (r) => esc(r.kind), value: (r) => r.kind },
+  { label: "Length", num: true, cls: "muted", cell: (r) => fmtDur(r.ms), value: (r) => r.ms || 0 },
+];
+
 function zoneStatsCard(s, mapid) {
   // Zones with no spawns of their own are stubs, not empty zones: a city's NPCs are
   // attributed to its parent zone (Ironforge -> Dun Morogh), and an instance's
@@ -2408,7 +2568,10 @@ async function showZone(id, gatherItem = null) {
   const az = [z.areaid], mz = [z.mapid];
   // A dataset built before the subzones work has neither the column nor the table;
   // the page must still render exactly as it did (see caps() in db.js).
-  const { subzones: hasSubzones, spawnSub } = await caps();
+  const { subzones: hasSubzones, spawnSub, sounds: hasSounds } = await caps();
+  // Zone music/ambience hangs off the AREA id, not the map -- an instance's interior
+  // areas carry their own tracks, so this is queried the same way for both.
+  const zoneSounds = hasSounds ? await query(Q.Q_ZONE_SOUNDS, [z.areaid]).catch(() => []) : [];
   const [spawns, objects, loot, focusPts, focusItem, bossLoot, bossEntries, zoneQuests, floors, subRows] = await Promise.all([
     isInstance ? query(Q.Q_MAP_SPAWNS, mz) : query(Q.qZoneSpawns(spawnSub), az),
     isInstance ? query(Q.Q_MAP_OBJECTS, mz) : query(Q.qZoneObjects(spawnSub), az),
@@ -2476,6 +2639,7 @@ async function showZone(id, gatherItem = null) {
     { id: "objects", label: "Objects", ...regTable(zoneObjCols(shownObjects, iconByEntry), objs, { pageSize: 100 }) },
     // Appended LAST on purpose: the default (first) pane stays NPCs.
     ...(subRows.length ? [{ id: "subzones", label: "Subzones", ...regTable(subCols, subRows, { pageSize: 100, sort: "Spawns", dir: "d" }) }] : []),
+    ...(zoneSounds.length ? [{ id: "sounds", label: "Music", ...regTable(zoneSoundCols(), zoneSounds) }] : []),
   ];
 
   // A few client-defined zones (e.g. not-yet-populated Turtle areas) have a map
@@ -2578,6 +2742,9 @@ async function showSubzone(id) {
   if (!sz) { app.innerHTML = `<div class="home"><p>No subzone with ID ${id}.</p></div>`; return; }
   document.title = `${sz.name} - Tortoise-WoW DB`;
 
+  // A sub-area is its own AreaTable row, so it carries its own ZoneMusic/Ambience --
+  // Northshire Valley and Moonbrook play different things from Elwynn/Westfall at large.
+  const subSounds = (await caps()).sounds ? await query(Q.Q_ZONE_SOUNDS, [id]).catch(() => []) : [];
   const sp = [id, sz.zone_id];
   const [spawns, objects, loot, subQuests] = await Promise.all([
     query(Q.Q_SUBZONE_SPAWNS, sp),
@@ -2601,8 +2768,12 @@ async function showSubzone(id) {
     { id: "quests", label: "Quests", ...regTable(zoneQuestCols(), subQuests, { pageSize: 100 }) },
     { id: "items", label: "Items", ...regTable(zoneLootCols(), loot, { pageSize: 100 }) },
     { id: "objects", label: "Objects", ...regTable(zoneObjCols(shownObjects, iconByEntry), objs, { pageSize: 100 }) },
+    ...(subSounds.length ? [{ id: "sounds", label: "Music", ...regTable(zoneSoundCols(), subSounds) }] : []),
   ];
-  const hasData = npcs.length || objs.length || loot.length || subQuests.length;
+  // Music counts as data: ~half of all sub-areas carry their own track or ambience, and
+  // plenty of them (a lake, a mine) have no spawns or quests of their own at all -- those
+  // pages would otherwise say "nothing is recorded here" while holding something to play.
+  const hasData = npcs.length || objs.length || loot.length || subQuests.length || subSounds.length;
   const body = hasData ? tabs(tabDefs)
     : `<div class="zone-empty muted">Nothing is recorded inside this sub-area's bounds.</div>`;
 

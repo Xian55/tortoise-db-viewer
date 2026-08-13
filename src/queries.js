@@ -635,6 +635,81 @@ export const Q_NPC_ABILITIES = `
   WHERE a.creature = ?1 AND s.name <> ''
   ORDER BY (a.src = 'a'), a.src, a.ord, s.name`;
 
+// ---- Sounds ----
+// `files` is a JSON array: a SoundEntries row can hold up to 10 interchangeable variants
+// the client picks between, so the player offers them as numbered takes.
+// A slot is ordered by `ord`, which keeps the client's own slot order (Aggro before
+// Death before Fidget) rather than sorting the labels alphabetically.
+export const Q_NPC_SOUNDS = `
+  SELECT cs.slot, cs.ord, s.id, s.name, s.files, s.ms,
+    (SELECT t.text FROM sound_text t WHERE t.sound = s.id AND t.creature = cs.creature) AS text
+  FROM creature_sound cs JOIN sounds s ON s.id = cs.sound
+  WHERE cs.creature = ?1
+  ORDER BY cs.ord, s.name`;
+
+// Lines this NPC speaks that have no CreatureSoundData slot (a scripted boss line).
+// LEFT JOIN, not a filter: an unattributed line still belongs on the voice-line page.
+export const Q_NPC_VOICE = `
+  SELECT t.text, t.src, s.id, s.name, s.files, s.ms
+  FROM sound_text t JOIN sounds s ON s.id = t.sound
+  WHERE t.creature = ?1 ORDER BY s.name`;
+
+export const Q_ZONE_SOUNDS = `
+  SELECT z.kind, s.id, s.name, s.files, s.ms
+  FROM zone_sound z JOIN sounds s ON s.id = z.sound
+  WHERE z.area = ?1
+  ORDER BY (z.kind LIKE 'Music%') DESC, (z.kind LIKE 'Ambience%') DESC, z.kind`;
+
+// The ?voicelines browse. Every sound that carries a transcript OR is Turtle voice
+// acting (the VA directory is ~400 clips, most of which the C++ plays with no text --
+// "Satyrboss_Aggro" is worth hearing even with nothing to read).
+// GROUP BY the sound: one line can be spoken by several NPCs and we list it once.
+export const Q_VOICE_LINES = `
+  SELECT s.id, s.name, s.files, s.ms,
+    (SELECT t.text FROM sound_text t WHERE t.sound = s.id ORDER BY t.creature IS NULL, t.id LIMIT 1) AS text,
+    (SELECT c.entry FROM sound_text t JOIN creatures c ON c.entry = t.creature
+      WHERE t.sound = s.id ORDER BY t.id LIMIT 1) AS creature,
+    (SELECT c.name FROM sound_text t JOIN creatures c ON c.entry = t.creature
+      WHERE t.sound = s.id ORDER BY t.id LIMIT 1) AS creature_name,
+    (SELECT COUNT(DISTINCT t.creature) FROM sound_text t WHERE t.sound = s.id AND t.creature IS NOT NULL) AS speakers
+  FROM sounds s
+  WHERE EXISTS (SELECT 1 FROM sound_text t WHERE t.sound = s.id)
+     OR s.files LIKE '["interface/va/%'
+  ORDER BY text IS NULL, s.name`;
+
+// Voice lines for the unified `?search=` page + the top-bar dropdown. Two ways in --
+// the spoken TEXT (FTS) and the sound's NAME (LIKE) -- unioned, because "ragnaros"
+// should find his clips by name while "you are already dead" finds them by what is
+// said. ?1 FTS match string, ?2 LIKE pattern, ?3 limit.
+// Sounds with no transcript are eligible via the name half; that is most of Turtle's
+// voice acting, which no text row references at all.
+export const Q_SEARCH_VOICE = `
+  SELECT s.id, s.name, s.files, s.ms, t.text, t.creature, c.name AS creature_name
+  FROM sounds s
+  LEFT JOIN sound_text t ON t.id = (SELECT id FROM sound_text WHERE sound = s.id ORDER BY creature IS NULL, id LIMIT 1)
+  LEFT JOIN creatures c ON c.entry = t.creature
+  WHERE (s.id IN (SELECT sound FROM sound_text st JOIN sound_text_fts f ON f.rowid = st.id WHERE sound_text_fts MATCH ?1)
+      OR s.name LIKE ?2)
+    AND (t.id IS NOT NULL OR s.files LIKE '["interface/va/%')
+  ORDER BY t.text IS NULL, s.name
+  LIMIT ?3`;
+
+// Transcript search. FTS5 over sound_text; the caller passes an already-built MATCH
+// string. One row per SOUND, not per sound_text row, so a line credited to several
+// speakers doesn't fill the results with copies of itself.
+// `f.rank` must be qualified: `creatures` has its own `rank` column (elite/rare/boss)
+// and the bare name is ambiguous across this join. Grouping on MIN(f.rank) also makes
+// the bare t.text / c.name columns come from the best-matching row, which is the
+// documented SQLite behaviour for a bare column alongside MIN().
+export const Q_VOICE_SEARCH = `
+  SELECT s.id, s.name, s.files, s.ms, t.text, t.creature, c.name AS creature_name,
+    MIN(f.rank) AS score
+  FROM sound_text_fts f JOIN sound_text t ON t.id = f.rowid JOIN sounds s ON s.id = t.sound
+  LEFT JOIN creatures c ON c.entry = t.creature
+  WHERE sound_text_fts MATCH ?1
+  GROUP BY s.id
+  ORDER BY score LIMIT 200`;
+
 const npcLoot = (src, ownerCol) => `
   SELECT i.entry, i.name, i.quality, di.icon, d.chance, d.mincount, d.maxcount, i.world_drop
   FROM creatures c JOIN drops d ON d.src='${src}' AND d.owner = c.${ownerCol}

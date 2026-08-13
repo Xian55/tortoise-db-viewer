@@ -139,6 +139,7 @@ const MORE = {
     { label: "Gear-score presets", href: "?weights" },
     { label: "Objects", href: "?browse=objects" },
     { label: "Icons", href: "?icons" },
+    { label: "Voice Lines", href: "?voicelines" },
     { label: "Random", href: "?random" },
   ],
 };

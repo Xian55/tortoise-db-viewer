@@ -30,11 +30,16 @@ PROFILE = os.environ.get("CLIENT_PROFILE", "vanilla").lower()
 # ---- MPQ archive orders (LOWEST precedence first; readers try the last-opened first) ----
 
 # TBC 2.4.3. Art on the non-locale side, DBCs only on the locale side; patches last.
+# The speech archives hold the spoken VO (Sound\Creature\...\*.wav) that extract-sounds
+# reads; they are locale-side too, and absent from every other extractor's needs -- but
+# opening them costs only the handle, so one list stays correct for all of them.
 TBC_ARCHIVES = [
     "common.MPQ",
     "expansion.MPQ",
     os.path.join("enGB", "locale-enGB.MPQ"),
     os.path.join("enGB", "expansion-locale-enGB.MPQ"),
+    os.path.join("enGB", "speech-enGB.MPQ"),
+    os.path.join("enGB", "expansion-speech-enGB.MPQ"),
     "patch.MPQ",
     "patch-2.MPQ",
     os.path.join("enGB", "patch-enGB.MPQ"),
@@ -59,6 +64,34 @@ VANILLA_DBC = {
     # SpellItemEnchantment.dbc name: field 13 in BOTH 1.12 (24f) and 2.4.3 (34f) --
     # the locale block that widened sits after it.
     "sie_name": 13,
+    # ---- audio (extract-sounds.py) ----
+    # SoundEntries.dbc is 29 fields in BOTH 1.12 and 2.4.3 (it carries no localized
+    # string), so nothing here moves; listed for readability, not portability.
+    "se_type": 1, "se_name": 2, "se_files": 3, "se_freq": 13, "se_dir": 23,
+    # CreatureDisplayInfo.dbc: SoundID overrides the model's set; NPCSoundID is the
+    # separate greeting/farewell/pissed trio. TBC widened the row and moved the latter.
+    "cdi_model": 1, "cdi_sound": 2, "cdi_npc_sound": 11,
+    "cmd_sound": 13,             # CreatureModelData.dbc -> CreatureSoundData id
+    "npcsounds_first": 1,        # NPCSounds.dbc: Sound[4] at 1..4
+    # AreaTable.dbc -- all three precede the name block, so unchanged in TBC.
+    "area_ambience": 7, "area_zone_music": 8, "area_intro_sound": 9,
+    "zm_day": 6, "zm_night": 7,  # ZoneMusic.dbc
+    "sa_day": 1, "sa_night": 2,  # SoundAmbience.dbc
+    "zi_sound": 2,               # ZoneIntroMusicTable.dbc
+    # CreatureSoundData.dbc slot -> label. Fields 1..22 are identical in 1.12 and 2.4.3;
+    # only the tail differs (TBC inserted NPCSoundID at 23, pushing the rest by one and
+    # adding six more slots). Field 9 is SoundFootstepID -- a terrain-type index, NOT a
+    # SoundEntries id -- so it is deliberately absent.
+    "csd_slots": [
+        (1, "Exertion"), (2, "Exertion Critical"), (3, "Injury"), (4, "Injury Critical"),
+        (5, "Injury Crushing Blow"), (6, "Death"), (7, "Stun"), (8, "Stand"),
+        (10, "Aggro"), (11, "Wing Flap"), (12, "Wing Glide"), (13, "Alert"),
+        (14, "Fidget"), (15, "Fidget"), (16, "Fidget"), (17, "Fidget"), (18, "Fidget"),
+        (19, "Custom Attack"), (20, "Custom Attack"), (21, "Custom Attack"), (22, "Custom Attack"),
+        (23, "Loop"),
+        (25, "Jump Start"), (26, "Jump End"),
+        (27, "Pet Attack"), (28, "Pet Order"), (29, "Pet Dismiss"),
+    ],
 }
 
 # TBC 2.4.3. Nearly everything kept its index -- the localized blocks that widened all sit
@@ -72,6 +105,18 @@ TBC_DBC = dict(VANILLA_DBC, **{
     "talenttab_class_mask": 20, "talenttab_order": 21,
     # Everything after ItemSet's name block shifts by the +8 locale widening.
     "itemset_items": 18, "itemset_spells": 35, "itemset_thresholds": 43,
+    # CreatureDisplayInfo grew 12 -> 14 fields (a BloodID and a ParticleColorID), which
+    # pushes NPCSoundID one slot. ModelID/SoundID stay put.
+    "cdi_npc_sound": 12,
+    # CreatureSoundData grew 30 -> 37: NPCSoundID appears at 23 (unused -- every TBC row
+    # is 0, the id lives on CreatureDisplayInfo instead), shifting Loop/Jump/Pet by one,
+    # and six slots were appended. Verified against the 2.4.3 client, not from memory.
+    "csd_slots": VANILLA_DBC["csd_slots"][:21] + [
+        (24, "Loop"),
+        (26, "Jump Start"), (27, "Jump End"),
+        (28, "Pet Attack"), (29, "Pet Order"), (30, "Pet Dismiss"),
+        (33, "Birth"), (34, "Spell Cast"), (35, "Submerge"), (36, "Submerged"),
+    ],
 })
 
 _PROFILES = {

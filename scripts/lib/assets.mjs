@@ -30,21 +30,38 @@ export const ASSET_SETS = {
   "maps-tbc-cmangos": { dir: "public/maps-tbc-cmangos", prefix: "maps-tbc-cmangos" },
   "minimap-tbc-cmangos": { dir: "public/minimap-tbc-cmangos", prefix: "minimap-tbc-cmangos" },
   "model-thumbs": { dir: "public/model-thumbs", prefix: "model-thumbs" },
+  // `optional` sets are excluded from a bare `bun run assets` and must be named
+  // explicitly (`--only sounds`) or pulled with `--all`. The audio is 1.86 GB across the
+  // two clients -- 25x every other set combined -- and a local run only needs it to hear
+  // a clip, whereas maps are needed to render a zone page at all. Publishing is
+  // unaffected: publish-assets.mjs walks what is on disk.
+  sounds: { dir: "public/sounds", prefix: "sounds", optional: true },
+  "sounds-tbc-cmangos": { dir: "public/sounds-tbc-cmangos", prefix: "sounds-tbc-cmangos", optional: true },
 };
 
-/** Content-Type by extension. Everything here is webp except a couple of manifests. */
+/** Sets a bare `bun run assets` pulls: everything not flagged `optional`. */
+export const DEFAULT_SETS = Object.keys(ASSET_SETS).filter((k) => !ASSET_SETS[k].optional);
+
+/** Content-Type by extension. Mostly webp, plus the audio sets and a few manifests. */
 export function contentType(rel) {
   if (rel.endsWith(".webp")) return "image/webp";
   if (rel.endsWith(".json")) return "application/json";
   if (rel.endsWith(".png")) return "image/png";
+  // Opus lives in an Ogg container here; a handful of client sources are copied
+  // through as-is (see extract-sounds.py's passthrough rule).
+  if (rel.endsWith(".ogg")) return "audio/ogg";
+  if (rel.endsWith(".mp3")) return "audio/mpeg";
   return "application/octet-stream";
 }
 
 /** Tile pyramids are content-addressed by path and never rewritten -> cache forever. */
 export const cacheControl = (setName, rel) =>
   (setName.startsWith("minimap") ? "public,max-age=31536000,immutable"
-    : rel.endsWith(".json") ? "public,max-age=300"
-      : "public,max-age=604800");
+    // An audio file is named for its source path and re-extracted byte-identically, so
+    // it is effectively immutable too -- and it is the one set big enough to care.
+    : setName.startsWith("sounds") ? "public,max-age=31536000,immutable"
+      : rel.endsWith(".json") ? "public,max-age=300"
+        : "public,max-age=604800");
 
 export const MANIFEST_PATH = join(ROOT, "scripts", "data", "assets-manifest.json");
 
@@ -90,8 +107,8 @@ export function scanSet(name) {
   return { dir: set.dir, prefix: set.prefix, files };
 }
 
-export function resolveSets(only) {
-  if (!only) return Object.keys(ASSET_SETS);
+export function resolveSets(only, { all = false } = {}) {
+  if (!only) return all ? Object.keys(ASSET_SETS) : DEFAULT_SETS;
   const want = only.split(",").map((s) => s.trim()).filter(Boolean);
   const bad = want.filter((w) => !ASSET_SETS[w]);
   if (bad.length) {

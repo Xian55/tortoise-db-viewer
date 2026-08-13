@@ -105,7 +105,7 @@ Runs on **Bun** (preferred — native `bun:sqlite`, no native compile) or **Node
 
 ```sh
 bun install
-bun run assets                  # pull the R2-hosted binary assets (maps/minimap/model-thumbs, ~74 MB) into public/. Needed only for a LOCAL run that should render maps -- the deployed site always loads them from R2. `-- --only maps` for one set, `-- --verify` to re-hash. See "Binary assets live on R2"
+bun run assets                  # pull the R2-hosted binary assets (maps/minimap/model-thumbs, ~109 MB) into public/. Needed only for a LOCAL run that should render maps -- the deployed site always loads them from R2. `-- --only maps` for one set, `-- --verify` to re-hash, `-- --all` to include the OPTIONAL sets (the 1.86 GB of extracted audio, excluded by default). See "Binary assets live on R2"
 bun scripts/publish-assets.mjs  # LOCAL: the reverse -- rescan public/ after an extract-*.py, rewrite scripts/data/assets-manifest.json, upload changed files to R2
 bun scripts/build-db.mjs        # build public/data/tortoise.sqlite (+ version.json)
 bun run dev                     # http://localhost:5173/tortoise-db-viewer/
@@ -127,6 +127,8 @@ python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/min
 python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc -> scripts/data/talents.json (talent-tree structure)
 python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
+bun scripts/extract-script-sounds.mjs # LOCAL: server ScriptDev2 src + the SQL dumps -> scripts/data/script-sounds.json (script_name -> the script_texts entries it speaks + sounds it plays, plus the sound-id worklist extract-sounds.py needs). Run BEFORE extract-sounds.py
+python scripts/extract-sounds.py      # LOCAL: client MPQ audio -> public/sounds/**.ogg (Opus, R2-only) + scripts/data/sound-map.json (committed mapping). `--only creature,npc,zone,va,text`, `--limit N`, `--jobs N`, `--dry-run`. Needs ffmpeg. See "Sounds"
 bun scripts/extract-script-abilities.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src/scripts) -> scripts/data/script-abilities.json (creature_template.script_name -> the spell ids that C++ fight hardcodes; gives Ragnaros/Nefarian/Onyxia an ability list they have no SQL rows for)
 bun scripts/extract-instance-bosses.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src) + built DB -> scripts/data/instance-bosses.json (script-spawned boss entry -> instance mapId; needs build-db first)
 bun scripts/extract-vanilla-ids.mjs   # LOCAL: cmangos Classic SQLite DB (classicmangos.sqlite) -> scripts/data/vanilla-ids.json (vanilla-1.12 id allowlist + `edited` field-diff set; build-db flags items/creatures/quests custom = id NOT IN vanilla OR IN edited). Also field-diffs the built Turtle DB vs cmangos (run build-db first). CMANGOS_DB / TW_DB override paths
@@ -293,6 +295,71 @@ The NPC page's **Stats** tab and **Abilities** tab (wowhead-style) come from
   with cooldowns in **milliseconds**, `creature_ai_scripts` *is* the EventAI event
   table (action type 11 = cast) rather than dbscripts, and auras live in
   `creature_template_addon`. The adapter stages those under their own names.
+
+### Sounds (`?voicelines`, NPC Sounds tab, zone Music tab)
+
+Extracted game audio: what an NPC says/roars, and what a zone plays. Wowhead-style, plus
+the thing wowhead doesn't have — **transcripts**, and full-text search over them.
+
+- **Audio is R2-only** (`public/sounds/`, ~5.0k files / ~1.0 GB), like maps and minimap
+  tiles. What's **committed** is `scripts/data/sound-map.json` (~0.7 MB) — the mapping CI
+  can't rebuild without a client — and `scripts/data/script-sounds.json`.
+- **Transcoding** (`extract-sounds.py`, needs ffmpeg): `.wav` → Opus in Ogg, music/ambience
+  96k stereo and voice 48k mono. Already-compressed sources ≤512 KB are **copied through**
+  (re-encoding a 19 KB Ogg measured 18 KB — generation loss for nothing, and these are the
+  quality-sensitive Turtle voice clips). Above that they are re-encoded: Turtle's custom
+  ambience ships as 4–11 MB mp3s. Music is 828 MB of the 1.0 GB — `MUSIC_ARGS` is the knob.
+  Output paths mirror the source (lowercased, minus the leading `sound/`), which is both
+  the dedupe key and stable across runs.
+- **The NPC chain is entirely client-side**, hence the committed JSON:
+  `creature_template.display_id` → `CreatureDisplayInfo.SoundID` (an override, ~300 rows)
+  else `CreatureModelData[.ModelID].SoundID` → `CreatureSoundData` → ~20 activity slots
+  (Aggro/Death/Exertion/Loop/Fidget/Custom Attack/Pet…). Separately
+  `CreatureDisplayInfo.NPCSoundID` → `NPCSounds` → the greeting/farewell/pissed set.
+  Zones: `AreaTable.{ZoneMusic,AmbienceID,IntroSound}` → `ZoneMusic` / `SoundAmbience` /
+  `ZoneIntroMusicTable`, each a day+night pair (collapsed to one row when identical).
+- **Transcripts come from the server, but the SPEAKER usually doesn't.** `script_texts`
+  pairs a line with a sound id and says nothing about who says it — that binding is a C++
+  `DoScriptText(SAY_AGGRO, m_creature)` call, read out by `extract-script-sounds.mjs` via
+  the shared `scripts/lib/scriptdev.mjs` chain (the same enum → AI struct → `script_name`
+  walk `extract-script-abilities.mjs` uses). It resolves ~half; `broadcast_text` covers a
+  second pool where `creature_ai_events.creature_id` *does* name the speaker. **A line
+  that can't be attributed is still listed, without a speaker** — dropping it was a bug
+  that cost ~2/3 of the voice lines. Result: 420 distinct lines with audio, 176 credited.
+- **`extract-script-sounds.mjs` must run BEFORE `extract-sounds.py`.** A boss line's sound
+  is in neither `CreatureSoundData` nor the VA directory, so the client DBCs give the
+  extractor no reason to pull it; the `ids` array in `script-sounds.json` is that reason.
+  Without it 30 of ~340 voice lines had audio. Turtle's own voice acting is scoped by
+  **directory** instead (`Sound\Interface\VA`, ~400 clips) — most are played straight from
+  C++ and referenced by no DBC row at all.
+- **Tables**: `sounds` (id → name/type/files/ms; `files` is a JSON array, since one
+  SoundEntries row holds up to 10 interchangeable takes the client picks between — the UI
+  renders them as numbered chips), `creature_sound`, `zone_sound`, `sound_text` +
+  `sound_text_fts`. **Optional schema** — `db.js` `caps()` probes for `sounds` and the UI
+  hides itself on a DB built before this (dispatch the per-dataset deploys to close it).
+- **`f.rank` must be qualified** in any query joining `sound_text_fts` to `creatures`:
+  creatures has its own `rank` column (elite/rare/boss) and the bare name is ambiguous, so
+  the query throws and — behind the view's `catch` — search silently returns nothing.
+- Category labels are derived from the **slot**, never `SoundEntries.type`: that column is
+  a playback-engine flag (2D vs 3D, looping) and says nothing about what the sound is.
+- **Reachable from three places**, which is the point of a transcript index: `?voicelines`
+  (More → Voice Lines), a **Voice Lines tab on `?search=`**, and the top-bar dropdown.
+  `Q_SEARCH_VOICE` unions two ways in — the spoken TEXT (FTS) and the sound NAME (LIKE) —
+  because "ragnaros" should find his clips by name while a quoted phrase finds them by
+  what is said; the name half is the only thing that surfaces Turtle's ~400 VA clips,
+  most of which no text row references. In `rankFlat` a voice row is tiered on its
+  TRANSCRIPT, not its sound name: ranking a spoken line by its internal filename buries
+  an exact quote under unrelated clips whose name happens to start with the term.
+- Zone music also appears on **subzone** pages — a sub-area is its own `AreaTable` row and
+  ~half of them (495/1057) carry their own track, so Northshire Valley plays something
+  Elwynn doesn't. It counts toward that page's `hasData`, or a lake with no spawns would
+  claim "nothing is recorded here" while holding something to play.
+- **Per-expansion**: the archive order and every DBC offset live in
+  `scripts/lib/clientprofile.py`. TBC keeps its spoken audio in the *locale* archives
+  (`enGB/speech-enGB.MPQ`, `expansion-speech-enGB.MPQ`), `CreatureSoundData` grew 30 → 37
+  fields (an unused `NPCSoundID` at 23 pushes Loop/Jump/Pet by one) and
+  `CreatureDisplayInfo.NPCSoundID` moved 11 → 12. `SoundEntries` itself is 29 fields in
+  both — it carries no localized string, so nothing in it shifted.
 
 ### Custom icons
 
@@ -525,6 +592,28 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
   (the item page's "vs. typical …" card): cohort key + coarsening fallback, per-cohort
   medians and competition ranks. Pure; imports only `src/constants.js` for the labels.
   See "Peer baselines".
+- `scripts/extract-sounds.py` — LOCAL: pulls the client's audio (StormLib) and transcodes
+  it → `public/sounds/**.ogg` (R2-only) + committed `scripts/data/sound-map.json`
+  (SoundEntries → files, the CreatureSoundData/NPCSounds slot sets, display→sound-set, and
+  the per-area music/ambience/intro). See "Sounds".
+- `scripts/extract-script-sounds.mjs` — LOCAL: server ScriptDev2 C++ + the `script_texts` /
+  `broadcast_text` dumps → committed `scripts/data/script-sounds.json`: `script_name →
+  {t: [textEntry], s: [soundId]}` (who says which line) plus `ids` (the sound worklist
+  `extract-sounds.py` can't derive from the client). Run it BEFORE `extract-sounds.py`.
+- `scripts/lib/scriptdev.mjs` — the shared ScriptDev2 walk (comment strip, constants, brace
+  ranges, `newscript->Name` → `GetAI_*` → AI struct). `extract-script-abilities.mjs` and
+  `extract-script-sounds.mjs` each supply only a `collect()` for the calls they care about.
+- `src/audio.js` — the one `<audio>` for the whole app plus `soundPlayer()` / `wireAudio()`
+  / `stopAudio()`. Single element on purpose (two clips at once is never intended), and
+  `route()` stops it so a zone track can't outlive its page. The progress bar is a real
+  `role="slider"`: pointer drag (captured, `touch-action:none`) plus arrows/Home/End.
+  Seeking an idle player STARTS it — clicking into the middle of a clip is a play command.
+  Two traps it handles: seeking before load can't set `currentTime`, so the fraction is
+  held in `pendingSeek` and applied on `loadedmetadata`; and `play()` rejecting with
+  **NotAllowedError is the autoplay policy, not a broken file** — flagging it as an error
+  put a "!" on perfectly good clips. Download fetches to a **Blob**, because browsers
+  ignore `<a download>` on a cross-origin URL without `Content-Disposition` — the plain
+  link would open a tab instead of saving (bucket CORS is `*`; falls back to a tab).
 - `scripts/lib/sqldump.mjs` — zero-dep mysqldump parser.
 - `scripts/lib/schema.mjs` — generic import specs (which dump cols → which table).
 - `scripts/lib/sqlite.mjs` — Bun/Node SQLite wrapper.
@@ -730,9 +819,12 @@ Client-derived **image** trees are no longer committed. CI still can't regenerat
 | zone parchments | `maps/`, `maps-<dataset>/` |
 | minimap pyramids | `minimap/`, `minimap-<dataset>/` |
 | creature model thumbs | `model-thumbs/` |
+| extracted game audio | `sounds/`, `sounds-<dataset>/` |
 
 - `scripts/lib/assets.mjs` defines the sets; `scripts/data/assets-manifest.json`
-  (committed, ~250 KB) indexes every file as `[sha256-12, size]`.
+  (committed, ~1.2 MB) indexes every file as `[sha256-12, size]`. It jumped from ~250 KB
+  when the audio sets landed — 10.7k more files at ~1.8 GB, which is now the bulk of both
+  the manifest and the R2 bucket.
 - `bun run assets` downloads them (hash-verified on arrival — a truncated tile is worse
   than a missing one). Needed only for a LOCAL run that should show maps.
 - `bun run publish` rescans + uploads after an `extract-*.py` run, then rewrites the
