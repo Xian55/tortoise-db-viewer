@@ -45,9 +45,14 @@ const SOUND_CALLS = { DoPlaySoundToSet: 1, PlayDirectSound: 0, PlayDistanceSound
 // build-db drops ids missing from the extracted sound map anyway; this keeps it tidy.
 const MIN_SOUND_ID = 20;
 
-// Values are tagged so one pass can carry both kinds through the shared Set: a negative
-// number is a text entry, a positive one a sound id. That is the domains' own
-// convention, not an encoding we invented.
+// Three kinds share one Set, since perScript unions whatever collect() returns:
+//   negative number  script_texts.entry      (ScriptDev2's own convention)
+//   "b:<id>"         broadcast_text.entry    (a POSITIVE text id -- Turtle's Naxxramas
+//                                             and others name their lines this way)
+//   positive number  SoundEntries id
+// Sign alone can't separate a broadcast_text entry from a sound id, hence the tag.
+// Getting these out of collect() rather than a whole-file scan is what keeps them
+// STRUCT-precise: a file holding two bosses attributes each line to the right one.
 function collect(src, from, to, consts) {
   const found = new Set();
   const slice = src.slice(from, to);
@@ -56,10 +61,20 @@ function collect(src, from, to, consts) {
     const openParen = from + m.index + m[0].length - 1;
     const a = args(src, openParen);
     const isText = m[1] in TEXT_CALLS;
-    const v = numberOf(a[isText ? TEXT_CALLS[m[1]] : SOUND_CALLS[m[1]]], consts);
-    if (v === null) continue;
-    if (isText) { if (v < 0) found.add(v); }
-    else if (v >= MIN_SOUND_ID) found.add(v);
+    const raw = a[isText ? TEXT_CALLS[m[1]] : SOUND_CALLS[m[1]]];
+    if (!isText) {
+      const v = numberOf(raw, consts);
+      if (v !== null && v >= MIN_SOUND_ID) found.add(v);
+      continue;
+    }
+    // The text argument is often PickRandomValue(A, B, C) -- take every constant in it.
+    const direct = numberOf(raw, consts);
+    const ids = direct !== null ? [direct]
+      : [...String(raw ?? "").matchAll(/[A-Za-z_]\w*/g)].map((t) => consts.get(t[0])).filter((v) => typeof v === "number");
+    for (const v of ids) {
+      if (v < 0) found.add(v);
+      else if (v > 0) found.add(`b:${v}`);
+    }
   }
   return found;
 }
@@ -110,6 +125,61 @@ function caseCreature(src, at, consts) {
   return typeof v === "number" && v > 1000 ? v : null;
 }
 
+// Every DoScriptText id in a file, keyed by the script names that file registers.
+//
+// Two gaps this closes. First, per-struct resolution gives up on 352 registrations (a
+// file whose several AI structs it can't tell apart), leaving their lines anonymous even
+// though the file is plainly one encounter. Second -- and this is why Anub'Rekhan's whole
+// fight had no speaker -- an id here may be POSITIVE, which is a broadcast_text.entry
+// rather than a script_texts.entry. `collect()` only takes negatives, so every such call
+// was discarded. Turtle's Naxxramas scripts use positives throughout.
+// A file is only usable as an attribution when it registers exactly ONE script, i.e. the
+// file IS that script. Two failures forced this down from a looser limit:
+//   * a grab-bag like npcs_special.cpp registers dozens of unrelated scripts, and
+//     attributing its text pool to each handed Majordomo Executus' "Burn mortals!" to
+//     the Chicken, the Target Dummy and the Explosive Sheep -- all of which have UNIQUE
+//     script names, so no downstream fan-out cap could catch it;
+//   * a two-boss file like Mograine + Whitemane gave HER resurrect line to HIM, which is
+//     worse than leaving it anonymous.
+// Multi-script files are covered properly by collect() instead, which resolves each line
+// to the AI struct that speaks it.
+//
+// 4 is measured, not guessed: it drops the grab-bags (which register dozens) while
+// keeping real encounter files, whose lines often sit in a helper struct the per-struct
+// chain can't tie back -- Anub'Rekhan's taunts live in `anub_doorAI`, not the boss AI.
+// Tightening this to 1 cost him half his lines and Lady Blaumeux two thirds of hers,
+// while fixing nothing: the one cross-boss attribution reported (Whitemane's resurrect
+// line credited to Mograine) survived at 1, because it comes from the server's own
+// EventAI data rather than from this pass.
+const MAX_REGS = 4;
+
+function fileTexts() {
+  const out = new Map();      // scriptName -> { t: Set(negative), b: Set(positive) }
+  for (const f of walk(SCRIPTS_DIR)) {
+    const src = stripComments(readFileSync(f, "utf8"));
+    const registered = [...new Set([...src.matchAll(/Name\s*=\s*"([^"]+)"/g)].map((m) => m[1]))];
+    if (!registered.length || registered.length > MAX_REGS) continue;
+    const consts = constants(src);
+    const neg = new Set(), pos = new Set();
+    for (const m of src.matchAll(/\bDoScriptText\s*\(/g)) {
+      // The first argument is often PickRandomValue(A, B, C), so take every constant in
+      // it rather than only a lone literal.
+      const raw = String(args(src, m.index + m[0].length - 1)[0] ?? "");
+      const direct = numberOf(raw, consts);
+      const ids = direct !== null ? [direct]
+        : [...raw.matchAll(/[A-Za-z_]\w*/g)].map((t) => consts.get(t[0])).filter((v) => typeof v === "number");
+      for (const v of ids) { if (v < 0) neg.add(v); else if (v > 0) pos.add(v); }
+    }
+    if (!neg.size && !pos.size) continue;
+    for (const n of registered) {
+      if (!out.has(n)) out.set(n, { t: new Set(), b: new Set() });
+      for (const v of neg) out.get(n).t.add(v);
+      for (const v of pos) out.get(n).b.add(v);
+    }
+  }
+  return out;
+}
+
 function inlineLines() {
   const out = new Map();      // soundId -> { t: text, s: [scriptName], c?: creatureEntry }
   for (const f of walk(SCRIPTS_DIR)) {
@@ -147,6 +217,7 @@ function inlineLines() {
   return out;
 }
 const lines = inlineLines();
+const perFile = fileTexts();
 
 // The sound ids a TRANSCRIPT points at. extract-sounds.py scopes itself off the client
 // DBCs, which know nothing about these: a boss line's sound sits in neither
@@ -175,12 +246,34 @@ function soundIdsFromDumps() {
 const out = {};
 let texts = 0, sounds = 0;
 for (const [name, set] of [...byScript].sort((a, b) => a[0].localeCompare(b[0]))) {
-  const t = [...set].filter((v) => v < 0).sort((a, b) => b - a);
-  const s = [...set].filter((v) => v > 0).sort((a, b) => a - b);
-  if (!t.length && !s.length) continue;
+  const t = [...set].filter((v) => typeof v === "number" && v < 0).sort((a, b) => b - a);
+  const s = [...set].filter((v) => typeof v === "number" && v > 0).sort((a, b) => a - b);
+  const b = [...set].filter((v) => typeof v === "string").map((v) => +v.slice(2)).sort((a, b2) => a - b2);
+  if (!t.length && !s.length && !b.length) continue;
   out[name] = {};
   if (t.length) { out[name].t = t; texts += t.length; }
   if (s.length) { out[name].s = s; sounds += s.length; }
+  if (b.length) out[name].b = b;      // struct-resolved broadcast_text ids -- precise
+}
+
+// The file-level pass is kept SEPARATE from the struct-resolved ids rather than merged
+// into them. It is a superset (same file, no struct filter), so it rescues scripts
+// per-struct resolution skipped and adds the broadcast_text ids -- but it is also
+// coarser, and build-db has to be able to tell the two apart: a generic script shared by
+// dozens of creatures must not hand all of them the same boss line, whereas a
+// struct-resolved id is precise however many creatures use it.
+//   t  struct-resolved script_texts entries (precise)
+//   tf file-level script_texts entries (fallback, fan-out capped downstream)
+//   b  file-level broadcast_text entries (same)
+let btIds = 0, fileOnly = 0;
+for (const [name, e] of perFile) {
+  if (!out[name]) { out[name] = {}; fileOnly++; }
+  const already = new Set(out[name].t || []);
+  const extra = [...e.t].filter((v) => !already.has(v));
+  if (extra.length) out[name].tf = extra.sort((a, b) => b - a);
+  const bAlready = new Set(out[name].b || []);
+  const bExtra = [...e.b].filter((v) => !bAlready.has(v));
+  if (bExtra.length) { out[name].bf = bExtra.sort((a, b) => a - b); btIds += bExtra.length; }
 }
 
 // Everything the audio extractor must pull beyond what the client DBCs imply: the
@@ -198,5 +291,6 @@ writeFileSync(OUT, JSON.stringify({
 console.log(`scanned ${files.length} .cpp files in ${SCRIPTS_DIR}`);
 console.log(`  resolved via struct: ${withStruct} | single-struct fallback: ${viaFallback} | unresolved: ${unresolved}`);
 console.log(`  ${Object.keys(out).length} scripts -> ${texts} text links + ${sounds} direct sound links`);
+console.log(`  file-level pass: +${fileOnly} scripts, ${btIds} broadcast_text ids`);
 console.log(`  ${lines.size} inline yell transcripts (literal MonsterYell next to a sound)`);
 console.log(`  ${ids.length} sound ids for extract-sounds.py -> ${OUT.replace(/\\/g, "/")}`);

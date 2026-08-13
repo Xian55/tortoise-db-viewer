@@ -1491,3 +1491,9 @@ td .pet-rank { margin: 1px 0; }
 /* A transcript is prose, not a label -- let it wrap and take the width it needs. */
 .snd-text { white-space: normal; max-width: 52ch; font-style: italic; }
 .voice-page h1 { margin-bottom: 2px; }
+/* The player cell holds a fixed-size control, not prose. Without this the table's auto
+   layout hands it a share of the free width -- measured 364px for ~250px of content --
+   and pushes the transcript into a narrow ragged column. `width:1px` + nowrap is the
+   standard shrink-to-content idiom: the browser grows it to the minimum content width
+   and gives everything else back to the text columns. */
+.snd-col { width: 1px; white-space: nowrap; }

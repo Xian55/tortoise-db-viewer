@@ -451,7 +451,7 @@ async function showSearch(term) {
   // are shown -- a name-only hit (most of Turtle's voice acting has no text row) would
   // otherwise be a blank row.
   const voiceSearchCols = [
-    { label: "Play", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+    { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
     {
       label: "Transcript", cls: "snd-text",
       cell: (r) => (r.text ? esc(r.text) : `<span class="muted">— no transcript —</span>`),
@@ -1534,7 +1534,7 @@ async function showNpc(id) {
       .map((r) => ({ ...r, kind: "Voice Lines", activity: "" })),
   ];
   const soundCols = [
-    { label: "Sound", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+    { label: "Sound", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
     { label: "Name", cell: (r) => esc(r.name || ""), value: (r) => r.name || "" },
     {
       label: "Transcript", cls: "snd-text", hideEmpty: true,
@@ -1819,6 +1819,18 @@ async function showVoiceLines() {
   }
   let all;
   try { all = await query(Q.Q_VOICE_LINES); } catch (e) { app.innerHTML = errorBox(e); return; }
+  // A dataset can ship audio and still have no voice LINES: the transcripts come from
+  // Turtle's server scripts and its custom voice-acting directory, neither of which the
+  // cmangos rows have. Saying "0 shown" over an empty table reads as a broken page, so
+  // say what's actually true and point at the audio that IS there.
+  if (!all.length) {
+    app.innerHTML = `<div class="home"><h1>Voice Lines</h1>
+      <p class="muted">This dataset has no spoken voice lines. Transcripts come from the
+      Turtle server's scripts and its custom voice acting, which the ${esc(DATASET)} data
+      doesn't carry — but NPC and zone audio is still there, on each
+      <a class="nav" href="?browse=npcs">NPC</a> and <a class="nav" href="?browse=zones">zone</a> page.</p></div>`;
+    return;
+  }
 
   const p0 = new URLSearchParams(location.search);
   let term = (p0.get("voicelines") || "").trim();
@@ -1836,7 +1848,7 @@ async function showVoiceLines() {
   const search = app.querySelector(".icon-search");
 
   const cols = [
-    { label: "Play", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+    { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
     {
       label: "Transcript", cls: "snd-text",
       cell: (r) => (r.text ? esc(r.text) : `<span class="muted">— no transcript —</span>`),
@@ -2423,7 +2435,7 @@ const ordinal = (n) => {
 // Zone music / ambience / intro sting. Day and night are separate SoundEntries rows,
 // already collapsed to one row by build-db when they're the same track.
 const zoneSoundCols = () => [
-  { label: "Play", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+  { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
   { label: "Track", cell: (r) => esc(r.name || ""), value: (r) => r.name || "" },
   { label: "Kind", cls: "muted", cell: (r) => esc(r.kind), value: (r) => r.kind },
   { label: "Length", num: true, cls: "muted", cell: (r) => fmtDur(r.ms), value: (r) => r.ms || 0 },
