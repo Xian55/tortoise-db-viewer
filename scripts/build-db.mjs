@@ -116,6 +116,10 @@ const STAGE_SPECS = (() => {
   add("creature_spells", "tw_world_creature_spells.sql");
   add("creature_ai_events", "tw_world_creature_ai_events.sql");
   add("creature_ai_scripts", "tw_world_creature_ai_scripts.sql");
+  // Voice lines (-> sound_text). Both tables pair a transcript with a SoundEntries id:
+  // script_texts is the ScriptDev2 boss-line pool, broadcast_text the dbscript SAY pool.
+  add("script_texts", "tw_world_script_texts.sql");
+  add("broadcast_text", "tw_world_broadcast_text.sql");
   return specs;
 })();
 
@@ -1082,6 +1086,237 @@ console.log("Deriving spell teach sources...");
   db.exec(`ALTER TABLE spells ADD COLUMN learnable INTEGER DEFAULT 0`);
   db.exec(`UPDATE spells SET learnable = 1 WHERE entry IN (SELECT spell FROM spell_trainer) OR entry IN (SELECT spell FROM spell_taught_item)`);
   console.log(`  spell_trainer: ${nst} | spell_taught_item: ${nti}`);
+}
+
+// ---- Sounds (what an NPC says/roars, and what a zone plays) ----
+// The audio itself lives on R2 (public/sounds, see "Binary assets live on R2"); what
+// lands here is only the mapping, and none of it is derivable from SQL alone:
+//
+//   sounds          SoundEntries id -> display name + the shipped file variants
+//   creature_sound  creature -> sound, per activity slot (Aggro/Death/Loop/Greeting...)
+//   zone_sound      area -> sound, per kind (music/ambience day+night, zone intro)
+//   sound_text      sound -> the line's TRANSCRIPT, and who says it
+//
+// The creature and zone chains are client-side (CreatureDisplayInfo -> CreatureModelData
+// -> CreatureSoundData; AreaTable -> ZoneMusic/SoundAmbience), so they arrive precomputed
+// in scripts/data/sound-map.json from scripts/extract-sounds.py. The transcripts are
+// server-side but their SPEAKER usually isn't: ~250 script_texts rows carry a sound id
+// and nothing in SQL says who says them -- that binding is a C++ DoScriptText call, read
+// out by scripts/extract-script-sounds.mjs. Absent either JSON the tables just come out
+// empty and the UI hides itself (db.js caps()).
+console.log("Importing sounds...");
+{
+  db.exec(`CREATE TABLE sounds (
+    id INTEGER PRIMARY KEY, name TEXT NOT NULL, type INTEGER,
+    files TEXT NOT NULL,  -- JSON array of R2-relative paths; >1 = the client picks at random
+    ms INTEGER)`);
+  db.exec(`CREATE TABLE creature_sound (
+    creature INTEGER NOT NULL, sound INTEGER NOT NULL, slot TEXT NOT NULL, ord INTEGER,
+    PRIMARY KEY (creature, sound, slot)) WITHOUT ROWID`);
+  db.exec(`CREATE TABLE zone_sound (
+    area INTEGER NOT NULL, sound INTEGER NOT NULL, kind TEXT NOT NULL,
+    PRIMARY KEY (area, sound, kind)) WITHOUT ROWID`);
+  db.exec(`CREATE TABLE sound_text (
+    id INTEGER PRIMARY KEY, sound INTEGER NOT NULL, creature INTEGER,
+    text TEXT NOT NULL, src TEXT NOT NULL)`);
+
+  // NOT clientData(): audio is per-CLIENT, but its R2 prefix is per-DATASET (config.js
+  // SOUNDS_BASE appends MAP_SUB). clientData()'s vanilla fallback would hand the
+  // vanilla/cmangos build Turtle's sound map, whose paths would then be served from a
+  // `sounds-vanilla-cmangos/` prefix that has no files -- a page of 404 play buttons,
+  // which is worse than no tab. So the map must be named for THIS dataset; a dataset
+  // whose client audio hasn't been extracted simply ships no sounds.
+  const SOUND_SUB = (process.env.DATA_SUBDIR || "data").replace(/^data-?/, "");
+  const soundMapName = (SOUND_SUB === "" || SOUND_SUB === "dev") ? "sound-map.json"
+    : SOUND_SUB === "tbc-cmangos" ? "sound-map-tbc.json"
+      : `sound-map-${SOUND_SUB}.json`;
+  const mapFile = join(ROOT, "scripts", "data", soundMapName);
+  const map = existsSync(mapFile) ? JSON.parse(readFileSync(mapFile, "utf8")) : null;
+  let nsnd = 0, ncs = 0, nzs = 0, ntx = 0;
+
+  if (!map) {
+    console.warn(`  ${soundMapName} missing -- sounds skipped (run scripts/extract-sounds.py for this dataset)`);
+  } else {
+    const insSound = db.prepare(`INSERT OR IGNORE INTO sounds VALUES (?,?,?,?,?)`);
+    db.transaction(() => {
+      for (const [id, s] of Object.entries(map.sounds)) {
+        insSound.run(Number(id), s.n || `Sound ${id}`, s.t ?? null, JSON.stringify(s.f), (s.d || [])[0] || null);
+        nsnd++;
+      }
+    })();
+    const haveSound = new Set(db.prepare(`SELECT id FROM sounds`).all().map((r) => r.id));
+
+    // creature_sound. displaySound resolves the client's display -> model -> sound-data
+    // walk; a creature just looks up its own display_id. The four NPCSounds slots are the
+    // gossip set -- greeting, farewell, and a "pissed" pair whose exact split the DBC
+    // doesn't distinguish, so both are labelled the same and separated by `ord`.
+    const NPC_SLOTS = ["Greeting", "Farewell", "Annoyed", "Annoyed"];
+    const insCs = db.prepare(`INSERT OR IGNORE INTO creature_sound VALUES (?,?,?,?)`);
+    const addCs = (creature, sound, slot, ord) => {
+      if (sound && haveSound.has(sound)) { insCs.run(creature, sound, slot, ord); ncs++; }
+    };
+    db.transaction(() => {
+      for (const cr of db.prepare(`SELECT entry, display_id FROM creatures WHERE display_id > 0`).all()) {
+        const ds = map.displaySound[cr.display_id];
+        if (!ds) continue;
+        const [csd, ns] = ds;
+        for (const [slotIx, sound] of map.creatureSound[csd] || []) addCs(cr.entry, sound, map.slots[slotIx], slotIx);
+        (map.npcSounds[ns] || []).forEach((sound, i) => addCs(cr.entry, sound, NPC_SLOTS[i], 100 + i));
+      }
+    })();
+
+    // zone_sound. Day and night are separate SoundEntries rows but usually the same one;
+    // collapse that case so a zone doesn't list the identical track twice.
+    const insZs = db.prepare(`INSERT OR IGNORE INTO zone_sound VALUES (?,?,?)`);
+    const addPair = (area, pair, label) => {
+      if (!pair) return;
+      const [day, night] = pair;
+      const same = day && day === night;
+      for (const [sound, kind] of same ? [[day, label]] : [[day, `${label} (Day)`], [night, `${label} (Night)`]]) {
+        if (sound && haveSound.has(sound)) { insZs.run(area, sound, kind); nzs++; }
+      }
+    };
+    db.transaction(() => {
+      for (const [area, ent] of Object.entries(map.areaSound)) {
+        addPair(Number(area), map.zoneMusic[ent.m], "Music");
+        addPair(Number(area), map.ambience[ent.a], "Ambience");
+        const intro = map.intro[ent.i];
+        if (intro && haveSound.has(intro)) { insZs.run(Number(area), intro, "Intro"); nzs++; }
+      }
+    })();
+
+    // ---- transcripts ----
+    const insTx = db.prepare(`INSERT INTO sound_text (sound, creature, text, src) VALUES (?,?,?,?)`);
+    const seenTx = new Set();
+    const namedTx = new Set();   // (sound, text) pairs that got a real speaker
+    const addTx = (sound, creature, text, srcTag) => {
+      text = String(text ?? "").trim();
+      if (!sound || !haveSound.has(sound) || !text) return;
+      // Both text pools end with a sweep that lists whatever couldn't be attributed. A
+      // line that DID get a speaker must not also appear speaker-less, or the voice-line
+      // page shows it twice -- once credited, once anonymous.
+      if (!creature && namedTx.has(`${sound}:${text}`)) return;
+      const key = `${sound}:${creature || 0}:${text}`;
+      if (seenTx.has(key)) return;
+      seenTx.add(key);
+      if (creature) namedTx.add(`${sound}:${text}`);
+      insTx.run(sound, creature || null, text, srcTag);
+      ntx++;
+    };
+
+    // 's' -- script_texts, spoken by whichever creature's C++ script names the entry.
+    // Turtle only: cmangos' ScriptName points at its own separate C++ (same reason
+    // creature_ability's 'c' source is Turtle-only).
+    const textRows = new Map();   // script_texts.entry -> { text, sound }
+    if (src.has("script_texts")) {
+      const c = src.columns("script_texts");
+      const iE = c.indexOf("entry"), iT = c.indexOf("content_default"), iS = c.indexOf("sound");
+      if (iE >= 0 && iT >= 0 && iS >= 0) {
+        for (const r of src.rows("script_texts")) {
+          const sound = Number(r[iS]) || 0;
+          if (sound) textRows.set(Number(r[iE]), { text: r[iT], sound });
+        }
+      }
+    }
+    const scriptFile = join(ROOT, "scripts", "data", "script-sounds.json");
+    if (SQL_SOURCE !== "cmangos" && existsSync(scriptFile) && textRows.size) {
+      const byScript = JSON.parse(readFileSync(scriptFile, "utf8")).scripts || {};
+      db.transaction(() => {
+        for (const cr of db.prepare(`SELECT entry, script_name FROM creatures WHERE script_name IS NOT NULL AND script_name <> ''`).all()) {
+          const ent = byScript[cr.script_name];
+          if (!ent) continue;
+          for (const t of ent.t || []) {
+            const row = textRows.get(t);
+            if (row) addTx(row.sound, cr.entry, row.text, "s");
+          }
+          // A sound the script plays with no line attached (a roar, a stinger) is still
+          // that creature's -- it belongs on the NPC page, just not in the transcript.
+          for (const sound of ent.s || []) addCs(cr.entry, sound, "Script", 200);
+        }
+      })();
+    }
+    // C++ attribution resolves about half of them (127 of 247 measured): the rest sit in
+    // a script whose registration we can't tie to a struct, or are spoken by a GO/event
+    // rather than a creature. The line and its audio are still real, so list them with no
+    // speaker rather than dropping them -- the voice-line page is the point.
+    db.transaction(() => { for (const row of textRows.values()) addTx(row.sound, null, row.text, "s"); })();
+
+    // dbscript id -> the creatures whose EventAI owns it. Shared by the two readers below.
+    const owner = new Map();
+    if (src.has("creature_ai_events")) {
+      const ec = src.columns("creature_ai_events");
+      const iC = ec.indexOf("creature_id");
+      const acts = ["action1_script", "action2_script", "action3_script"].map((k) => ec.indexOf(k)).filter((i) => i >= 0);
+      if (iC >= 0) for (const r of src.rows("creature_ai_events")) {
+        for (const a of acts) {
+          const sid = Number(r[a]) || 0;
+          if (!sid) continue;
+          if (!owner.has(sid)) owner.set(sid, new Set());
+          owner.get(sid).add(Number(r[iC]));
+        }
+      }
+    }
+
+    // 'b' -- broadcast_text, spoken via a dbscript SAY. Here SQL *does* know the speaker:
+    // creature_ai_events.creature_id owns the script whose SAY row names the text.
+    if (src.has("broadcast_text")) {
+      const c = src.columns("broadcast_text");
+      const iE = c.indexOf("entry"), iM = c.indexOf("male_text"), iF = c.indexOf("female_text"), iS = c.indexOf("sound_id");
+      const bt = new Map();
+      if (iE >= 0 && iS >= 0) {
+        for (const r of src.rows("broadcast_text")) {
+          const sound = Number(r[iS]) || 0;
+          if (sound) bt.set(Number(r[iE]), { text: r[iM] || (iF >= 0 ? r[iF] : "") || "", sound });
+        }
+      }
+      if (src.has("creature_ai_scripts") && bt.size) {
+        const sc = src.columns("creature_ai_scripts");
+        const iId = sc.indexOf("id"), iCmd = sc.indexOf("command");
+        const ints = ["dataint", "dataint2", "dataint3", "dataint4"].map((k) => sc.indexOf(k)).filter((i) => i >= 0);
+        if (iId >= 0 && iCmd >= 0) db.transaction(() => {
+          for (const r of src.rows("creature_ai_scripts")) {
+            if (Number(r[iCmd]) !== 0) continue;          // 0 = SCRIPT_COMMAND_TALK
+            const creatures = owner.get(Number(r[iId]));
+            for (const di of ints) {
+              const row = bt.get(Number(r[di]) || 0);
+              if (!row) continue;
+              if (creatures && creatures.size) for (const cid of creatures) addTx(row.sound, cid, row.text, "b");
+              else addTx(row.sound, null, row.text, "b");
+            }
+          }
+        })();
+      }
+      // Any remaining sound-bearing broadcast_text is a real line we simply can't
+      // attribute -- still worth listing on the voice-line page, just with no speaker.
+      db.transaction(() => { for (const row of bt.values()) addTx(row.sound, null, row.text, "b"); })();
+    }
+
+    // A dbscript can also fire a bare sound (command 16, SCRIPT_COMMAND_PLAY_SOUND,
+    // datalong = the SoundEntries id) with no text at all -- an alarm bell, a horn, a
+    // roar. No transcript to show, but it is still that creature's sound.
+    if (src.has("creature_ai_scripts") && owner.size) {
+      const sc = src.columns("creature_ai_scripts");
+      const iId = sc.indexOf("id"), iCmd = sc.indexOf("command"), iDl = sc.indexOf("datalong");
+      if (iId >= 0 && iCmd >= 0 && iDl >= 0) db.transaction(() => {
+        for (const r of src.rows("creature_ai_scripts")) {
+          if (Number(r[iCmd]) !== 16) continue;
+          const sound = Number(r[iDl]) || 0;
+          for (const cid of owner.get(Number(r[iId])) || []) addCs(cid, sound, "Script", 200);
+        }
+      })();
+    }
+
+    db.exec(`CREATE INDEX idx_creature_sound_sound ON creature_sound(sound)`);
+    db.exec(`CREATE INDEX idx_zone_sound_sound ON zone_sound(sound)`);
+    db.exec(`CREATE INDEX idx_sound_text_sound ON sound_text(sound)`);
+    db.exec(`CREATE INDEX idx_sound_text_creature ON sound_text(creature) WHERE creature IS NOT NULL`);
+    // The transcript is the only free text here, and searching it is the point ("find
+    // the line that goes ..."), so it gets the same FTS treatment as items/quests.
+    db.exec(`CREATE VIRTUAL TABLE sound_text_fts USING fts5(text, content='sound_text', content_rowid='id', tokenize='unicode61')`);
+    db.exec(`INSERT INTO sound_text_fts(rowid, text) SELECT id, text FROM sound_text`);
+  }
+  const ncr = db.prepare(`SELECT COUNT(DISTINCT creature) n FROM creature_sound`).get().n;
+  console.log(`  sounds: ${nsnd} | creature_sound: ${ncs} rows / ${ncr} creatures | zone_sound: ${nzs} | sound_text: ${ntx}`);
 }
 
 // ---- NPC abilities (the spells a creature casts at you) ----

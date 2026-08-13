@@ -1458,3 +1458,36 @@ td .pet-rank { margin: 1px 0; }
 .pet-ability-kind { font-size: 12px; font-weight: 400; margin-left: 6px; }
 .pet-learnedby-inline { margin-top: 4px; line-height: 1.6; font-size: 13px; }
 .pet-universal-note { margin-top: 4px; font-size: 13px; font-style: italic; }
+
+/* ---- audio player (src/audio.js): NPC sounds, zone music, voice lines ---- */
+.snd { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.snd-play { width: 26px; height: 26px; flex: 0 0 auto; padding: 0; line-height: 1;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 50%;
+  color: var(--text); cursor: pointer; font-size: 11px; }
+.snd-play:hover { border-color: var(--gold); color: var(--gold); }
+.snd-on .snd-play { border-color: var(--gold); color: var(--gold); }
+.snd-error .snd-play { border-color: #a33; color: #d66; }
+.snd-name { overflow: hidden; text-overflow: ellipsis; max-width: 24ch; }
+/* Fixed width so a column of players doesn't jitter as tracks of different length load.
+   Padded block, not a 3px strip: the visible bar stays thin but the grab target is
+   ~15px tall, which is the difference between seekable and fiddly (and touch-usable).
+   touch-action:none so a drag scrubs instead of scrolling the page. */
+.snd-bar { width: 90px; flex: 0 0 auto; padding: 6px 0; cursor: pointer; touch-action: none; }
+.snd-bar::before { content: ""; display: block; height: 3px; background: var(--border); border-radius: 2px; }
+.snd-bar > span { display: block; height: 3px; width: 0; margin-top: -3px; background: var(--gold); border-radius: 2px; }
+.snd-bar:hover::before, .snd-bar:focus-visible::before { background: var(--muted); }
+.snd-bar:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; border-radius: 2px; }
+/* Tabular + fixed width: the label swaps to "0:03 / 0:12" while playing and must not
+   shove the take chips sideways on every timeupdate. */
+.snd-dur { font-size: 12px; font-variant-numeric: tabular-nums; min-width: 8ch; }
+.snd-dl { width: 22px; height: 22px; flex: 0 0 auto; padding: 0; line-height: 1; font-size: 13px;
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+  color: var(--muted); cursor: pointer; }
+.snd-dl:hover { color: var(--gold); border-color: var(--border); }
+.snd-takes { display: inline-flex; gap: 2px; }
+.snd-take { min-width: 18px; height: 18px; padding: 0 3px; font-size: 11px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); border-radius: 3px; color: var(--muted); }
+.snd-take.on { border-color: var(--gold); color: var(--gold); }
+/* A transcript is prose, not a label -- let it wrap and take the width it needs. */
+.snd-text { white-space: normal; max-width: 52ch; font-style: italic; }
+.voice-page h1 { margin-bottom: 2px; }

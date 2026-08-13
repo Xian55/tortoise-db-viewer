@@ -7,10 +7,16 @@
  * site itself always loads them from R2, so you only need this for a LOCAL run that
  * should show maps: `bun run dev`, `bun run smoke`, `bun run audit`. CI does not need it.
  *
- *   bun run assets                      # every set (~74 MB, ~6.5k files)
- *   bun run assets -- --only maps       # one set (see scripts/lib/assets.mjs)
+ *   bun run assets                      # the default sets (~110 MB, ~10k files)
+ *   bun run assets -- --only sounds     # one set (see scripts/lib/assets.mjs)
+ *   bun run assets -- --all             # default sets PLUS the optional ones
  *   bun run assets -- --verify          # re-hash local files instead of size-only
  *   bun run assets -- --force           # re-download everything
+ *
+ * The extracted game AUDIO (`sounds`, `sounds-tbc-cmangos`) is `optional` and NOT part of
+ * a bare run: it is 1.86 GB, ~25x every other set combined, and a local run only needs it
+ * to hear a clip -- whereas without maps a zone page doesn't render at all. Ask for it by
+ * name, or with --all.
  *
  * Env: ASSET_BASE_URL to point at a different origin (default cdn.tortoiseclothing.org).
  */
@@ -33,7 +39,7 @@ if (!manifest) {
 }
 
 const base = assetBase();
-const sets = resolveSets(opt("only"));
+const sets = resolveSets(opt("only"), { all: flag("all") });
 console.log(`Fetching ${sets.length} asset set(s) from ${base}`);
 
 let downloaded = 0, skipped = 0, bytes = 0, failed = 0;

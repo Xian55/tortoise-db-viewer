@@ -166,6 +166,10 @@ export const MAPS_BASE_MAIN = `${R2_ASSETS}maps/`;
 // Locally-rendered creature model thumbnails (Turtle-custom models Wowhead lacks).
 // Client-derived + branch-independent, so R2-fixed like maps (not dataset-suffixed).
 export const MODEL_THUMBS_BASE = `${R2_ASSETS}model-thumbs/`;
+// Extracted game audio (NPC voice/combat sounds, zone music+ambience). Dataset-suffixed
+// like maps: a SoundEntries id is no more a shared namespace across games than a
+// display_id is, and the TBC client's audio is a different set entirely.
+export const SOUNDS_BASE = `${R2_ASSETS}sounds${MAP_SUB}/`;
 
 let winner = "r2";                  // which DATA_ORIGIN answered
 let probedMeta = null;              // version.json captured by the probe; reused by db.js getMeta
