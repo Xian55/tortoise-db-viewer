@@ -22,6 +22,14 @@ function audio() {
   if (!el) {
     el = new Audio();
     el.preload = "none";
+    // Make the media load a CORS request even though playback doesn't need one.
+    // Without this the <audio> fetch stores a NON-CORS entry in the HTTP cache, and the
+    // download button's later cors-mode fetch() of the same URL reuses that entry, finds
+    // no CORS headers on it and dies with "Failed to fetch" -- so download broke on
+    // exactly the clips you had just played, and broke silently into the open-a-tab
+    // fallback. R2 sends the header, so tagging the media load CORS costs nothing and
+    // lets both paths share one cache entry.
+    el.crossOrigin = "anonymous";
     for (const ev of ["ended", "pause", "play", "timeupdate", "error"]) {
       el.addEventListener(ev, () => paint(ev === "error"));
     }
@@ -189,7 +197,12 @@ async function download(box) {
   const a = document.createElement("a");
   a.download = file;
   try {
-    const res = await fetch(url);
+    // Retry past the HTTP cache once. crossOrigin on the <audio> should already keep the
+    // cached entry CORS-usable, but a stale non-CORS entry can outlive a deploy in a
+    // browser that played a clip on the previous build -- and re-downloading a few
+    // hundred KB beats silently dumping the user into a new tab.
+    let res;
+    try { res = await fetch(url); } catch { res = await fetch(url, { cache: "reload" }); }
     if (!res.ok) throw new Error(res.status);
     const href = URL.createObjectURL(await res.blob());
     a.href = href;
