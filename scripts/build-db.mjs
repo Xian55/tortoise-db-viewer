@@ -1192,14 +1192,18 @@ console.log("Importing sounds...");
     const addTx = (sound, creature, text, srcTag) => {
       text = String(text ?? "").trim();
       if (!sound || !haveSound.has(sound) || !text) return;
+      // Dedupe on the sound plus a NORMALIZED text. script_texts and broadcast_text often
+      // carry the same line with cosmetic differences ("What, Mograine has fallen?" vs
+      // "Mograine has fallen?"), so keying on the raw string listed one clip twice.
+      const norm = text.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
       // Both text pools end with a sweep that lists whatever couldn't be attributed. A
       // line that DID get a speaker must not also appear speaker-less, or the voice-line
       // page shows it twice -- once credited, once anonymous.
-      if (!creature && namedTx.has(`${sound}:${text}`)) return;
-      const key = `${sound}:${creature || 0}:${text}`;
+      if (!creature && namedTx.has(`${sound}:${norm}`)) return;
+      const key = `${sound}:${creature || 0}:${norm}`;
       if (seenTx.has(key)) return;
       seenTx.add(key);
-      if (creature) namedTx.add(`${sound}:${text}`);
+      if (creature) namedTx.add(`${sound}:${norm}`);
       insTx.run(sound, creature || null, text, srcTag);
       ntx++;
     };
@@ -1218,9 +1222,54 @@ console.log("Importing sounds...");
         }
       }
     }
+    // A script may name its line by broadcast_text.entry instead (a POSITIVE id). Those
+    // rows usually carry sound 0 -- the audio lives on the script_texts row holding the
+    // same line -- so the two are bridged on normalized text. That bridge is what gives
+    // Anub'Rekhan's whole fight a speaker: the C++ names broadcast_text 13004, whose
+    // sound is 0, while script_texts has the identical line with sound 8788.
+    // Normalization is only case/punctuation ("Shh..." vs "Shhh...", "Yes, Run!" vs
+    // "Yes, run!"); measured across the dump it leaves exactly one ambiguous text out of
+    // 230, and an ambiguous one is skipped rather than guessed.
+    const normText = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+    const soundByText = new Map();
+    for (const row of textRows.values()) {
+      const n = normText(row.text);
+      if (n.length < 12) continue;
+      if (!soundByText.has(n)) soundByText.set(n, new Set());
+      soundByText.get(n).add(row.sound);
+    }
+    const btRow = new Map();      // broadcast_text.entry -> { text, sound }
+    if (src.has("broadcast_text")) {
+      const c = src.columns("broadcast_text");
+      const iE = c.indexOf("entry"), iM = c.indexOf("male_text"), iF = c.indexOf("female_text"), iS = c.indexOf("sound_id");
+      if (iE >= 0) for (const r of src.rows("broadcast_text")) {
+        btRow.set(Number(r[iE]), { text: r[iM] || (iF >= 0 ? r[iF] : "") || "", sound: Number(r[iS]) || 0 });
+      }
+    }
+    const soundForBroadcast = (id) => {
+      const row = btRow.get(id);
+      if (!row || !row.text) return null;
+      if (row.sound) return { sound: row.sound, text: row.text };
+      const cands = soundByText.get(normText(row.text));
+      if (!cands || cands.size !== 1) return null;       // ambiguous or unmatched -> skip
+      return { sound: [...cands][0], text: row.text };
+    };
+
     const scriptFile = join(ROOT, "scripts", "data", "script-sounds.json");
     if (SQL_SOURCE !== "cmangos" && existsSync(scriptFile) && textRows.size) {
       const byScript = JSON.parse(readFileSync(scriptFile, "utf8")).scripts || {};
+      // How many creatures run each script. The file-level fallback is only trustworthy
+      // for a script that belongs to a specific encounter; a GENERIC one shared by dozens
+      // of creatures would hand every last one of them the same boss line -- unfixed,
+      // Majordomo Executus' "Burn mortals!" was credited to 71 creatures including
+      // Chicken, Target Dummy and Explosive Sheep. Struct-resolved ids (`t`) skip this
+      // cap: they name the AI struct outright and are precise however widely shared.
+      // 4 keeps the Four Horsemen, who really do share lines, and drops the generics.
+      const MAX_FANOUT = 4;
+      const fanout = new Map();
+      for (const r of db.prepare(`SELECT script_name, COUNT(*) n FROM creatures WHERE script_name IS NOT NULL AND script_name <> '' GROUP BY script_name`).all()) {
+        fanout.set(r.script_name, r.n);
+      }
       db.transaction(() => {
         for (const cr of db.prepare(`SELECT entry, script_name FROM creatures WHERE script_name IS NOT NULL AND script_name <> ''`).all()) {
           const ent = byScript[cr.script_name];
@@ -1228,6 +1277,24 @@ console.log("Importing sounds...");
           for (const t of ent.t || []) {
             const row = textRows.get(t);
             if (row) addTx(row.sound, cr.entry, row.text, "s");
+          }
+          // `b` is struct-resolved like `t`, so it is exempt from the fan-out cap.
+          for (const b of ent.b || []) {
+            const hit = soundForBroadcast(b);
+            if (hit) addTx(hit.sound, cr.entry, hit.text, "s");
+          }
+          // `tf`/`bf` came from a whole-file scan; only trust them for a script a small
+          // number of creatures run.
+          const specific = (fanout.get(cr.script_name) || 0) <= MAX_FANOUT;
+          if (specific) {
+            for (const t of ent.tf || []) {
+              const row = textRows.get(t);
+              if (row) addTx(row.sound, cr.entry, row.text, "s");
+            }
+            for (const b of ent.bf || []) {
+              const hit = soundForBroadcast(b);
+              if (hit) addTx(hit.sound, cr.entry, hit.text, "s");
+            }
           }
           // A sound the script plays with no line attached (a roar, a stinger) is still
           // that creature's -- it belongs on the NPC page, just not in the transcript.
