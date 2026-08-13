@@ -626,6 +626,22 @@ memory — only Spell (Description 138→161, ToolTip 147→178), TalentTab (Cla
 NPCs have no spawn at all), and `spell_template.School` is gone in favour of `SchoolMask`
 (derived back via `DERIVE`).
 
+**A same-named column can mean a different quantity** — the adapter's real risk, and worse
+than an outright missing column because nothing is NULL to warn about. `DamageMultiplier`
+is the case that bit: on Turtle it's a *factor* on `dmg_min`/`dmg_max` (`SelectLevel` seeds
+the weapon damage, `UpdateDamagePhysical` multiplies), so build-db folds the two together.
+On cmangos it scales `creature_template_classlevelstats.BaseDamage` and `MinMeleeDmg` is
+its **alternative** source, used only when `DamageMultiplier < 0 || ArmorMultiplier < 0`
+(zero rows in either the Classic or TBC DB); their `UpdateDamagePhysical` multiplies by the
+runtime `m_damageMultiplier`, never by the template field. Folding them double-counts. It
+stayed invisible for a year because cmangos shipped `DamageMultiplier = 1.0` for every row
+until ~2026-07 — then started computing real values (1.4–2.6, max 260) and every NPC's
+listed damage/DPS on both cmangos datasets inflated by that factor overnight. The adapter
+now stages a literal `1.0` (a `DERIVE` entry, not a rename), leaving build-db's fold
+source-agnostic. **Upstream data can change meaning without changing shape — when a
+number looks off by a suspiciously clean-ish factor, diff the source column against an
+older release before assuming our derivation drifted.**
+
 **Known upstream gap:** cmangos's TBC-DB has no Outland spawns for Fel Iron / Adamantite /
 Khorium — they exist only inside Coilfang/Auchindoun. Outland herbs are complete. Not a
 build bug; the nodes are correctly flagged `gather='mining'` and simply have no

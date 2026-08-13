@@ -191,7 +191,9 @@ export const RENAMES = {
     health_min: "MinLevelHealth", health_max: "MaxLevelHealth", mana_min: "MinLevelMana", mana_max: "MaxLevelMana",
     npc_flags: "NpcFlags", detection_range: "Detection", call_for_help_range: "CallForHelp", leash_range: "Leash",
     xp_multiplier: "ExperienceMultiplier", dmg_min: "MinMeleeDmg", dmg_max: "MaxMeleeDmg", dmg_school: "DamageSchool",
-    attack_power: "MeleeAttackPower", dmg_multiplier: "DamageMultiplier", base_attack_time: "MeleeBaseAttackTime",
+    attack_power: "MeleeAttackPower", base_attack_time: "MeleeBaseAttackTime",
+    // NOTE: dmg_multiplier is deliberately NOT mapped to cmangos' DamageMultiplier --
+    // see the DERIVE entry below. They are not the same quantity.
     ranged_attack_time: "RangedBaseAttackTime", beast_family: "Family", ranged_dmg_min: "MinRangedDmg",
     ranged_dmg_max: "MaxRangedDmg", type: "CreatureType", type_flags: "CreatureTypeFlags",
     holy_res: "ResistanceHoly", fire_res: "ResistanceFire", nature_res: "ResistanceNature",
@@ -252,6 +254,29 @@ const EXPECTED_ABSENT = new Set([
 // `cols` is the set of lowercased source column names, so a derivation can opt out
 // (return null) on a schema that doesn't need it.
 const DERIVE = {
+  creature_template: {
+    // build-db folds `dmg_min * dmg_multiplier` into the stored damage because that is
+    // what TURTLE's server does: Creature::SelectLevel sets the base weapon damage from
+    // dmg_min/dmg_max, and Creature::UpdateDamagePhysical (StatSystem.cpp) then scales it
+    // by cinfo->dmg_multiplier. Both are factors of one number.
+    //
+    // cmangos' DamageMultiplier is NOT that. It scales
+    // creature_template_classlevelstats.BaseDamage inside SelectLevel's class/level path
+    // (`damageMulti = cinfo->DamageMultiplier * damageMod`), and MinMeleeDmg/MaxMeleeDmg
+    // are the *alternative* legacy source used only when that path is skipped
+    // (DamageMultiplier < 0 || ArmorMultiplier < 0 -- true for ZERO rows in either the
+    // Classic or the TBC DB). cmangos' own UpdateDamagePhysical multiplies by the runtime
+    // m_damageMultiplier (spawn override, default 1), never by the template field.
+    // So the two are alternatives, not factors, and multiplying them double-counts.
+    //
+    // This was invisible until cmangos started computing real DamageMultiplier values:
+    // their DB shipped 1.0 for every row until ~2026-07, and now ships 1.4-2.6 for
+    // ~all 10.4k creatures (max 260), which inflated every NPC's listed damage and DPS
+    // by that factor (issue: Dragonmaw Centurion 1036 read 63.6-81.5 instead of 32-41).
+    // Stage a literal 1 so build-db's fold is a no-op and dmg_min/dmg_max ship as the
+    // DB authored them -- the numbers a manual creature_template lookup reports.
+    dmg_multiplier: () => "1.0",
+  },
   spell_template: {
     // TBC (2.0) dropped the `School` scalar; only the SchoolMask bitfield survives.
     // school = index of the set bit: 1->0 physical, 2->1 holy, 4->2 fire, 8->3 nature,
