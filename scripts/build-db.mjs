@@ -1241,6 +1241,41 @@ console.log("Importing sounds...");
     // speaker rather than dropping them -- the voice-line page is the point.
     db.transaction(() => { for (const row of textRows.values()) addTx(row.sound, null, row.text, "s"); })();
 
+    // 'l' -- inline yells. A Turtle-custom boss usually doesn't route its line through
+    // script_texts at all; it yells a literal string and plays the VO on the next line
+    // (see extract-script-sounds.mjs). Those clips shipped with audio and no words --
+    // Moroes' whole fight, the Satyr/Keeper/Furbolg bosses. The speaker comes from
+    // creature_sound, which already links that sound to whoever plays it.
+    if (SQL_SOURCE !== "cmangos" && existsSync(scriptFile)) {
+      const inline = JSON.parse(readFileSync(scriptFile, "utf8")).lines || {};
+      // Three ways to name the speaker, most specific first: the script dispatched on this
+      // creature's entry (`case fenektis_the_deceiver:` -- exact, and the only thing that
+      // works for an instance script, which registers no per-creature name); else the
+      // sound is already linked to a creature via creature_sound; else any creature running
+      // a script the line's FILE registers, which rescues files whose several AI structs
+      // per-struct resolution can't tell apart.
+      const known = new Set(db.prepare(`SELECT entry FROM creatures`).all().map((r) => r.entry));
+      const bySound = db.prepare(`SELECT creature FROM creature_sound WHERE sound = ?1 ORDER BY ord, creature`);
+      const byScriptName = new Map();
+      for (const cr of db.prepare(`SELECT entry, script_name FROM creatures WHERE script_name IS NOT NULL AND script_name <> ''`).all()) {
+        if (!byScriptName.has(cr.script_name)) byScriptName.set(cr.script_name, []);
+        byScriptName.get(cr.script_name).push(cr.entry);
+      }
+      db.transaction(() => {
+        for (const [sid, ent] of Object.entries(inline)) {
+          const sound = Number(sid);
+          const text = typeof ent === "string" ? ent : ent.t;
+          let who = (typeof ent === "object" && ent.c && known.has(ent.c)) ? [ent.c] : [];
+          if (!who.length) who = bySound.all(sound).map((r) => r.creature);
+          if (!who.length && typeof ent === "object") {
+            who = [...new Set((ent.s || []).flatMap((n) => byScriptName.get(n) || []))];
+          }
+          if (who.length) for (const c of who) addTx(sound, c, text, "l");
+          else addTx(sound, null, text, "l");
+        }
+      })();
+    }
+
     // dbscript id -> the creatures whose EventAI owns it. Shared by the two readers below.
     const owner = new Map();
     if (src.has("creature_ai_events")) {

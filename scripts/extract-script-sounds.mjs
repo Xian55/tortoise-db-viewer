@@ -23,7 +23,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { perScript, args, numberOf } from "./lib/scriptdev.mjs";
+import { perScript, args, numberOf, walk, stripComments, constants } from "./lib/scriptdev.mjs";
 import { parseColumns, iterRows } from "./lib/sqldump.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -66,6 +66,88 @@ function collect(src, from, to, consts) {
 
 const { byScript, files, withStruct, viaFallback, unresolved } = perScript(SCRIPTS_DIR, collect);
 
+// ---- inline yells: the transcript for most Turtle-custom voice acting ----
+// A ScriptDev2 boss does NOT have to route its line through script_texts. Turtle's own
+// bosses usually don't -- they yell a literal string and play the VO as two adjacent
+// calls:
+//
+//     m_creature->MonsterYell("New guests? It has been a while ...");
+//     m_creature->PlayDirectSound(60402);
+//
+// so DoScriptText resolution finds nothing and the clip ships with audio but no words.
+// Pairing each sound with the nearest literal say recovers those.
+//
+// The say can come on EITHER side and both idioms are in the tree -- boss_moroes.cpp
+// yells then plays, instance_crescent_grove.cpp plays then yells inside a switch over
+// creature entry. Matching only backwards shifted that whole instance by one case, so
+// the satyr boss was credited with the keeper's line. Misattributed dialogue is worse
+// than none, hence: nearest in either direction, and a candidate is rejected if another
+// sound call sits between it and this one (that say belongs to the other sound).
+const SAY_RE = /\b(?:MonsterYell|MonsterSay|MonsterYellToZone|MonsterTextEmote|MonsterWhisper)\s*\(\s*"((?:[^"\\]|\\.)*)"/g;
+const SND_RE = /\b(?:PlayDirectSound|PlayDistanceSound|DoPlaySoundToSet|SendPlaySound)\s*\(\s*(?:[^,()]*,\s*)?(\d{2,})\s*[,)]/g;
+const NEAR = 300;   // chars; the idiom is two consecutive statements
+
+// Each entry also carries the script names its FILE registers. Per-struct resolution
+// (perScript) can't name the speaker when a file holds several AI structs it can't tell
+// apart, but a whole file is one encounter often enough that its registrations are a
+// sound attribution -- boss_moroes.cpp registers "boss_moroes", and that is the
+// creature_template.script_name build-db joins on. This is what fills the Speaker column
+// for lines that per-struct resolution leaves anonymous.
+// The `case <CONST>:` label a statement sits under, resolved to a number. Only the
+// nearest one before it and only within CASE_NEAR, so a sound outside any switch, or far
+// past the label, resolves to nothing rather than borrowing an unrelated case's entry.
+const CASE_NEAR = 400;
+const CASE_RE = /\bcase\s+([A-Za-z_]\w*)\s*:/g;
+function caseCreature(src, at, consts) {
+  let best = null;
+  for (const m of src.matchAll(CASE_RE)) {
+    if (m.index < at && at - m.index < CASE_NEAR && (!best || m.index > best.index)) best = m;
+  }
+  if (!best) return null;
+  const v = consts.get(best[1]);
+  // Creature entries only. A case over a phase/event enum resolves to a small number
+  // that is no creature at all, so require the id to look like one.
+  return typeof v === "number" && v > 1000 ? v : null;
+}
+
+function inlineLines() {
+  const out = new Map();      // soundId -> { t: text, s: [scriptName], c?: creatureEntry }
+  for (const f of walk(SCRIPTS_DIR)) {
+    const src = stripComments(readFileSync(f, "utf8"));
+    const consts = constants(src);
+    const says = [...src.matchAll(SAY_RE)].map((m) => ({ i: m.index, text: m[1] }));
+    if (!says.length) continue;
+    const registered = [...new Set([...src.matchAll(/Name\s*=\s*"([^"]+)"/g)].map((m) => m[1]))];
+    const snds = [...src.matchAll(SND_RE)].map((m) => ({ i: m.index, id: Number(m[1]) }));
+    const used = new Set();
+    for (const s of snds) {
+      // Nearest say either way, closest first, skipping any that another sound call sits
+      // between -- that one is the other sound's line, not ours.
+      const cands = says
+        .filter((y) => !used.has(y.i) && Math.abs(y.i - s.i) < NEAR)
+        .sort((a, b) => Math.abs(a.i - s.i) - Math.abs(b.i - s.i));
+      const best = cands.find((y) => {
+        const lo = Math.min(y.i, s.i), hi = Math.max(y.i, s.i);
+        return !snds.some((o) => o !== s && o.i > lo && o.i < hi);
+      });
+      if (!best) continue;
+      used.add(best.i);         // one say per sound, so a loop can't reuse the same line
+      if (!out.has(s.id)) {
+        const ent = { t: best.text.replace(/\\"/g, '"').replace(/\\n/g, " ").trim(), s: registered };
+        // An instance script dispatches on creature entry -- `case fenektis_the_deceiver:`
+        // -- which names the speaker outright, where the file's registration only names
+        // the INSTANCE script and can't. That is the difference between a credited line
+        // and a blank Speaker column for every boss in Crescent Grove and its like.
+        const c = caseCreature(src, s.i, consts);
+        if (c) ent.c = c;
+        out.set(s.id, ent);
+      }
+    }
+  }
+  return out;
+}
+const lines = inlineLines();
+
 // The sound ids a TRANSCRIPT points at. extract-sounds.py scopes itself off the client
 // DBCs, which know nothing about these: a boss line's sound sits in neither
 // CreatureSoundData nor the Turtle VA directory, so without this list the audio for
@@ -105,11 +187,16 @@ for (const [name, set] of [...byScript].sort((a, b) => a[0].localeCompare(b[0]))
 // transcript-bearing sounds, plus the ones C++ plays with no line attached.
 const direct = new Set();
 for (const e of Object.values(out)) for (const s of e.s || []) direct.add(s);
-const ids = [...new Set([...soundIdsFromDumps(), ...direct])].sort((a, b) => a - b);
+const ids = [...new Set([...soundIdsFromDumps(), ...direct, ...lines.keys()])].sort((a, b) => a - b);
 
-writeFileSync(OUT, JSON.stringify({ scripts: out, ids }, null, 0) + "\n");
+writeFileSync(OUT, JSON.stringify({
+  scripts: out,
+  lines: Object.fromEntries([...lines].sort((a, b) => a[0] - b[0])),
+  ids,
+}, null, 0) + "\n");
 
 console.log(`scanned ${files.length} .cpp files in ${SCRIPTS_DIR}`);
 console.log(`  resolved via struct: ${withStruct} | single-struct fallback: ${viaFallback} | unresolved: ${unresolved}`);
 console.log(`  ${Object.keys(out).length} scripts -> ${texts} text links + ${sounds} direct sound links`);
+console.log(`  ${lines.size} inline yell transcripts (literal MonsterYell next to a sound)`);
 console.log(`  ${ids.length} sound ids for extract-sounds.py -> ${OUT.replace(/\\/g, "/")}`);
