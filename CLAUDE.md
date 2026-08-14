@@ -392,9 +392,39 @@ CC BY-SA.
   `no_speech_prob` and a 0.8s floor, and VAD on.
 - The speaker's name goes in `initial_prompt`, which is what gets Anub'Rekhan and
   Vek'nilash spelled correctly; a general model has never seen them.
-- **GPU**: `int8_float16` is the default because the dev box is a GTX 1070 — Pascal has no
-  tensor cores and poor native fp16, so plain `float16` is markedly slower there. Falls
-  back to CPU int8 with a warning if CUDA isn't usable.
+- **GPU**: `--compute` is **negotiated at runtime** via
+  `ctranslate2.get_supported_compute_types()`, not hardcoded. A GTX 1070 (Pascal) reports
+  `{int8_float32, int8, float32}` and **no fp16 at all**, so a hardcoded `int8_float16`
+  fails to initialise and silently drops the whole run onto the CPU. ctranslate2 also
+  needs the CUDA 12 runtime (`pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`); the
+  script registers those DLL dirs itself, because without them the model LOADS (VRAM
+  fills, it looks like the GPU is working) and every encode then dies with
+  "cublas64_12.dll is not found".
+- **Checkpoints every 25 sounds.** The first full pass ran 105 minutes and persisted
+  nothing — it wrote once at the end and stalled before reaching it.
+- **Whisper's degenerate repetition loop** is guarded (`repetition_penalty`,
+  `no_repeat_ngram_size`, `compression_ratio_threshold`): one 3-second clip stalled a run
+  for ~48 minutes emitting tokens to the window cap.
+- **A systemic error must abort, not be absorbed per file.** 5 consecutive identical
+  failures stop the run — otherwise a missing CUDA DLL reads as 4,067 bad files and the
+  run reports success having transcribed nothing.
+- Thresholds are measured, not guessed: real lines score `avg_logprob` −0.21…−0.44 and
+  grunts −0.79…−1.14, while DURATION is a poor discriminator ("Yo" is 0.40s), which is why
+  the length floor is only 0.25s.
+
+### Browsing sounds (`?sounds`)
+
+2,545 sounds exist; `?voicelines` only ever listed the ~1,000 with words, so music,
+ambience and creature audio had no page at all. `?sounds` lists everything, filterable by
+name **or file path** (people know these by either), with a derived **Kind** — Music /
+Ambience / Zone Intro / Voice Acting / NPC Gossip / Creature. Kind comes from what POINTS
+at a sound, never `SoundEntries.type`, which is a playback flag (2D/3D/looping).
+
+- **The player column needs `max-width`, not `width`.** `width: 1px` is the usual
+  shrink-to-content idiom and it does nothing in these tables: measured against the real
+  page, `width` of 1px / 1% / 100% all left the column at 344px around a 211px control,
+  because auto layout hands the slack back. Only `max-width` binds. `.snd` wraps its take
+  chips so a 10-take sound doesn't overflow the cap.
 
 ### NPC gossip (`npc_gossip`, the NPC Gossip tab, the search Dialogue tab)
 
