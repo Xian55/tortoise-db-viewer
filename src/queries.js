@@ -635,6 +635,29 @@ export const Q_NPC_ABILITIES = `
   WHERE a.creature = ?1 AND s.name <> ''
   ORDER BY (a.src = 'a'), a.src, a.ord, s.name`;
 
+// Every extracted sound, browsable by name (?sounds). The voice-line page only ever
+// showed the ~1,000 with words; this is the other 1,500 too -- music, ambience, combat --
+// which had no page at all, so "what is Moment-Battle06" was unanswerable on the site.
+// Category comes from what POINTS at the sound, since SoundEntries.type is a playback
+// flag (2D/3D/looping) and says nothing about what a sound is.
+export const Q_SOUND_LIST = `
+  SELECT s.id, s.name, s.files, s.ms,
+    (SELECT t.text FROM sound_text t WHERE t.sound = s.id ORDER BY t.creature IS NULL, t.id LIMIT 1) AS text,
+    (SELECT t.src FROM sound_text t WHERE t.sound = s.id ORDER BY t.creature IS NULL, t.id LIMIT 1) AS src,
+    CASE
+      WHEN EXISTS (SELECT 1 FROM zone_sound z WHERE z.sound = s.id AND z.kind LIKE 'Music%')    THEN 'Music'
+      WHEN EXISTS (SELECT 1 FROM zone_sound z WHERE z.sound = s.id AND z.kind LIKE 'Ambience%') THEN 'Ambience'
+      WHEN EXISTS (SELECT 1 FROM zone_sound z WHERE z.sound = s.id AND z.kind LIKE 'Intro%')    THEN 'Zone Intro'
+      WHEN s.files LIKE '["interface/va/%'                                                      THEN 'Voice Acting'
+      WHEN EXISTS (SELECT 1 FROM creature_sound cs WHERE cs.sound = s.id
+                    AND cs.slot IN ('Greeting','Farewell','Annoyed'))                           THEN 'NPC Gossip'
+      WHEN EXISTS (SELECT 1 FROM creature_sound cs WHERE cs.sound = s.id)                       THEN 'Creature'
+      ELSE 'Other' END AS kind,
+    (SELECT COUNT(DISTINCT cs.creature) FROM creature_sound cs WHERE cs.sound = s.id) AS npcs,
+    (SELECT COUNT(DISTINCT z.area) FROM zone_sound z WHERE z.sound = s.id) AS areas
+  FROM sounds s
+  ORDER BY s.name`;
+
 // ---- NPC gossip (what an NPC says when you talk to it) ----
 // This is where a quoted phrase actually lives. A voice clip is picked from the NPC's
 // VOICE TYPE and shared by every NPC of that type, while the gossip text belongs to the
