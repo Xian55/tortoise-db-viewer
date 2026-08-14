@@ -12,6 +12,17 @@ async function openTab(id) {
   await page.waitForSelector(`.tab[data-tab="${id}"]`, { timeout: T });
   await page.$eval(`.tab[data-tab="${id}"]`, (e) => e.click());
   await page.waitForSelector(`.tabpane[data-pane="${id}"]:not(.hidden) table tbody tr`, { timeout: T });
+  // Wait for the row count to stop changing. createTable mounts and can re-render (sort,
+  // grouping, a debounced filter), so reading straight after the first row appears raced
+  // the second render -- which showed up as ~1 flaky test per 3 full-suite runs, landing
+  // on a different test each time rather than any one being wrong.
+  let prev = -1;
+  for (let i = 0; i < 20; i++) {
+    const n = await page.$$eval(`.tabpane[data-pane="${id}"] table tbody tr`, (r) => r.length);
+    if (n === prev) return;
+    prev = n;
+    await new Promise((r) => setTimeout(r, 50));
+  }
 }
 
 // Data rows only: a grouped table interleaves `.grouprow` headers into the same tbody.
@@ -136,29 +147,26 @@ async function testSeekControls() {
       label: bar.parentElement.querySelector(".snd-dur").textContent,
     };
   });
-  console.log(`seek: role=${shape.role} tabindex=${shape.tabindex} dl=${shape.dl} ms=${shape.ms} -> valuenow=${seeked.valuenow} fill=${seeked.fill} label="${seeked.label}"`);
+  // Keyboard checked HERE rather than in its own test: a second nav() to the same page
+  // meant a second render, and the bar captured before the 180ms debounce settled was
+  // detached -- the keydown handler is delegated on #app, so a detached node's events go
+  // nowhere and every press silently did nothing. That made a standalone keyboard test
+  // flaky 1-in-3 no matter how the assertion was written. Same DOM, no extra navigation.
+  const keys = await page.$eval(".voice-page .snd .snd-bar", (bar) => {
+    bar.setAttribute("aria-valuenow", "0");
+    const at = () => Number(bar.getAttribute("aria-valuenow"));
+    const press = (k) => bar.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
+    press("ArrowRight"); const right = at();
+    press("ArrowLeft"); const back = at();
+    press("End"); const end = at();
+    press("Home"); const home = at();
+    return { right, back, end, home };
+  });
+  console.log(`seek: role=${shape.role} tabindex=${shape.tabindex} dl=${shape.dl} ms=${shape.ms} -> valuenow=${seeked.valuenow} fill=${seeked.fill} label="${seeked.label}" keys=${JSON.stringify(keys)}`);
   return shape.role === "slider" && shape.tabindex === "0" && shape.valuenow === "0"
     && shape.dl && /^Download /.test(shape.dlLabel) && shape.ms > 0
-    && seeked.valuenow === 50 && seeked.fill === "50%" && /\d:\d\d \/ \d:\d\d/.test(seeked.label);
-}
-
-// The bar is a real slider: arrows scrub 5%, Home/End jump to the ends.
-async function testSeekKeyboard() {
-  await nav(`?voicelines=insects`);
-  await page.waitForSelector(".voice-page .snd .snd-bar", { timeout: T });
-  const seq = await page.$eval(".voice-page .snd .snd-bar", (bar) => {
-    const press = (key) => bar.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-    const at = () => Number(bar.getAttribute("aria-valuenow"));
-    const out = [];
-    press("ArrowRight"); out.push(at());
-    press("ArrowRight"); out.push(at());
-    press("ArrowLeft"); out.push(at());
-    press("End"); out.push(at());
-    press("Home"); out.push(at());
-    return out;
-  });
-  console.log(`seek keyboard: [${seq.join(",")}]`);
-  return String(seq) === String([5, 10, 5, 100, 0]);
+    && seeked.valuenow === 50 && seeked.fill === "50%" && /\d:\d\d \/ \d:\d\d/.test(seeked.label)
+    && keys.right === 5 && keys.back === 0 && keys.end === 100 && keys.home === 0;
 }
 
 // Reachability. The voice-line page shipped working but unlinked from the nav for a
@@ -166,24 +174,29 @@ async function testSeekKeyboard() {
 // to is not a shipped feature, so assert the menu entry exists and goes somewhere.
 async function testNavEntry() {
   await nav(`?`);
-  await page.waitForSelector(".topnav", { timeout: T });
-  const href = await page.$$eval(".topnav a", (as) => {
+  await page.waitForSelector("#topnav a", { timeout: T });
+  const href = await page.$$eval("#topnav a", (as) => {
     const a = as.find((x) => /voice lines/i.test(x.textContent));
     return a ? a.getAttribute("href") : null;
   });
   console.log(`nav entry: href=${href}`);
   if (!href) return false;
-  await nav(href.replace(/^\?/, "?"));
+  await nav(href);
   await page.waitForSelector(".voice-page table tbody tr", { timeout: T });
   const rows = await page.$$eval(".voice-page table tbody tr", (e) => e.length);
   console.log(`nav entry -> rows=${rows}`);
   return rows > 0;
 }
 
+// The bar is a real slider: arrows scrub by 5, Home/End jump to the ends.
+// Asserted as DELTAS from wherever it starts, deliberately. An earlier test in this file
+// leaves the bar at 50%, and nav() to the same URL is a pushState that does not rebuild
+// the table -- an absolute expectation like [5,10,5,100,0] then passes or fails depending
+// on test order, which made this the one flaky test in the suite.
+
 smoke("npc sounds tab (ragnaros)", () => testNpcSounds());
 smoke("voicelines reachable from nav", () => testNavEntry());
 smoke("seek + download controls", () => testSeekControls());
-smoke("seek keyboard (slider)", () => testSeekKeyboard());
 smoke("sound variant takes", () => testTakes());
 smoke("zone music tab (elwynn)", () => testZoneMusic());
 smoke("subzone music tab (northshire)", () => testSubzoneMusic());
@@ -244,3 +257,16 @@ async function testGossipTab() {
 }
 smoke("gossip search finds NPC by phrase", () => testGossipSearch());
 smoke("npc gossip tab (61486)", () => testGossipTab());
+
+// ?sounds lists EVERY extracted sound, not just the ones with words. Music, ambience and
+// creature audio (~1,500 sounds) previously had no page at all.
+async function testSoundsBrowse() {
+  await nav(`?sounds=battle`);
+  await page.waitForSelector(".voice-page table tbody tr", { timeout: T });
+  const rows = await page.$$eval(".voice-page table tbody tr:not(.grouprow)", (rs) =>
+    rs.map((r) => [...r.querySelectorAll("td")].map((c) => c.textContent.trim()).join(" | ")));
+  const hit = rows.find((r) => /Moment - Battle06/.test(r));
+  console.log(`sounds browse "battle": rows=${rows.length} battle06=${hit ? hit.slice(0, 70) : "MISSING"}`);
+  return rows.length >= 5 && !!hit && /1:02/.test(hit);   // 62.4s
+}
+smoke("sounds browse by name (Moment - Battle06)", () => testSoundsBrowse());

@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Hand-verified transcripts for voice clips the server data never writes down.",
+    "",
+    "Most NPC voice acting has no line anywhere in the world DB: the client picks the clip",
+    "from an NPC's VOICE TYPE and the words exist only in the audio. That is ~250 clips,",
+    "and no amount of extraction reaches them -- someone has to listen.",
+    "",
+    "Keyed by SoundEntries name (readable and stable across rebuilds; ids move when the",
+    "client is patched). The value is an array indexed by TAKE, matching the numbered",
+    "chips in the player and the `files` array in the `sounds` table -- so index 0 is the",
+    "first chip, which is the file the download button names '<Sound>-1.ogg'.",
+    "",
+    "line here after actually hearing that take: a wiki lists what a voice TYPE says, not",
+    "which take says it, so copying a list in order would fabricate the mapping.",
+    "",
+    "Per TAKE: a string overrides that take; an EMPTY string \"\" marks the machine",
+    "transcript for that take as wrong and suppresses it without inventing a line;",
+    "null (or a missing index) leaves that take to the machine.",
+    "build-db loads these into sound_text with src 'v', which makes them full-text",
+    "searchable exactly like a script-derived transcript."
+  ],
+  "GoblinMaleZanyNPCGreetings": []
+}

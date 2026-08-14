@@ -127,6 +127,7 @@ python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/min
 python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc -> scripts/data/talents.json (talent-tree structure)
 python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
+python scripts/transcribe-sounds.py   # LOCAL+GPU: Whisper over public/sounds -> scripts/data/voice-transcripts-auto.json (machine transcripts for the ~1.6k clips no text table records). `--model`/`--compute`/`--only`/`--limit`. Needs faster-whisper. See "Transcribing the clips nothing writes down"
 bun scripts/extract-script-sounds.mjs # LOCAL: server ScriptDev2 src + the SQL dumps -> scripts/data/script-sounds.json (script_name -> the script_texts entries it speaks + sounds it plays, plus the sound-id worklist extract-sounds.py needs). Run BEFORE extract-sounds.py
 python scripts/extract-sounds.py      # LOCAL: client MPQ audio -> public/sounds/**.ogg (Opus, R2-only) + scripts/data/sound-map.json (committed mapping). `--only creature,npc,zone,va,text`, `--limit N`, `--jobs N`, `--dry-run`. Needs ffmpeg. See "Sounds"
 bun scripts/extract-script-abilities.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src/scripts) -> scripts/data/script-abilities.json (creature_template.script_name -> the spell ids that C++ fight hardcodes; gives Ragnaros/Nefarian/Onyxia an ability list they have no SQL rows for)
@@ -368,6 +369,62 @@ the thing wowhead doesn't have — **transcripts**, and full-text search over th
   fields (an unused `NPCSoundID` at 23 pushes Loop/Jump/Pet by one) and
   `CreatureDisplayInfo.NPCSoundID` moved 11 → 12. `SoundEntries` itself is 29 fields in
   both — it carries no localized string, so nothing in it shifted.
+
+### Transcribing the clips nothing writes down
+
+~1,600 voice sounds (4,067 takes) have audio and no line anywhere in the world data: the
+client picks a clip from an NPC's voice type and the words exist only in the audio.
+`scripts/transcribe-sounds.py` (LOCAL, GPU) runs Whisper over `public/sounds` and writes
+`scripts/data/voice-transcripts-auto.json`. Doing it ourselves also sidesteps the wiki
+route: a wiki lists what a voice TYPE says, not which take says it, and its text is
+CC BY-SA.
+
+- **Two files, and the precedence matters.** `voice-transcripts.json` is hand-verified and
+  authoritative; `voice-transcripts-auto.json` is machine output. build-db loads hand
+  first, and a hand line for a sound suppresses the machine one for that whole sound.
+  Machine rows carry src `w` and the UI badges them "auto" — a guess from audio must not
+  read with the same authority as a line lifted from the server's own scripts.
+- **Scope is voice only.** Anything reachable from `zone_sound` is excluded: speech
+  recognition over a five-minute orchestral loop yields confident nonsense and would
+  dominate the runtime.
+- **Whisper hallucinates in silence, and repeats itself doing it** — a 0.6s grunt becomes
+  "Thanks for watching!". Hence a phrase denylist plus gates on `avg_logprob`,
+  `no_speech_prob` and a 0.8s floor, and VAD on.
+- The speaker's name goes in `initial_prompt`, which is what gets Anub'Rekhan and
+  Vek'nilash spelled correctly; a general model has never seen them.
+- **GPU**: `--compute` is **negotiated at runtime** via
+  `ctranslate2.get_supported_compute_types()`, not hardcoded. A GTX 1070 (Pascal) reports
+  `{int8_float32, int8, float32}` and **no fp16 at all**, so a hardcoded `int8_float16`
+  fails to initialise and silently drops the whole run onto the CPU. ctranslate2 also
+  needs the CUDA 12 runtime (`pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`); the
+  script registers those DLL dirs itself, because without them the model LOADS (VRAM
+  fills, it looks like the GPU is working) and every encode then dies with
+  "cublas64_12.dll is not found".
+- **Checkpoints every 25 sounds.** The first full pass ran 105 minutes and persisted
+  nothing — it wrote once at the end and stalled before reaching it.
+- **Whisper's degenerate repetition loop** is guarded (`repetition_penalty`,
+  `no_repeat_ngram_size`, `compression_ratio_threshold`): one 3-second clip stalled a run
+  for ~48 minutes emitting tokens to the window cap.
+- **A systemic error must abort, not be absorbed per file.** 5 consecutive identical
+  failures stop the run — otherwise a missing CUDA DLL reads as 4,067 bad files and the
+  run reports success having transcribed nothing.
+- Thresholds are measured, not guessed: real lines score `avg_logprob` −0.21…−0.44 and
+  grunts −0.79…−1.14, while DURATION is a poor discriminator ("Yo" is 0.40s), which is why
+  the length floor is only 0.25s.
+
+### Browsing sounds (`?sounds`)
+
+2,545 sounds exist; `?voicelines` only ever listed the ~1,000 with words, so music,
+ambience and creature audio had no page at all. `?sounds` lists everything, filterable by
+name **or file path** (people know these by either), with a derived **Kind** — Music /
+Ambience / Zone Intro / Voice Acting / NPC Gossip / Creature. Kind comes from what POINTS
+at a sound, never `SoundEntries.type`, which is a playback flag (2D/3D/looping).
+
+- **The player column needs `max-width`, not `width`.** `width: 1px` is the usual
+  shrink-to-content idiom and it does nothing in these tables: measured against the real
+  page, `width` of 1px / 1% / 100% all left the column at 344px around a 211px control,
+  because auto layout hands the slack back. Only `max-width` binds. `.snd` wraps its take
+  chips so a 10-take sound doesn't overflow the cap.
 
 ### NPC gossip (`npc_gossip`, the NPC Gossip tab, the search Dialogue tab)
 

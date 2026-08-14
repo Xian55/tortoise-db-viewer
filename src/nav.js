@@ -131,6 +131,21 @@ const GUIDES = {
   ],
 };
 
+// Audio is its own top-level category rather than a "More" leaf: it is three distinct
+// browses (every sound, the spoken lines, the music) and burying them made the voice
+// lines effectively undiscoverable -- which is exactly how the first version shipped.
+const SOUNDS = {
+  label: "Sounds", href: "?sounds",
+  children: [
+    { label: "All Sounds", href: "?sounds" },
+    { label: "Voice Lines", href: "?voicelines" },
+    { label: "Music", href: "?sounds=music/" },
+    { label: "Ambience", href: "?sounds=ambience/" },
+    { label: "Creature Sounds", href: "?sounds=creature/" },
+    { label: "Voice Acting", href: "?sounds=interface/va/" },
+  ],
+};
+
 // Utilities grouped under "More" so the menubar fits one line (no wrap).
 const MORE = {
   label: "More",
@@ -139,7 +154,6 @@ const MORE = {
     { label: "Gear-score presets", href: "?weights" },
     { label: "Objects", href: "?browse=objects" },
     { label: "Icons", href: "?icons" },
-    { label: "Voice Lines", href: "?voicelines" },
     { label: "Random", href: "?random" },
   ],
 };
@@ -154,6 +168,7 @@ export const MENU = [
   ZONES,
   GUIDES,
   { label: "Talents", href: "?talents" },
+  SOUNDS,
   MORE,
 ];
 
