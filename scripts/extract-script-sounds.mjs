@@ -99,7 +99,14 @@ const { byScript, files, withStruct, viaFallback, unresolved } = perScript(SCRIP
 // than none, hence: nearest in either direction, and a candidate is rejected if another
 // sound call sits between it and this one (that say belongs to the other sound).
 const SAY_RE = /\b(?:MonsterYell|MonsterSay|MonsterYellToZone|MonsterTextEmote|MonsterWhisper)\s*\(\s*"((?:[^"\\]|\\.)*)"/g;
-const SND_RE = /\b(?:PlayDirectSound|PlayDistanceSound|DoPlaySoundToSet|SendPlaySound)\s*\(\s*(?:[^,()]*,\s*)?(\d{2,})\s*[,)]/g;
+// Also matches a bare `PlaySound(me, SOUND_X, true)` helper, and -- the bigger gap --
+// resolves an enum CONSTANT, not just a numeric literal. Ostarius, Perotharn, Ursol and
+// most of the Turtle raid VO name their sounds through constants, so a digits-only
+// pattern saw none of them. Two capture groups because the id may be the first or the
+// second argument; whichever resolves through the file's constants wins.
+const SND_RE = /\b(?:PlayDirectSound|PlayDistanceSound|DoPlaySoundToSet|SendPlaySound|PlaySound)\s*\(\s*([A-Za-z_]\w*|\d+)\s*(?:,\s*([A-Za-z_]\w*|\d+)\s*)?[,)]/g;
+// The same calls taking a numeric broadcast_text id instead of a literal string.
+const SAY_ID_RE = /\b(?:MonsterYell|MonsterSay|MonsterYellToZone|MonsterTextEmote|MonsterWhisper)\s*\(\s*([A-Za-z_]\w*|\d+)\s*[,)]/g;
 const NEAR = 300;   // chars; the idiom is two consecutive statements
 
 // Each entry also carries the script names its FILE registers. Per-struct resolution
@@ -185,10 +192,26 @@ function inlineLines() {
   for (const f of walk(SCRIPTS_DIR)) {
     const src = stripComments(readFileSync(f, "utf8"));
     const consts = constants(src);
-    const says = [...src.matchAll(SAY_RE)].map((m) => ({ i: m.index, text: m[1] }));
+    // A say call takes EITHER a literal string or a numeric broadcast_text id --
+    // `MonsterSay(66110)`, `MonsterSay(PED_TEXT_1)`. Only matching the string form left
+    // every boss that writes its lines the numeric way with audio and no words (Ostarius,
+    // Perotharn, Ursol and most of the Turtle raid VO). The id is resolved to text by
+    // build-db, which already has broadcast_text staged.
+    const says = [
+      ...[...src.matchAll(SAY_RE)].map((m) => ({ i: m.index, text: m[1] })),
+      ...[...src.matchAll(SAY_ID_RE)].map((m) => {
+        const v = numberOf(m[1], consts);
+        return v && v > 0 ? { i: m.index, bt: v } : null;
+      }).filter(Boolean),
+    ].sort((a, b) => a.i - b.i);
     if (!says.length) continue;
     const registered = [...new Set([...src.matchAll(/Name\s*=\s*"([^"]+)"/g)].map((m) => m[1]))];
-    const snds = [...src.matchAll(SND_RE)].map((m) => ({ i: m.index, id: Number(m[1]) }));
+    // The id can be arg 0 or arg 1 depending on the idiom; take whichever resolves.
+    const snds = [...src.matchAll(SND_RE)].map((m) => {
+      const a = numberOf(m[1], consts), b = numberOf(m[2], consts);
+      const id = (a && a >= MIN_SOUND_ID) ? a : ((b && b >= MIN_SOUND_ID) ? b : null);
+      return id ? { i: m.index, id } : null;
+    }).filter(Boolean);
     const used = new Set();
     for (const s of snds) {
       // Nearest say either way, closest first, skipping any that another sound call sits
@@ -203,7 +226,9 @@ function inlineLines() {
       if (!best) continue;
       used.add(best.i);         // one say per sound, so a loop can't reuse the same line
       if (!out.has(s.id)) {
-        const ent = { t: best.text.replace(/\\"/g, '"').replace(/\\n/g, " ").trim(), s: registered };
+        const ent = best.bt
+          ? { bi: best.bt, s: registered }      // a broadcast_text id; build-db resolves the words
+          : { t: best.text.replace(/\\"/g, '"').replace(/\\n/g, " ").trim(), s: registered };
         // An instance script dispatches on creature entry -- `case fenektis_the_deceiver:`
         // -- which names the speaker outright, where the file's registration only names
         // the INSTANCE script and can't. That is the difference between a credited line

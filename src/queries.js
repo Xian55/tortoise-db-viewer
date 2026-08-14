@@ -667,10 +667,20 @@ export const Q_ZONE_SOUNDS = `
 export const Q_VOICE_LINES = `
   SELECT s.id, s.name, s.files, s.ms,
     (SELECT t.text FROM sound_text t WHERE t.sound = s.id ORDER BY t.creature IS NULL, t.id LIMIT 1) AS text,
-    (SELECT c.entry FROM sound_text t JOIN creatures c ON c.entry = t.creature
-      WHERE t.sound = s.id ORDER BY t.id LIMIT 1) AS creature,
-    (SELECT c.name FROM sound_text t JOIN creatures c ON c.entry = t.creature
-      WHERE t.sound = s.id ORDER BY t.id LIMIT 1) AS creature_name,
+    -- Speaker from the transcript when there is one, else from creature_sound: most of
+    -- Turtle's voice acting has no written line, but its name still identifies who says
+    -- it, and build-db records that as a 'Voice' slot.
+    COALESCE(
+      (SELECT c.entry FROM sound_text t JOIN creatures c ON c.entry = t.creature
+        WHERE t.sound = s.id ORDER BY t.id LIMIT 1),
+      (SELECT cs.creature FROM creature_sound cs WHERE cs.sound = s.id AND cs.slot = 'Voice' LIMIT 1)
+    ) AS creature,
+    COALESCE(
+      (SELECT c.name FROM sound_text t JOIN creatures c ON c.entry = t.creature
+        WHERE t.sound = s.id ORDER BY t.id LIMIT 1),
+      (SELECT c.name FROM creature_sound cs JOIN creatures c ON c.entry = cs.creature
+        WHERE cs.sound = s.id AND cs.slot = 'Voice' LIMIT 1)
+    ) AS creature_name,
     (SELECT COUNT(DISTINCT t.creature) FROM sound_text t WHERE t.sound = s.id AND t.creature IS NOT NULL) AS speakers
   FROM sounds s
   WHERE EXISTS (SELECT 1 FROM sound_text t WHERE t.sound = s.id)

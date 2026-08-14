@@ -1354,7 +1354,10 @@ console.log("Importing sounds...");
       db.transaction(() => {
         for (const [sid, ent] of Object.entries(inline)) {
           const sound = Number(sid);
-          const text = typeof ent === "string" ? ent : ent.t;
+          // `bi` is a broadcast_text id the script said numerically rather than inline.
+          const text = typeof ent === "string" ? ent
+            : (ent.t ?? (ent.bi ? (btRow.get(ent.bi) || {}).text : null));
+          if (!text) continue;
           let who = (typeof ent === "object" && ent.c && known.has(ent.c)) ? [ent.c] : [];
           if (!who.length) who = bySound.all(sound).map((r) => r.creature);
           if (!who.length && typeof ent === "object") {
@@ -3016,6 +3019,42 @@ if (db.prepare(`SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name
   // sound_text_fts is an EXTERNAL-CONTENT table, so DELETE FROM it is invalid
   // (SQLITE_CORRUPT_VTAB). 'rebuild' is the documented way to resync one to its content.
   if (byAbbrev) db.exec(`INSERT INTO sound_text_fts(sound_text_fts) VALUES('rebuild')`);
+
+  // ---- speakers for clips that have NO transcript ----
+  // Most of Turtle's own voice acting is never written down anywhere: the C++ plays the
+  // clip and the character says nothing in text. Those sounds never reach sound_text, so
+  // every pass above is blind to them -- yet their names identify the speaker as plainly
+  // as the transcribed ones do (Ostarius_Intro1, Perotharn_DEATH, Ursol_Phase2).
+  // A speaker shouldn't require a transcript, so these are attached through
+  // creature_sound instead, under a 'Voice' slot. Same matching rules and the same
+  // requirement of a unique creature; ambiguous ones stay blank.
+  const insCs2 = db.prepare(`INSERT OR IGNORE INTO creature_sound VALUES (?,?,'Voice',300)`);
+  // VOICE-ACTING files only. Without that guard this matched music: "EversongNight" ->
+  // "E'llo Turtle'mon", "HyjalPastDay" -> "PvP H-Mid Credit Marker". A zone track's name
+  // is not a creature's name, and a loose substring will always find something.
+  const orphans = db.prepare(`SELECT s.id, s.name FROM sounds s
+    WHERE s.files LIKE '["interface/va/%'
+      AND NOT EXISTS (SELECT 1 FROM sound_text t WHERE t.sound = s.id AND t.creature IS NOT NULL)
+      AND NOT EXISTS (SELECT 1 FROM creature_sound cs WHERE cs.sound = s.id)`).all();
+  let voiceNamed = 0;
+  db.transaction(() => {
+    for (const r of orphans) {
+      const ws = wordsOf(r.name).filter((w) => w !== "a" && !/^mp3$/i.test(w));
+      const tok = ws[0];
+      if (!tok || tok.length < 4) continue;
+      let cands = creatureRows.filter((c) => wordsOf(c.name).some((w) => w === tok));
+      if (!cands.length) cands = creatureRows.filter((c) => wordsOf(c.name).some((w) => w.startsWith(tok) || tok.startsWith(w)));
+      if (!cands.length && tok.length >= 6) {
+        const t2 = tok.replace(/[^a-z0-9]/g, "");
+        cands = creatureRows.filter((c) => String(c.name).toLowerCase().replace(/[^a-z0-9]/g, "").includes(t2));
+      }
+      const uniq = [...new Set(cands.map((c) => c.entry))];
+      if (uniq.length !== 1) continue;
+      insCs2.run(uniq[0], r.id);
+      voiceNamed++;
+    }
+  })();
+  console.log(`  creature_sound: +${voiceNamed} transcript-less clips matched to a speaker by name`);
   const namedNow = db.prepare(`SELECT COUNT(DISTINCT sound) n FROM sound_text WHERE creature IS NOT NULL`).get().n;
   console.log(`  sound_text: +${byAbbrev} by abbreviation -> ${namedNow} sounds name a speaker`);
 }
