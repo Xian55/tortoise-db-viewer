@@ -97,7 +97,17 @@ export async function launch() {
     });
   });
   page.on("pageerror", (e) => { if (!BENIGN_PAGEERR.test(e.message)) errbuf.push("pageerror: " + e.message); });
-  page.on("requestfailed", (r) => { if (!BENIGN.test(r.url())) errbuf.push("reqfail: " + r.url() + " " + r.failure()?.errorText); });
+  page.on("requestfailed", (r) => {
+    // An ABORTED media request is normal, not breakage: the audio player drops its src on
+    // route change (stopAudio), so navigating away mid-clip cancels the in-flight fetch.
+    // Because the abort surfaces asynchronously it lands on whichever test runs next --
+    // which is why this presented as ~1 flaky test per 3 runs, on a different test each
+    // time, and eventually failed CI. Attributing it to that test would be wrong twice
+    // over: it is neither that test's doing nor a defect.
+    const err = r.failure()?.errorText || "";
+    if (err === "net::ERR_ABORTED" && /\/sounds\/.+\.(ogg|mp3)$/.test(r.url())) return;
+    if (!BENIGN.test(r.url())) errbuf.push("reqfail: " + r.url() + " " + err);
+  });
   page.on("response", (r) => { if (r.status() >= 400 && !BENIGN.test(r.url())) errbuf.push(`http ${r.status()}: ${r.url()}`); });
 }
 
