@@ -75,6 +75,11 @@ VANILLA_DBC = {
     "npcsounds_first": 1,        # NPCSounds.dbc: Sound[4] at 1..4
     # AreaTable.dbc -- all three precede the name block, so unchanged in TBC.
     "area_ambience": 7, "area_zone_music": 8, "area_intro_sound": 9,
+    # WMOAreaTable.dbc -- music/ambience tied to a BUILDING rather than a zone. Some of
+    # the most recognisable tracks live only here: the Deadmines' intro sting is a WMO
+    # row (wmo 499 -> area 1581), with nothing on the AreaTable side at all. All four
+    # fields precede the localized name block, so TBC doesn't move them.
+    "wmo_ambience": 6, "wmo_music": 7, "wmo_intro": 8, "wmo_area": 10,
     "zm_day": 6, "zm_night": 7,  # ZoneMusic.dbc
     "sa_day": 1, "sa_night": 2,  # SoundAmbience.dbc
     "zi_sound": 2,               # ZoneIntroMusicTable.dbc

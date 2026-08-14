@@ -222,6 +222,7 @@ def main():
     CDI, _, cdi_fields = dbc("CreatureDisplayInfo")
     CMD, _, _ = dbc("CreatureModelData")
     AT, _, _ = dbc("AreaTable")
+    WMO, _, _ = dbc("WMOAreaTable")
     ZM, _, _ = dbc("ZoneMusic")
     ZI, _, _ = dbc("ZoneIntroMusicTable")
     SA, _, _ = dbc("SoundAmbience")
@@ -286,7 +287,7 @@ def main():
                 for sid in got:
                     want_sound(sid, "voice")
 
-    zone_music, ambience, intro, area_sound = {}, {}, {}, {}
+    zone_music, ambience, intro, area_sound, wmo_sound = {}, {}, {}, {}, {}
     if "zone" in want:
         for r in ZM:
             day, night = r[F["zm_day"]], r[F["zm_night"]]
@@ -300,11 +301,39 @@ def main():
                 ambience[r[0]] = [day if day in se_by_id else 0, night if night in se_by_id else 0]
                 for sid in ambience[r[0]]:
                     want_sound(sid, "music")
+        for area, ent in wmo_sound.items():
+            for sid in ent.get("m", ()):
+                for x in zone_music.get(sid, ()):
+                    want_sound(x, "music")
+            for sid in ent.get("a", ()):
+                for x in ambience.get(sid, ()):
+                    want_sound(x, "music")
+            for sid in ent.get("i", ()):
+                want_sound(intro.get(sid, 0), "music")
+
         for r in ZI:
             sid = r[F["zi_sound"]]
             if sid in se_by_id:
                 intro[r[0]] = sid
                 want_sound(sid, "music")
+        # WMOAreaTable: music/ambience/intro attached to a BUILDING instead of a zone.
+        # The client picks these up from the WMO you are standing in, so they never appear
+        # on the AreaTable row -- the Deadmines' intro sting is a WMO row and nothing else.
+        # Rows carry an AreaTableID, which is what makes them placeable on a zone page.
+        for r in WMO:
+            area = r[F["wmo_area"]]
+            if not area:
+                continue
+            ent = wmo_sound.setdefault(area, {})
+            for key, field, table in (("m", "wmo_music", zone_music),
+                                      ("a", "wmo_ambience", ambience),
+                                      ("i", "wmo_intro", intro)):
+                v = r[F[field]]
+                if v and v in table and v not in ent.get(key, ()):
+                    ent.setdefault(key, []).append(v)
+            if not ent:
+                wmo_sound.pop(area, None)
+
         for r in AT:
             m, a, i = r[F["area_zone_music"]], r[F["area_ambience"]], r[F["area_intro_sound"]]
             ent = {}
@@ -386,7 +415,8 @@ def main():
     print(f"scope: {len(wanted)} sounds -> {len(jobs)} unique files, {raw_bytes / 1e6:,.0f} MB raw "
           f"({len(absent)} DBC refs absent from this client)")
     print(f"  creature={len(creature_sound)} npc={len(npc_sounds)} zoneMusic={len(zone_music)} "
-          f"ambience={len(ambience)} intro={len(intro)} displays={len(display_sound)} voiceLines=+{n_text}")
+          f"ambience={len(ambience)} intro={len(intro)} displays={len(display_sound)} "
+          f"voiceLines=+{n_text} wmoAreas={len(wmo_sound)}")
     if args.dry_run:
         return
 
@@ -478,6 +508,7 @@ def main():
         "ambience": {str(k): v for k, v in ambience.items()},
         "intro": {str(k): v for k, v in intro.items()},
         "areaSound": {str(k): v for k, v in area_sound.items()},
+        "wmoSound": {str(k): v for k, v in wmo_sound.items()},
     }
     if args.limit:
         print("--limit given: NOT rewriting the sound map (it would drop every unprocessed sound)")

@@ -1183,6 +1183,29 @@ console.log("Importing sounds...");
         const intro = map.intro[ent.i];
         if (intro && haveSound.has(intro)) { insZs.run(Number(area), intro, "Intro"); nzs++; }
       }
+      // WMOAreaTable: audio the client plays for the BUILDING you are standing in, which
+      // never reaches the zone's own AreaTable row. Several of the most recognisable
+      // tracks live only here -- the Deadmines' intro sting is a WMO row and nothing else
+      // -- so a zone-only reading silently misses them. Labelled "(Interior)" because
+      // that is what they are: a zone can legitimately have both, playing in different
+      // places, and collapsing them would misrepresent either one.
+      // A WMO commonly repeats the zone's own track. Only the ones the zone does NOT
+      // already list are worth a second row; otherwise Deadmines shows "Zone-Mystery"
+      // twice, once per source, which tells the reader nothing.
+      const already = new Set(db.prepare(`SELECT area, sound FROM zone_sound`).all()
+        .map((r) => `${r.area}:${r.sound}`));
+      const addWmo = (a, sound, kind) => {
+        if (!sound || !haveSound.has(sound) || already.has(`${a}:${sound}`)) return;
+        already.add(`${a}:${sound}`);
+        insZs.run(a, sound, kind);
+        nzs++;
+      };
+      for (const [area, ent] of Object.entries(map.wmoSound || {})) {
+        const a = Number(area);
+        for (const id of ent.m || []) for (const s of map.zoneMusic[id] || []) addWmo(a, s, "Music (Interior)");
+        for (const id of ent.a || []) for (const s of map.ambience[id] || []) addWmo(a, s, "Ambience (Interior)");
+        for (const id of ent.i || []) addWmo(a, map.intro[id], "Intro (Interior)");
+      }
     })();
 
     // ---- transcripts ----

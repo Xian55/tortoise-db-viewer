@@ -318,6 +318,14 @@ the thing wowhead doesn't have — **transcripts**, and full-text search over th
   `CreatureDisplayInfo.NPCSoundID` → `NPCSounds` → the greeting/farewell/pissed set.
   Zones: `AreaTable.{ZoneMusic,AmbienceID,IntroSound}` → `ZoneMusic` / `SoundAmbience` /
   `ZoneIntroMusicTable`, each a day+night pair (collapsed to one row when identical).
+- **`WMOAreaTable` is a second, easily-missed source.** The client also binds audio to the
+  BUILDING you stand in, and that never reaches the zone's own `AreaTable` row — the
+  Deadmines' iconic `Moment-Spooky01` intro is a WMO row (wmo 499 → area 1581) with
+  nothing on the AreaTable side at all. Reading zones only silently loses it. 2,889 rows
+  carry music/ambience/intro across 305 areas; those with an `AreaTableID` are placeable
+  and land as `… (Interior)` kinds, deduped against whatever the zone already lists (a WMO
+  usually repeats the zone track). Fields 6/7/8/10 = Ambience/ZoneMusic/IntroSound/
+  AreaTableID, all ahead of the localized name block, so TBC doesn't move them.
 - **Transcripts come from the server, but the SPEAKER usually doesn't.** `script_texts`
   pairs a line with a sound id and says nothing about who says it — that binding is a C++
   `DoScriptText(SAY_AGGRO, m_creature)` call, read out by `extract-script-sounds.mjs` via
