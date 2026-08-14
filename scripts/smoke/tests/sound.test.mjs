@@ -192,3 +192,15 @@ smoke("voicelines transcript search", () => testVoiceSearch("insects", "Ragnaros
 smoke("voicelines name search", () => testVoiceSearch("ragnarosslay", "Ragnaros"));
 smoke("search voice tab (transcript)", () => testSearchVoiceTab("insects", "Ragnaros"));
 smoke("search voice tab (sound name)", () => testSearchVoiceTab("satyrboss", "Satyrboss"));
+
+// WMOAreaTable: audio bound to a BUILDING, which never reaches the zone's AreaTable row.
+// The Deadmines' intro sting exists only there, so a zone-only reading misses it entirely.
+async function testInteriorMusic() {
+  await nav(`?zone=1581`);            // The Deadmines
+  await openTab("sounds");
+  const rows = await paneRows("sounds");
+  const text = rows.map((r) => r.join(" | ")).join("\n");
+  console.log(`deadmines music: rows=${rows.length} kinds=[${rows.map((r) => r[2]).join(",")}]`);
+  return rows.length >= 3 && /Interior/.test(text) && /Spooky/i.test(text);
+}
+smoke("zone interior music (deadmines WMO)", () => testInteriorMusic());
