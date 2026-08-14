@@ -1944,7 +1944,7 @@ async function showSounds() {
   app.innerHTML = `<div class="voice-page">
     <h1>Sounds</h1>
     <p class="muted">${all.length.toLocaleString()} extracted sounds — music, ambience, voice and creature audio.</p>
-    <input type="search" class="icon-search" placeholder="Search by name or file… (e.g. moment-battle, stormwind, ragnaros)"
+    <input type="search" class="icon-search" placeholder="Search name, file or transcript… (e.g. moment-battle, ragnaros, time is money)"
       aria-label="Search sounds" value="${esc(term)}">
     <p class="muted" data-count></p>
     <div data-out></div>
@@ -1973,8 +1973,14 @@ async function showSounds() {
   ];
 
   const render = () => {
+    // Name, file path AND transcript. The page shows a Transcript column, so not
+    // searching it was an inconsistency users hit immediately: "time is money" matched on
+    // ?voicelines and ?search but not here. Substring rather than FTS because every row
+    // is already in memory -- and substring also matches mid-word, which FTS would not.
     const rows = term
-      ? all.filter((r) => (r.name || "").toLowerCase().includes(term) || firstFile(r).includes(term))
+      ? all.filter((r) => (r.name || "").toLowerCase().includes(term)
+          || firstFile(r).includes(term)
+          || (r.text || "").toLowerCase().includes(term))
       : all;
     countEl.textContent = `${rows.length.toLocaleString()} shown`;
     out.innerHTML = "";

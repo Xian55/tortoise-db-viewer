@@ -290,3 +290,17 @@ async function testSoundsBrowse() {
   return rows.length >= 5 && !!hit && /1:02/.test(hit);   // 62.4s
 }
 smoke("sounds browse by name (Moment - Battle06)", () => testSoundsBrowse());
+
+// ?sounds shows a Transcript column, so its filter must search transcripts too --
+// "time is money" matched on ?voicelines and ?search but not here, which is the kind of
+// inconsistency a user hits on their first try.
+async function testSoundsTranscriptSearch() {
+  await nav(`?sounds=${encodeURIComponent("time is money")}`);
+  await page.waitForSelector(".voice-page table tbody tr", { timeout: T });
+  const rows = await page.$$eval(".voice-page table tbody tr:not(.grouprow)", (rs) =>
+    rs.map((r) => [...r.querySelectorAll("td")].map((c) => c.textContent.trim()).join(" | ")));
+  const hit = rows.some((r) => /time is money/i.test(r));
+  console.log(`sounds transcript search: rows=${rows.length} hit=${hit}`);
+  return rows.length > 0 && hit;
+}
+smoke("sounds search matches transcript", () => testSoundsTranscriptSearch());
