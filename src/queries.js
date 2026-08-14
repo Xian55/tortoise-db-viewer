@@ -673,18 +673,33 @@ export const Q_VOICE_LINES = `
     COALESCE(
       (SELECT c.entry FROM sound_text t JOIN creatures c ON c.entry = t.creature
         WHERE t.sound = s.id ORDER BY t.id LIMIT 1),
-      (SELECT cs.creature FROM creature_sound cs WHERE cs.sound = s.id AND cs.slot = 'Voice' LIMIT 1)
+      (SELECT cs.creature FROM creature_sound cs WHERE cs.sound = s.id
+        AND cs.slot IN ('Voice', 'Greeting', 'Farewell', 'Annoyed') ORDER BY cs.creature LIMIT 1)
     ) AS creature,
     COALESCE(
       (SELECT c.name FROM sound_text t JOIN creatures c ON c.entry = t.creature
         WHERE t.sound = s.id ORDER BY t.id LIMIT 1),
       (SELECT c.name FROM creature_sound cs JOIN creatures c ON c.entry = cs.creature
-        WHERE cs.sound = s.id AND cs.slot = 'Voice' LIMIT 1)
+        WHERE cs.sound = s.id AND cs.slot IN ('Voice', 'Greeting', 'Farewell', 'Annoyed')
+        ORDER BY cs.creature LIMIT 1)
     ) AS creature_name,
-    (SELECT COUNT(DISTINCT t.creature) FROM sound_text t WHERE t.sound = s.id AND t.creature IS NOT NULL) AS speakers
+    -- Count both sources. A gossip line is shared by every NPC of that voice type -- the
+    -- goblin vendor greeting has ~50 speakers -- so the "+N" is the honest way to show it
+    -- rather than implying one named NPC owns the line.
+    MAX(
+      (SELECT COUNT(DISTINCT t.creature) FROM sound_text t WHERE t.sound = s.id AND t.creature IS NOT NULL),
+      (SELECT COUNT(DISTINCT cs.creature) FROM creature_sound cs WHERE cs.sound = s.id
+        AND cs.slot IN ('Voice', 'Greeting', 'Farewell', 'Annoyed'))
+    ) AS speakers
   FROM sounds s
   WHERE EXISTS (SELECT 1 FROM sound_text t WHERE t.sound = s.id)
      OR s.files LIKE '["interface/va/%'
+     -- NPC gossip: the greeting/farewell/annoyed set. These are the lines players
+     -- actually quote ("Time is money, friend") and they were invisible here, because
+     -- they live under creature/ rather than the VA directory and no text table records
+     -- what they say. Spoken dialogue with no transcript is still a voice line.
+     OR EXISTS (SELECT 1 FROM creature_sound cs
+                 WHERE cs.sound = s.id AND cs.slot IN ('Greeting', 'Farewell', 'Annoyed'))
   ORDER BY text IS NULL, s.name`;
 
 // Voice lines for the unified `?search=` page + the top-bar dropdown. Two ways in --
