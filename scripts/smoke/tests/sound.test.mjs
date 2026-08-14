@@ -204,3 +204,18 @@ async function testInteriorMusic() {
   return rows.length >= 3 && /Interior/.test(text) && /Spooky/i.test(text);
 }
 smoke("zone interior music (deadmines WMO)", () => testInteriorMusic());
+
+// NPC gossip (greeting/farewell/annoyed) belongs on the voice-line page. These are the
+// lines players actually quote -- "Time is money, friend" is the goblin vendor greeting --
+// and they were filtered out because they live under creature/ with no transcript.
+async function testGossipListed() {
+  await nav(`?voicelines=vendor`);
+  await page.waitForSelector(".voice-page table tbody tr", { timeout: T });
+  const rows = await page.$$eval(".voice-page table tbody tr", (rs) =>
+    rs.map((r) => [...r.querySelectorAll("td")].map((c) => c.textContent.trim()).join(" | ")));
+  const goblin = rows.some((r) => /goblin/i.test(r));
+  const named = rows.filter((r) => r.split(" | ").some((c) => /^[A-Z]/.test(c) && c.length > 3)).length;
+  console.log(`voicelines vendor: rows=${rows.length} goblinVendor=${goblin} withText=${named}`);
+  return rows.length >= 5 && goblin;
+}
+smoke("voicelines includes NPC gossip", () => testGossipListed());
