@@ -369,6 +369,24 @@ the thing wowhead doesn't have — **transcripts**, and full-text search over th
   `CreatureDisplayInfo.NPCSoundID` moved 11 → 12. `SoundEntries` itself is 29 fields in
   both — it carries no localized string, so nothing in it shifted.
 
+### NPC gossip (`npc_gossip`, the NPC Gossip tab, the search Dialogue tab)
+
+What an NPC says when you *talk* to it, and the only place a quoted phrase is searchable.
+
+- **A voice clip and a spoken line are different objects, and the data never links them.**
+  The client picks the clip from the NPC's **voice type** (`GoblinMaleGruffVendorNPCGreeting`
+  is shared by ~50 goblin male gruff vendors) and shows that one NPC's gossip text
+  separately. Only 94 of 13,665 `broadcast_text` rows carry a `sound_id` at all, and **no**
+  gossip-slot sound has one — so "Time is money, friend" can never be a *transcript* of the
+  vendor greeting, however much it sounds like one. It is gossip text, and it belongs to
+  Clemence the Counter.
+- Chain: `creature_template.gossip_menu_id` → `gossip_menu.text_id` → `npc_text.BroadcastTextID0..7`
+  → `broadcast_text.male_text`. Yields ~4,983 lines across ~2,620 NPCs.
+- `npc_gossip` is deliberately **not** `WITHOUT ROWID`: `npc_gossip_fts` is external-content
+  and keys on the content table's rowid, which such a table doesn't have.
+- Rendered through `questText()`, since gossip carries the same `$B`/`$N` tokens quest text
+  does. **Optional schema** — `caps().gossip` gates the tab and the search query.
+
 ### Custom icons
 
 Turtle adds items whose icons are **not on Blizzard's CDN**; they live only in

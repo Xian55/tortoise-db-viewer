@@ -1497,3 +1497,6 @@ td .pet-rank { margin: 1px 0; }
    standard shrink-to-content idiom: the browser grows it to the minimum content width
    and gives everything else back to the text columns. */
 .snd-col { width: 1px; white-space: nowrap; }
+/* Gossip is prose: let it wrap and cap the measure so a long menu text doesn't
+   stretch the table to the viewport width. */
+.gossip-text { white-space: normal; max-width: 70ch; }

@@ -219,3 +219,28 @@ async function testGossipListed() {
   return rows.length >= 5 && goblin;
 }
 smoke("voicelines includes NPC gossip", () => testGossipListed());
+
+// NPC gossip: what an NPC says when you talk to it. This is where a quoted phrase
+// actually lives -- a voice clip is shared across a whole voice type and the data never
+// links it to words, so "Time is money, friend" is only findable through gossip text.
+async function testGossipSearch() {
+  await nav(`?search=${encodeURIComponent("time is money")}`);
+  await page.waitForSelector(`.tab[data-tab="gossip"]`, { timeout: T });
+  await page.$eval(`.tab[data-tab="gossip"]`, (e) => e.click());
+  await page.waitForSelector(`.tabpane[data-pane="gossip"]:not(.hidden) table tbody tr`, { timeout: T });
+  const rows = await paneRows("gossip");
+  const hit = rows.some((r) => /clemence/i.test(r.join(" ")));
+  console.log(`gossip search "time is money": rows=${rows.length} foundClemence=${hit}`);
+  return rows.length > 0 && hit;
+}
+
+// The same text on the NPC's own page.
+async function testGossipTab() {
+  await nav(`?npc=61486`);
+  await openTab("gossip");
+  const rows = await paneRows("gossip");
+  console.log(`npc 61486 gossip rows=${rows.length}: ${rows[0] && rows[0][0].slice(0, 40)}`);
+  return rows.length >= 1 && /time is money/i.test(rows.map((r) => r.join(" ")).join(" "));
+}
+smoke("gossip search finds NPC by phrase", () => testGossipSearch());
+smoke("npc gossip tab (61486)", () => testGossipTab());

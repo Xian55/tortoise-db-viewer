@@ -96,9 +96,10 @@ export function caps() {
     capsPromise = query(`SELECT
         (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'subzones') AS subzones,
         (SELECT COUNT(*) FROM pragma_table_info('spawn_points') WHERE name = 'sub') AS spawn_sub,
-        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sounds') AS sounds`)
-      .then((r) => ({ subzones: !!r[0]?.subzones, spawnSub: !!r[0]?.spawn_sub, sounds: !!r[0]?.sounds }))
-      .catch(() => ({ subzones: false, spawnSub: false, sounds: false }));
+        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sounds') AS sounds,
+        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'npc_gossip') AS gossip`)
+      .then((r) => ({ subzones: !!r[0]?.subzones, spawnSub: !!r[0]?.spawn_sub, sounds: !!r[0]?.sounds, gossip: !!r[0]?.gossip }))
+      .catch(() => ({ subzones: false, spawnSub: false, sounds: false, gossip: false }));
   }
   return capsPromise;
 }
