@@ -1460,7 +1460,8 @@ td .pet-rank { margin: 1px 0; }
 .pet-universal-note { margin-top: 4px; font-size: 13px; font-style: italic; }
 
 /* ---- audio player (src/audio.js): NPC sounds, zone music, voice lines ---- */
-.snd { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+/* wrap: a 10-take sound would otherwise overflow the capped column. */
+.snd { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .snd-play { width: 26px; height: 26px; flex: 0 0 auto; padding: 0; line-height: 1;
   background: var(--panel); border: 1px solid var(--border); border-radius: 50%;
   color: var(--text); cursor: pointer; font-size: 11px; }
@@ -1472,7 +1473,7 @@ td .pet-rank { margin: 1px 0; }
    Padded block, not a 3px strip: the visible bar stays thin but the grab target is
    ~15px tall, which is the difference between seekable and fiddly (and touch-usable).
    touch-action:none so a drag scrubs instead of scrolling the page. */
-.snd-bar { width: 90px; flex: 0 0 auto; padding: 6px 0; cursor: pointer; touch-action: none; }
+.snd-bar { width: 70px; flex: 0 0 auto; padding: 6px 0; cursor: pointer; touch-action: none; }
 .snd-bar::before { content: ""; display: block; height: 3px; background: var(--border); border-radius: 2px; }
 .snd-bar > span { display: block; height: 3px; width: 0; margin-top: -3px; background: var(--gold); border-radius: 2px; }
 .snd-bar:hover::before, .snd-bar:focus-visible::before { background: var(--muted); }
@@ -1488,15 +1489,28 @@ td .pet-rank { margin: 1px 0; }
 .snd-take { min-width: 18px; height: 18px; padding: 0 3px; font-size: 11px; cursor: pointer;
   background: transparent; border: 1px solid var(--border); border-radius: 3px; color: var(--muted); }
 .snd-take.on { border-color: var(--gold); color: var(--gold); }
-/* A transcript is prose, not a label -- let it wrap and take the width it needs. */
-.snd-text { white-space: normal; max-width: 52ch; font-style: italic; }
+/* A transcript is prose, not a label -- let it wrap and take the width it needs.
+   width:100% makes it the GREEDY column: `table{width:100%}` has slack to distribute,
+   and with every other column shrink-to-content the slack has to land somewhere. Capping
+   this one with max-width instead sent it back to the Play column, which then rendered
+   ~150px of empty space next to a fixed-size control. */
+.snd-text { white-space: normal; width: 100%; font-style: italic; }
 .voice-page h1 { margin-bottom: 2px; }
 /* The player cell holds a fixed-size control, not prose. Without this the table's auto
    layout hands it a share of the free width -- measured 364px for ~250px of content --
    and pushes the transcript into a narrow ragged column. `width:1px` + nowrap is the
    standard shrink-to-content idiom: the browser grows it to the minimum content width
    and gives everything else back to the text columns. */
-.snd-col { width: 1px; white-space: nowrap; }
+/* The player is a fixed-size control, so its column should hug it. `width:1px` (the
+   usual shrink-to-content idiom) does NOTHING here -- measured against the real table,
+   width 1px/1%/100% all left the column at 344px for 211px of content, because auto
+   layout hands the slack back. Only max-width actually binds. With the takes allowed to
+   wrap, 230px fits the widest player and the transcript gets the space back
+   (Play 344->126px, Transcript 259->477px). */
+.snd-col { max-width: 230px; }
+/* The greedy column when a table has no transcript to stretch (e.g. ?sounds
+   filtered to music, where every Transcript cell is empty and hideEmpty drops it). */
+.snd-grow { width: 100%; }
 /* Gossip is prose: let it wrap and cap the measure so a long menu text doesn't
    stretch the table to the viewport width. */
 .gossip-text { white-space: normal; max-width: 70ch; }
@@ -1505,3 +1519,5 @@ td .pet-rank { margin: 1px 0; }
 .snd-auto { font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
   padding: 1px 4px; border: 1px solid var(--border); border-radius: 3px;
   color: var(--muted); vertical-align: middle; margin-left: 4px; font-style: normal; }
+/* File paths are long and monospace-ish; keep them from stretching the sounds table. */
+.snd-file { font-size: 11px; max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }

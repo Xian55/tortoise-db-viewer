@@ -191,6 +191,7 @@ function route() {
   else if (icon) return showIcon(icon);
   else if (params.get("icons") !== null) return showIcons();
   else if (params.get("voicelines") !== null) return showVoiceLines();
+  else if (params.get("sounds") !== null) return showSounds();
   else if (params.get("flights") !== null) return showFlights(params.get("cont") ? Number(params.get("cont")) : 0);
   else if (params.get("worldmap") !== null) return showWorldMap(params.get("worldmap") ? Number(params.get("worldmap")) : 0);
   else if (params.get("dungeons") !== null) return showDungeons();
@@ -385,6 +386,7 @@ function showHome() {
       card("?random", "inv_misc_orb_04", "Random Item", "Roll the dice on a random item."),
       card("?icons", "inv_misc_gem_variety_01", "Icons", "Every item & spell icon."),
       card("?voicelines", "inv_misc_horn_01", "Voice Lines", "Hear what they say — with transcripts."),
+      card("?sounds", "inv_misc_drum_02", "Sounds", "Every extracted sound — music, ambience, voices."),
     ])}
 
     <p class="muted home-hint">Jump straight to anything with <code>?item=ID</code>, <code>?npc=ID</code>, <code>?quest=ID</code>, <code>?spell=ID</code>, <code>?faction=ID</code>, or <code>?zone=ID</code> —
@@ -1915,6 +1917,78 @@ async function showVoiceLines() {
     t = setTimeout(() => {
       term = search.value.trim();
       history.replaceState({}, "", "?voicelines" + (term ? "=" + encodeURIComponent(term) : ""));
+      render();
+    }, 180);
+  });
+}
+
+// Every extracted sound, searchable by NAME (?sounds=<term>). The voice-line page only
+// ever listed the ones with words; music, ambience and creature audio -- about 1,500
+// sounds -- had no page at all, so a question like "how long is Moment-Battle06" had no
+// answer on the site. Filter matches the sound name AND its file path, since people know
+// these by either.
+async function showSounds() {
+  document.title = "Sounds - Tortoise-WoW DB";
+  app.innerHTML = `<div class="loading">Loading sounds…</div>`;
+  if (!(await caps()).sounds) {
+    app.innerHTML = `<div class="home"><h1>Sounds</h1>
+      <p class="muted">This dataset's database was built before audio was extracted.</p></div>`;
+    return;
+  }
+  let all;
+  try { all = await query(Q.Q_SOUND_LIST); } catch (e) { app.innerHTML = errorBox(e); return; }
+
+  const p0 = new URLSearchParams(location.search);
+  let term = (p0.get("sounds") || "").trim().toLowerCase();
+
+  app.innerHTML = `<div class="voice-page">
+    <h1>Sounds</h1>
+    <p class="muted">${all.length.toLocaleString()} extracted sounds — music, ambience, voice and creature audio.</p>
+    <input type="search" class="icon-search" placeholder="Search by name or file… (e.g. moment-battle, stormwind, ragnaros)"
+      aria-label="Search sounds" value="${esc(term)}">
+    <p class="muted" data-count></p>
+    <div data-out></div>
+  </div>`;
+  const out = app.querySelector("[data-out]");
+  const countEl = app.querySelector("[data-count]");
+  const search = app.querySelector(".icon-search");
+
+  const firstFile = (r) => { try { return (JSON.parse(r.files) || [])[0] || ""; } catch { return ""; } };
+  const cols = [
+    { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+    { label: "Name", cls: "snd-grow", cell: (r) => esc(r.name || ""), value: (r) => r.name || "" },
+    { label: "Kind", cls: "muted", group: (r) => r.kind, cell: (r) => esc(r.kind), value: (r) => r.kind },
+    {
+      label: "Transcript", cls: "snd-text", hideEmpty: true,
+      cell: (r) => (r.text ? esc(r.text) + autoBadge(r) : ""), value: (r) => r.text || "",
+    },
+    { label: "Length", num: true, cls: "muted", cell: (r) => fmtDur(r.ms), value: (r) => r.ms || 0 },
+    {
+      label: "Used by", cls: "muted", hideEmpty: true,
+      cell: (r) => [r.npcs ? `${r.npcs} NPC${r.npcs === 1 ? "" : "s"}` : "",
+        r.areas ? `${r.areas} area${r.areas === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · "),
+      value: (r) => (r.npcs || 0) + (r.areas || 0),
+    },
+    { label: "File", cls: "muted snd-file", hideEmpty: true, cell: (r) => esc(firstFile(r)), value: (r) => firstFile(r) },
+  ];
+
+  const render = () => {
+    const rows = term
+      ? all.filter((r) => (r.name || "").toLowerCase().includes(term) || firstFile(r).includes(term))
+      : all;
+    countEl.textContent = `${rows.length.toLocaleString()} shown`;
+    out.innerHTML = "";
+    const spec = regTable(cols, rows, { pageSize: 100, groupable: true });
+    out.innerHTML = spec.html;
+    mountTables();
+  };
+  render();
+  let t = 0;
+  search.addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      term = search.value.trim().toLowerCase();
+      history.replaceState({}, "", "?sounds" + (term ? "=" + encodeURIComponent(term) : ""));
       render();
     }, 180);
   });
