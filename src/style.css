@@ -1508,8 +1508,9 @@ td .pet-rank { margin: 1px 0; }
    wrap, 230px fits the widest player and the transcript gets the space back
    (Play 344->126px, Transcript 259->477px). */
 .snd-col { max-width: 230px; }
-/* The greedy column when a table has no transcript to stretch (e.g. ?sounds
-   filtered to music, where every Transcript cell is empty and hideEmpty drops it). */
+/* Reserved for a table with no transcript column to stretch. NOT used on ?sounds' Name:
+   two greedy columns fight, and Name won -- 583px of sound name next to a 106px
+   transcript. The transcript is the content worth reading, so it is the only greedy one. */
 .snd-grow { width: 100%; }
 /* Gossip is prose: let it wrap and cap the measure so a long menu text doesn't
    stretch the table to the viewport width. */
@@ -1521,3 +1522,9 @@ td .pet-rank { margin: 1px 0; }
   color: var(--muted); vertical-align: middle; margin-left: 4px; font-style: normal; }
 /* File paths are long and monospace-ish; keep them from stretching the sounds table. */
 .snd-file { font-size: 11px; max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+/* Sound detail: paths are the one place a raw client path belongs, so give them room
+   and a monospace face instead of squeezing them into a table cell. */
+.sound-files, .sound-lines { list-style: none; padding: 0; margin: 6px 0 18px; }
+.sound-files li, .sound-lines li { padding: 3px 0; }
+.snd-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); word-break: break-all; }
+.sound-player { margin: 10px 0 6px; }

@@ -658,6 +658,28 @@ export const Q_SOUND_LIST = `
   FROM sounds s
   ORDER BY s.name`;
 
+// ---- One sound (?sound=<id>) ----
+// "Used by: 13 areas" is a dead end as a number; these back a page that names them.
+export const Q_SOUND = `SELECT id, name, type, files, ms FROM sounds WHERE id = ?1`;
+
+export const Q_SOUND_NPCS = `
+  SELECT c.entry, c.name, c.subname, c.level_min, c.level_max, cs.slot
+  FROM creature_sound cs JOIN creatures c ON c.entry = cs.creature
+  WHERE cs.sound = ?1 AND c.hidden = 0
+  ORDER BY cs.ord, c.name LIMIT 500`;
+
+export const Q_SOUND_ZONES = `
+  SELECT z.kind, a.entry AS area, a.name, a.map_id,
+    (SELECT zz.areaid FROM zones zz WHERE zz.areaid = a.entry) AS is_zone
+  FROM zone_sound z JOIN areas a ON a.entry = z.area
+  WHERE z.sound = ?1
+  ORDER BY z.kind, a.name LIMIT 500`;
+
+export const Q_SOUND_TEXTS = `
+  SELECT t.text, t.src, t.creature, c.name AS creature_name
+  FROM sound_text t LEFT JOIN creatures c ON c.entry = t.creature
+  WHERE t.sound = ?1 ORDER BY t.creature IS NULL, t.id`;
+
 // ---- NPC gossip (what an NPC says when you talk to it) ----
 // This is where a quoted phrase actually lives. A voice clip is picked from the NPC's
 // VOICE TYPE and shared by every NPC of that type, while the gossip text belongs to the

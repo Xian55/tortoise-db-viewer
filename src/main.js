@@ -192,6 +192,7 @@ function route() {
   else if (params.get("icons") !== null) return showIcons();
   else if (params.get("voicelines") !== null) return showVoiceLines();
   else if (params.get("sounds") !== null) return showSounds();
+  else if (params.get("sound")) return showSound(Number(params.get("sound")));
   else if (params.get("flights") !== null) return showFlights(params.get("cont") ? Number(params.get("cont")) : 0);
   else if (params.get("worldmap") !== null) return showWorldMap(params.get("worldmap") ? Number(params.get("worldmap")) : 0);
   else if (params.get("dungeons") !== null) return showDungeons();
@@ -1956,20 +1957,24 @@ async function showSounds() {
   const firstFile = (r) => { try { return (JSON.parse(r.files) || [])[0] || ""; } catch { return ""; } };
   const cols = [
     { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
-    { label: "Name", cls: "snd-grow", cell: (r) => esc(r.name || ""), value: (r) => r.name || "" },
+    { label: "Name", cell: (r) => `<a class="ilink" href="?sound=${r.id}">${esc(r.name || "")}</a>`, value: (r) => r.name || "" },
     { label: "Kind", cls: "muted", group: (r) => r.kind, cell: (r) => esc(r.kind), value: (r) => r.kind },
     {
       label: "Transcript", cls: "snd-text", hideEmpty: true,
       cell: (r) => (r.text ? esc(r.text) + autoBadge(r) : ""), value: (r) => r.text || "",
     },
-    { label: "Length", num: true, cls: "muted", cell: (r) => fmtDur(r.ms), value: (r) => r.ms || 0 },
+    // No Length column: the player already shows the duration, and no File column:
+    // a full client path is unreadable in a table cell. Both live on ?sound=<id>, and
+    // the filter still matches the path, so searching "battle06.ogg" still works.
     {
       label: "Used by", cls: "muted", hideEmpty: true,
-      cell: (r) => [r.npcs ? `${r.npcs} NPC${r.npcs === 1 ? "" : "s"}` : "",
-        r.areas ? `${r.areas} area${r.areas === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · "),
+      cell: (r) => {
+        const bits = [r.npcs ? `${r.npcs} NPC${r.npcs === 1 ? "" : "s"}` : "",
+          r.areas ? `${r.areas} area${r.areas === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
+        return bits ? `<a class="ilink" href="?sound=${r.id}">${bits}</a>` : "";
+      },
       value: (r) => (r.npcs || 0) + (r.areas || 0),
     },
-    { label: "File", cls: "muted snd-file", hideEmpty: true, cell: (r) => esc(firstFile(r)), value: (r) => firstFile(r) },
   ];
 
   const render = () => {
@@ -1998,6 +2003,62 @@ async function showSounds() {
       render();
     }, 180);
   });
+}
+
+// One sound: who plays it and where. The browse page could only say "13 areas", which
+// is a dead end -- this names them, and is also where the client file paths live, since
+// a full path is unreadable inside a table cell.
+async function showSound(id) {
+  app.innerHTML = `<div class="loading">Loading sound ${id}…</div>`;
+  if (!(await caps()).sounds) { app.innerHTML = `<div class="home"><p>This dataset has no audio.</p></div>`; return; }
+  let snd, npcs, zones, texts;
+  try {
+    [snd, npcs, zones, texts] = await Promise.all([
+      queryOne(Q.Q_SOUND, [id]), query(Q.Q_SOUND_NPCS, [id]),
+      query(Q.Q_SOUND_ZONES, [id]), query(Q.Q_SOUND_TEXTS, [id]),
+    ]);
+  } catch (e) { app.innerHTML = errorBox(e); return; }
+  if (!snd) { app.innerHTML = `<div class="home"><p>No sound with ID ${id}.</p></div>`; return; }
+  document.title = `${snd.name} - Sound - Tortoise-WoW DB`;
+
+  let files = [];
+  try { files = JSON.parse(snd.files) || []; } catch { /* malformed -> no takes listed */ }
+
+  const npcCols = [
+    { label: "NPC", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
+    { label: "Level", num: true, cls: "muted", cell: (r) => (r.level_min === r.level_max ? r.level_min : `${r.level_min}-${r.level_max}`) || "", value: (r) => r.level_max || 0 },
+    { label: "Plays it as", cls: "muted", cell: (r) => esc(r.slot), value: (r) => r.slot },
+  ];
+  const zoneCols = [
+    { label: "Area", cell: (r) => (r.is_zone ? zoneLink(r.area, r.name) : esc(r.name)), value: (r) => r.name },
+    { label: "Continent", cls: "muted", hideEmpty: true, cell: (r) => CONTINENT[r.map_id] || "", value: (r) => CONTINENT[r.map_id] || "" },
+    { label: "Plays as", cls: "muted", cell: (r) => esc(r.kind), value: (r) => r.kind },
+  ];
+
+  const tabDefs = [];
+  if (npcs.length) tabDefs.push({ id: "npcs", label: "NPCs", ...regTable(npcCols, npcs, { pageSize: 100 }) });
+  if (zones.length) tabDefs.push({ id: "zones", label: "Zones", ...regTable(zoneCols, zones, { pageSize: 100 }) });
+
+  const takeList = files.map((f, i) => `<li><span class="muted">${files.length > 1 ? `Take ${i + 1}: ` : ""}</span>
+    <code class="snd-path">${esc(f)}</code></li>`).join("");
+  const lines = texts.filter((t) => t.text).map((t) =>
+    `<li><span class="snd-text">${esc(t.text)}</span>${autoBadge(t)}
+      ${t.creature ? ` — ${npcLink(t.creature, t.creature_name)}` : ""}</li>`).join("");
+
+  app.innerHTML = `<div class="sound-page">
+    <div class="npc-head">
+      <h1>${esc(snd.name)}</h1>
+      <div class="npc-meta muted">${fmtDur(snd.ms) || "—"} · ${files.length} take${files.length === 1 ? "" : "s"}
+        <span class="dim"> · Sound #${snd.id}</span>
+        · <a class="nav" href="?sounds">All sounds</a></div>
+    </div>
+    <div class="sound-player">${soundPlayer(snd, { label: false })}</div>
+    ${lines ? `<h2>Transcript</h2><ul class="sound-lines">${lines}</ul>` : ""}
+    <h2>Files</h2><ul class="sound-files">${takeList}</ul>
+    ${tabDefs.length ? tabs(tabDefs) : `<p class="muted">Nothing in this build references this sound.</p>`}
+  </div>`;
+  mountTables();
+  wireTabs();
 }
 
 // Icon detail: the items and spells that use a given icon basename.

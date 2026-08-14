@@ -304,3 +304,44 @@ async function testSoundsTranscriptSearch() {
   return rows.length > 0 && hit;
 }
 smoke("sounds search matches transcript", () => testSoundsTranscriptSearch());
+
+// ?sound=<id>: who plays a sound and where. The browse page could only say "13 areas",
+// which is a dead end -- this names them, and holds the client file paths, which are
+// unreadable squeezed into a table cell.
+async function testSoundDetail() {
+  await nav(`?sound=6350`);            // Moment - Battle06
+  await page.waitForSelector(".sound-page", { timeout: T });
+  await page.waitForSelector('.tabpane[data-pane="zones"] table tbody tr', { timeout: T });
+  const info = await page.evaluate(() => ({
+    title: document.querySelector(".sound-page h1")?.textContent.trim(),
+    meta: document.querySelector(".sound-page .npc-meta")?.textContent.replace(/\s+/g, " ").trim(),
+    files: [...document.querySelectorAll(".snd-path")].map((e) => e.textContent.trim()),
+    player: !!document.querySelector(".sound-player .snd-play"),
+    zones: document.querySelectorAll('.tabpane[data-pane="zones"] table tbody tr').length,
+    zoneText: document.querySelector('.tabpane[data-pane="zones"] table tbody').textContent,
+  }));
+  console.log(`sound 6350: "${info.title}" meta="${info.meta}" files=${info.files.length} zones=${info.zones} player=${info.player}`);
+  return info.title === "Moment - Battle06" && info.player && info.files.length === 1
+    && /battle06/.test(info.files[0]) && info.zones >= 10 && /Deadmines/.test(info.zoneText);
+}
+
+// The browse table drops Length (the player shows it) and File (unreadable in a cell),
+// and "Used by" links through to the detail page instead of being a bare count.
+async function testSoundsColumns() {
+  await nav(`?sounds=good`);
+  await page.waitForSelector(".voice-page table tbody tr", { timeout: T });
+  const info = await page.evaluate(() => {
+    const ths = [...document.querySelectorAll(".voice-page thead th")].map((t) => t.textContent.trim());
+    const tr = document.querySelector(".voice-page tbody tr:not(.grouprow)");
+    const w = [...tr.querySelectorAll("td")].map((td) => Math.round(td.getBoundingClientRect().width));
+    return { ths, w, used: tr.querySelector('a[href^="?sound="]')?.getAttribute("href") || null };
+  });
+  const ti = info.ths.indexOf("Transcript"), ni = info.ths.indexOf("Name");
+  console.log(`sounds cols: [${info.ths.join(",")}] widths=[${info.w.join(",")}] usedBy=${info.used}`);
+  return !info.ths.includes("Length") && !info.ths.includes("File") && !!info.used
+    // Transcript must be the widest: Name was greedy and rendered 583px next to a 106px
+    // transcript, which buried the content the page exists to show.
+    && ti >= 0 && info.w[ti] > info.w[ni];
+}
+smoke("sound detail page (Moment - Battle06)", () => testSoundDetail());
+smoke("sounds table columns + transcript is widest", () => testSoundsColumns());
