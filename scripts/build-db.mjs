@@ -1230,14 +1230,35 @@ console.log("Importing sounds...");
     // Normalization is only case/punctuation ("Shh..." vs "Shhh...", "Yes, Run!" vs
     // "Yes, run!"); measured across the dump it leaves exactly one ambiguous text out of
     // 230, and an ambiguous one is skipped rather than guessed.
+    // Three tiers, tried in order, each requiring a UNIQUE hit. The two pools were hand-
+    // authored separately and disagree in small ways that plain normalization can't see:
+    //   exact    "The Light has spoken!"        -- most lines
+    //   squash   "Shh..." vs "Shhh...",         -- elongated interjections; collapsing a
+    //            "Yesss..." vs "Yes..."            run of one letter to a single one
+    //   prefix   "...the all smell..." vs       -- a typo in one copy, so only the head
+    //            "...They all smell..."            of the line can be trusted
+    // Measured over the dump: 143 rows resolve exactly, +4 with squash, +6 more on the
+    // prefix, and the ambiguous-key count stays at exactly 1 at every tier -- the looser
+    // matching buys coverage without costing precision. An ambiguous key is skipped.
     const normText = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
-    const soundByText = new Map();
+    const squashText = (s) => normText(s).replace(/(.)\1+/g, "$1");
+    const PREFIX_LEN = 40;
+    const MIN_MATCH = 12;
+    const soundByText = new Map(), soundBySquash = new Map(), soundByPrefix = new Map();
+    const addKey = (map, key, sound) => {
+      if (key.length < MIN_MATCH) return;
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key).add(sound);
+    };
     for (const row of textRows.values()) {
-      const n = normText(row.text);
-      if (n.length < 12) continue;
-      if (!soundByText.has(n)) soundByText.set(n, new Set());
-      soundByText.get(n).add(row.sound);
+      addKey(soundByText, normText(row.text), row.sound);
+      addKey(soundBySquash, squashText(row.text), row.sound);
+      addKey(soundByPrefix, squashText(row.text).slice(0, PREFIX_LEN), row.sound);
     }
+    const uniqueSound = (map, key) => {
+      const v = key.length >= MIN_MATCH ? map.get(key) : null;
+      return v && v.size === 1 ? [...v][0] : null;
+    };
     const btRow = new Map();      // broadcast_text.entry -> { text, sound }
     if (src.has("broadcast_text")) {
       const c = src.columns("broadcast_text");
@@ -1250,9 +1271,11 @@ console.log("Importing sounds...");
       const row = btRow.get(id);
       if (!row || !row.text) return null;
       if (row.sound) return { sound: row.sound, text: row.text };
-      const cands = soundByText.get(normText(row.text));
-      if (!cands || cands.size !== 1) return null;       // ambiguous or unmatched -> skip
-      return { sound: [...cands][0], text: row.text };
+      const sq = squashText(row.text);
+      const sound = uniqueSound(soundByText, normText(row.text))
+        ?? uniqueSound(soundBySquash, sq)
+        ?? uniqueSound(soundByPrefix, sq.slice(0, PREFIX_LEN));
+      return sound ? { sound, text: row.text } : null;
     };
 
     const scriptFile = join(ROOT, "scripts", "data", "script-sounds.json");
@@ -1404,6 +1427,112 @@ console.log("Importing sounds...");
           if (Number(r[iCmd]) !== 16) continue;
           const sound = Number(r[iDl]) || 0;
           for (const cid of owner.get(Number(r[iId])) || []) addCs(cid, sound, "Script", 200);
+        }
+      })();
+    }
+
+    // ---- propagate a speaker across a sound-NAME cluster ----
+    // Blizzard names a creature's VO as one family: A_Arugal Aggro01 / Slay01 / Charm01,
+    // A_ANU_NAXX_GREET / _SLAY / _TAUNT01. Whether a given line got attributed depends on
+    // whether its particular script call happened to be resolvable, so a boss routinely
+    // ends up with most of its family credited and two or three stragglers blank.
+    //
+    // If a family's attributed sounds all point at ONE creature, the stragglers are that
+    // creature's too. The safeguard is that unanimity: a family credited to several
+    // creatures (the Four Horsemen share a script and a text pool) is left alone rather
+    // than guessed at, and a family with nothing attributed stays anonymous. This never
+    // overrides an existing attribution, only fills gaps.
+    const clusterKey = (name) => String(name || "")
+      .replace(/\d+$/, "")                       // trailing take number
+      // the event word at the end -- what varies WITHIN a family
+      .replace(/[ _-]*(aggro|slay|death|dead|taunt|special|specialattack|spawn|greet|charm|summon|health|intro|kill|res|resurrect|wound|attack|loop|arrival|escape|whirlwind|enrage|berserk)$/i, "")
+      .replace(/[ _-]+$/, "")
+      .toLowerCase().trim();
+    let propagated = 0;
+    {
+      const byCluster = new Map();               // cluster -> { sounds:Set, creatures:Set }
+      for (const r of db.prepare(`SELECT id, name FROM sounds`).all()) {
+        const k = clusterKey(r.name);
+        if (k.length < 4) continue;              // too generic to be a family
+        if (!byCluster.has(k)) byCluster.set(k, { sounds: new Set(), creatures: new Set() });
+        byCluster.get(k).sounds.add(r.id);
+      }
+      const named = db.prepare(`SELECT DISTINCT sound, creature FROM sound_text WHERE creature IS NOT NULL`).all();
+      const soundCluster = new Map();
+      for (const [k, v] of byCluster) for (const s of v.sounds) soundCluster.set(s, k);
+      for (const r of named) {
+        const k = soundCluster.get(r.sound);
+        if (k) byCluster.get(k).creatures.add(r.creature);
+      }
+      const textOf = db.prepare(`SELECT text FROM sound_text WHERE sound = ?1 ORDER BY creature IS NULL, id LIMIT 1`);
+      const hasSpeaker = new Set(named.map((r) => r.sound));
+      db.transaction(() => {
+        for (const [, v] of byCluster) {
+          if (v.creatures.size !== 1) continue;  // ambiguous or empty -> leave alone
+          const who = [...v.creatures][0];
+          for (const s of v.sounds) {
+            if (hasSpeaker.has(s)) continue;
+            const t = textOf.get(s);
+            if (!t || !t.text) continue;         // no transcript -> nothing to credit
+            const before = ntx;
+            addTx(s, who, t.text, "n");
+            if (ntx > before) propagated++;
+          }
+        }
+      })();
+    }
+
+    // ---- last resort: the cluster name IS the creature's name ----
+    // Blizzard names boss VO after the boss: A_CthunYouWillDie, A_RazorgoreDeath,
+    // A_BloodlordMandokirAggro. Where nothing in the scripts or the text tables resolved
+    // a speaker, that name is the only evidence left -- and it is good evidence, so long
+    // as it is required to be unambiguous rather than merely plausible:
+    //   * the cluster token must be >= 5 chars (rules out "anub", "bla" and other stubs),
+    //   * it must match exactly ONE creature, either on the full normalized name or as a
+    //     unique prefix of it ("razorgore" -> "Razorgore the Untamed"),
+    //   * hidden rows and anything already attributed are excluded.
+    // A token matching two creatures (or none) is left anonymous. This is a weaker signal
+    // than a script call, so it runs last and never overrides one.
+    let byName = 0;
+    {
+      const normName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+      const exact = new Map(), all = [];
+      // No `hidden` filter: that column is set later in the build than this import runs.
+      for (const c of db.prepare(`SELECT entry, name FROM creatures WHERE name <> ''`).all()) {
+        const n = normName(c.name);
+        if (n.length < 5) continue;
+        if (!exact.has(n)) exact.set(n, []);
+        exact.get(n).push(c.entry);
+        all.push({ entry: c.entry, n });
+      }
+      const anon = db.prepare(`SELECT DISTINCT t.sound, s.name, t.text FROM sound_text t JOIN sounds s ON s.id = t.sound
+        WHERE t.creature IS NULL
+          AND NOT EXISTS (SELECT 1 FROM sound_text x WHERE x.sound = t.sound AND x.creature IS NOT NULL)`).all();
+      db.transaction(() => {
+        for (const r of anon) {
+          const tok = normName(clusterKey(r.name).replace(/^a[_ -]/i, ""));
+          if (tok.length < 5) continue;
+          let who = exact.get(tok);
+          if (!who) {
+            // Both directions. The creature name can extend the token
+            // ("razorgore" -> "Razorgore the Untamed"), or the token can extend the
+            // creature name when the sound is named after the LINE rather than an event
+            // ("A_CthunYouWillDie" -> "C'Thun"). The longest creature name wins, so
+            // "Anub'Rekhan" beats a bare "Anub" if both existed.
+            let pre = all.filter((c) => c.n.startsWith(tok) || tok.startsWith(c.n));
+            // Still nothing: the name may sit INSIDE a longer one on either side --
+            // "A_Veklor..." vs "Emperor Vek'lor", "Blackhammer..." vs "Bargul
+            // Blackhammer", "Doomcaller..." vs "Hargesh Doomcaller". Substring matching
+            // is looser, so it needs a longer token (>= 6) to earn it, and still has to
+            // land on exactly one creature.
+            if (!pre.length && tok.length >= 6) pre = all.filter((c) => c.n.includes(tok) || tok.includes(c.n));
+            const best = pre.reduce((a, b) => (!a || b.n.length > a.n.length ? b : a), null);
+            who = best ? [...new Set(pre.filter((c) => c.n === best.n).map((c) => c.entry))] : null;
+          }
+          if (!who || who.length !== 1) continue;
+          const before = ntx;
+          addTx(r.sound, who[0], r.text, "m");
+          if (ntx > before) byName++;
         }
       })();
     }
