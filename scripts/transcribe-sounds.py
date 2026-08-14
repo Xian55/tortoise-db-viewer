@@ -28,10 +28,11 @@ and faster-whisper:
 
     pip install faster-whisper
 
-GPU notes: this box is a GTX 1070 (Pascal, compute 6.1). Pascal has no tensor cores and
-its native fp16 throughput is poor, so `int8_float16` is the sensible default there and
-is markedly faster than plain `float16`. 8 GB VRAM fits medium.en comfortably.
-Falls back to CPU with a warning if CUDA isn't usable.
+GPU notes: --compute defaults to whatever the device actually supports, asked at
+runtime via ctranslate2.get_supported_compute_types(). That matters: a GTX 1070 (Pascal,
+compute 6.1) reports {int8_float32, int8, float32} and NO fp16, so hardcoding
+"int8_float16" fails to initialise and silently drops the run onto the CPU. Falls back to
+CPU with a printed reason if CUDA isn't usable at all.
 """
 import argparse
 import json
@@ -50,34 +51,58 @@ HAND = os.path.join(ROOT, "scripts", "data", "voice-transcripts.json")
 # saw in training. A game grunt or a 0.6s door creak reliably becomes one of these, so
 # they are dropped outright rather than trusted to the confidence gate.
 HALLUCINATIONS = re.compile(
-    r"^(thanks? (you )?(for|4) watching|please subscribe|subscribe to|like and subscribe"
-    r"|thanks for listening|see you (next time|in the next video)|bye[.!]*|you"
-    r"|\[.*\]|\(.*\)|♪.*)$", re.I)
+    r"^[\s\"'.,!?-]*(thanks? (you )?(for|4) watching|please subscribe|subscribe to"
+    r"|like and subscribe|thanks for listening|see you (next time|in the next video)"
+    r"|bye|you|\[.*\]|\(.*\)|♪.*)[\s\"'.,!?-]*$", re.I)
+# Non-lexical vocalisations. A combat death IS "Hmph! Oomph!", and Whisper transcribes it
+# confidently enough to clear the logprob gate -- but it is a grunt, not a line, and
+# listing it as dialogue would be noise in every search. Matched only when the WHOLE
+# result is such tokens, so "Ugh, you again" survives.
+GRUNT = re.compile(
+    r"^[\s.,!?-]*((h?mph|oo?mph|ugh|argh|aah?|ah|oh|ooh|uh|hu?h|hmm+|mmm+|grr+|rr+|roar"
+    r"|cough|gasp|groan|grunt|scream|yell|laugh|sigh|hiss|growl|snarl|yah|hah?|ha)"
+    r"[\s.,!?-]*)+$", re.I)
 # Below this the model is guessing. Tuned for clean studio speech, where a real line
 # scores well above it; noisy-but-real lines are rarer here than hallucinated ones.
 MIN_LOGPROB = -1.0
 MAX_NO_SPEECH = 0.6
-MIN_SECONDS = 0.8          # shorter than this is a grunt//impact, not a line
+# Real greetings are SHORT -- measured: "Yo" 0.40s, "What's up?" 0.41s, "Talk to me!"
+# 0.52s. An 0.8s floor threw away three of four takes of a perfectly good sound. Length
+# turns out to be a poor speech/grunt discriminator anyway; avg_logprob is a good one
+# (greetings measured -0.21..-0.44, grunts -0.79..-1.14), so lean on that instead and keep
+# only enough of a floor to skip clips too short to contain a word at all.
+MIN_SECONDS = 0.25
+
+
+# CreatureSoundData slots that are vocalisations, not speech. A creature's Aggro roar,
+# death cry, exertion grunt and wound yelp contain no words in any language -- measured,
+# they were ~55% of the worklist and produced nothing but rejected takes and GPU time.
+# Loop is an ambient drone (RagnarosLoop), equally wordless.
+# A sound is skipped only when EVERY slot pointing at it is one of these: the same file
+# can be a creature's death cry and a scripted line elsewhere, and that one has words.
+GRUNT_SLOTS = ("Aggro", "Death", "Exertion", "Exertion Critical", "Injury",
+               "Injury Critical", "Injury Crushing Blow", "Loop", "Stun", "Wound")
 
 
 def worklist(conn, only, include_done, done):
     """Voice clips lacking a transcript: (soundId, name, [file], creatureName|None).
 
     Voice-ness is decided by what POINTS at the sound, not by its path: anything an NPC
-    plays (creature_sound, any slot) plus the Turtle VA directory. A sound that only ever
-    appears in zone_sound is music or ambience and is skipped.
+    plays plus the Turtle VA directory, minus the purely-vocal combat slots. A sound that
+    only ever appears in zone_sound is music or ambience and is skipped.
     """
     rows = conn.execute("""
         SELECT s.id, s.name, s.files, s.ms,
                (SELECT c.name FROM creature_sound cs JOIN creatures c ON c.entry = cs.creature
                  WHERE cs.sound = s.id ORDER BY cs.ord LIMIT 1) AS who
         FROM sounds s
-        WHERE (EXISTS (SELECT 1 FROM creature_sound cs WHERE cs.sound = s.id)
+        WHERE (EXISTS (SELECT 1 FROM creature_sound cs WHERE cs.sound = s.id
+                        AND cs.slot NOT IN ({slots}))
                OR s.files LIKE '["interface/va/%')
           AND NOT EXISTS (SELECT 1 FROM zone_sound z WHERE z.sound = s.id)
           AND NOT EXISTS (SELECT 1 FROM sound_text t WHERE t.sound = s.id)
         ORDER BY s.name
-    """).fetchall()
+    """.format(slots=",".join("?" * len(GRUNT_SLOTS))), GRUNT_SLOTS).fetchall()
     out = []
     for sid, name, files, ms, who in rows:
         if only and not _like(name, only):
@@ -100,17 +125,64 @@ def _like(name, pattern):
 
 def clean(text):
     t = " ".join(str(text or "").split())
-    if not t or HALLUCINATIONS.match(t):
+    if not t or HALLUCINATIONS.match(t) or GRUNT.match(t):
         return None
     # Whisper likes to end a fragment with an ellipsis or stray dash; harmless but noisy.
     return t.strip(" -–—")
+
+
+def add_cuda_dll_dirs():
+    """Make the pip-installed CUDA 12 runtime visible to ctranslate2 on Windows.
+
+    `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12` drops its DLLs under
+    site-packages/nvidia/*/bin, which Windows does not search. Without this the model
+    LOADS fine (VRAM fills, it looks like the GPU is working) and then every encode dies
+    with "Library cublas64_12.dll is not found" -- a systemic failure that reads exactly
+    like a per-file one.
+    """
+    if not hasattr(os, "add_dll_directory"):
+        return                                   # not Windows
+    try:
+        import nvidia
+    except ImportError:
+        return
+    for base in nvidia.__path__:
+        for sub in ("cublas", "cudnn", "cuda_nvrtc", "cuda_runtime"):
+            d = os.path.join(base, sub, "bin")
+            if os.path.isdir(d):
+                try:
+                    os.add_dll_directory(d)
+                except OSError:
+                    pass
+                os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+
+
+def best_compute(device):
+    """Fastest compute type this device actually supports.
+
+    Asked at runtime rather than hardcoded, because the answer is not guessable from the
+    GPU name. A GTX 1070 (Pascal, compute 6.1) reports {int8_float32, int8, float32} --
+    no fp16 at all -- so a hardcoded "int8_float16" fails to initialise and silently
+    drops the whole run onto the CPU. Newer cards do offer fp16 and are faster with it,
+    so neither value is right for everyone; ask the library.
+    """
+    order = ["int8_float16", "int8_float32", "int8", "float16", "float32"]
+    try:
+        import ctranslate2
+        have = ctranslate2.get_supported_compute_types(device)
+    except Exception:                            # noqa: BLE001 - no CUDA, bad driver, ...
+        return "int8"
+    for c in order:
+        if c in have:
+            return c
+    return "int8"
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=os.environ.get("WHISPER_MODEL", "medium.en"))
     ap.add_argument("--device", default=os.environ.get("WHISPER_DEVICE", "cuda"))
-    ap.add_argument("--compute", default=os.environ.get("WHISPER_COMPUTE", "int8_float16"))
+    ap.add_argument("--compute", default=os.environ.get("WHISPER_COMPUTE", ""))  # "" = negotiate
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only", default="")
     ap.add_argument("--force", action="store_true")
@@ -147,23 +219,29 @@ def main():
     if args.dry_run or not work:
         return
 
+    add_cuda_dll_dirs()
     try:
         from faster_whisper import WhisperModel
     except ImportError:
         sys.exit("faster-whisper not installed.\n  pip install faster-whisper")
 
     device, compute = args.device, args.compute
+    if not compute:
+        compute = best_compute(device)
     try:
         model = WhisperModel(args.model, device=device, compute_type=compute)
     except Exception as e:                       # noqa: BLE001 - any CUDA/cuDNN problem
         if device != "cpu":
-            print(f"  {device}/{compute} unavailable ({str(e).splitlines()[0][:120]}); falling back to CPU int8")
-            device, compute = "cpu", "int8"
+            print(f"  {device}/{compute} unavailable ({str(e).splitlines()[0][:120]}); falling back to CPU")
+            device = "cpu"
+            compute = args.compute or best_compute(device)
             model = WhisperModel(args.model, device=device, compute_type=compute)
         else:
             raise
+    print(f"  running on {device} / {compute}")
 
     done = skipped = 0
+    fails = []
     for i, (sid, name, files, who) in enumerate(work, 1):
         takes = []
         for rel in files:
@@ -175,13 +253,28 @@ def main():
             # spelled right; a general model has never seen them.
             prompt = f"{who} says:" if who else None
             try:
+                # repetition_penalty / no_repeat_ngram_size guard against Whisper's
+                # degenerate loop, where it emits the same token until the window cap.
+                # Observed: one clip stalled a run for ~48 minutes on a 3-second file.
+                # compression_ratio_threshold makes it give up on such output instead of
+                # returning it.
                 segs, info = model.transcribe(
                     path, language="en", beam_size=5, vad_filter=True,
-                    initial_prompt=prompt, condition_on_previous_text=False)
+                    initial_prompt=prompt, condition_on_previous_text=False,
+                    repetition_penalty=1.1, no_repeat_ngram_size=3,
+                    compression_ratio_threshold=2.4)
                 segs = list(segs)
             except Exception as e:               # noqa: BLE001 - one bad file must not stop the run
-                print(f"  FAIL {rel}: {str(e).splitlines()[0][:100]}")
+                msg = str(e).splitlines()[0][:120]
+                print(f"  FAIL {rel}: {msg}")
                 takes.append(None)
+                fails.append(msg)
+                # A per-file error is fine to skip; the SAME error every time is systemic
+                # (a missing CUDA DLL, a bad model) and skipping it 4,000 times would
+                # report a clean run that transcribed nothing. Stop and say so.
+                if len(fails) >= 5 and len(set(fails[-5:])) == 1:
+                    sys.exit(f"\naborting: 5 consecutive identical failures -- {msg}\n"
+                             "This is not a bad file. Fix the environment and re-run.")
                 continue
             if info.duration < MIN_SECONDS:
                 takes.append(None); skipped += 1; continue
@@ -199,7 +292,16 @@ def main():
             done += 1
         if i % 25 == 0 or i == len(work):
             print(f"  {i}/{len(work)} sounds  ({done} transcribed, {skipped} takes rejected)")
+            # Checkpoint. A full pass is ~80 minutes; without this a crash, a Ctrl-C or a
+            # bad threshold choice throws all of it away, and there is no way to eyeball
+            # quality until the very end. Written every 25 sounds so the file is always
+            # inspectable and the run is always resumable (a rerun skips what's in it).
+            write_out(out)
 
+    write_out(out)
+
+
+def write_out(out):
     payload = {"_comment": [
         "MACHINE-GENERATED by scripts/transcribe-sounds.py -- Whisper over the extracted",
         "audio. Keyed by SoundEntries name, indexed by TAKE (same order as the player's",
@@ -209,6 +311,9 @@ def main():
         "them so the UI can show them as machine transcripts rather than asserting them.",
         "To correct one, put the right line in voice-transcripts.json -- that file is",
         "hand-verified, always wins, and is never rewritten by this script.",
+        "",
+        "A take can be marked BAD by putting an empty string at that index in",
+        "voice-transcripts.json -- that suppresses this one without inventing a line.",
     ]}
     payload.update({k: out[k] for k in sorted(out)})
     os.makedirs(os.path.dirname(OUT), exist_ok=True)

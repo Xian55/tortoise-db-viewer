@@ -1485,26 +1485,33 @@ console.log("Importing sounds...");
             if (name.startsWith("_") || !Array.isArray(takes)) continue;   // _comment block
             const sound = idOf.get(name);
             if (!sound) continue;
-            // A hand-verified line for this sound suppresses the machine one entirely --
-            // not just the same take, since they transcribe the same words either way.
-            if (srcTag === "w" && handSounds.has(sound)) continue;
-            for (const line of takes) {
-              if (typeof line === "string" && line.trim()) { addTx(sound, null, line, srcTag); n++; }
+            for (let i = 0; i < takes.length; i++) {
+              const line = takes[i];
+              if (typeof line !== "string" || !line.trim()) continue;
+              // Per TAKE, not per sound: a hand entry can correct take 2 while leaving the
+              // rest to the machine. An empty string at an index is an explicit "this one
+              // is wrong" -- it suppresses the machine line without inventing a
+              // replacement, which is the only way to mark a bad transcript as bad.
+              if (srcTag === "w" && handTakes.has(`${sound}:${i}`)) continue;
+              addTx(sound, null, line, srcTag);
+              n++;
             }
           }
         })();
         return n;
       };
-      const handSounds = new Set();
+      // Which (sound, take) pairs a human has an opinion on -- a correction OR an
+      // explicit rejection (empty string). Both block the machine line for that take.
+      const handTakes = new Set();
       {
         const f = join(ROOT, "scripts", "data", "voice-transcripts.json");
         if (existsSync(f)) {
           try {
             for (const [name, takes] of Object.entries(JSON.parse(readFileSync(f, "utf8")))) {
-              if (!name.startsWith("_") && Array.isArray(takes) && takes.some((t) => typeof t === "string" && t.trim())) {
-                const id = idOf.get(name);
-                if (id) handSounds.add(id);
-              }
+              if (name.startsWith("_") || !Array.isArray(takes)) continue;
+              const id = idOf.get(name);
+              if (!id) continue;
+              takes.forEach((t, i) => { if (typeof t === "string") handTakes.add(`${id}:${i}`); });
             }
           } catch { /* malformed file -> no hand transcripts, machine ones stand */ }
         }
