@@ -35,6 +35,11 @@ const paneRows = (id) => page.$$eval(`.tabpane[data-pane="${id}"] table tbody tr
 async function testNpcSounds() {
   await nav(`?npc=11502`);
   await openTab("sounds");
+  await page.waitForFunction(() => {
+    const rs = document.querySelectorAll('.tabpane[data-pane="sounds"] table tbody tr:not(.grouprow)');
+    const ps = document.querySelectorAll('.tabpane[data-pane="sounds"] .snd .snd-play');
+    return rs.length >= 5 && ps.length === rs.length;
+  }, { timeout: T }).catch(() => {});
   const rows = await paneRows("sounds");
   const players = await page.$$eval(".tabpane[data-pane='sounds'] .snd .snd-play", (e) => e.length);
   const groups = await page.$$eval(".tabpane[data-pane='sounds'] tr.grouprow", (e) => e.map((g) => g.dataset.group));
@@ -52,6 +57,8 @@ async function testNpcSounds() {
 async function testTakes() {
   await nav(`?npc=11502`);
   await openTab("sounds");
+  await page.waitForFunction(() => document.querySelectorAll('.tabpane[data-pane="sounds"] .snd-takes').length > 0,
+    { timeout: T }).catch(() => {});
   const takes = await page.$$eval(".tabpane[data-pane='sounds'] .snd-takes", (e) =>
     e.map((t) => t.querySelectorAll(".snd-take").length));
   const on = await page.$$eval(".tabpane[data-pane='sounds'] .snd-take.on", (e) => e.length);
@@ -65,10 +72,19 @@ async function testTakes() {
 async function testZoneMusic() {
   await nav(`?zone=12`);
   await openTab("sounds");
+  // WAIT for the expected rows rather than sampling once. A zone page also boots a
+  // Leaflet map, and createTable can re-render after mount, so a single read right after
+  // the first row appears is a race -- this was the one test that failed CI while passing
+  // locally, and it failed on a different test each run because the race is in the timing,
+  // not the assertion.
+  const ok = await page.waitForFunction(() => {
+    const rs = [...document.querySelectorAll('.tabpane[data-pane="sounds"] table tbody tr:not(.grouprow)')];
+    const kinds = rs.map((r) => (r.querySelectorAll("td")[2] || {}).textContent || "");
+    return rs.length >= 2 && kinds.some((k) => k.trim() === "Music") && kinds.some((k) => /^Ambience/.test(k.trim()));
+  }, { timeout: T }).then(() => true, () => false);
   const rows = await paneRows("sounds");
-  const kinds = rows.map((r) => r[2]);
-  console.log(`zone 12 music: rows=${rows.length} kinds=[${kinds.join(",")}]`);
-  return rows.length >= 2 && kinds.some((k) => k === "Music") && kinds.some((k) => /^Ambience/.test(k));
+  console.log(`zone 12 music: rows=${rows.length} kinds=[${rows.map((r) => r[2]).join(",")}] ok=${ok}`);
+  return ok;
 }
 
 // A sub-area is its own AreaTable row and carries its own music/ambience -- Northshire
@@ -76,10 +92,14 @@ async function testZoneMusic() {
 async function testSubzoneMusic() {
   await nav(`?subzone=9`);           // Northshire Valley
   await openTab("sounds");
+  const ok = await page.waitForFunction(() => {
+    const rs = [...document.querySelectorAll('.tabpane[data-pane="sounds"] table tbody tr:not(.grouprow)')];
+    const kinds = rs.map((r) => ((r.querySelectorAll("td")[2] || {}).textContent || "").trim());
+    return rs.length >= 2 && kinds.some((k) => /^(Music|Ambience)/.test(k));
+  }, { timeout: T }).then(() => true, () => false);
   const rows = await paneRows("sounds");
-  const kinds = rows.map((r) => r[2]);
-  console.log(`subzone 9 music: rows=${rows.length} kinds=[${kinds.join(",")}]`);
-  return rows.length >= 2 && kinds.some((k) => /^(Music|Ambience)/.test(k));
+  console.log(`subzone 9 music: rows=${rows.length} kinds=[${rows.map((r) => r[2]).join(",")}] ok=${ok}`);
+  return ok;
 }
 
 // The unified ?search= page carries a Voice Lines tab, so a phrase typed into the top
