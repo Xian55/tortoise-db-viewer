@@ -127,6 +127,7 @@ python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/min
 python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc -> scripts/data/talents.json (talent-tree structure)
 python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
+python scripts/transcribe-sounds.py   # LOCAL+GPU: Whisper over public/sounds -> scripts/data/voice-transcripts-auto.json (machine transcripts for the ~1.6k clips no text table records). `--model`/`--compute`/`--only`/`--limit`. Needs faster-whisper. See "Transcribing the clips nothing writes down"
 bun scripts/extract-script-sounds.mjs # LOCAL: server ScriptDev2 src + the SQL dumps -> scripts/data/script-sounds.json (script_name -> the script_texts entries it speaks + sounds it plays, plus the sound-id worklist extract-sounds.py needs). Run BEFORE extract-sounds.py
 python scripts/extract-sounds.py      # LOCAL: client MPQ audio -> public/sounds/**.ogg (Opus, R2-only) + scripts/data/sound-map.json (committed mapping). `--only creature,npc,zone,va,text`, `--limit N`, `--jobs N`, `--dry-run`. Needs ffmpeg. See "Sounds"
 bun scripts/extract-script-abilities.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src/scripts) -> scripts/data/script-abilities.json (creature_template.script_name -> the spell ids that C++ fight hardcodes; gives Ragnaros/Nefarian/Onyxia an ability list they have no SQL rows for)
@@ -368,6 +369,32 @@ the thing wowhead doesn't have — **transcripts**, and full-text search over th
   fields (an unused `NPCSoundID` at 23 pushes Loop/Jump/Pet by one) and
   `CreatureDisplayInfo.NPCSoundID` moved 11 → 12. `SoundEntries` itself is 29 fields in
   both — it carries no localized string, so nothing in it shifted.
+
+### Transcribing the clips nothing writes down
+
+~1,600 voice sounds (4,067 takes) have audio and no line anywhere in the world data: the
+client picks a clip from an NPC's voice type and the words exist only in the audio.
+`scripts/transcribe-sounds.py` (LOCAL, GPU) runs Whisper over `public/sounds` and writes
+`scripts/data/voice-transcripts-auto.json`. Doing it ourselves also sidesteps the wiki
+route: a wiki lists what a voice TYPE says, not which take says it, and its text is
+CC BY-SA.
+
+- **Two files, and the precedence matters.** `voice-transcripts.json` is hand-verified and
+  authoritative; `voice-transcripts-auto.json` is machine output. build-db loads hand
+  first, and a hand line for a sound suppresses the machine one for that whole sound.
+  Machine rows carry src `w` and the UI badges them "auto" — a guess from audio must not
+  read with the same authority as a line lifted from the server's own scripts.
+- **Scope is voice only.** Anything reachable from `zone_sound` is excluded: speech
+  recognition over a five-minute orchestral loop yields confident nonsense and would
+  dominate the runtime.
+- **Whisper hallucinates in silence, and repeats itself doing it** — a 0.6s grunt becomes
+  "Thanks for watching!". Hence a phrase denylist plus gates on `avg_logprob`,
+  `no_speech_prob` and a 0.8s floor, and VAD on.
+- The speaker's name goes in `initial_prompt`, which is what gets Anub'Rekhan and
+  Vek'nilash spelled correctly; a general model has never seen them.
+- **GPU**: `int8_float16` is the default because the dev box is a GTX 1070 — Pascal has no
+  tensor cores and poor native fp16, so plain `float16` is markedly slower there. Falls
+  back to CPU int8 with a warning if CUDA isn't usable.
 
 ### NPC gossip (`npc_gossip`, the NPC Gossip tab, the search Dialogue tab)
 

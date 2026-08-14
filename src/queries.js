@@ -683,6 +683,9 @@ export const Q_ZONE_SOUNDS = `
 export const Q_VOICE_LINES = `
   SELECT s.id, s.name, s.files, s.ms,
     (SELECT t.text FROM sound_text t WHERE t.sound = s.id ORDER BY t.creature IS NULL, t.id LIMIT 1) AS text,
+    -- 'w' marks a machine transcript (Whisper). Surfaced so the UI can label it rather
+    -- than presenting a guess with the same authority as a script-derived line.
+    (SELECT t.src FROM sound_text t WHERE t.sound = s.id ORDER BY t.creature IS NULL, t.id LIMIT 1) AS src,
     -- Speaker from the transcript when there is one, else from creature_sound: most of
     -- Turtle's voice acting has no written line, but its name still identifies who says
     -- it, and build-db records that as a 'Voice' slot.

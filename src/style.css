@@ -1500,3 +1500,8 @@ td .pet-rank { margin: 1px 0; }
 /* Gossip is prose: let it wrap and cap the measure so a long menu text doesn't
    stretch the table to the viewport width. */
 .gossip-text { white-space: normal; max-width: 70ch; }
+/* Machine transcript marker: present but quiet -- it must be visible that the line was
+   inferred from audio, without shouting over the line itself. */
+.snd-auto { font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  padding: 1px 4px; border: 1px solid var(--border); border-radius: 3px;
+  color: var(--muted); vertical-align: middle; margin-left: 4px; font-style: normal; }

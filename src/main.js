@@ -31,6 +31,11 @@ const minimapManifest = MINIMAP_MANIFESTS[`../scripts/data/minimap${MAP_SUB}.jso
 // CreatureSoundData slot -> the category it belongs to, wowhead-style. Derived from the
 // slot rather than SoundEntries.type, which is a playback flag (2D/3D/looping) and says
 // nothing about what the sound is.
+// A machine transcript is marked, always. It is usually right, but it is a guess from
+// audio -- presenting it identically to a line lifted from the server's own script would
+// be asserting something we don't know.
+const autoBadge = (r) => (r && r.src === "w" ? ` <span class="snd-auto" title="Automatic transcript from the audio — may be inaccurate">auto</span>` : "");
+
 const SOUND_KIND = {
   Loop: "NPC Loops",
   Greeting: "NPC Greetings", Farewell: "NPC Greetings", Annoyed: "NPC Greetings",
@@ -460,7 +465,7 @@ async function showSearch(term) {
     { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
     {
       label: "Transcript", cls: "snd-text",
-      cell: (r) => (r.text ? esc(r.text) : `<span class="muted">— no transcript —</span>`),
+      cell: (r) => (r.text ? esc(r.text) + autoBadge(r) : `<span class="muted">— no transcript —</span>`),
       value: (r) => r.text || "￿",
     },
     {
@@ -1548,7 +1553,7 @@ async function showNpc(id) {
     { label: "Name", cell: (r) => esc(r.name || ""), value: (r) => r.name || "" },
     {
       label: "Transcript", cls: "snd-text", hideEmpty: true,
-      cell: (r) => (r.text ? esc(r.text) : ""), value: (r) => r.text || "",
+      cell: (r) => (r.text ? esc(r.text) + autoBadge(r) : ""), value: (r) => r.text || "",
     },
     { label: "Type", cls: "muted", group: (r) => r.kind, cell: (r) => esc(r.kind), value: (r) => r.kind },
     { label: "Activity", cls: "muted", hideEmpty: true, cell: (r) => esc(r.activity), value: (r) => r.activity },
@@ -1868,7 +1873,7 @@ async function showVoiceLines() {
     { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
     {
       label: "Transcript", cls: "snd-text",
-      cell: (r) => (r.text ? esc(r.text) : `<span class="muted">— no transcript —</span>`),
+      cell: (r) => (r.text ? esc(r.text) + autoBadge(r) : `<span class="muted">— no transcript —</span>`),
       value: (r) => r.text || "￿",       // untranscribed lines sort last
     },
     {
