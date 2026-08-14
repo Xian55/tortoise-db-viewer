@@ -151,7 +151,7 @@ function caseCreature(src, at, consts) {
 // while fixing nothing: the one cross-boss attribution reported (Whitemane's resurrect
 // line credited to Mograine) survived at 1, because it comes from the server's own
 // EventAI data rather than from this pass.
-const MAX_REGS = 4;
+const MAX_REGS = 1;
 
 function fileTexts() {
   const out = new Map();      // scriptName -> { t: Set(negative), b: Set(positive) }
