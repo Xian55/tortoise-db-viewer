@@ -2965,6 +2965,61 @@ db.exec(`CREATE TABLE quest_dungeon (quest INTEGER, zone INTEGER)`);
 }
 
 // ---- Full-text search over item / creature / quest names (unified search) ----
+// ---- voice lines: abbreviations, disambiguated by a sibling family's zone ----
+// Runs HERE, not in the sounds import: it needs creatures.zone, which is assigned later
+// in the build. Adds rows to sound_text, so it re-syncs sound_text_fts after itself.
+if (db.prepare(`SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name='sound_text'`).get().n) {
+  const wordsOf = (x) => String(x || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const creatureRows = db.prepare(`SELECT entry, name, zone FROM creatures WHERE name <> ''`).all();
+  // tag -> the zones its already-attributed sounds belong to. The Naxxramas VO is named
+  // A_<ABBREV>_NAXX_<EVENT>; three or four characters match far too many creatures alone,
+  // but the families that already resolved through the second token (A_ANU_NAXX_ ->
+  // Anub'Rekhan) pin down which zone "naxx" means, and that makes the abbreviation unique.
+  // Learned from the data, so no hand-written abbreviation table and it generalises to any
+  // instance whose VO follows the convention.
+  const zonesByTag = new Map();
+  for (const r of db.prepare(`SELECT DISTINCT s.name AS sname, c.zone FROM sound_text t
+      JOIN sounds s ON s.id = t.sound JOIN creatures c ON c.entry = t.creature
+      WHERE t.creature IS NOT NULL AND c.zone IS NOT NULL`).all()) {
+    for (const w of wordsOf(r.sname)) {
+      if (w.length < 3) continue;
+      if (!zonesByTag.has(w)) zonesByTag.set(w, new Map());
+      const m = zonesByTag.get(w);
+      m.set(r.zone, (m.get(r.zone) || 0) + 1);
+    }
+  }
+  const anon = db.prepare(`SELECT DISTINCT t.sound, s.name, t.text FROM sound_text t JOIN sounds s ON s.id = t.sound
+    WHERE t.creature IS NULL
+      AND NOT EXISTS (SELECT 1 FROM sound_text x WHERE x.sound = t.sound AND x.creature IS NOT NULL)`).all();
+  const ins = db.prepare(`INSERT INTO sound_text (sound, creature, text, src) VALUES (?,?,?,'a')`);
+  let byAbbrev = 0;
+  db.transaction(() => {
+    for (const r of anon) {
+      const ws = wordsOf(r.name).filter((w) => w !== "a");
+      const abbrev = ws[0];
+      if (!abbrev || abbrev.length < 3) continue;
+      let zoneSet = null, bestN = 0;
+      for (const w of ws.slice(1)) {
+        const m = zonesByTag.get(w);
+        if (!m) continue;
+        const n = [...m.values()].reduce((x, y) => x + y, 0);
+        if (n > bestN) { bestN = n; zoneSet = new Set(m.keys()); }
+      }
+      let cands = creatureRows.filter((c) => wordsOf(c.name).some((w) => w.startsWith(abbrev)));
+      if (cands.length > 1 && zoneSet) cands = cands.filter((c) => zoneSet.has(c.zone));
+      const uniq = [...new Set(cands.map((c) => c.entry))];
+      if (uniq.length !== 1) continue;          // still ambiguous -> leave anonymous
+      ins.run(r.sound, uniq[0], r.text);
+      byAbbrev++;
+    }
+  })();
+  // sound_text_fts is an EXTERNAL-CONTENT table, so DELETE FROM it is invalid
+  // (SQLITE_CORRUPT_VTAB). 'rebuild' is the documented way to resync one to its content.
+  if (byAbbrev) db.exec(`INSERT INTO sound_text_fts(sound_text_fts) VALUES('rebuild')`);
+  const namedNow = db.prepare(`SELECT COUNT(DISTINCT sound) n FROM sound_text WHERE creature IS NOT NULL`).get().n;
+  console.log(`  sound_text: +${byAbbrev} by abbreviation -> ${namedNow} sounds name a speaker`);
+}
+
 console.log("Building FTS indexes...");
 db.exec(`CREATE VIRTUAL TABLE items_fts USING fts5(name, content='items', content_rowid='entry', tokenize='unicode61')`);
 db.exec(`INSERT INTO items_fts(rowid, name) SELECT entry, name FROM items WHERE hidden = 0`);
