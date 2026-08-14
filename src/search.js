@@ -2,7 +2,7 @@
 // autocomplete dropdown wired onto the top-bar input. Items/NPCs/quests are
 // FTS5-backed; dungeons use LIKE over the ~39 maps. All in-memory (no network).
 import { query } from "./db.js";
-import { Q_SEARCH_VOICE, Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES, Q_SEARCH_SUBZONES, Q_SEARCH_FACTIONS, Q_SEARCH_ITEMSETS, Q_SEARCH_OBJECTS, Q_ID_ITEM, Q_ID_NPC, Q_ID_QUEST, Q_ID_SPELL, Q_ID_OBJECT } from "./queries.js";
+import { Q_SEARCH_GOSSIP, Q_SEARCH_VOICE, Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES, Q_SEARCH_SUBZONES, Q_SEARCH_FACTIONS, Q_SEARCH_ITEMSETS, Q_SEARCH_OBJECTS, Q_ID_ITEM, Q_ID_NPC, Q_ID_QUEST, Q_ID_SPELL, Q_ID_OBJECT } from "./queries.js";
 import { itemLink, npcLink, questLink, spellLink, dungeonLink, zoneLink, subzoneLink, factionLink, objectLink, esc } from "./render.js";
 
 // FTS5 prefix MATCH: prefix-match each alnum token ("fire bl" -> "fire* bl*").
@@ -45,12 +45,12 @@ function mergeId(base, ids) {
 // Run all entity searches in parallel; `limit` rows per entity.
 export async function runSearch(term, limit) {
   const t = (term || "").trim();
-  const empty = { items: [], npcs: [], quests: [], spells: [], dungeons: [], zones: [], subzones: [], factions: [], itemsets: [], objects: [], voice: [] };
+  const empty = { items: [], npcs: [], quests: [], spells: [], dungeons: [], zones: [], subzones: [], factions: [], itemsets: [], objects: [], voice: [], gossip: [] };
   if (!t) return empty;
   const fts = ftsQuery(t);
   const tg = trigramQuery(t);
   const like = `%${t}%`;
-  const [items, npcs, quests, spells, dungeons, zones, subzones, factions, itemsets, objects, voice, ids] = await Promise.all([
+  const [items, npcs, quests, spells, dungeons, zones, subzones, factions, itemsets, objects, voice, gossip, ids] = await Promise.all([
     fts ? query(Q_SEARCH_ITEMS, [fts, t, limit, tg]) : [],
     fts ? query(Q_SEARCH_NPCS, [fts, t, limit, tg]) : [],
     fts ? query(Q_SEARCH_QUESTS, [fts, t, limit, tg]) : [],
@@ -66,9 +66,12 @@ export async function runSearch(term, limit) {
     // Optional schema (db.js caps()): a DB built before the audio tables must yield an
     // empty tab, not reject inside this Promise.all and wipe out every other entity.
     fts ? query(Q_SEARCH_VOICE, [fts, like, limit]).catch(() => []) : [],
+    // Gossip text -- where a quoted phrase actually lives. Optional schema, so the
+    // same .catch() rule as the other late additions applies.
+    fts ? query(Q_SEARCH_GOSSIP, [fts, limit]).catch(() => []) : [],
     idMatches(t),
   ]);
-  return mergeId({ items, npcs, quests, spells, dungeons, zones, subzones, factions, itemsets, objects, voice }, ids);
+  return mergeId({ items, npcs, quests, spells, dungeons, zones, subzones, factions, itemsets, objects, voice, gossip }, ids);
 }
 
 // Flatten the per-type results into one ranked list (exact > prefix > other,
@@ -99,6 +102,13 @@ function rankFlat(res, term, n) {
     html: `<span class="muted">${esc(v.text ? `“${v.text}”` : v.name)}</span>`
       + (v.creature_name ? ` ${npcLink(v.creature, v.creature_name)}` : ""),
     href: `?voicelines=${encodeURIComponent(v.name)}`,
+  });
+  // Gossip (w: 11) -- the words an NPC says to you. Ranked on the LINE, since that is
+  // what was typed; the result navigates to the NPC, which is what the phrase identifies.
+  for (const g of res.gossip || []) all.push({
+    type: "dialogue", w: 11, name: g.text, tier: tier(g.text),
+    html: `${npcLink(g.entry, g.name)} <span class="muted">“${esc(String(g.text).replace(/\$[BbNnCcRr]/g, " ").replace(/\s+/g, " ").trim().slice(0, 70))}”</span>`,
+    href: `?npc=${g.entry}`,
   });
   all.sort((a, b) => a.tier - b.tier || a.w - b.w || (a.name || "").localeCompare(b.name || ""));
   return all.slice(0, n);

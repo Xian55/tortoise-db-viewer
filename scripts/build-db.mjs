@@ -120,6 +120,10 @@ const STAGE_SPECS = (() => {
   // script_texts is the ScriptDev2 boss-line pool, broadcast_text the dbscript SAY pool.
   add("script_texts", "tw_world_script_texts.sql");
   add("broadcast_text", "tw_world_broadcast_text.sql");
+  // Gossip: creature_template.gossip_menu_id -> gossip_menu.text_id -> npc_text
+  // -> broadcast_text. What an NPC says when you talk to it (-> npc_gossip).
+  add("gossip_menu", "tw_world_gossip_menu.sql");
+  add("npc_text", "tw_world_npc_text.sql");
   return specs;
 })();
 
@@ -1574,6 +1578,82 @@ console.log("Importing sounds...");
   }
   const ncr = db.prepare(`SELECT COUNT(DISTINCT creature) n FROM creature_sound`).get().n;
   console.log(`  sounds: ${nsnd} | creature_sound: ${ncs} rows / ${ncr} creatures | zone_sound: ${nzs} | sound_text: ${ntx}`);
+}
+
+// ---- NPC gossip (what an NPC says when you talk to it) ----
+// The words players actually quote live here, not in the sound tables: a voice clip is
+// picked from the NPC's VOICE TYPE and shared by every NPC of that type, while the gossip
+// text belongs to the one NPC. The two are never linked in the data (only 94 of 13,665
+// broadcast_text rows carry a sound id, and no gossip-slot sound has one), so this is the
+// only place a phrase like "Time is money, friend" can be searched from.
+//   creature_template.gossip_menu_id -> gossip_menu.text_id -> npc_text.BroadcastTextID*
+//   -> broadcast_text.male_text
+console.log("Importing NPC gossip...");
+{
+  // Deliberately NOT `WITHOUT ROWID`: npc_gossip_fts is an external-content FTS5 table
+  // and keys on the content table's rowid, which such a table doesn't have.
+  db.exec(`CREATE TABLE npc_gossip (
+    creature INTEGER NOT NULL, ord INTEGER NOT NULL, text TEXT NOT NULL,
+    UNIQUE (creature, ord))`);
+  let ngos = 0, nnpc = 0;
+  const have = (t) => src.has(t);
+  if (have("gossip_menu") && have("npc_text") && have("broadcast_text")) {
+    const btc = src.columns("broadcast_text");
+    const iBE = btc.indexOf("entry"), iBM = btc.indexOf("male_text"), iBF = btc.indexOf("female_text");
+    const btText = new Map();
+    for (const r of src.rows("broadcast_text")) {
+      const t = String(r[iBM] ?? "") || String(iBF >= 0 ? (r[iBF] ?? "") : "");
+      if (t.trim()) btText.set(Number(r[iBE]), t);
+    }
+    // npc_text row -> its broadcast ids (up to 8 random variants)
+    const ntc = src.columns("npc_text");
+    const iNI = ntc.indexOf("ID");
+    const bcols = ntc.map((c, i) => (/^BroadcastTextID\d+$/i.test(c) ? i : -1)).filter((i) => i >= 0);
+    const ntTexts = new Map();
+    if (iNI >= 0 && bcols.length) for (const r of src.rows("npc_text")) {
+      const ids = bcols.map((i) => Number(r[i])).filter((v) => v > 0);
+      if (ids.length) ntTexts.set(Number(r[iNI]), ids);
+    }
+    // gossip menu -> its npc_text rows
+    const gmc = src.columns("gossip_menu");
+    const iGE = gmc.indexOf("entry"), iGT = gmc.indexOf("text_id");
+    const menuTexts = new Map();
+    if (iGE >= 0 && iGT >= 0) for (const r of src.rows("gossip_menu")) {
+      const t = Number(r[iGT]);
+      if (!t) continue;
+      const e = Number(r[iGE]);
+      if (!menuTexts.has(e)) menuTexts.set(e, []);
+      menuTexts.get(e).push(t);
+    }
+    const ins = db.prepare(`INSERT OR IGNORE INTO npc_gossip VALUES (?,?,?)`);
+    const ctc = srcColumns("creature_template", "tw_world_creature_template.sql");
+    const iCE = ctc.indexOf("entry"), iCG = ctc.indexOf("gossip_menu_id");
+    if (iCE >= 0 && iCG >= 0) db.transaction(() => {
+      for (const r of srcRows("creature_template", "tw_world_creature_template.sql")) {
+        const menu = Number(r[iCG]);
+        if (!menu || !menuTexts.has(menu)) continue;
+        const entry = Number(r[iCE]);
+        const seen = new Set();
+        let ord = 0;
+        for (const ntId of menuTexts.get(menu)) {
+          for (const b of ntTexts.get(ntId) || []) {
+            const t = btText.get(b);
+            // One menu can point at several npc_text rows that repeat a line; keep one.
+            if (!t || seen.has(t)) continue;
+            seen.add(t);
+            ins.run(entry, ord++, t);
+            ngos++;
+          }
+        }
+        if (ord) nnpc++;
+      }
+    })();
+    db.exec(`CREATE VIRTUAL TABLE npc_gossip_fts USING fts5(text, content='npc_gossip', tokenize='unicode61')`);
+    db.exec(`INSERT INTO npc_gossip_fts(rowid, text) SELECT rowid, text FROM npc_gossip`);
+  } else {
+    console.warn("  gossip tables not staged -- npc_gossip skipped");
+  }
+  console.log(`  npc_gossip: ${ngos} lines across ${nnpc} NPCs`);
 }
 
 // ---- NPC abilities (the spells a creature casts at you) ----

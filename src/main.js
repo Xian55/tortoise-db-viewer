@@ -450,6 +450,12 @@ async function showSearch(term) {
   // Voice lines matched either by what is SAID or by the sound's name, so both columns
   // are shown -- a name-only hit (most of Turtle's voice acting has no text row) would
   // otherwise be a blank row.
+  // Gossip search: the phrase lives on the NPC, not on any sound, so a hit resolves to
+  // the NPC that says it.
+  const gossipSearchCols = [
+    { label: "NPC", cell: (r) => npcLink(r.entry, r.name) + (r.subname ? ` <span class="muted">&lt;${esc(r.subname)}&gt;</span>` : ""), value: (r) => r.name },
+    { label: "Says", cls: "gossip-text", cell: (r) => questText(r.text), value: (r) => r.text },
+  ];
   const voiceSearchCols = [
     { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
     {
@@ -512,8 +518,9 @@ async function showSearch(term) {
     { id: "zones", label: "Zones", ...regTable(zoneCols, res.zones) },
     { id: "subzones", label: "Subzones", ...regTable(subzoneCols, res.subzones || []) },
     { id: "voice", label: "Voice Lines", ...regTable(voiceSearchCols, res.voice || [], { pageSize: 100 }) },
+    { id: "gossip", label: "Dialogue", ...regTable(gossipSearchCols, res.gossip || [], { pageSize: 100 }) },
   ];
-  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + itemsets.length + res.dungeons.length + (res.objects || []).length + res.zones.length + (res.subzones || []).length + (res.voice || []).length;
+  const total = res.items.length + res.npcs.length + res.quests.length + res.spells.length + res.factions.length + itemsets.length + res.dungeons.length + (res.objects || []).length + res.zones.length + (res.subzones || []).length + (res.voice || []).length + (res.gossip || []).length;
   if (!total) { app.innerHTML = `<div class="home"><p>No results for “${esc(term)}”.</p></div>`; return; }
 
   app.innerHTML = `<div class="results"><h1>Results for “${esc(term)}”</h1>${tabs(tabDefs)}</div>`;
@@ -1385,9 +1392,12 @@ async function showNpc(id) {
   // Sounds are an optional schema (see db.js caps()): a dataset whose DB predates the
   // audio tables must degrade to no tab, not to a failed query inside the Promise.all
   // above (one rejection there would wipe out every other pane).
-  const [npcSounds, npcVoice] = (await caps()).sounds
+  const capsNow = await caps();
+  const [npcSounds, npcVoice] = capsNow.sounds
     ? await Promise.all([query(Q.Q_NPC_SOUNDS, [id]), query(Q.Q_NPC_VOICE, [id])])
     : [[], []];
+  // What this NPC says when you talk to it. Optional schema, same as sounds.
+  const npcGossip = capsNow.gossip ? await query(Q.Q_NPC_GOSSIP, [id]).catch(() => []) : [];
   // ability_key -> ascending [{rank, spell, level}], to compute the rank a tamed pet of
   // THIS beast's level starts with (highest rank whose level <= the beast's level).
   const petRankMap = new Map();
@@ -1545,10 +1555,17 @@ async function showNpc(id) {
     { label: "Length", num: true, cls: "muted", hideEmpty: true, cell: (r) => fmtDur(r.ms), value: (r) => r.ms || 0 },
   ];
 
+  // Gossip is prose, and it carries the same $B/$N tokens quest text does, so it runs
+  // through the same renderer rather than being escaped flat.
+  const gossipCols = [
+    { label: "Says", cls: "gossip-text", cell: (r) => questText(r.text), value: (r) => r.text },
+  ];
+
   const tabDefs = [
     { id: "stats", label: "Stats", ...npcStatsPane(npc, peers) },
     { id: "abilities", label: "Abilities", ...regTable(abilityCols, abilities, { groupable: true }) },
     { id: "sounds", label: "Sounds", ...regTable(soundCols, soundRows, { groupable: true, group: "Type", pageSize: 100 }) },
+    { id: "gossip", label: "Gossip", ...regTable(gossipCols, npcGossip, { pageSize: 50 }) },
     { id: "petabilities", label: "Pet Abilities", ...regTable(petAbilCols, petAbil) },
     { id: "teaches", label: "Teaches", ...regTable(teachesCols, trains) },
     { id: "drops", label: "Drops", ...regTable(lootCols, drops) },

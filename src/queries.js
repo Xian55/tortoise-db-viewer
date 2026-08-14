@@ -635,6 +635,22 @@ export const Q_NPC_ABILITIES = `
   WHERE a.creature = ?1 AND s.name <> ''
   ORDER BY (a.src = 'a'), a.src, a.ord, s.name`;
 
+// ---- NPC gossip (what an NPC says when you talk to it) ----
+// This is where a quoted phrase actually lives. A voice clip is picked from the NPC's
+// VOICE TYPE and shared by every NPC of that type, while the gossip text belongs to the
+// one NPC, and the data never links the two -- so searching words means searching here.
+export const Q_NPC_GOSSIP = `SELECT ord, text FROM npc_gossip WHERE creature = ?1 ORDER BY ord`;
+
+// Phrase search over gossip, resolved to the NPC that says it. GROUP BY the creature so
+// an NPC with several matching lines is one result, showing its best-matching line.
+export const Q_SEARCH_GOSSIP = `
+  SELECT c.entry, c.name, c.subname, g.text, MIN(f.rank) AS score
+  FROM npc_gossip_fts f JOIN npc_gossip g ON g.rowid = f.rowid
+  JOIN creatures c ON c.entry = g.creature
+  WHERE npc_gossip_fts MATCH ?1 AND c.hidden = 0
+  GROUP BY c.entry
+  ORDER BY score LIMIT ?2`;
+
 // ---- Sounds ----
 // `files` is a JSON array: a SoundEntries row can hold up to 10 interchangeable variants
 // the client picks between, so the player offers them as numbered takes.
