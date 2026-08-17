@@ -375,6 +375,28 @@ the thing wowhead doesn't have — **transcripts**, and full-text search over th
   as not. **There is deliberately no third "last word-ish token" rule**: it reads the
   ENCOUNTER prefix as an activity — Illidan's numbered lines came out labelled "Illidan",
   the Black Temple prelude "Btprlude" — which is worse than a blank activity cell.
+- **A transcript belongs to a TAKE, not to the sound.** The 10 files a SoundEntries row can
+  hold are interchangeable to the *client*, not to a reader: they are different lines.
+  "Time is money, friend!" is take 1 of `GoblinMaleZanyNPCGreetings`, take 4 of
+  `GoblinFemaleZanyNPCGreetings` and take 6 of `GoblinFemaleZanyVendorNPCGreeti`. Keying
+  `sound_text` on the sound alone made every page quote whichever row came first and cue
+  take 1's audio, so a phrase search found the right sounds and then printed and played
+  something else. Hence `sound_text.take` — NULL where no take is knowable, which is
+  exactly the server-derived pool (`script_texts` / `broadcast_text` pair a line with a
+  SOUND and say nothing about which file carries it). The take was never missing from the
+  inputs: `voice-transcripts*.json` are indexed by take and build-db already read that
+  index for hand-vs-machine precedence, then dropped it on insert.
+  Frontend: `caps().soundTake` gates it, the take-aware queries are **additive** (each page
+  keeps its single-text column as the fallback), the transcript cell lists every take
+  numbered against the player chips, clicking a line selects that take, and a search hit
+  resolves WHICH take matched so the player opens on it.
+- **Crediting a speaker UPDATEs, it does not INSERT a copy.** The three attribution passes
+  (cluster-propagate, name-match, abbreviation) used to insert a credited duplicate of an
+  anonymous line. That was invisible only because every page read one row per sound —
+  listing all takes showed each line set twice, once numbered with an `auto` badge and once
+  bare. They now write `creature` onto the existing rows (546 rows of pure duplication gone
+  on main). `src` is deliberately left alone: it records where the TEXT came from, so a
+  machine transcript stays machine-flagged whoever is later found to say it.
 - **Tables**: `sounds` (id → name/type/files/ms; `files` is a JSON array, since one
   SoundEntries row holds up to 10 interchangeable takes the client picks between — the UI
   renders them as numbered chips), `creature_sound`, `zone_sound`, `sound_text` +
