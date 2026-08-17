@@ -129,7 +129,7 @@ python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
 python scripts/transcribe-sounds.py   # LOCAL+GPU: Whisper over public/sounds -> scripts/data/voice-transcripts-auto.json (machine transcripts for the ~1.6k clips no text table records). `--model`/`--compute`/`--only`/`--limit`. Needs faster-whisper. See "Transcribing the clips nothing writes down"
 bun scripts/extract-script-sounds.mjs # LOCAL: server ScriptDev2 src + the SQL dumps -> scripts/data/script-sounds.json (script_name -> the script_texts entries it speaks + sounds it plays, plus the sound-id worklist extract-sounds.py needs). Run BEFORE extract-sounds.py
-python scripts/extract-sounds.py      # LOCAL: client MPQ audio -> public/sounds/**.ogg (Opus, R2-only) + scripts/data/sound-map.json (committed mapping). `--only creature,npc,zone,va,text`, `--limit N`, `--jobs N`, `--dry-run`. Needs ffmpeg. See "Sounds"
+python scripts/extract-sounds.py      # LOCAL: client MPQ audio -> public/sounds/**.ogg (Opus, R2-only) + scripts/data/sound-map.json (committed mapping). `--only creature,npc,zone,va,cdir,text`, `--limit N`, `--jobs N`, `--dry-run`. Needs ffmpeg. See "Sounds"
 bun scripts/extract-script-abilities.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src/scripts) -> scripts/data/script-abilities.json (creature_template.script_name -> the spell ids that C++ fight hardcodes; gives Ragnaros/Nefarian/Onyxia an ability list they have no SQL rows for)
 bun scripts/extract-instance-bosses.mjs # LOCAL: server ScriptDev2 src (../tortoise-wow/src) + built DB -> scripts/data/instance-bosses.json (script-spawned boss entry -> instance mapId; needs build-db first)
 bun scripts/extract-vanilla-ids.mjs   # LOCAL: cmangos Classic SQLite DB (classicmangos.sqlite) -> scripts/data/vanilla-ids.json (vanilla-1.12 id allowlist + `edited` field-diff set; build-db flags items/creatures/quests custom = id NOT IN vanilla OR IN edited). Also field-diffs the built Turtle DB vs cmangos (run build-db first). CMANGOS_DB / TW_DB override paths
@@ -341,6 +341,40 @@ the thing wowhead doesn't have — **transcripts**, and full-text search over th
   Without it 30 of ~340 voice lines had audio. Turtle's own voice acting is scoped by
   **directory** instead (`Sound\Interface\VA`, ~400 clips) — most are played straight from
   C++ and referenced by no DBC row at all.
+- **`Sound\Creature\<Folder>` is the scope rule that scales, and it supersedes chasing
+  boss ids one at a time.** `script-sounds.json` only ever worked for Turtle: it is parsed
+  out of *Turtle's* ScriptDev2 tree, so on the cmangos rows every C++-scripted boss listed
+  nothing but grunts. Mother Shahraz (22947) is the case that forced this — 11 spoken lines
+  sitting in `Sound\Creature\MotherShahraz`, reachable from no DBC row at all, while wowhead
+  lists them all. The folder IS the client's own "all audio for this creature" grouping, so
+  it is taken whole: 3,757 sounds on a TBC client, 3,830 on Turtle, against the ~1,400
+  `CreatureSoundData` reaches. New client, new boss, new core — no worklist to update.
+  Binding a folder back to a creature uses three signals, and needs all three:
+  1. the folder holds a sound some `CreatureSoundData` row references → that CSD's displays;
+  2. the folder `CreatureModelData.ModelPath` sits in → that model's displays (`cmd_path`).
+     Together these are ~313 of 568 TBC folders, and they are done in the extractor
+     (`displayDir`), being purely client-side.
+  3. else the folder NAME vs the creature name — exact, else contained-in with ≥6 chars and
+     ≤3 matching names ("Faerlina" is "Grand Widow Faerlina"; "Archer" is in 42 names and
+     means none of them). Done in **build-db**, which is where creature names live. This is
+     the only thing that finds Shahraz: her display reuses another model's sound data.
+  A folder that binds to nothing (generic voice types like `Peon`, cut content) is still
+  extracted and still listed at `?sounds` — `Q_SOUND_LIST` files it as `Creature` on its
+  file path — it just carries no NPC attribution, which beats a guessed one.
+  These rows carry `creature_sound.ord` **200 (speech) / 201 (noise)** — above every client
+  slot, whose max is 103 — which is how `main.js` groups them without a new column an older
+  DB would fail on. A folder holds both kinds: Illidan's 19 spoken lines sit beside his wing
+  flaps. The splitter is the **`A_` filename prefix**, Blizzard's own marker for a spoken
+  SoundEntries row and near-perfect here (of 1,773 `A_` rows in TBC creature folders, the
+  only effect-*looking* names are `…Summon01` — the boss saying "arise"), plus a small
+  vocal-activity set for the rest.
+  Their **activity** is read off the filename by two rules: a known activity word anywhere
+  in it (longest first, so `SpecialAttack` isn't read as `Attack`), else the name minus its
+  `A_` prefix, trailing counter and the FOLDER NAME (`A_Mr Smite Alarm01` in `MrSmite` →
+  Alarm), compared on alphanumerics because the two spell the creature differently as often
+  as not. **There is deliberately no third "last word-ish token" rule**: it reads the
+  ENCOUNTER prefix as an activity — Illidan's numbered lines came out labelled "Illidan",
+  the Black Temple prelude "Btprlude" — which is worse than a blank activity cell.
 - **Tables**: `sounds` (id → name/type/files/ms; `files` is a JSON array, since one
   SoundEntries row holds up to 10 interchangeable takes the client picks between — the UI
   renders them as numbered chips), `creature_sound`, `zone_sound`, `sound_text` +
@@ -677,8 +711,10 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
   See "Peer baselines".
 - `scripts/extract-sounds.py` — LOCAL: pulls the client's audio (StormLib) and transcodes
   it → `public/sounds/**.ogg` (R2-only) + committed `scripts/data/sound-map.json`
-  (SoundEntries → files, the CreatureSoundData/NPCSounds slot sets, display→sound-set, and
-  the per-area music/ambience/intro). See "Sounds".
+  (SoundEntries → files, the CreatureSoundData/NPCSounds slot sets, display→sound-set, the
+  per-area music/ambience/intro, and `dirSound`/`displayDir` — the `Sound\Creature\<Folder>`
+  grouping that carries every C++-scripted boss line, plus the display ids it could bind
+  client-side). See "Sounds".
 - `scripts/extract-script-sounds.mjs` — LOCAL: server ScriptDev2 C++ + the `script_texts` /
   `broadcast_text` dumps → committed `scripts/data/script-sounds.json`: `script_name →
   {t: [textEntry], s: [soundId]}` (who says which line) plus `ids` (the sound worklist

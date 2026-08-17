@@ -39,7 +39,7 @@ const autoBadge = (r) => (r && r.src === "w" ? ` <span class="snd-auto" title="A
 const SOUND_KIND = {
   Loop: "NPC Loops",
   Greeting: "NPC Greetings", Farewell: "NPC Greetings", Annoyed: "NPC Greetings",
-  Script: "Scripted",
+  Script: "Scripted", Voice: "Voice Lines",
   "Pet Attack": "Pet", "Pet Order": "Pet", "Pet Dismiss": "Pet",
 };
 
@@ -1546,7 +1546,18 @@ async function showNpc(id) {
   // that slot, because the SoundEntries `type` column is a playback-engine flag (2D vs
   // 3D, looping) and says nothing about what the sound IS.
   const soundRows = [
-    ...npcSounds.map((r) => ({ ...r, kind: SOUND_KIND[r.slot] || "NPC Combat", activity: r.slot })),
+    // ord >= 200 marks a row that came from the creature's Sound\Creature folder rather
+    // than a CreatureSoundData slot: its "slot" is parsed from the filename (Taunt, Slay,
+    // Aggro...) and what it holds is spoken dialogue, not the combat grunt set.
+    // ord 200/201 marks a row that came from the creature's Sound\Creature folder rather
+    // than a CreatureSoundData slot. A folder carries both kinds -- Illidan's 19 spoken
+    // lines sit beside his wing flaps -- so build-db splits them there (200 = speech,
+    // 201 = noise) rather than the page re-deriving it from a label.
+    ...npcSounds.map((r) => ({
+      ...r,
+      kind: r.ord === 200 ? "Voice Lines" : r.ord === 201 ? "NPC Effects" : (SOUND_KIND[r.slot] || "NPC Combat"),
+      activity: r.slot,
+    })),
     // A scripted line has no slot at all -- it is bound to the NPC by its C++ script.
     ...npcVoice.filter((v) => !npcSounds.some((s) => s.id === v.id))
       .map((r) => ({ ...r, kind: "Voice Lines", activity: "" })),

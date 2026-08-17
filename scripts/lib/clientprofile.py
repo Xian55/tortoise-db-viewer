@@ -72,6 +72,11 @@ VANILLA_DBC = {
     # separate greeting/farewell/pissed trio. TBC widened the row and moved the latter.
     "cdi_model": 1, "cdi_sound": 2, "cdi_npc_sound": 11,
     "cmd_sound": 13,             # CreatureModelData.dbc -> CreatureSoundData id
+    # CreatureModelData.ModelPath, e.g. "Creature\\Illidan\\Illidan.mdx". Field 2 in both
+    # 1.12 (16 fields) and 2.4.3 (24) -- the row carries no localized string. Its FOLDER
+    # is usually the same folder the model's audio sits in under Sound\\Creature, which is
+    # how extract-sounds binds a whole directory of boss lines to a display id.
+    "cmd_path": 2,
     "npcsounds_first": 1,        # NPCSounds.dbc: Sound[4] at 1..4
     # AreaTable.dbc -- all three precede the name block, so unchanged in TBC.
     "area_ambience": 7, "area_zone_music": 8, "area_intro_sound": 9,

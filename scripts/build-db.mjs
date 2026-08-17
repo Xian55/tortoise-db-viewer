@@ -1156,6 +1156,7 @@ console.log("Importing sounds...");
     // doesn't distinguish, so both are labelled the same and separated by `ord`.
     const NPC_SLOTS = ["Greeting", "Farewell", "Annoyed", "Annoyed"];
     const insCs = db.prepare(`INSERT OR IGNORE INTO creature_sound VALUES (?,?,?,?)`);
+    const slotted = new Set();   // `${creature}:${sound}` already filed under a client slot
     const addCs = (creature, sound, slot, ord) => {
       if (sound && haveSound.has(sound)) { insCs.run(creature, sound, slot, ord); ncs++; }
     };
@@ -1164,10 +1165,151 @@ console.log("Importing sounds...");
         const ds = map.displaySound[cr.display_id];
         if (!ds) continue;
         const [csd, ns] = ds;
-        for (const [slotIx, sound] of map.creatureSound[csd] || []) addCs(cr.entry, sound, map.slots[slotIx], slotIx);
-        (map.npcSounds[ns] || []).forEach((sound, i) => addCs(cr.entry, sound, NPC_SLOTS[i], 100 + i));
+        for (const [slotIx, sound] of map.creatureSound[csd] || []) {
+          addCs(cr.entry, sound, map.slots[slotIx], slotIx);
+          slotted.add(`${cr.entry}:${sound}`);
+        }
+        (map.npcSounds[ns] || []).forEach((sound, i) => {
+          addCs(cr.entry, sound, NPC_SLOTS[i], 100 + i);
+          slotted.add(`${cr.entry}:${sound}`);
+        });
       }
     })();
+
+    // ---- Sound\Creature\<Folder>: the spoken lines no DBC row names ----
+    // CreatureSoundData holds grunts and footsteps; a boss's Aggro/Taunt/Slay/Death lines
+    // are fired from the server's C++ and are reachable from no client table at all. What
+    // DOES group them is the folder they sit in, so extract-sounds ships the folder ->
+    // sounds map plus whatever display ids it could bind (a folder its CreatureSoundData
+    // points into, or the folder its model file lives in). That covers a bit over half.
+    // The rest is matched here, by NAME, because this is where creature names exist --
+    // Mother Shahraz's 11 lines sit in Sound\Creature\MotherShahraz and nothing else in
+    // the client connects them to creature 22947.
+    // Ordered after every client slot (max 103) so the NPC page lists the real slots first.
+    const DIR_ORD = 200;
+    const dirSound = map.dirSound || {};
+    // These carry no CreatureSoundData slot, so their ACTIVITY has to be read off the
+    // filename. There is no single convention -- "BLCKTMPLE_MothrSha_Taunt01",
+    // "A_RagnarosArrival01", "A_ASH_SPEAK_01" and "CoweringRoar" are all real -- so three
+    // rules run in order, and the measured yield of each is why all three exist (Turtle:
+    // 1688 / 128 / ~50 of 1974, vs 158 left as "Other").
+    //   1. a known activity word anywhere in the name. Longest/most specific first, so
+    //      "SpecialAttack" is not read as "Attack" and "WoundCrit" is not read as "Wound".
+    //   2. the name with its "A_" prefix, trailing counter and the FOLDER NAME removed --
+    //      "A_Mr Smite Alarm01" in folder MrSmite is an Alarm. Compared on alphanumerics
+    //      only, since the two spell the creature differently as often as not.
+    //   3. the rightmost all-alphabetic underscore token (A_DOOMGUARD_DISMISS01).
+    // Anything left is an effect rather than an activity (Growl, FootstepHorseDirt).
+    const DIR_ACTIVITY = [
+      ["WINGFLAP", "Wing Flap"], ["LIFTOFF", "Lift Off"], ["SPECIALATTACK", "Special Attack"],
+      ["WOUNDCRIT", "Wound Critical"], ["FOOTSTEP", "Footsteps"], ["FOORSTEP", "Footsteps"],
+      ["AGGRO", "Aggro"], ["SLAY", "Slay"], ["DEATH", "Death"], ["TAUNT", "Taunt"],
+      ["GREET", "Greet"], ["FAREWELL", "Farewell"], ["INTRO", "Intro"], ["ARRIVAL", "Arrival"],
+      ["ENRAGE", "Enrage"], ["BERSERK", "Enrage"], ["SPECIAL", "Special"], ["SPELL", "Spell"],
+      ["CAST", "Spell"], ["WOUND", "Wound"], ["ATTACK", "Attack"], ["ROAR", "Roar"],
+      ["SPEAK", "Speak"], ["READY", "Ready"], ["RALLY", "Rally"], ["WAKE", "Wake"],
+      ["FIDGET", "Fidget"], ["TRANSFORM", "Transform"], ["LOOP", "Loop"], ["BARK", "Bark"],
+      ["EMOTE", "Emote"], ["FEAR", "Fear"], ["FLEE", "Flee"], ["PISSED", "Annoyed"],
+      ["LAND", "Land"], ["JUMP", "Jump"], ["SUBMERGE", "Submerge"], ["BIRTH", "Birth"],
+      ["STUN", "Stun"], ["DISMISS", "Dismiss"], ["ORDER", "Order"], ["KILL", "Kill"],
+      ["SUMMON", "Summon"], ["HEALTH", "Health"], ["SPAWN", "Spawn"], ["STEP", "Footsteps"],
+      ["EXERT", "Exertion"], ["INJUR", "Injury"], ["STAND", "Stand"], ["ALERT", "Alert"],
+      ["YES", "Yes"], ["WHAT", "What"],
+    ];
+    const alnum = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    // Greeting/Farewell/Annoyed are the NPCSounds gossip slots, and Q_SOUND_LIST keys its
+    // "NPC Gossip" category off exactly those three -- a boss taunt must not land there.
+    const activityLabel = (tok) => {
+      if (!tok || tok.length < 2 || tok.length > 14) return null;
+      const lab = /^[A-Z0-9]+$/.test(tok) ? tok[0] + tok.slice(1).toLowerCase() : tok[0].toUpperCase() + tok.slice(1);
+      return NPC_SLOTS.includes(lab) ? "Dialogue" : lab;
+    };
+    const dirSlot = (name, dir) => {
+      const n = String(name || "");
+      const up = n.toUpperCase();
+      const known = DIR_ACTIVITY.find(([w]) => up.includes(w));
+      if (known) return known[1];
+      const trimmed = n.replace(/^A_/, "").replace(/[\s_\d]+$/, "");
+      const key = alnum(dir);
+      if (key && alnum(trimmed).startsWith(key) && alnum(trimmed).length > key.length) {
+        let i = 0, seen = 0;
+        while (i < trimmed.length && seen < key.length) {
+          if (/[a-z0-9]/i.test(trimmed[i])) seen++;
+          i++;
+        }
+        const lab = activityLabel(trimmed.slice(i).replace(/[^A-Za-z]/g, ""));
+        if (lab) return lab;
+      }
+      // Deliberately no third rule. Falling back to "the last word-ish token" reads the
+      // ENCOUNTER prefix as an activity -- Illidan's 19 numbered lines came out labelled
+      // "Illidan", the Black Temple prelude "Btprlude" -- which is worse than admitting
+      // the filename records no activity. Blank; the column hides itself when empty.
+      return "";
+    };
+    // Voice or noise. The `A_` prefix is Blizzard's own marker for a spoken SoundEntries
+    // row and it is near-perfect here: of 1,773 A_ rows in TBC creature folders the only
+    // ones that look like effects by name ("...Summon01") are the boss SAYING "arise".
+    // Everything without it is the model's noise set, unless the activity word says
+    // otherwise. Carried in `ord` rather than a new column, so a DB built before this
+    // still satisfies every existing query.
+    const VOCAL = new Set(["Aggro", "Slay", "Death", "Taunt", "Greet", "Farewell", "Intro",
+      "Arrival", "Enrage", "Speak", "Rally", "Ready", "Yes", "What", "Dialogue", "Annoyed"]);
+    const DIR_ORD_FX = 201;
+    const dirOrd = (name, slot) => (/^A_/.test(String(name || "")) || VOCAL.has(slot) ? DIR_ORD : DIR_ORD_FX);
+    const addDir = (creature, dir) => {
+      for (const sound of dirSound[dir] || []) {
+        if (slotted.has(`${creature}:${sound}`)) continue;
+        const name = (map.sounds[sound] || {}).n;
+        const slot = dirSlot(name, dir);
+        addCs(creature, sound, slot, dirOrd(name, slot));
+      }
+    };
+    const boundDirs = new Set();
+    let nDirCr = 0, nDirName = 0;
+    db.transaction(() => {
+      for (const cr of db.prepare(`SELECT entry, display_id FROM creatures WHERE display_id > 0`).all()) {
+        for (const dir of (map.displayDir || {})[cr.display_id] || []) {
+          addDir(cr.entry, dir);
+          boundDirs.add(dir);
+          nDirCr++;
+        }
+      }
+    })();
+    {
+      const nm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const byName = new Map();
+      for (const c of db.prepare(`SELECT entry, name FROM creatures WHERE name IS NOT NULL`).all()) {
+        const k = nm(c.name);
+        if (!k) continue;
+        if (!byName.has(k)) byName.set(k, []);
+        byName.get(k).push(c.entry);
+      }
+      const allNames = [...byName.keys()];
+      db.transaction(() => {
+        for (const dir of Object.keys(dirSound)) {
+          if (boundDirs.has(dir)) continue;
+          const leaf = nm(dir);
+          if (!leaf) continue;
+          let keys = byName.has(leaf) ? [leaf] : [];
+          // The folder usually drops the title ("Curator" is "The Curator", "Faerlina" is
+          // "Grand Widow Faerlina"), so a contained match counts too -- but only when it is
+          // long enough to be a name and lands on a handful of NPCs. "Archer" is contained
+          // in 42 creature names and identifies none of them.
+          if (!keys.length && leaf.length >= 6) {
+            const cand = allNames.filter((n) => n.includes(leaf));
+            if (cand.length && cand.length <= 3) keys = cand;
+          }
+          if (!keys.length) continue;
+          nDirName++;
+          for (const k of keys) for (const e of byName.get(k)) addDir(e, dir);
+        }
+      })();
+    }
+    if (Object.keys(dirSound).length) {
+      console.log(`  creature folders: ${Object.keys(dirSound).length} | ${boundDirs.size} bound by the client `
+        + `(${nDirCr} display links), ${nDirName} by name, `
+        + `${Object.keys(dirSound).length - boundDirs.size - nDirName} unattributed`);
+    }
 
     // zone_sound. Day and night are separate SoundEntries rows but usually the same one;
     // collapse that case so a zone doesn't list the identical track twice.
