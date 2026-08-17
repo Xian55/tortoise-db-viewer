@@ -41,6 +41,11 @@ function audio() {
       }
       paint(false);
     });
+    // In the document rather than detached. It has no controls, so it renders nothing and
+    // costs no layout, but it is then inspectable -- which is how "did that click actually
+    // start the right take" is answerable in devtools and in the smoke suite, where
+    // autoplay policy blocks real playback and `src` is the only evidence left.
+    document.body.appendChild(el);
   }
   return el;
 }
@@ -230,6 +235,23 @@ async function download(box) {
 }
 
 /**
+ * Play a player box from the start of its selected take, taking over from whatever was
+ * playing before. Unconditional: callers that want toggle semantics check `active` first.
+ */
+function startBox(box) {
+  let files;
+  try { files = JSON.parse(box.dataset.files); } catch { return; }
+  const idx = Number(box.querySelector(".snd-take.on")?.dataset.take || 0);
+  if (active && active !== box) release();
+  active = box;
+  box.classList.remove("snd-error");
+  const a = audio();
+  a.src = soundUrl(files[idx] || files[0]);
+  a.currentTime = 0;
+  a.play().catch(onPlayReject);
+}
+
+/**
  * Delegated wiring. Safe to call on any container, and on the same one twice (the
  * listener is flagged) -- views that re-render a pane call it again after mounting.
  */
@@ -237,15 +259,29 @@ export function wireAudio(root) {
   if (!root || root.__sndWired) return;
   root.__sndWired = true;
   root.addEventListener("click", (e) => {
-    // A transcript line names its take, so clicking the words plays the words. The line
-    // lives in a different cell from the player, so it finds the player by row.
-    const line = e.target.closest(".snd-line[data-take]");
+    // A transcript line IS its clip, so clicking the words plays the words -- the same
+    // reading as clicking into the seek bar, which also starts an idle player. Delegating
+    // to the take chip instead would only ARM it: a chip click deliberately does not start
+    // playback (see below), because clicking through variants must not blast audio.
+    // The line lives in a different cell from the player, so it finds it by row.
+    // A line can contain a link (the sound page credits its speaker inside the line), and
+    // preventDefault on a click meant for that link would silently swallow the navigation.
+    const line = e.target.closest("a") ? null : e.target.closest(".snd-line");
     if (line) {
       // NOT `.snd-lines`: that is the line's own wrapper inside the transcript cell, so
       // closest() would stop there and never reach the cell holding the player.
       const row = line.closest("tr, .sound-page");
-      const chip = row?.querySelector(`.snd .snd-take[data-take="${line.dataset.take}"]`);
-      if (chip) { e.preventDefault(); chip.click(); return; }
+      const box = row?.querySelector(".snd");
+      if (box) {
+        e.preventDefault();
+        // A line with no take (a server-derived transcript, which names a sound and not a
+        // file) just plays whatever take is selected.
+        const chip = line.dataset.take == null ? null
+          : box.querySelector(`.snd-take[data-take="${line.dataset.take}"]`);
+        if (chip) for (const b of box.querySelectorAll(".snd-take")) b.classList.toggle("on", b === chip);
+        startBox(box);
+        return;
+      }
     }
     const take = e.target.closest(".snd-take");
     const play = e.target.closest(".snd-play");
@@ -255,8 +291,6 @@ export function wireAudio(root) {
     if (!box) return;
     e.preventDefault();
     if (dl) { download(box); return; }
-    let files;
-    try { files = JSON.parse(box.dataset.files); } catch { return; }
 
     if (take) {
       for (const b of box.querySelectorAll(".snd-take")) b.classList.toggle("on", b === take);
@@ -264,18 +298,12 @@ export function wireAudio(root) {
       // just arm it, so clicking through variants doesn't blast audio unasked.
       if (box !== active) return;
     }
-    const idx = Number(box.querySelector(".snd-take.on")?.dataset.take || 0);
-    const a = audio();
     if (box === active && !take) {
+      const a = audio();
       if (a.paused) a.play().catch(onPlayReject); else a.pause();
       return;
     }
-    if (active && active !== box) release();
-    active = box;
-    box.classList.remove("snd-error");
-    a.src = soundUrl(files[idx] || files[0]);
-    a.currentTime = 0;
-    a.play().catch(onPlayReject);
+    startBox(box);
   });
 
   // ---- seeking ----

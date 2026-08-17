@@ -51,8 +51,9 @@ const takesOf = (rows) => {
   return m;
 };
 // One transcript line, tagged with its take so clicking it plays that take (audio.js).
-const lineHtml = (t, numbered) => `<span class="snd-line"${t.take == null ? "" : ` data-take="${t.take}"`}>${
-  numbered && t.take != null ? `<span class="snd-linenum">${t.take + 1}</span>` : ""}${esc(t.text)}${autoBadge(t)}</span>`;
+const lineHtml = (t, numbered) => `<span class="snd-line"${t.take == null ? "" : ` data-take="${t.take}"`}`
+  + ` title="${t.take == null ? "Play this clip" : `Play take ${t.take + 1}`}">${
+    numbered && t.take != null ? `<span class="snd-linenum">${t.take + 1}</span>` : ""}${esc(t.text)}${autoBadge(t)}</span>`;
 // One line per take. A sound can carry several rows for the same take -- the same words
 // credited to two speakers, or a server-derived line sitting beside the machine one -- and
 // the cell is about what is SAID, so it shows each take once. A take-less row is dropped
@@ -2136,9 +2137,10 @@ async function showSound(id) {
   const lines = texts.filter((t) => t.text)
     .map((t) => ({ ...t, take: takeOfText.has(t.text) ? takeOfText.get(t.text) : null }))
     .sort((a, b) => (a.take ?? 99) - (b.take ?? 99))
-    .map((t) => `<li${t.take == null ? "" : ` class="snd-line" data-take="${t.take}"`}>${
-      t.take != null && files.length > 1 ? `<span class="muted">Take ${t.take + 1}: </span>` : ""
-    }<span class="snd-text">${esc(t.text)}</span>${autoBadge(t)}
+    .map((t) => `<li class="snd-line"${t.take == null ? "" : ` data-take="${t.take}"`}`
+      + ` title="${t.take == null ? "Play this clip" : `Play take ${t.take + 1}`}">${
+        t.take != null && files.length > 1 ? `<span class="muted">Take ${t.take + 1}: </span>` : ""
+      }<span class="snd-text">${esc(t.text)}</span>${autoBadge(t)}
       ${t.creature ? ` — ${npcLink(t.creature, t.creature_name)}` : ""}</li>`).join("");
 
   app.innerHTML = `<div class="sound-page">
