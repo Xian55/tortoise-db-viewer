@@ -239,9 +239,12 @@ async function testTakeRowLayout() {
   console.log(`take row layout: cols=[${m.heads}] widths=[${m.w}] chips=${m.chips} below=${m.chipBelowPlay} `
     + `dlUp=${m.dlOnControlRow} ctlOneRow=${m.ctlOneRow} ctl=${m.ctlW}/${m.cellW} overflow=${m.overflow}`);
   // Chips under an intact, un-clipped control row, and the transcript wider than the
-  // player -- the point of moving the chips in the first place.
+  // player -- the point of moving the chips in the first place. The bound on the Play
+  // column is deliberately loose: its width is the control row's own width, which depends
+  // on the font, and a tight number here just re-encodes the guess that broke CI (191px
+  // on Windows/Segoe UI, 200px on CI's fallback).
   return m.chipBelowPlay && m.dlOnControlRow && m.ctlOneRow && !m.overflow
-    && m.w[ti] > m.w[pi] && m.w[pi] <= 230;
+    && m.w[ti] > m.w[pi] && m.w[pi] <= 260;
 }
 
 // Seek + download controls. Playback itself is NOT asserted: an automated Chrome

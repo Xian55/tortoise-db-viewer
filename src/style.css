@@ -1512,11 +1512,14 @@ td .pet-rank { margin: 1px 0; }
    usual shrink-to-content idiom) does NOTHING here -- measured against the real table,
    width 1px/1%/100% all left the column at 344px for 211px of content, because auto
    layout hands the slack back. Only max-width actually binds.
-   With the take chips moved to their own row (see .snd-takes), the widest thing left on
-   the control row is play + bar + duration + download, so the cap comes down from 230px
-   and the transcript takes the difference. 210, not 190: the control row measures 191px
-   and the cell has padding, so a tighter cap clips the download button off the end. */
-.snd-col { max-width: 210px; }
+   With the take chips moved to their own row (see .snd-takes) the cell has a real
+   min-content width -- `.snd-ctl` cannot wrap -- so `width: 1px` finally binds: the
+   browser floors the column at the control row's own width and hands the rest back.
+   NO pixel cap, deliberately. A cap has to be guessed against a font, and the font is not
+   the same everywhere: the control row measures 191px on Windows/Segoe UI and 200px on
+   CI's Ubuntu fallback, so a 210px cap that looked generous locally clipped the download
+   button in CI. Letting the content state its own minimum removes the guess. */
+.snd-col { width: 1px; }
 /* Reserved for a table with no transcript column to stretch. NOT used on ?sounds' Name:
    two greedy columns fight, and Name won -- 583px of sound name next to a 106px
    transcript. The transcript is the content worth reading, so it is the only greedy one. */
