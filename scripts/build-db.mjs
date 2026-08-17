@@ -1120,9 +1120,18 @@ console.log("Importing sounds...");
   db.exec(`CREATE TABLE zone_sound (
     area INTEGER NOT NULL, sound INTEGER NOT NULL, kind TEXT NOT NULL,
     PRIMARY KEY (area, sound, kind)) WITHOUT ROWID`);
+  // `take` is the index into the sound's `files` array, i.e. which numbered chip in the
+  // player says this. A SoundEntries row holds up to 10 interchangeable takes and they
+  // are DIFFERENT LINES -- "Time is money, friend!" is take 1 of
+  // GoblinMaleZanyNPCGreetings, take 4 of GoblinFemaleZanyNPCGreetings and take 6 of
+  // GoblinFemaleZanyVendorNPCGreeti. Keying transcripts on the sound alone made every
+  // page show take 1's words and preselect take 1's audio, so a search hit played and
+  // read as something other than what was searched for.
+  // NULL where no take is knowable: script_texts / broadcast_text pair a line with a
+  // SOUND, saying nothing about which of its files carries it.
   db.exec(`CREATE TABLE sound_text (
     id INTEGER PRIMARY KEY, sound INTEGER NOT NULL, creature INTEGER,
-    text TEXT NOT NULL, src TEXT NOT NULL)`);
+    take INTEGER, text TEXT NOT NULL, src TEXT NOT NULL)`);
 
   // NOT clientData(): audio is per-CLIENT, but its R2 prefix is per-DATASET (config.js
   // SOUNDS_BASE appends MAP_SUB). clientData()'s vanilla fallback would hand the
@@ -1355,10 +1364,10 @@ console.log("Importing sounds...");
     })();
 
     // ---- transcripts ----
-    const insTx = db.prepare(`INSERT INTO sound_text (sound, creature, text, src) VALUES (?,?,?,?)`);
+    const insTx = db.prepare(`INSERT INTO sound_text (sound, creature, take, text, src) VALUES (?,?,?,?,?)`);
     const seenTx = new Set();
     const namedTx = new Set();   // (sound, text) pairs that got a real speaker
-    const addTx = (sound, creature, text, srcTag) => {
+    const addTx = (sound, creature, text, srcTag, take = null) => {
       text = String(text ?? "").trim();
       if (!sound || !haveSound.has(sound) || !text) return;
       // Dedupe on the sound plus a NORMALIZED text. script_texts and broadcast_text often
@@ -1369,11 +1378,14 @@ console.log("Importing sounds...");
       // line that DID get a speaker must not also appear speaker-less, or the voice-line
       // page shows it twice -- once credited, once anonymous.
       if (!creature && namedTx.has(`${sound}:${norm}`)) return;
-      const key = `${sound}:${creature || 0}:${norm}`;
+      // The take is part of the key. Two takes of one sound legitimately hold the same
+      // words (a voice type often records a line twice), and collapsing them would leave
+      // the second chip looking silent.
+      const key = take == null ? `${sound}:${creature || 0}:${norm}` : `${sound}:${creature || 0}:${take}`;
       if (seenTx.has(key)) return;
       seenTx.add(key);
       if (creature) namedTx.add(`${sound}:${norm}`);
-      insTx.run(sound, creature || null, text, srcTag);
+      insTx.run(sound, creature || null, take, text, srcTag);
       ntx++;
     };
 
@@ -1635,7 +1647,7 @@ console.log("Importing sounds...");
               // is wrong" -- it suppresses the machine line without inventing a
               // replacement, which is the only way to mark a bad transcript as bad.
               if (srcTag === "w" && handTakes.has(`${sound}:${i}`)) continue;
-              addTx(sound, null, line, srcTag);
+              addTx(sound, null, line, srcTag, i);
               n++;
             }
           }
@@ -1662,6 +1674,16 @@ console.log("Importing sounds...");
       const nw = load("voice-transcripts-auto.json", "w");
       if (nv || nw) console.log(`  sound_text: +${nv} hand-verified, +${nw} machine transcripts`);
     }
+
+    // Attribution passes credit a speaker to a sound whose lines are anonymous. They used
+    // to INSERT a credited copy of the text, which was invisible only because every page
+    // read one row per sound -- now that the transcript lists every take, that copy shows
+    // up as the whole line set repeated, once numbered and once not. What these passes
+    // actually mean is "these lines are this creature's", so they UPDATE in place.
+    // `src` is deliberately left alone: it records where the TEXT came from, and a machine
+    // transcript stays a machine transcript no matter who is later found to say it.
+    const creditSound = db.prepare(`UPDATE sound_text SET creature = ?2 WHERE sound = ?1 AND creature IS NULL`);
+    const credit = (sound, creature) => creditSound.run(sound, creature).changes || 0;
 
     // ---- propagate a speaker across a sound-NAME cluster ----
     // Blizzard names a creature's VO as one family: A_Arugal Aggro01 / Slay01 / Charm01,
@@ -1706,9 +1728,7 @@ console.log("Importing sounds...");
             if (hasSpeaker.has(s)) continue;
             const t = textOf.get(s);
             if (!t || !t.text) continue;         // no transcript -> nothing to credit
-            const before = ntx;
-            addTx(s, who, t.text, "n");
-            if (ntx > before) propagated++;
+            if (credit(s, who)) propagated++;
           }
         }
       })();
@@ -1737,7 +1757,9 @@ console.log("Importing sounds...");
         exact.get(n).push(c.entry);
         all.push({ entry: c.entry, n });
       }
-      const anon = db.prepare(`SELECT DISTINCT t.sound, s.name, t.text FROM sound_text t JOIN sounds s ON s.id = t.sound
+      // One row per SOUND: the pass credits the sound, so iterating its individual lines
+      // would just re-run the same UPDATE.
+      const anon = db.prepare(`SELECT DISTINCT t.sound, s.name FROM sound_text t JOIN sounds s ON s.id = t.sound
         WHERE t.creature IS NULL
           AND NOT EXISTS (SELECT 1 FROM sound_text x WHERE x.sound = t.sound AND x.creature IS NOT NULL)`).all();
       db.transaction(() => {
@@ -1762,9 +1784,7 @@ console.log("Importing sounds...");
             who = best ? [...new Set(pre.filter((c) => c.n === best.n).map((c) => c.entry))] : null;
           }
           if (!who || who.length !== 1) continue;
-          const before = ntx;
-          addTx(r.sound, who[0], r.text, "m");
-          if (ntx > before) byName++;
+          if (credit(r.sound, who[0])) byName++;
         }
       })();
     }
@@ -3296,10 +3316,13 @@ if (db.prepare(`SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name
       m.set(r.zone, (m.get(r.zone) || 0) + 1);
     }
   }
-  const anon = db.prepare(`SELECT DISTINCT t.sound, s.name, t.text FROM sound_text t JOIN sounds s ON s.id = t.sound
+  // One row per SOUND, and the speaker is written onto the EXISTING lines rather than
+  // inserted as a credited copy -- see `creditSound` in the import above: a copy showed
+  // up as the sound's whole line set listed twice once the UI stopped quoting one row.
+  const anon = db.prepare(`SELECT DISTINCT t.sound, s.name FROM sound_text t JOIN sounds s ON s.id = t.sound
     WHERE t.creature IS NULL
       AND NOT EXISTS (SELECT 1 FROM sound_text x WHERE x.sound = t.sound AND x.creature IS NOT NULL)`).all();
-  const ins = db.prepare(`INSERT INTO sound_text (sound, creature, text, src) VALUES (?,?,?,'a')`);
+  const ins = db.prepare(`UPDATE sound_text SET creature = ?2 WHERE sound = ?1 AND creature IS NULL`);
   let byAbbrev = 0;
   db.transaction(() => {
     for (const r of anon) {
@@ -3317,8 +3340,7 @@ if (db.prepare(`SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name
       if (cands.length > 1 && zoneSet) cands = cands.filter((c) => zoneSet.has(c.zone));
       const uniq = [...new Set(cands.map((c) => c.entry))];
       if (uniq.length !== 1) continue;          // still ambiguous -> leave anonymous
-      ins.run(r.sound, uniq[0], r.text);
-      byAbbrev++;
+      if (ins.run(r.sound, uniq[0]).changes) byAbbrev++;
     }
   })();
   // sound_text_fts is an EXTERNAL-CONTENT table, so DELETE FROM it is invalid
@@ -3361,7 +3383,7 @@ if (db.prepare(`SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name
   })();
   console.log(`  creature_sound: +${voiceNamed} transcript-less clips matched to a speaker by name`);
   const namedNow = db.prepare(`SELECT COUNT(DISTINCT sound) n FROM sound_text WHERE creature IS NOT NULL`).get().n;
-  console.log(`  sound_text: +${byAbbrev} by abbreviation -> ${namedNow} sounds name a speaker`);
+  console.log(`  sound_text: ${byAbbrev} sounds credited by abbreviation -> ${namedNow} sounds name a speaker`);
 }
 
 console.log("Building FTS indexes...");

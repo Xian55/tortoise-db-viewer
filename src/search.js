@@ -71,7 +71,38 @@ export async function runSearch(term, limit) {
     fts ? query(Q_SEARCH_GOSSIP, [fts, limit]).catch(() => []) : [],
     idMatches(t),
   ]);
-  return mergeId({ items, npcs, quests, spells, dungeons, zones, subzones, factions, itemsets, objects, voice, gossip }, ids);
+  return mergeId({ items, npcs, quests, spells, dungeons, zones, subzones, factions, itemsets, objects, voice: await withTakes(voice, t), gossip }, ids);
+}
+
+// A sound's numbered takes are different lines, so a hit has to say WHICH one matched --
+// otherwise the row quotes take 1 and the player opens take 1 while the phrase the reader
+// typed is take 6 ("Time is money, friend!" in GoblinFemaleZanyVendorNPCGreeti).
+// Fetched for just the hit ids: the ids come straight from the DB, so the inline IN list
+// is numeric by construction.
+async function withTakes(voice, term) {
+  if (!voice.length) return voice;
+  const ids = voice.map((v) => v.id).filter((n) => Number.isInteger(n));
+  if (!ids.length) return voice;
+  let rows = [];
+  try {
+    rows = await query(`SELECT sound, take, text, src FROM sound_text
+      WHERE sound IN (${ids.join(",")}) AND take IS NOT NULL
+      ORDER BY sound, take, id`);
+  } catch { return voice; }        // DB predates the column -- keep the old single text
+  if (!rows.length) return voice;
+  const by = new Map();
+  for (const r of rows) {
+    if (!by.has(r.sound)) by.set(r.sound, []);
+    by.get(r.sound).push(r);
+  }
+  const lower = (term || "").toLowerCase();
+  return voice.map((v) => {
+    const list = by.get(v.id);
+    if (!list) return v;
+    const hit = (lower && list.find((t) => (t.text || "").toLowerCase().includes(lower)))
+      || list.find((t) => t.text === v.text) || list[0];
+    return { ...v, take: hit.take, text: hit.text, src: hit.src, takes: list };
+  });
 }
 
 // Flatten the per-type results into one ranked list (exact > prefix > other,

@@ -684,6 +684,33 @@ export const Q_SOUND_TEXTS = `
   FROM sound_text t LEFT JOIN creatures c ON c.entry = t.creature
   WHERE t.sound = ?1 ORDER BY t.creature IS NULL, t.id`;
 
+// ---- transcripts BY TAKE ----
+// A SoundEntries row holds up to 10 interchangeable files and they are different lines,
+// so a transcript belongs to a take, not to the sound: "Time is money, friend!" is take 1
+// of GoblinMaleZanyNPCGreetings, take 4 of GoblinFemaleZanyNPCGreetings and take 6 of
+// GoblinFemaleZanyVendorNPCGreeti. Every page used to quote whichever row came first and
+// preselect take 1's audio, so a search hit read and played as something else entirely.
+//
+// Fetched as ROWS and merged in JS rather than folded into each page's query with a
+// group_concat: `?voicelines` and `?sounds` already load their whole table, sound_text is
+// a few thousand rows, and it keeps the take-aware path additive -- the pages' existing
+// single-text column stays as the fallback for a DB built before the column existed
+// (caps().soundTake).
+export const Q_SOUND_TEXT_ALL = `
+  SELECT sound, take, text, src, creature FROM sound_text
+  ORDER BY sound, take IS NULL, take, id`;
+
+export const Q_SOUND_TAKES = `
+  SELECT sound, take, text, src, creature FROM sound_text WHERE sound = ?1
+  ORDER BY take IS NULL, take, id`;
+
+// Every transcript reachable from one NPC -- the sounds it plays, plus the lines credited
+// to it that have no CreatureSoundData slot.
+export const Q_NPC_SOUND_TAKES = `
+  SELECT t.sound, t.take, t.text, t.src, t.creature FROM sound_text t
+  WHERE t.creature = ?1 OR t.sound IN (SELECT sound FROM creature_sound WHERE creature = ?1)
+  ORDER BY t.sound, t.take IS NULL, t.take, t.id`;
+
 // ---- NPC gossip (what an NPC says when you talk to it) ----
 // This is where a quoted phrase actually lives. A voice clip is picked from the NPC's
 // VOICE TYPE and shared by every NPC of that type, while the gossip text belongs to the

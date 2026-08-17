@@ -36,6 +36,64 @@ const minimapManifest = MINIMAP_MANIFESTS[`../scripts/data/minimap${MAP_SUB}.jso
 // be asserting something we don't know.
 const autoBadge = (r) => (r && r.src === "w" ? ` <span class="snd-auto" title="Automatic transcript from the audio — may be inaccurate">auto</span>` : "");
 
+// ---- transcripts, per take ----
+// A sound's numbered takes are DIFFERENT LINES, so quoting one of them as "the"
+// transcript is wrong in both directions: it hides the other nine, and it disagrees with
+// whichever take the player is about to play. `takesOf` builds sound -> [{take,text,src}]
+// from Q_SOUND_TEXT_ALL and friends; a DB built before the `take` column simply yields an
+// empty map and every page falls back to its old single-text column.
+const takesOf = (rows) => {
+  const m = new Map();
+  for (const r of rows || []) {
+    if (!m.has(r.sound)) m.set(r.sound, []);
+    m.get(r.sound).push(r);
+  }
+  return m;
+};
+// One transcript line, tagged with its take so clicking it plays that take (audio.js).
+const lineHtml = (t, numbered) => `<span class="snd-line"${t.take == null ? "" : ` data-take="${t.take}"`}>${
+  numbered && t.take != null ? `<span class="snd-linenum">${t.take + 1}</span>` : ""}${esc(t.text)}${autoBadge(t)}</span>`;
+// One line per take. A sound can carry several rows for the same take -- the same words
+// credited to two speakers, or a server-derived line sitting beside the machine one -- and
+// the cell is about what is SAID, so it shows each take once. A take-less row is dropped
+// as soon as any take-bearing row exists: it is the same sound described less precisely.
+const dedupeTakes = (list) => {
+  const ts = (list || []).filter((t) => t.text);
+  const numbered = ts.filter((t) => t.take != null);
+  const pool = numbered.length ? numbered : ts;
+  const seen = new Set();
+  return pool.filter((t) => {
+    const k = t.take != null ? `#${t.take}` : t.text;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+};
+// `row` supplies the legacy single-text fallback; `list` the per-take rows when present.
+const transcriptCell = (row, list, opts = {}) => {
+  const ts = dedupeTakes(list);
+  if (!ts.length) return row && row.text ? esc(row.text) + autoBadge(row) : (opts.blank || "");
+  // Numbered only when there is something to disambiguate. A single line needs no "1.".
+  const numbered = ts.length > 1 && ts.some((t) => t.take != null);
+  return `<span class="snd-lines">${ts.map((t) => lineHtml(t, numbered)).join("")}</span>`;
+};
+const transcriptText = (row, list) => {
+  const ts = dedupeTakes(list);
+  return ts.length ? ts.map((t) => t.text).join(" ") : (row && row.text) || "";
+};
+// Which take a search hit landed on, so the player opens on the line that matched rather
+// than on take 1. Prefers a take whose own words contain the term (the FTS row's text is
+// the matched line, but the term is what the reader typed).
+const matchedTake = (list, term, hitText) => {
+  const ts = (list || []).filter((t) => t.text && t.take != null);
+  if (!ts.length) return 0;
+  const lower = String(term || "").toLowerCase();
+  const byTerm = lower && ts.find((t) => t.text.toLowerCase().includes(lower));
+  if (byTerm) return byTerm.take;
+  const byHit = hitText && ts.find((t) => t.text === hitText);
+  return byHit ? byHit.take : ts[0].take;
+};
+
 const SOUND_KIND = {
   Loop: "NPC Loops",
   Greeting: "NPC Greetings", Farewell: "NPC Greetings", Annoyed: "NPC Greetings",
@@ -465,10 +523,12 @@ async function showSearch(term) {
     { label: "Says", cls: "gossip-text", cell: (r) => questText(r.text), value: (r) => r.text },
   ];
   const voiceSearchCols = [
-    { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+    // runSearch resolves which TAKE matched; the player opens on it and the transcript
+    // lists every take, with the matched one just another numbered line among them.
+    { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false, take: r.take }), value: (r) => r.name || "" },
     {
       label: "Transcript", cls: "snd-text",
-      cell: (r) => (r.text ? esc(r.text) + autoBadge(r) : `<span class="muted">— no transcript —</span>`),
+      cell: (r) => transcriptCell(r, r.takes, { blank: `<span class="muted">— no transcript —</span>` }),
       value: (r) => r.text || "￿",
     },
     {
@@ -1404,6 +1464,10 @@ async function showNpc(id) {
   const [npcSounds, npcVoice] = capsNow.sounds
     ? await Promise.all([query(Q.Q_NPC_SOUNDS, [id]), query(Q.Q_NPC_VOICE, [id])])
     : [[], []];
+  // Per-take transcripts. Q_NPC_SOUNDS' own text column quotes one row per sound, which
+  // for a multi-take clip is one line out of up to ten -- and not necessarily the one the
+  // player is cued to. Optional schema, so a DB without the column just yields no map.
+  const npcTakes = takesOf(capsNow.soundTake ? await query(Q.Q_NPC_SOUND_TAKES, [id]).catch(() => []) : []);
   // What this NPC says when you talk to it. Optional schema, same as sounds.
   const npcGossip = capsNow.gossip ? await query(Q.Q_NPC_GOSSIP, [id]).catch(() => []) : [];
   // ability_key -> ascending [{rank, spell, level}], to compute the rank a tamed pet of
@@ -1567,7 +1631,8 @@ async function showNpc(id) {
     { label: "Name", cell: (r) => esc(r.name || ""), value: (r) => r.name || "" },
     {
       label: "Transcript", cls: "snd-text", hideEmpty: true,
-      cell: (r) => (r.text ? esc(r.text) + autoBadge(r) : ""), value: (r) => r.text || "",
+      cell: (r) => transcriptCell(r, npcTakes.get(r.id)),
+      value: (r) => transcriptText(r, npcTakes.get(r.id)),
     },
     { label: "Type", cls: "muted", group: (r) => r.kind, cell: (r) => esc(r.kind), value: (r) => r.kind },
     { label: "Activity", cls: "muted", hideEmpty: true, cell: (r) => esc(r.activity), value: (r) => r.activity },
@@ -1855,6 +1920,7 @@ async function showVoiceLines() {
   }
   let all;
   try { all = await query(Q.Q_VOICE_LINES); } catch (e) { app.innerHTML = errorBox(e); return; }
+  const takes = takesOf((await caps()).soundTake ? await query(Q.Q_SOUND_TEXT_ALL).catch(() => []) : []);
   // A dataset can ship audio and still have no voice LINES: the transcripts come from
   // Turtle's server scripts and its custom voice-acting directory, neither of which the
   // cmangos rows have. Saying "0 shown" over an empty table reads as a broken page, so
@@ -1884,11 +1950,11 @@ async function showVoiceLines() {
   const search = app.querySelector(".icon-search");
 
   const cols = [
-    { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+    { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false, take: r.take }), value: (r) => r.name || "" },
     {
       label: "Transcript", cls: "snd-text",
-      cell: (r) => (r.text ? esc(r.text) + autoBadge(r) : `<span class="muted">— no transcript —</span>`),
-      value: (r) => r.text || "￿",       // untranscribed lines sort last
+      cell: (r) => transcriptCell(r, takes.get(r.id), { blank: `<span class="muted">— no transcript —</span>` }),
+      value: (r) => transcriptText(r, takes.get(r.id)) || "￿",   // untranscribed lines sort last
     },
     {
       label: "Speaker", hideEmpty: true,
@@ -1912,7 +1978,10 @@ async function showVoiceLines() {
       const lower = term.toLowerCase();
       const byName = all.filter((r) => (r.name || "").toLowerCase().includes(lower));
       const seen = new Set(hits.map((h) => h.id));
-      rows = [...hits.map((h) => ({ ...h, speakers: h.creature ? 1 : 0 })),
+      // A hit carries the take that matched, so the player opens on the line the reader
+      // searched for. Without it "time is money" offered take 1 of a goblin greeting set
+      // where the phrase is take 4 -- the row was right and everything it showed was not.
+      rows = [...hits.map((h) => ({ ...h, take: matchedTake(takes.get(h.id), term, h.text), speakers: h.creature ? 1 : 0 })),
         ...byName.filter((r) => !seen.has(r.id))];
     }
     countEl.textContent = `${rows.length.toLocaleString()} shown`;
@@ -1949,6 +2018,7 @@ async function showSounds() {
   }
   let all;
   try { all = await query(Q.Q_SOUND_LIST); } catch (e) { app.innerHTML = errorBox(e); return; }
+  const takes = takesOf((await caps()).soundTake ? await query(Q.Q_SOUND_TEXT_ALL).catch(() => []) : []);
 
   const p0 = new URLSearchParams(location.search);
   let term = (p0.get("sounds") || "").trim().toLowerCase();
@@ -1967,12 +2037,13 @@ async function showSounds() {
 
   const firstFile = (r) => { try { return (JSON.parse(r.files) || [])[0] || ""; } catch { return ""; } };
   const cols = [
-    { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false }), value: (r) => r.name || "" },
+    { label: "Play", cls: "snd-col", cell: (r) => soundPlayer(r, { label: false, take: r.take }), value: (r) => r.name || "" },
     { label: "Name", cell: (r) => `<a class="ilink" href="?sound=${r.id}">${esc(r.name || "")}</a>`, value: (r) => r.name || "" },
     { label: "Kind", cls: "muted", group: (r) => r.kind, cell: (r) => esc(r.kind), value: (r) => r.kind },
     {
       label: "Transcript", cls: "snd-text", hideEmpty: true,
-      cell: (r) => (r.text ? esc(r.text) + autoBadge(r) : ""), value: (r) => r.text || "",
+      cell: (r) => transcriptCell(r, takes.get(r.id)),
+      value: (r) => transcriptText(r, takes.get(r.id)),
     },
     // No Length column: the player already shows the duration, and no File column:
     // a full client path is unreadable in a table cell. Both live on ?sound=<id>, and
@@ -1996,7 +2067,9 @@ async function showSounds() {
     const rows = term
       ? all.filter((r) => (r.name || "").toLowerCase().includes(term)
           || firstFile(r).includes(term)
-          || (r.text || "").toLowerCase().includes(term))
+          // Every take, not just the first: "time is money" is take 6 of one of these.
+          || transcriptText(r, takes.get(r.id)).toLowerCase().includes(term))
+        .map((r) => ({ ...r, take: matchedTake(takes.get(r.id), term, null) }))
       : all;
     countEl.textContent = `${rows.length.toLocaleString()} shown`;
     out.innerHTML = "";
@@ -2031,6 +2104,12 @@ async function showSound(id) {
   } catch (e) { app.innerHTML = errorBox(e); return; }
   if (!snd) { app.innerHTML = `<div class="home"><p>No sound with ID ${id}.</p></div>`; return; }
   document.title = `${snd.name} - Sound - Tortoise-WoW DB`;
+  // Which take says which line. Fetched separately rather than added to Q_SOUND_TEXTS,
+  // which sits in the Promise.all above -- an unknown column there would take the whole
+  // page down on a DB built before it. Merged on the text, since that is what both
+  // queries agree on.
+  const takeOfText = new Map(((await caps()).soundTake ? await query(Q.Q_SOUND_TAKES, [id]).catch(() => []) : [])
+    .filter((t) => t.take != null).map((t) => [t.text, t.take]));
 
   let files = [];
   try { files = JSON.parse(snd.files) || []; } catch { /* malformed -> no takes listed */ }
@@ -2052,8 +2131,14 @@ async function showSound(id) {
 
   const takeList = files.map((f, i) => `<li><span class="muted">${files.length > 1 ? `Take ${i + 1}: ` : ""}</span>
     <code class="snd-path">${esc(f)}</code></li>`).join("");
-  const lines = texts.filter((t) => t.text).map((t) =>
-    `<li><span class="snd-text">${esc(t.text)}</span>${autoBadge(t)}
+  // Ordered and labelled by take, so the transcript list reads against the numbered
+  // chips in the player above it rather than as an unattributed pile of lines.
+  const lines = texts.filter((t) => t.text)
+    .map((t) => ({ ...t, take: takeOfText.has(t.text) ? takeOfText.get(t.text) : null }))
+    .sort((a, b) => (a.take ?? 99) - (b.take ?? 99))
+    .map((t) => `<li${t.take == null ? "" : ` class="snd-line" data-take="${t.take}"`}>${
+      t.take != null && files.length > 1 ? `<span class="muted">Take ${t.take + 1}: </span>` : ""
+    }<span class="snd-text">${esc(t.text)}</span>${autoBadge(t)}
       ${t.creature ? ` — ${npcLink(t.creature, t.creature_name)}` : ""}</li>`).join("");
 
   app.innerHTML = `<div class="sound-page">
