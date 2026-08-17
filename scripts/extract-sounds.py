@@ -12,10 +12,29 @@ Two outputs, and they have very different lifetimes:
 
 Scope is deliberately narrow: only sounds that something in the database can point AT.
 That is CreatureSoundData (a model's combat/idle set), NPCSounds (greeting/farewell/
-pissed), ZoneMusic / SoundAmbience / ZoneIntroMusicTable, and every entry under the
+pissed), ZoneMusic / SoundAmbience / ZoneIntroMusicTable, every entry under the
 Turtle-custom `Sound\\Interface\\VA` directory (voice acting the C++ boss scripts play
-directly, which no DBC row references). The rest of SoundEntries -- spell impacts, UI
-clicks, doodads, footsteps -- has no entity to hang off and would triple the bytes.
+directly, which no DBC row references), and -- the big one -- every entry under
+`Sound\\Creature\\<Folder>`. The rest of SoundEntries -- spell impacts, UI clicks,
+doodads, footsteps -- has no entity to hang off and would triple the bytes.
+
+`Sound\\Creature\\<Folder>` is the client's own grouping of "all the audio for this
+creature", and it is the only source that scales. A boss's SPOKEN lines (Aggro / Taunt /
+Slay / Death) are not in CreatureSoundData -- that table holds grunts and footsteps --
+and they are not in the VA directory either; the server plays them from C++, so chasing
+them id-by-id means a per-boss, per-CORE worklist that is stale the moment either side
+patches. Mother Shahraz is the whole argument: 11 sounds sitting in
+`Sound\\Creature\\MotherShahraz`, none of them reachable from any DBC row that names her.
+Taking the folder takes all of them, for every boss, on any client, forever.
+
+Binding a folder back to a creature uses three signals, best first (see `dir_display`):
+  1. a folder holding a sound some CreatureSoundData row references -> that CSD's displays
+  2. the folder that CreatureModelData.ModelPath sits in -> that model's displays
+  3. failing both, the folder NAME vs the creature name -- done in build-db.mjs, which is
+     where creature names live. This is the one that catches Mother Shahraz.
+Folders that bind to nothing (generic voice types like `Peon` or `NightElfMaleStandardNPC`,
+cut content) are still extracted and still browsable at ?sounds -- they simply carry no
+NPC attribution, which is the honest answer rather than a guessed one.
 
 The resolution chain, verified by field-probing both clients (see scripts/lib/clientprofile.py):
 
@@ -40,7 +59,7 @@ Usage:
       SOUND_MAP_OUT=scripts/data/sound-map-tbc.json \
       python scripts/extract-sounds.py
 
-    --only creature,npc,zone,va   restrict the scope sets
+    --only creature,npc,zone,va,cdir,text   restrict the scope sets
     --limit N                     stop after N files (smoke-test a change)
     --force                       re-transcode files that already exist
     --jobs N                      ffmpeg workers (default: cpu_count)
@@ -206,7 +225,7 @@ def main():
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
-    want = {s.strip() for s in args.only.split(",") if s.strip()} or {"creature", "npc", "zone", "va", "text"}
+    want = {s.strip() for s in args.only.split(",") if s.strip()} or {"creature", "npc", "zone", "va", "cdir", "text"}
 
     if not os.path.isdir(DATA):
         sys.exit(f"client Data dir not found: {DATA}\nSet TW_CLIENT env var.")
@@ -220,7 +239,7 @@ def main():
     CSD, _, csd_fields = dbc("CreatureSoundData")
     NS, _, _ = dbc("NPCSounds")
     CDI, _, cdi_fields = dbc("CreatureDisplayInfo")
-    CMD, _, _ = dbc("CreatureModelData")
+    CMD, se_s_cmd, _ = dbc("CreatureModelData")
     AT, _, _ = dbc("AreaTable")
     WMO, _, _ = dbc("WMOAreaTable")
     ZM, _, _ = dbc("ZoneMusic")
@@ -353,6 +372,26 @@ def main():
             if norm(se_s(r[F["se_dir"]])).startswith("interface/va"):
                 want_sound(r[0], "voice")
 
+    # ---- Sound\Creature\<Folder>: the client's own per-creature audio folder ----
+    # CreatureSoundData reaches under half of what lives in these folders; the rest is the
+    # spoken boss dialogue the server fires from C++. Scoping by folder gets all of it at
+    # once, on any client, with no per-boss worklist to keep current. Must run AFTER the
+    # "creature" scope so a folder's Loop track keeps its "music" bitrate (want_sound only
+    # ever upgrades voice -> music).
+    creature_dir = {}    # folder leaf -> [soundId]
+    dir_of_sound = {}    # soundId -> folder leaf
+    for r in SE:
+        d = norm(se_s(r[F["se_dir"]]))
+        if not d.startswith("creature/"):
+            continue
+        leaf = d.split("/")[-1]
+        if not leaf:
+            continue
+        dir_of_sound[r[0]] = leaf
+        creature_dir.setdefault(leaf, []).append(r[0])
+        if "cdir" in want:
+            want_sound(r[0], "voice")
+
     # Voice lines. A spoken boss line's sound is in NEITHER CreatureSoundData nor the VA
     # directory -- the only thing that knows about it is the server's script_texts /
     # broadcast_text, so the id list is collected there (scripts/extract-script-sounds.mjs)
@@ -380,6 +419,33 @@ def main():
         ns = ns if ns in npc_sounds else 0
         if csd or ns:
             display_sound[r[0]] = [csd, ns]
+
+    # ---- display_id -> the Sound\Creature folders that are this creature's ----
+    # Two client-side signals, unioned; neither alone is enough. A CSD row proves ownership
+    # of whatever folder its slots point into (Illidan's Attack/Wound grunts sit beside his
+    # 28 spoken lines). ModelPath covers the models whose CSD is a shared generic set but
+    # whose art folder is their own. Roughly half of all folders bind this way; the rest
+    # fall to build-db's name match, because a folder like MotherShahraz is referenced by
+    # neither -- her display reuses another model's sound data entirely.
+    csd_dirs = {}
+    for r in CSD:
+        got = {dir_of_sound[r[field]] for field, _ in slots
+               if field < len(r) and r[field] in dir_of_sound}
+        if got:
+            csd_dirs[r[0]] = got
+    model_dir = {}
+    for r in CMD:
+        parts = [p for p in norm(se_s_cmd(r[F["cmd_path"]])).split("/") if p]
+        if len(parts) >= 2 and parts[-2] in creature_dir:
+            model_dir[r[0]] = parts[-2]
+    display_dir = {}
+    for r in CDI:
+        dirs = set(csd_dirs.get(r[F["cdi_sound"]] or model_sound.get(r[F["cdi_model"]], 0), ()))
+        own = model_dir.get(r[F["cdi_model"]])
+        if own:
+            dirs.add(own)
+        if dirs:
+            display_dir[r[0]] = sorted(dirs)
 
     # ---- resolve to files ----
     # Several SoundEntries rows share a file, so everything below is keyed by the MPQ
@@ -417,6 +483,9 @@ def main():
     print(f"  creature={len(creature_sound)} npc={len(npc_sounds)} zoneMusic={len(zone_music)} "
           f"ambience={len(ambience)} intro={len(intro)} displays={len(display_sound)} "
           f"voiceLines=+{n_text} wmoAreas={len(wmo_sound)}")
+    n_bound = len({d for v in display_dir.values() for d in v})
+    print(f"  creatureDirs={len(creature_dir)} ({sum(len(v) for v in creature_dir.values())} sounds), "
+          f"{n_bound} bound to a display here, {len(creature_dir) - n_bound} left to build-db's name match")
     if args.dry_run:
         return
 
@@ -497,10 +566,22 @@ def main():
             "d": [durations.get(x, 0) for x in keep],
         }
 
+    # Only folders with at least one shipped sound are worth listing; `sounds` has already
+    # dropped the DBC rows this client has no file for.
+    dir_sound = {}
+    for d, ids in creature_dir.items():
+        keep = [s for s in ids if str(s) in sounds]
+        if keep:
+            dir_sound[d] = sorted(keep)
+    display_dir = {k: [d for d in v if d in dir_sound] for k, v in display_dir.items()}
+    display_dir = {k: v for k, v in display_dir.items() if v}
+
     payload = {
         "profile": PROFILE,
         "slots": slot_labels,
         "sounds": sounds,
+        "dirSound": dir_sound,
+        "displayDir": {str(k): v for k, v in display_dir.items()},
         "creatureSound": {str(k): v for k, v in creature_sound.items()},
         "npcSounds": {str(k): v for k, v in npc_sounds.items()},
         "displaySound": {str(k): v for k, v in display_sound.items()},

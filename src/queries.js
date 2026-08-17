@@ -652,6 +652,10 @@ export const Q_SOUND_LIST = `
       WHEN EXISTS (SELECT 1 FROM creature_sound cs WHERE cs.sound = s.id
                     AND cs.slot IN ('Greeting','Farewell','Annoyed'))                           THEN 'NPC Gossip'
       WHEN EXISTS (SELECT 1 FROM creature_sound cs WHERE cs.sound = s.id)                       THEN 'Creature'
+      -- A Sound\Creature\<Folder> entry we could not bind to an NPC (a generic voice type
+      -- like Peon, or cut content). It is still creature audio, and filing it under
+      -- 'Other' would hide ~700 clips from the Creature filter for want of an owner.
+      WHEN s.files LIKE '["creature/%'                                                          THEN 'Creature'
       ELSE 'Other' END AS kind,
     (SELECT COUNT(DISTINCT cs.creature) FROM creature_sound cs WHERE cs.sound = s.id) AS npcs,
     (SELECT COUNT(DISTINCT z.area) FROM zone_sound z WHERE z.sound = s.id) AS areas

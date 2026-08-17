@@ -52,6 +52,28 @@ async function testNpcSounds() {
     && groups.includes("NPC Loops") && groups.includes("Voice Lines");
 }
 
+// Sound\Creature\<Folder>: the spoken boss lines no DBC row names. Anub'Rekhan is the
+// reference for the NAME-matched half of the binding -- his folder is referenced by no
+// CreatureSoundData row and is not his model's art folder, so he is reachable only by
+// matching the folder name to the creature name. If that rule ever regresses, every boss
+// in his position silently loses its dialogue (which is how Mother Shahraz shipped empty).
+async function testFolderVoiceLines() {
+  await nav(`?npc=15956`);
+  await openTab("sounds");
+  const rows = await paneRows("sounds");
+  const groups = await page.$$eval(".tabpane[data-pane='sounds'] tr.grouprow", (e) => e.map((g) => g.dataset.group));
+  const text = rows.map((r) => r.join(" | ")).join("\n");
+  // By HEADER, not a fixed index: createTable drops a column that is empty for every row
+  // (Transcript is, for this NPC), so a positional read lands on Length instead.
+  const heads = await page.$$eval(".tabpane[data-pane='sounds'] thead th", (ts) => ts.map((t) => t.textContent.trim()));
+  const ai = heads.indexOf("Activity");
+  const acts = rows.filter((r) => /A_ANU_NAXX/.test(r.join(" "))).map((r) => r[ai]);
+  console.log(`npc 15956 folder audio: rows=${rows.length} cols=[${heads.join(",")}] groups=[${groups.join(",")}] activities=[${acts.join(",")}]`);
+  // The activity is parsed off the filename, so assert the parse, not just the presence.
+  return ai >= 0 && /A_ANU_NAXX_TAUNT01/.test(text) && /A_ANU_NAXX_AGGRO01/.test(text)
+    && groups.includes("Voice Lines") && acts.includes("Taunt") && acts.includes("Aggro");
+}
+
 // Multi-variant sounds render take chips (SoundEntries holds up to 10 interchangeable
 // files and the client picks one at random).
 async function testTakes() {
@@ -215,6 +237,7 @@ async function testNavEntry() {
 // on test order, which made this the one flaky test in the suite.
 
 smoke("npc sounds tab (ragnaros)", () => testNpcSounds());
+smoke("npc folder voice lines (anub'rekhan)", () => testFolderVoiceLines());
 smoke("voicelines reachable from nav", () => testNavEntry());
 smoke("seek + download controls", () => testSeekControls());
 smoke("sound variant takes", () => testTakes());
