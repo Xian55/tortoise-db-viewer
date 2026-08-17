@@ -1532,8 +1532,11 @@ td .pet-rank { margin: 1px 0; }
    only the first was wrong twice over: it hid the rest, and it disagreed with whatever
    take the player was cued to. */
 .snd-lines { display: flex; flex-direction: column; gap: 2px; }
-.snd-line[data-take] { cursor: pointer; }
-.snd-line[data-take]:hover { color: var(--gold); }
+/* Every line is a play button for its own clip, numbered or not -- a line with no take
+   is a transcript that names the sound rather than one of its files, and playing the
+   selected take is still the right answer. */
+.snd-line { cursor: pointer; }
+.snd-line:hover { color: var(--gold); }
 /* The take number reads as an index, not as part of the quote: same size, muted, and a
    fixed width so a 10-take list stays a column rather than a ragged edge. */
 .snd-linenum { display: inline-block; min-width: 1.6em; color: var(--muted); font-style: normal; }

@@ -193,8 +193,13 @@ async function testTakeTranscripts() {
   return rows.length >= 3 && ok;
 }
 
-// Clicking a transcript line selects that take in the player -- the line and the audio
-// are the same object, so reading one and playing another is the bug this prevents.
+// Clicking a transcript line selects that take AND starts it -- the line and the audio are
+// the same object, so reading one and playing another is the bug this prevents. Selecting
+// without starting was the first attempt and is not enough: it delegated to the take chip,
+// whose click deliberately only ARMS an idle player.
+// Playback is asserted through the audio element's `src`, not through a playing state:
+// an automated Chrome has no media engagement, so play() is rejected by autoplay policy
+// however real the click. `src` is set regardless, and it names the take.
 async function testTakeLineClick() {
   await nav(`?sounds=${encodeURIComponent("GoblinFemaleZanyVendorNPCGreeti")}`);
   await page.waitForSelector(".voice-page .snd-line[data-take]", { timeout: T });
@@ -202,11 +207,18 @@ async function testTakeLineClick() {
     const row = document.querySelector(".voice-page tbody tr:not(.grouprow)");
     const line = [...row.querySelectorAll(".snd-line[data-take]")].find((l) => /time is money/i.test(l.textContent));
     const before = Number(row.querySelector(".snd-take.on")?.dataset.take ?? -1);
+    const files = JSON.parse(row.querySelector(".snd").dataset.files);
     line?.click();
-    return { before, want: Number(line?.dataset.take ?? -1), after: Number(row.querySelector(".snd-take.on")?.dataset.take ?? -1) };
+    return {
+      before, want: Number(line?.dataset.take ?? -1),
+      after: Number(row.querySelector(".snd-take.on")?.dataset.take ?? -1),
+      src: (document.querySelector("audio") || {}).src || "",
+      wantFile: files[Number(line?.dataset.take ?? 0)] || "",
+    };
   });
-  console.log(`take line click: before=${res.before} clicked=${res.want} after=${res.after}`);
-  return res.want >= 0 && res.after === res.want;
+  const started = !!res.wantFile && res.src.endsWith(res.wantFile);
+  console.log(`take line click: before=${res.before} clicked=${res.want} after=${res.after} started=${started} src=${res.src.slice(-46)}`);
+  return res.want >= 0 && res.after === res.want && started;
 }
 
 // Layout: the take chips sit on their OWN row inside the player, below the controls, so
