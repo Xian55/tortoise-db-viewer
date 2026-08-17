@@ -1485,7 +1485,14 @@ td .pet-rank { margin: 1px 0; }
   background: transparent; border: 1px solid transparent; border-radius: 4px;
   color: var(--muted); cursor: pointer; }
 .snd-dl:hover { color: var(--gold); border-color: var(--border); }
-.snd-takes { display: inline-flex; gap: 2px; }
+/* Take chips get their OWN row, under the controls. A 10-take sound otherwise made the
+   player ~200px wider than the controls need, and that width came straight out of the
+   transcript column -- the thing on the page worth reading.
+   `.snd-ctl` is the reason it works: it holds the controls as one unbreakable row, so the
+   cell's min-content width is the width of a real player rather than of its widest single
+   button. Without it the table stacked play/bar/duration vertically into a 98px column. */
+.snd-ctl { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; white-space: nowrap; }
+.snd-takes { display: flex; gap: 2px; flex-wrap: wrap; flex-basis: 100%; }
 .snd-take { min-width: 18px; height: 18px; padding: 0 3px; font-size: 11px; cursor: pointer;
   background: transparent; border: 1px solid var(--border); border-radius: 3px; color: var(--muted); }
 .snd-take.on { border-color: var(--gold); color: var(--gold); }
@@ -1504,10 +1511,12 @@ td .pet-rank { margin: 1px 0; }
 /* The player is a fixed-size control, so its column should hug it. `width:1px` (the
    usual shrink-to-content idiom) does NOTHING here -- measured against the real table,
    width 1px/1%/100% all left the column at 344px for 211px of content, because auto
-   layout hands the slack back. Only max-width actually binds. With the takes allowed to
-   wrap, 230px fits the widest player and the transcript gets the space back
-   (Play 344->126px, Transcript 259->477px). */
-.snd-col { max-width: 230px; }
+   layout hands the slack back. Only max-width actually binds.
+   With the take chips moved to their own row (see .snd-takes), the widest thing left on
+   the control row is play + bar + duration + download, so the cap comes down from 230px
+   and the transcript takes the difference. 210, not 190: the control row measures 191px
+   and the cell has padding, so a tighter cap clips the download button off the end. */
+.snd-col { max-width: 210px; }
 /* Reserved for a table with no transcript column to stretch. NOT used on ?sounds' Name:
    two greedy columns fight, and Name won -- 583px of sound name next to a 106px
    transcript. The transcript is the content worth reading, so it is the only greedy one. */
