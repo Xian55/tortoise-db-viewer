@@ -161,6 +161,54 @@ async function testVoiceSearch(term, expectSpeaker) {
   return rows.length > 0 && hit;
 }
 
+// A sound's numbered takes are DIFFERENT LINES, so a transcript belongs to a take.
+// "Time is money, friend!" is take 1 of GoblinMaleZanyNPCGreetings, take 4 of
+// GoblinFemaleZanyNPCGreetings and take 6 of GoblinFemaleZanyVendorNPCGreeti -- every
+// page used to quote take 1's words and cue take 1's audio, so the row was right and
+// everything it showed was wrong. Asserts both halves: all takes listed, matched one cued.
+async function testTakeTranscripts() {
+  await nav(`?voicelines=${encodeURIComponent("time is money")}`);
+  await page.waitForSelector(".voice-page table tbody tr", { timeout: T });
+  // By HEADER: the Speaker column hides itself when no row has one, which shifts every
+  // index after it.
+  const heads = await page.$$eval(".voice-page thead th", (ts) => ts.map((t) => t.textContent.trim()));
+  const ni = heads.indexOf("Sound");
+  const rows = await page.$$eval(".voice-page table tbody tr", (rs, ni) => rs.map((r) => ({
+    name: r.querySelectorAll("td")[ni]?.textContent.trim() || "",
+    lines: [...r.querySelectorAll(".snd-line")].map((l) => l.textContent.trim()),
+    // The chip the player opens on, 1-based, as the user sees it.
+    on: Number(r.querySelector(".snd-take.on")?.dataset.take ?? -1) + 1,
+    chips: r.querySelectorAll(".snd-take").length,
+  })).filter((r) => /^Goblin/.test(r.name)), ni);
+  if (ni < 0) { console.log("take transcripts: no Sound column"); return false; }
+  const want = { GoblinMaleZanyNPCGreetings: [1, 4], GoblinFemaleZanyNPCGreetings: [4, 7], "GoblinFemaleZanyVendorNPCGreeti": [6, 10] };
+  const got = rows.map((r) => `${r.name}=take${r.on}/${r.chips},lines${r.lines.length}`);
+  console.log(`take transcripts: ${got.join(" ")}`);
+  const ok = Object.entries(want).every(([name, [take, n]]) => {
+    const r = rows.find((x) => x.name === name);
+    // Every take listed, not just the first, and the searched line is the cued one.
+    return r && r.on === take && r.chips === n && r.lines.length === n
+      && /time is money/i.test(r.lines[take - 1] || "");
+  });
+  return rows.length >= 3 && ok;
+}
+
+// Clicking a transcript line selects that take in the player -- the line and the audio
+// are the same object, so reading one and playing another is the bug this prevents.
+async function testTakeLineClick() {
+  await nav(`?sounds=${encodeURIComponent("GoblinFemaleZanyVendorNPCGreeti")}`);
+  await page.waitForSelector(".voice-page .snd-line[data-take]", { timeout: T });
+  const res = await page.evaluate(() => {
+    const row = document.querySelector(".voice-page tbody tr:not(.grouprow)");
+    const line = [...row.querySelectorAll(".snd-line[data-take]")].find((l) => /time is money/i.test(l.textContent));
+    const before = Number(row.querySelector(".snd-take.on")?.dataset.take ?? -1);
+    line?.click();
+    return { before, want: Number(line?.dataset.take ?? -1), after: Number(row.querySelector(".snd-take.on")?.dataset.take ?? -1) };
+  });
+  console.log(`take line click: before=${res.before} clicked=${res.want} after=${res.after}`);
+  return res.want >= 0 && res.after === res.want;
+}
+
 // Seek + download controls. Playback itself is NOT asserted: an automated Chrome
 // profile has no media engagement, so play() is rejected by autoplay policy no matter
 // how real the click is. What is asserted is everything around it -- the slider
@@ -238,6 +286,8 @@ async function testNavEntry() {
 
 smoke("npc sounds tab (ragnaros)", () => testNpcSounds());
 smoke("npc folder voice lines (anub'rekhan)", () => testFolderVoiceLines());
+smoke("per-take transcripts (time is money)", () => testTakeTranscripts());
+smoke("transcript line selects its take", () => testTakeLineClick());
 smoke("voicelines reachable from nav", () => testNavEntry());
 smoke("seek + download controls", () => testSeekControls());
 smoke("sound variant takes", () => testTakes());

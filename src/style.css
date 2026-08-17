@@ -1515,6 +1515,19 @@ td .pet-rank { margin: 1px 0; }
 /* Gossip is prose: let it wrap and cap the measure so a long menu text doesn't
    stretch the table to the viewport width. */
 .gossip-text { white-space: normal; max-width: 70ch; }
+/* A sound's takes are DIFFERENT LINES, so the cell lists all of them, one per row, each
+   numbered to match the player's take chips and clickable to play that take. Quoting
+   only the first was wrong twice over: it hid the rest, and it disagreed with whatever
+   take the player was cued to. */
+.snd-lines { display: flex; flex-direction: column; gap: 2px; }
+.snd-line[data-take] { cursor: pointer; }
+.snd-line[data-take]:hover { color: var(--gold); }
+/* The take number reads as an index, not as part of the quote: same size, muted, and a
+   fixed width so a 10-take list stays a column rather than a ragged edge. */
+.snd-linenum { display: inline-block; min-width: 1.6em; color: var(--muted); font-style: normal; }
+.snd-linenum::after { content: "."; }
+.sound-lines li.snd-line { cursor: pointer; }
+.sound-lines li.snd-line:hover .snd-text { color: var(--gold); }
 /* Machine transcript marker: present but quiet -- it must be visible that the line was
    inferred from audio, without shouting over the line itself. */
 .snd-auto { font-size: 10px; text-transform: uppercase; letter-spacing: .04em;

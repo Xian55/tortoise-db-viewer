@@ -145,13 +145,17 @@ function fileList(row) {
 /**
  * A play control for one sound row ({ id, name, files, ms }).
  * `opts.label` false renders just the button (for a table cell that already names it).
+ * `opts.take` preselects a numbered take. Takes are DIFFERENT LINES, not alternate
+ * recordings of one, so a row that exists because take 6 matched a search must open on
+ * take 6 -- defaulting to 1 played the user something they did not search for.
  */
 export function soundPlayer(row, opts = {}) {
   const files = fileList(row);
   if (!files.length) return "";
+  const sel = Math.min(Math.max(Number(opts.take ?? row.take ?? 0) || 0, 0), files.length - 1);
   const takes = files.length > 1
     ? `<span class="snd-takes">${files.map((_, i) =>
-      `<button class="snd-take${i === 0 ? " on" : ""}" data-take="${i}" title="Take ${i + 1}">${i + 1}</button>`).join("")}</span>`
+      `<button class="snd-take${i === sel ? " on" : ""}" data-take="${i}" title="Take ${i + 1}">${i + 1}</button>`).join("")}</span>`
     : "";
   const name = row.name || "sound";
   return `<span class="snd" data-files="${esc(JSON.stringify(files))}" data-ms="${row.ms || 0}" data-name="${esc(name)}">
@@ -225,6 +229,16 @@ export function wireAudio(root) {
   if (!root || root.__sndWired) return;
   root.__sndWired = true;
   root.addEventListener("click", (e) => {
+    // A transcript line names its take, so clicking the words plays the words. The line
+    // lives in a different cell from the player, so it finds the player by row.
+    const line = e.target.closest(".snd-line[data-take]");
+    if (line) {
+      // NOT `.snd-lines`: that is the line's own wrapper inside the transcript cell, so
+      // closest() would stop there and never reach the cell holding the player.
+      const row = line.closest("tr, .sound-page");
+      const chip = row?.querySelector(`.snd .snd-take[data-take="${line.dataset.take}"]`);
+      if (chip) { e.preventDefault(); chip.click(); return; }
+    }
     const take = e.target.closest(".snd-take");
     const play = e.target.closest(".snd-play");
     const dl = e.target.closest(".snd-dl");
