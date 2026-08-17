@@ -209,6 +209,41 @@ async function testTakeLineClick() {
   return res.want >= 0 && res.after === res.want;
 }
 
+// Layout: the take chips sit on their OWN row inside the player, below the controls, so
+// a 10-take sound doesn't widen the Play column by ~200px at the transcript's expense.
+// Measured against the rendered page, because width behaviour in these tables is
+// consistently counter-intuitive (see .snd-col in style.css) -- an assertion on the CSS
+// would prove nothing about what the column actually does.
+async function testTakeRowLayout() {
+  await nav(`?voicelines=${encodeURIComponent("time is money")}`);
+  await page.waitForSelector(".voice-page .snd-takes .snd-take", { timeout: T });
+  const m = await page.evaluate(() => {
+    const heads = [...document.querySelectorAll(".voice-page thead th")].map((t) => t.textContent.trim());
+    const row = [...document.querySelectorAll(".voice-page tbody tr")]
+      .find((r) => r.querySelectorAll(".snd-take").length >= 7);
+    const w = [...row.querySelectorAll("td")].map((td) => Math.round(td.getBoundingClientRect().width));
+    const play = row.querySelector(".snd-play").getBoundingClientRect();
+    const chip = row.querySelector(".snd-take").getBoundingClientRect();
+    const dl = row.querySelector(".snd-dl").getBoundingClientRect();
+    const bar = row.querySelector(".snd-bar").getBoundingClientRect();
+    const ctl = row.querySelector(".snd-ctl").getBoundingClientRect();
+    const cell = row.querySelectorAll("td")[0].getBoundingClientRect();
+    return { heads, w, chips: row.querySelectorAll(".snd-take").length,
+      chipBelowPlay: chip.top >= play.bottom, dlOnControlRow: dl.top < chip.top,
+      // The controls must stay on ONE line: the first attempt let the whole player stack.
+      ctlOneRow: Math.abs(bar.top - play.top) < 8 && Math.abs(dl.top - play.top) < 8 && bar.left > play.left,
+      // ...and inside the cell. A cap tighter than the controls need clips the download.
+      ctlW: Math.round(ctl.width), cellW: Math.round(cell.width), overflow: ctl.right > cell.right + 1 };
+  });
+  const pi = m.heads.indexOf("Play"), ti = m.heads.indexOf("Transcript");
+  console.log(`take row layout: cols=[${m.heads}] widths=[${m.w}] chips=${m.chips} below=${m.chipBelowPlay} `
+    + `dlUp=${m.dlOnControlRow} ctlOneRow=${m.ctlOneRow} ctl=${m.ctlW}/${m.cellW} overflow=${m.overflow}`);
+  // Chips under an intact, un-clipped control row, and the transcript wider than the
+  // player -- the point of moving the chips in the first place.
+  return m.chipBelowPlay && m.dlOnControlRow && m.ctlOneRow && !m.overflow
+    && m.w[ti] > m.w[pi] && m.w[pi] <= 230;
+}
+
 // Seek + download controls. Playback itself is NOT asserted: an automated Chrome
 // profile has no media engagement, so play() is rejected by autoplay policy no matter
 // how real the click is. What is asserted is everything around it -- the slider
@@ -288,6 +323,7 @@ smoke("npc sounds tab (ragnaros)", () => testNpcSounds());
 smoke("npc folder voice lines (anub'rekhan)", () => testFolderVoiceLines());
 smoke("per-take transcripts (time is money)", () => testTakeTranscripts());
 smoke("transcript line selects its take", () => testTakeLineClick());
+smoke("take chips on their own row", () => testTakeRowLayout());
 smoke("voicelines reachable from nav", () => testNavEntry());
 smoke("seek + download controls", () => testSeekControls());
 smoke("sound variant takes", () => testTakes());

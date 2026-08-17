@@ -158,14 +158,22 @@ export function soundPlayer(row, opts = {}) {
       `<button class="snd-take${i === sel ? " on" : ""}" data-take="${i}" title="Take ${i + 1}">${i + 1}</button>`).join("")}</span>`
     : "";
   const name = row.name || "sound";
+  // The controls are one unbreakable row and the take chips are a second row under it.
+  // The wrapper is what makes that true: with the chips as a direct flex child, the
+  // table's auto layout took the cell's min-content width to be the widest single control
+  // (~70px) and stacked play / bar / duration on top of each other -- measured 98px for a
+  // player that needs ~195px. A `.snd-ctl` that cannot wrap gives the column an honest
+  // minimum, so only the chips move.
   return `<span class="snd" data-files="${esc(JSON.stringify(files))}" data-ms="${row.ms || 0}" data-name="${esc(name)}">
-    <button class="snd-play" aria-label="Play ${esc(name)}">▶</button>
-    ${opts.label === false ? "" : `<span class="snd-name">${esc(row.name || "")}</span>`}
-    <span class="snd-bar" role="slider" tabindex="0" aria-label="Seek ${esc(name)}"
-      aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></span>
-    <span class="snd-dur muted">${fmtDur(row.ms)}</span>
+    <span class="snd-ctl">
+      <button class="snd-play" aria-label="Play ${esc(name)}">▶</button>
+      ${opts.label === false ? "" : `<span class="snd-name">${esc(row.name || "")}</span>`}
+      <span class="snd-bar" role="slider" tabindex="0" aria-label="Seek ${esc(name)}"
+        aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></span>
+      <span class="snd-dur muted">${fmtDur(row.ms)}</span>
+      <button class="snd-dl" aria-label="Download ${esc(name)}" title="Download">⭳</button>
+    </span>
     ${takes}
-    <button class="snd-dl" aria-label="Download ${esc(name)}" title="Download">⭳</button>
   </span>`;
 }
 
