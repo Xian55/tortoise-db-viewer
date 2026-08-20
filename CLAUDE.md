@@ -119,6 +119,7 @@ python scripts/extract-spell-icons.py # LOCAL: client SpellIcon.dbc -> scripts/d
 python scripts/build-atlas.py         # assets/icons/custom/*.webp -> public/icons/custom-atlas.{webp,json}
 python scripts/extract-maps.py        # LOCAL: client -> public/maps/*.webp + scripts/data/zones.json
 python scripts/extract-area-bounds.py # LOCAL: client ADTs -> scripts/data/subzone-bounds.json (exact coord->area; also the `subzones` table). CLIENT_PROFILE=tbc + TW_CLIENT + AREA_BOUNDS_OUT=scripts/data/subzone-bounds-tbc.json for the TBC client (the ONLY source of Outland bounds)
+python scripts/extract-wmo-areas.py   # LOCAL: client ADT WMO placements + WMOAreaTable.dbc -> scripts/data/wmo-areas.json (what the game calls the INSIDE of a cave/building, which the terrain over it does not know). CLIENT_PROFILE=tbc + TW_CLIENT + WMO_AREAS_OUT=scripts/data/wmo-areas-tbc.json for the TBC client
 python scripts/extract-item-sets.py   # LOCAL: client ItemSet.dbc -> scripts/data/item-sets.json (set names + bonuses + ItemID_* membership; build-db corrects items.set_id to it)
 python scripts/extract-skill-lines.py # LOCAL: client SkillLine.dbc -> scripts/data/skill-lines.json (skill categories)
 python scripts/extract-creature-families.py # LOCAL: client CreatureFamily.dbc -> scripts/data/creature-families.json (pet family id -> name + diet/PetFoodMask + ability skill line + icon; powers the Hunter Pets section)
@@ -240,6 +241,55 @@ feature rests on.
   DBs built before this. `db.js` `caps()` probes for the table + column once and the
   UI degrades: no Subzones tab, no dropdown, empty search tab, zone-only Location
   labels. Dispatch `deploy-dev` / `deploy-cmangos` / `deploy-tbc-cmangos` to close it.
+
+### Interiors: the area a cave has, not the one above it
+
+The ADT terrain chunk names the ground you stand ON. Walk into a cave or a building and
+the client stops reading it and takes the area off the **WMO** you are inside
+(`WMOAreaTable`, keyed by the root model's `MOHD.wmoID` + the placement's nameSet). Those
+two answers disagree far more often than they look like they would, so terrain-only
+assignment silently mis-homes ~13k spawns — 9% of the world.
+
+The case that surfaced it: Highlord Mastrogonde (NPC 8282) sits in the **Firewatch
+Ridge** cave. Turtle painted the rock above that cave as **Sherwood Quarry** when it added
+the Northwind zone, so the cave came out cut in half — the southern spawns in Searing
+Gorge, the northern ones (the rare among them) filed under a different zone on a different
+continent from the one the game names when you walk in. The cave is a *generic model*
+(`MD_MUSHROOMCAVE03`) whose nameSet 1/2/3/4 is Firewatch Ridge / Raptor Ridge /
+Crystalvein Mine / Emberstrife's Den, which is the general statement of why terrain can
+never name an interior: the same rock is four different places.
+
+- `scripts/extract-wmo-areas.py` (LOCAL, committed output) walks every ADT's MODF
+  placements, resolves each to its area, and writes `wmo-areas.json`. `build-db`'s
+  `homeZone()` tries the WMO leaf first and the terrain leaf second.
+- **Two levels of box, because one is useless either way.** The outer box is the
+  placement's stored world AABB — a cheap reject, and far too coarse to decide with
+  (Stormwind's is 1488 yards square). `g` holds the per-GROUP boxes from `MOGI`,
+  transformed by the placement, which hug the actual rooms; a point counts as inside only
+  when a **group** contains it. The transform was derived from the client, not from
+  memory: local (X,Y,Z) maps to ADT (y,z,x), rotated about the up axis by the MODF's
+  second angle, then clipped to the stored extents (which bounds the error from the two
+  tilt angles it drops).
+- **The boxes are 3D and the z range is load-bearing** — it is what keeps a mob standing
+  on the mountain above a cave out of the cave. `spawn_points` stays 2D; z is read from
+  the dump row at assignment time and thrown away.
+- **Only the model-wide `WMOAreaTable` row (`WMOGroupID = -1`) is followed.** A zero area
+  there means "keep the terrain area", which is what most buildings do. Per-group
+  overrides are skipped — there is exactly 1 on the Turtle client, and honouring it would
+  mean applying one room's area to the whole model.
+- **Two guards, both of which cost real spawns when missing.** A WMO box that claims the
+  *parent* of what the terrain says is dropped: Stormwind's model reaches over the Valley
+  of Heroes and "Stormwind City" is not an improvement on "Valley of Heroes" (~1.8k spawns
+  on that rule alone). And a WMO area whose own `AreaTable.MapID` is not the spawn's map is
+  dropped: an instance ENTRANCE is modelled on the continent but its area belongs to the
+  instance (Westfall's Deadmines cave is area 1581, map 36), and taking it moves those
+  spawns off the zone page that can actually draw them onto an entrance mini-map — and
+  lets an entrance WMA rank against real zones in `zone_stats`.
+- Interiors also give ~60 sub-areas a page they never had (Gallows' End Tavern, Brill Town
+  Hall, Thunderbrew Distillery): they have no terrain chunks at all, so the placement box
+  is also the only bbox the `subzones` row can carry.
+- **Per-expansion** via `clientData()`, same as the terrain bounds:
+  `wmo-areas-tbc.json` for the TBC row.
 
 ### NPC stats + abilities
 
@@ -622,6 +672,10 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
   Ghostlands / Azuremyst / Bloodmyst. ADT format is unchanged from 1.12 (MCNK areaid
   at header `+0x34`; split `_obj0`/`_tex0` ADTs only arrive in Cataclysm), so only the
   MPQ set differs.
+- `scripts/extract-wmo-areas.py` — LOCAL: the OTHER half of coord→area, the half the
+  terrain cannot see. Reads every ADT's WMO placements (MODF) and resolves each through
+  the root model's `MOHD.wmoID` + the placement's nameSet to `WMOAreaTable` → committed
+  `scripts/data/wmo-areas.json`. See "Interiors" below.
 - `scripts/extract-minimap.py` — LOCAL: stitches the client's per-ADT-block minimap
   BLPs into the seamless-world-map tile pyramid `public/minimap/<mapId>/{z}/{x}/{y}.webp`
   (committed — CI can't rebuild it; synced to R2 by deploy.yml) + the committed
@@ -995,7 +1049,9 @@ Client-derived **image** trees are no longer committed. CI still can't regenerat
   `scripts/data/spell-lookups.json`), zone bounds
   (`scripts/data/zones.json` — the parchment *images* are R2-only, see above),
   per-area ADT bounds (`scripts/data/subzone-bounds.json`
-  via `extract-area-bounds.py`, for exact coord→zone), and the "minimap" POI sprite
+  via `extract-area-bounds.py`, for exact coord→zone) plus the WMO interior boxes
+  (`scripts/data/wmo-areas.json` via `extract-wmo-areas.py`, the area the game names
+  INSIDE a cave/building — see "Interiors"), and the "minimap" POI sprite
   sheet `public/icons/poi-atlas.webp` (16-col, 32px grid; sourced from the
   WowClassicGrindBot atlas). `Elite` at [11,14] is the boss-marker skull; the zone +
   world map markers and the layer-control legend draw their per-category icons from
@@ -1072,6 +1128,9 @@ Client-derived **image** trees are no longer committed. CI still can't regenerat
   swallowing real zones). Zone pages, the NPC-page map/label, and all location
   columns read this one field. Fallback to the smallest WMA box only where ADTs give
   no area (~0.4% of spawns); `subzone-bounds.json` absent ⇒ WMA-box behaviour.
+  **Terrain is only half of it** — inside a cave or a building the client reads the
+  area off the WMO instead, and that answer routinely differs from the ground over it.
+  See "Interiors" below; `wmo-areas.json` is consulted first, terrain second.
 - **World-drop reference pools are intentionally excluded** from `drops`
   (`REF_THRESHOLD` in build-db). Items reachable only via those won't list
   individual creatures — by design (they're world drops).

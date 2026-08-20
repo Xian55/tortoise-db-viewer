@@ -84,6 +84,10 @@ VANILLA_DBC = {
     # the most recognisable tracks live only here: the Deadmines' intro sting is a WMO
     # row (wmo 499 -> area 1581), with nothing on the AreaTable side at all. All four
     # fields precede the localized name block, so TBC doesn't move them.
+    # WMOAreaTable.dbc. The lookup key is (WMOID = the root WMO's MOHD id, NameSetID =
+    # the placement's nameSet, WMOGroupID); a -1 group is the model-wide row. All of
+    # these sit ahead of the localized name block, so TBC does not move them.
+    "wmo_root": 1, "wmo_nameset": 2, "wmo_group": 3,
     "wmo_ambience": 6, "wmo_music": 7, "wmo_intro": 8, "wmo_area": 10,
     "zm_day": 6, "zm_night": 7,  # ZoneMusic.dbc
     "sa_day": 1, "sa_night": 2,  # SoundAmbience.dbc
