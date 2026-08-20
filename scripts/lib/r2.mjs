@@ -82,7 +82,25 @@ export class R2 {
     if (contentType) extra["content-type"] = contentType;
     if (cacheControl) extra["cache-control"] = cacheControl;
     const res = await this.#req("PUT", key, body, extra);
-    if (!res.ok) throw new Error(`PUT ${key} -> ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) {
+      const detail = (await res.text()).slice(0, 300);
+      // A bare "403 AccessDenied" is indistinguishable between four very different
+      // causes, and the one that actually bites is a token that has since expired:
+      // thousands of uploads succeed, then every PUT fails at once an hour later.
+      const hint = res.status !== 403 ? "" : [
+        "",
+        "  403 from R2 usually means one of:",
+        "    * the API token EXPIRED (they can carry a TTL) or was rolled -- by far the",
+        "      likeliest when writes worked minutes ago; re-create it, re-export the vars",
+        "    * the token is Object READ-only, or scoped to a different bucket",
+        "    * the bucket or prefix has a lock/retention rule, which blocks OVERWRITING",
+        "      an existing object just as it blocks deleting one",
+        "    * the machine clock drifted far enough to invalidate the signature",
+        "  Discriminator: PUT a brand-new key. Succeeds while an overwrite fails means",
+        "  retention; both failing means the token.",
+      ].join("\n");
+      throw new Error(`PUT ${key} -> ${res.status} ${res.statusText}: ${detail}${hint}`);
+    }
     return true;
   }
 
