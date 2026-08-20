@@ -682,6 +682,23 @@ looking rather than by recalling:
   composited into the face rectangles so the hairline meets the head. Using only the first
   gives a floating wig; using only the others gives a bald character with a painted-on
   hairline.
+- **The cape group is not all cape.** Geoset 1501 is a 20-triangle patch of BODY textured
+  from the body atlas, closing the back where a cloak attaches; 1502-1506 are the cloak
+  sheets, textured from the item (texType 2). Excluding group 15 wholesale -- which looks
+  obviously right -- punched a hole between the shoulders of every character. The
+  variant-1 rule already separates the two, so nothing is excluded by group at all.
+- **A named texture wins over its type.** A Blood Elf's eye glow is texType 8 AND names
+  its own BLP, so a slot rule keyed on `type === 0` handed it the body atlas and painted
+  skin over the eyes. Substitute only the types we composite (1/2 body, 6 hair); anything
+  that names a file gets that file.
+- **Props the client animates are skipped on characters.** Turtle's goblin models carry a
+  cloth rag as an embedded-texture plane; with the pose baked at Stand frame 0 and no
+  cloth simulation it hangs straight out from the waist like a flag.
+- **CharSections references art the client does not ship** -- 100 distinct files, 1,262
+  references, mostly high colour indices on Turtle's added races. The extractor verifies
+  every texture and drops the dead ones (419 rows lost all three and are removed), because
+  trusting the table renders a Troll at skin colour 9 nude and leaves bald patches where a
+  scalp is missing. An appearance the client cannot paint is not offered in the picker.
 
 DBC layouts, likewise derived: `ChrRaces` keeps the internal name at 15 and the localized
 block at 17 (deDE at 20, zhCN 21, ruRU 22 -- which is how the block was located), and the

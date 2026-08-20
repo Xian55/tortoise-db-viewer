@@ -200,6 +200,34 @@ def export_characters(storm, args):
             if args.verbose:
                 print(f"  char {race['name']} {sex}: {stats}")
 
+    # Textures the character models name internally (eye glow, and Turtle's custom race
+    # extras) go to the shared tex/ tree, same as an item's glow planes.
+    named = set()
+    for race in doc["races"]:
+        for sex in ("m", "f"):
+            path = race.get(sex)
+            if not path:
+                continue
+            raw = storm.read(path.rsplit(".", 1)[0] + ".m2") or storm.read(path)
+            if not raw:
+                continue
+            try:
+                for t in parse_m2(raw)["textures"]:
+                    if t["name"]:
+                        named.add(t["name"])
+            except Exception:                                   # noqa: BLE001
+                pass
+    for name in sorted(named):
+        out = os.path.join(OUT_DIR, "tex", *embedded_path(name).split("/"))
+        if os.path.exists(out) and not args.force:
+            continue
+        img = blp_to_rgba(storm, name.replace("/", "\\"))
+        if img is None:
+            fail += 1; continue
+        if not args.dry_run:
+            tbytes += write_webp(img, out)
+        nt += 1
+
     for name in doc["textures"]:
         out = os.path.join(OUT_DIR, "chartex", *embedded_path(name).split("/"))
         if os.path.exists(out) and not args.force:
@@ -286,7 +314,11 @@ def main():
             # texture never exported would silently fall back to the blade texture, which
             # is exactly the bug that made Thunderfury render a lit square.
             for t in parsed["textures"]:
-                if t["type"] == 0 and t["name"]:
+                # ANY named texture, not just type 0. A named slot with a non-zero type
+                # is still a real file the model expects (character eye-glow is type 8
+                # and names its own BLP); skipping those leaves the mesh wearing whatever
+                # texture the substitution rule happens to hand it.
+                if t["name"]:
                     embedded.add(t["name"])
             if os.path.exists(out) and not args.force:
                 manifest["models"].append(name.lower()); skip += 1; continue

@@ -182,6 +182,12 @@ function buildViewer(el, model, slotTex, opts = {}) {
     // beards, gloves, boots, robe, cape -- and drawing them all gives you a figure with
     // four hairstyles at once. The caller passes the set it wants.
     if (opts.geosets && !opts.geosets.has(sub.geoset)) return;
+    // Props the client animates at runtime. Turtle's goblin models carry a cloth rag
+    // (Character\Goblin\RAG_02.blp) as an embedded-texture plane; with the pose baked at
+    // Stand frame 0 and no cloth simulation it hangs straight out from the waist like a
+    // flag. A character has no other use for an embedded texture, so the whole class is
+    // skipped rather than special-casing one file.
+    if (opts.skipEmbedded && sub.texType === 0) return;
     geom.addGroup(sub.first, sub.count, materials.length);
     // texSlot 0xFF means the submesh resolved no texture at all; fall back to the item's
     // own rather than drawing it untextured.
@@ -375,16 +381,13 @@ function section(data, race, sex, kind, variation, color) {
     || rows[0] || null;
 }
 
-// A group whose lowest variant is NOT part of the naked body. The cape (15) is the clear
-// case: with no cloak equipped its geoset still exists and draws an untextured sheet
-// hanging off the shoulders.
-//
-// Everything else keeps its lowest variant, and it is worth saying why, because the
-// tidier-looking rule is wrong: the "clothing" groups double as the bare limbs. Dropping
-// groups 8/9/11/13 as equipment left a mannequin of torso, hands and feet floating apart
-// with no legs or forearms at all -- on Human male those geosets start at variant 2
-// (there is no 801), and that lowest variant IS the bare limb.
-const NOT_BODY_GROUPS = new Set([15]);
+// Nothing is excluded by GROUP any more, and that is the point: the variant-1 rule below
+// already separates body from equipment, including inside the cape group. Excluding group
+// 15 outright looked right and was not -- 1501 is a 20-triangle patch of BODY, textured
+// from the body atlas (texType 1), that closes the back where a cloak attaches, while
+// 1502-1506 are the cloak sheets themselves (texType 2). Dropping the group punched a
+// hole between the shoulders of every character on the site.
+const NOT_BODY_GROUPS = new Set();
 
 /** Which geosets a naked character shows: the body, its bare limbs, the chosen hairstyle
  *  and the chosen facial hair. Equipment overrides its own group later.
@@ -457,13 +460,17 @@ export async function mountCharacterViewer(el, opts = {}) {
   // body atlas, which is why a hairless mannequin is what you get if it is skipped.
   const hairTex = hairRow?.[2]?.[0] ? await loadTexture(charTexUrl(hairRow[2][0])) : null;
 
+  // Slot resolution: the two SUBSTITUTED types get what we composited, anything that
+  // names a file gets that file. Type is not enough on its own -- a Blood Elf's eye glow
+  // is type 8 AND names its own BLP, so a rule keyed only on `type === 0` handed it the
+  // body atlas and painted skin over the eyes.
   const slotTex = model.textures.map((t) => {
     if (t.type === TEX_HAIR) return hairTex || body;
-    if (t.type === 0 && t.name) return null;       // embedded; resolved below
+    if (t.name) return null;                       // named; loaded below
     return body;                                   // 1 = character skin, 2 = object skin
   });
   await Promise.all(model.textures.map(async (t, i) => {
-    if (t.type === 0 && t.name) slotTex[i] = await loadTexture(embeddedUrl(t.name));
+    if (t.type !== TEX_HAIR && t.name) slotTex[i] = await loadTexture(embeddedUrl(t.name));
   }));
 
   const hairGeoset = (data.hair[`${race}-${sex}`] || []).find((h) => h[0] === hairStyle)?.[1] || 0;
@@ -472,6 +479,7 @@ export async function mountCharacterViewer(el, opts = {}) {
   return buildViewer(el, model, slotTex, {
     label: `${race}-${sex}`,
     geosets: baseGeosets(model, { hairGeoset, facial: facialGeosets }),
+    skipEmbedded: true,
     // Straight on: a character model faces WoW +Y, which is -Z after the Y-up swap.
     // The distance is not a taste choice -- `radius` is half the LARGEST dimension, and
     // for an upright figure that is its height, so at a 35 degree FOV anything closer

@@ -109,16 +109,21 @@ async function testDressingRoom(race, sex) {
 }
 
 // The naked mannequin must show the body and its bare limbs, and nothing it is not
-// wearing. Both obvious rules fail here and both failures are silent-ish, so they are
-// pinned: dropping the clothing groups leaves a torso with no legs (no 1301), and taking
-// each group's lowest variant puts a sleeve and a kilt on a naked character (802/1302).
+// wearing. Three plausible rules fail here, each in a way that looks like a different
+// bug, so all three are pinned:
+//   * dropping the "clothing" groups leaves a torso with no legs -- 1301 IS the bare leg;
+//   * taking each group's lowest variant puts a sleeve (802) and a kilt (1302) on a naked
+//     character, because that group has no variant 1 at all;
+//   * excluding the cape group loses 1501, the small patch of BODY that closes the back
+//     where a cloak attaches -- a hole between the shoulders of every character. The
+//     cloak sheets are 1502+, and must still be off.
 async function testNakedGeosets() {
   await nav("?dressing&race=1&sex=m&hair=1");
   await page.waitForFunction(() => window.__mv && window.__mv().geosets, { timeout: T });
   const g = await page.evaluate(() => window.__mv().geosets);
   const has = (x) => g.includes(x);
-  const ok = has(0) && has(1301) && !has(802) && !has(1302) && !has(1501);
-  console.log(`naked geosets: [${g}] (want 0 + 1301, no 802/1302/1501)`);
+  const ok = has(0) && has(1301) && has(1501) && !has(802) && !has(1302) && !has(1502);
+  console.log(`naked geosets: [${g}] (want 0 + 1301 + 1501, no 802/1302/1502)`);
   return ok;
 }
 

@@ -117,19 +117,45 @@ def main():
               f"(0xCCCCCCCC = {0xCCCCCCCC} -> uninitialised, geosets are 6-8)")
         return
 
-    # skin/face/facial/hair/underwear options, keyed race-sex-section
+    # skin/face/facial/hair/underwear options, keyed race-sex-section.
+    #
+    # Every texture is VERIFIED against the archives, because CharSections references art
+    # the client does not ship: 100 distinct files are missing, referenced 1,262 times,
+    # mostly at high colour indices and mostly on the races Turtle added. Trusting the
+    # table means a
+    # character whose underwear texture is one of those renders nude, and one whose scalp
+    # is missing renders with a bald patch. A row that loses every texture is dropped, so
+    # the option disappears from the picker and the viewer falls back to a row that can
+    # actually be painted -- an appearance the client cannot draw is not worth offering.
     sections = {}
     textures = set()
+    dropped_tex = dropped_rows = 0
+    seen = {}
+
+    def exists(path):
+        if path not in seen:
+            seen[path] = storm.has(path.replace("/", "\\"))
+        return seen[path]
+
     for r in cs:
         sec = SECTIONS.get(r[CS_SECTION])
         if sec is None:
             continue
-        tex = [css(r[CS_TEX + i]) for i in range(3)]
-        for t in tex:
-            if t:
+        tex = []
+        for i in range(3):
+            t = css(r[CS_TEX + i])
+            if not t:
+                continue
+            if exists(t):
+                tex.append(t)
                 textures.add(t)
+            else:
+                dropped_tex += 1
+        if not tex:
+            dropped_rows += 1
+            continue
         key = f"{r[CS_RACE]}-{sex_key(r[CS_SEX])}-{sec}"
-        sections.setdefault(key, []).append([r[CS_VAR], r[CS_COLOR], [t for t in tex if t]])
+        sections.setdefault(key, []).append([r[CS_VAR], r[CS_COLOR], tex])
 
     hair = {}
     for r in chg:
@@ -159,6 +185,9 @@ def main():
     print(f"wrote {OUT}  ({os.path.getsize(OUT)/1e6:.2f} MB)")
     print(f"  {len(races)} races x 2 genders, {len(cs)} section rows, "
           f"{len(textures)} distinct textures, {len(chg)} hair + {len(cfh)} facial-hair styles")
+    if dropped_tex or dropped_rows:
+        print(f"  dropped {dropped_tex} texture references the client does not ship "
+              f"({dropped_rows} rows lost every texture and were removed)")
 
 
 if __name__ == "__main__":
