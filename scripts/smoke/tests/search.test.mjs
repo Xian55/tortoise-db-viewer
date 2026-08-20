@@ -192,9 +192,30 @@ async function testHover() {
   return name !== "(none)";
 }
 
+// The Quests tab's Zone cell must NAME the quest's area and reach its page. The
+// search query never selected the area name, so every row with a real zone rendered
+// an empty cell; and quests.zone is a LEAF, so the page it links is ?zone= or
+// ?subzone= depending on whether the leaf has a parchment of its own.
+async function testSearchQuestZone(term) {
+  await nav(`?search=${encodeURIComponent(term)}`);
+  await page.waitForSelector(".results .tab", { timeout: T });
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".results .tab")].find((t) => t.textContent.includes("Quests")); if (b) b.click(); });
+  await page.waitForSelector(".results .tabpane:not(.hidden) table tbody tr", { timeout: T });
+  const cells = await page.$$eval(".results .tabpane:not(.hidden) tbody tr", (trs) => trs.slice(0, 25).map((tr) => {
+    const td = tr.children[2];
+    const a = td && td.querySelector("a.ilink");
+    return { text: td ? td.textContent.trim() : "", href: a ? a.getAttribute("href") : null };
+  }));
+  const named = cells.filter((c) => c.text).length;
+  const linked = cells.filter((c) => c.href && /^\?(zone|subzone)=\d+$/.test(c.href)).length;
+  console.log(`search-quest-zone "${term}": rows=${cells.length} named=${named} linked=${linked} sample=${JSON.stringify(cells.slice(0, 3))}`);
+  return named > 0 && linked > 0;
+}
+
 smoke("search thunder", () => testSearch("thunder"));
 smoke("search-infix owfang", () => testSearchInfix("owfang", "owfang"));
 smoke("search tabs defias", () => testSearchTabs("defias"));
+smoke("search quest-zone defias", () => testSearchQuestZone("defias"));
 smoke("search zone Tanaris", () => testSearchZone("Tanaris"));
 smoke("search subzone Goldshire", () => testSearchSubzone("Goldshire"));
 smoke("search selbar items copper", () => testSearchSelbar("copper", "items", { prefix: ".additem ", compare: true }));

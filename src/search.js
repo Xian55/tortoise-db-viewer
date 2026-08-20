@@ -1,8 +1,8 @@
 // Unified search: a shared multi-entity query (runSearch) + a live flat top-5
 // autocomplete dropdown wired onto the top-bar input. Items/NPCs/quests are
 // FTS5-backed; dungeons use LIKE over the ~39 maps. All in-memory (no network).
-import { query } from "./db.js";
-import { Q_SEARCH_GOSSIP, Q_SEARCH_VOICE, Q_SEARCH_ITEMS, Q_SEARCH_NPCS, Q_SEARCH_QUESTS, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES, Q_SEARCH_SUBZONES, Q_SEARCH_FACTIONS, Q_SEARCH_ITEMSETS, Q_SEARCH_OBJECTS, Q_ID_ITEM, Q_ID_NPC, Q_ID_QUEST, Q_ID_SPELL, Q_ID_OBJECT } from "./queries.js";
+import { query, caps } from "./db.js";
+import { Q_SEARCH_GOSSIP, Q_SEARCH_VOICE, Q_SEARCH_ITEMS, Q_SEARCH_NPCS, qSearchQuests, Q_SEARCH_SPELLS, Q_SEARCH_DUNGEONS, Q_SEARCH_ZONES, Q_SEARCH_SUBZONES, Q_SEARCH_FACTIONS, Q_SEARCH_ITEMSETS, Q_SEARCH_OBJECTS, Q_ID_ITEM, Q_ID_NPC, Q_ID_QUEST, Q_ID_SPELL, Q_ID_OBJECT } from "./queries.js";
 import { itemLink, npcLink, questLink, spellLink, dungeonLink, zoneLink, subzoneLink, factionLink, objectLink, esc } from "./render.js";
 
 // FTS5 prefix MATCH: prefix-match each alnum token ("fire bl" -> "fire* bl*").
@@ -50,10 +50,12 @@ export async function runSearch(term, limit) {
   const fts = ftsQuery(t);
   const tg = trigramQuery(t);
   const like = `%${t}%`;
+  // Cached after the first probe, so this costs nothing on later keystrokes.
+  const hasSub = (await caps()).subzones;
   const [items, npcs, quests, spells, dungeons, zones, subzones, factions, itemsets, objects, voice, gossip, ids] = await Promise.all([
     fts ? query(Q_SEARCH_ITEMS, [fts, t, limit, tg]) : [],
     fts ? query(Q_SEARCH_NPCS, [fts, t, limit, tg]) : [],
-    fts ? query(Q_SEARCH_QUESTS, [fts, t, limit, tg]) : [],
+    fts ? query(qSearchQuests(hasSub), [fts, t, limit, tg]) : [],
     fts ? query(Q_SEARCH_SPELLS, [fts, t, limit, tg]) : [],
     query(Q_SEARCH_DUNGEONS, [like, t, limit]),
     query(Q_SEARCH_ZONES, [like, t, limit]),

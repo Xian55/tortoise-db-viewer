@@ -67,9 +67,10 @@ const SPEC = {
   Q_DUNGEON_QUESTS: [K("DUNGEON"), 255],
   Q_GUIDE_QUESTS: [K("ZONE"), 255],
   Q_WORLD_NPC_FILTER: ["copper*", '"opper"'],
-  Q_SEARCH_ITEMS: SEARCH4, Q_SEARCH_NPCS: SEARCH4, Q_SEARCH_QUESTS: SEARCH4, Q_SEARCH_SPELLS: SEARCH4,
+  Q_SEARCH_ITEMS: SEARCH4, Q_SEARCH_NPCS: SEARCH4, Q_SEARCH_SPELLS: SEARCH4,
   Q_SEARCH_DUNGEONS: SEARCH3, Q_SEARCH_ZONES: SEARCH3, Q_SEARCH_FACTIONS: SEARCH3,
   Q_SEARCH_OBJECTS: SEARCH3, Q_SEARCH_ITEMSETS: SEARCH3, Q_SEARCH_SUBZONES: SEARCH3,
+  "qSearchQuests(sub)": SEARCH4,
 };
 // Queries built by a factory (the `withSub` variants) aren't string exports, so the
 // Object.entries(Q) sweep can't see them. Bench the shape the app actually ships.
@@ -77,6 +78,7 @@ const FACTORIES = {
   "qZoneSpawns(sub)": Q.qZoneSpawns(true),
   "qZoneObjects(sub)": Q.qZoneObjects(true),
   "qNpcSpawns(sub)": Q.qNpcSpawns(true),
+  "qSearchQuests(sub)": Q.qSearchQuests(true),
 };
 const FACTORY_KIND = { "qZoneSpawns(sub)": "ZONE", "qZoneObjects(sub)": "ZONE", "qNpcSpawns(sub)": "NPC" };
 // 1-param queries by kind (name -> kind)
@@ -89,7 +91,7 @@ const KIND = {
   SET: ["Q_ITEM_SET","Q_ITEMSET_MEMBERS","Q_ITEMSET_BONUSES","Q_ITEMSET_STATS"],
   FACTION: ["Q_FACTION","Q_FACTION_ITEMS","Q_FACTION_MOBS","Q_FACTION_NPCS","Q_FACTION_QUESTS","Q_NPC_FACTION"],
   ZONE: ["Q_ZONE","Q_ZONE_LOOT","Q_ZONE_QUESTS","Q_ZONE_SUBZONES","Q_DUNGEON_ZONE","Q_MAP_FLOORS","Q_MAP_OBJECTS"],
-  SUBZONE: ["Q_SUBZONE"],
+  SUBZONE: ["Q_SUBZONE", "Q_SUBZONE_EXISTS"],
   // instance maps (a real dungeon page) — NOT a continent
   DUNGEON: ["Q_MAP_TYPE","Q_MAP_BOSSES","Q_MAP_SPAWNS","Q_DUNGEON","Q_DUNGEON_NPCS","Q_DUNGEON_LOOT","Q_DUNGEON_BOSS_LOOT"],
   // the seamless world map — continent 0/1, inherently large result sets

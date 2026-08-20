@@ -493,7 +493,14 @@ async function showSearch(term) {
   const questCols = [
     { label: "Title", cell: (r) => questLink(r.entry, r.title), value: (r) => r.title },
     { label: "Level", num: true, cls: "muted", cell: (r) => r.level || "", value: (r) => r.level || 0 },
-    { label: "Zone", cls: "muted", cell: (r) => esc(questZoneLabel(r.zone, r.zone_name)), value: (r) => questZoneLabel(r.zone, r.zone_name) },
+    // quests.zone is a LEAF area -> a zone page, a subzone page, or (negative ids) a
+    // sort category with no page at all. The name itself was missing from the query
+    // until now, so this cell rendered empty for every real zone.
+    { label: "Zone", cls: "muted",
+      cell: (r) => r.zone_page ? zoneLink(r.zone, questZoneLabel(r.zone, r.zone_name))
+        : r.sub_page ? subzoneLink(r.zone, questZoneLabel(r.zone, r.zone_name))
+        : esc(questZoneLabel(r.zone, r.zone_name)),
+      value: (r) => questZoneLabel(r.zone, r.zone_name) },
   ];
   const dungeonCols = [
     { label: "Name", cell: (r) => dungeonLink(r.id, r.name), value: (r) => r.name },
@@ -1061,21 +1068,14 @@ async function showSpell(id) {
     else if (source.auto) learned = `<span class="tagx" title="Learned automatically with the profession">Auto</span>`;
   }
 
-  // Resolve a location per trainer NPC (largest WMA box containing one of its
-  // spawns -- same heuristic as the NPC search/detail Location column).
-  const trainerZone = new Map();
-  if (trainers.length) {
-    const ids = trainers.map((n) => n.entry);
-    const ph = ids.map(() => "?").join(",");
-    const rows = await query(`SELECT entry, areaid, name FROM (
-        SELECT s.id AS entry, z.areaid, z.name,
-          ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY (z.loctop - z.locbottom) * (z.locleft - z.locright) DESC) AS rn
-        FROM spawn_points s INDEXED BY idx_spawn_id
-        JOIN zones z ON z.mapid = s.map AND s.x BETWEEN z.locbottom AND z.loctop AND s.y BETWEEN z.locright AND z.locleft
-        WHERE s.kind = 'c' AND s.id IN (${ph}) AND z.name <> ''
-      ) WHERE rn = 1`, ids);
-    for (const r of rows) trainerZone.set(r.entry, r);
-  }
+  // Location per trainer NPC -- the SAME resolver every other Location column uses.
+  // This was the last call site still running the old "largest WorldMapArea box
+  // containing the spawn" heuristic, which those boxes overlap far too badly to
+  // support: Sayoc (11868) stands in Orgrimmar and the biggest box over that point
+  // is Azshara's, so the spell page and his own NPC page named different zones.
+  // spawn_points.zone is ADT-exact (see build-db), and the shared resolver also
+  // appends the linked sub-area.
+  const trainerLoc = await resolveNpcLocations(trainers.map((n) => n.entry));
 
   // ---- formatters (wowhead-style values) ----
   const secs = (ms) => { const v = ms / 1000; return `${Number.isInteger(v) ? v : v.toFixed(v < 1 ? 2 : 1)} ${v === 1 ? "second" : "seconds"}`; };
@@ -1147,7 +1147,7 @@ async function showSpell(id) {
     { label: "Trainer", cell: (r) => npcLink(r.entry, r.name), value: (r) => r.name },
     { label: "Faction", cls: "muted", cell: (r) => teamBadge(r.team), value: (r) => teamLabel(r.team) },
     { label: "Level", num: true, cls: "muted", cell: (r) => lvlRange(r), value: (r) => r.level_max || r.level_min || 0 },
-    { label: "Location", cls: "muted", cell: (r) => { const z = trainerZone.get(r.entry); return z ? zoneLink(z.areaid, z.name) : ""; }, value: (r) => trainerZone.get(r.entry)?.name || "" },
+    { label: "Location", cls: "muted", cell: (r) => (trainerLoc.get(r.entry) || {}).html || "", value: (r) => (trainerLoc.get(r.entry) || {}).text || "" },
   ];
   const bookCols = [
     { label: "Item", cell: (r) => itemLink(r.entry, r.name, r.quality, r.icon), value: (r) => r.name },
@@ -1274,9 +1274,12 @@ function dominantSub(entry) {
   for (const [k, v] of entry.subs) if (!best || v.n > best.n) { best = v; id = k; }
   return best && best.name && best.n / entry.n >= SUB_SHARE_MIN ? { id, ...best } : null;
 }
+// Linked, like the zone half of the cell: a sub-area has its own page (?subzone=),
+// and a name with no way to reach it is the one thing the subzone work still lacked
+// on every Location column (quest givers, drop sources, vendors, faction members).
 function subSuffix(entry) {
   const s = dominantSub(entry);
-  return s ? ` <span class="dim">· ${esc(s.name)}</span>` : "";
+  return s ? ` <span class="dim">·</span> ${subzoneLink(s.id, s.name)}` : "";
 }
 
 // ---- NPC combat stats panel (creature_template, see build-db) ----
@@ -2270,6 +2273,8 @@ async function showQuest(id) {
   // Zone: resolve the full hierarchy continent › zone › sub-zone, linking whichever
   // levels have a map page. Categories (negative q.zone, e.g. "Class") fall back to
   // the plain questZoneLabel.
+  const zoneIsSub = q.zone > 0 && !q.zone_page && (await caps()).subzones
+    && !!(await queryOne(Q.Q_SUBZONE_EXISTS, [q.zone]).catch(() => null));
   if (q.zone > 0 && q.zone_name) {
     const sep = ' <span class="dim">›</span> ';
     const parts = [];
@@ -2277,7 +2282,10 @@ async function showQuest(id) {
     if (q.zone_parent && q.zone_parent !== q.zone && q.parent_name) {
       parts.push(q.parent_page ? zoneLink(q.zone_parent, q.parent_name) : esc(q.parent_name));
     }
-    parts.push(q.zone_page ? zoneLink(q.zone, q.zone_name) : esc(q.zone_name));
+    // The leaf is often a SUB-area with no parchment of its own (783 -> Northshire
+    // Valley), which used to render as dead text. It has a page either way now.
+    parts.push(q.zone_page ? zoneLink(q.zone, q.zone_name)
+      : zoneIsSub ? subzoneLink(q.zone, q.zone_name) : esc(q.zone_name));
     bits.push(parts.join(sep));
   } else {
     const zoneLabel = questZoneLabel(q.zone, q.zone_name);

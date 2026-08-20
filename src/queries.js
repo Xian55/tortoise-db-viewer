@@ -161,9 +161,18 @@ export const Q_SEARCH_FACTIONS = `
   ORDER BY (name = ?2) DESC, name
   LIMIT ?3`;
 
-export const Q_SEARCH_QUESTS = `
-  SELECT q.entry, q.title, q.level, q.zone, q.type
+// The Zone column needs the area NAME, which this never selected -- so every row with
+// a real zone rendered an empty cell (questZoneLabel returns zoneName || "") and only
+// the negative "sort category" rows showed anything. `zone_page` / `sub_page` say which
+// kind of page the leaf area has: quests.zone is a LEAF, so it is a sub-area as often
+// as a zone. `withSub` is the usual optional-schema gate (caps() in db.js).
+export const qSearchQuests = (withSub) => `
+  SELECT q.entry, q.title, q.level, q.zone, q.type, a.name AS zone_name,
+         z.areaid AS zone_page${withSub ? ", sz.entry AS sub_page" : ", NULL AS sub_page"}
   FROM quests q
+  LEFT JOIN areas a ON a.entry = q.zone
+  LEFT JOIN zones z ON z.areaid = q.zone
+  ${withSub ? "LEFT JOIN subzones sz ON sz.entry = q.zone" : ""}
   WHERE (q.entry IN (SELECT rowid FROM quests_fts WHERE quests_fts MATCH ?1)
       OR q.entry IN (SELECT rowid FROM quests_tg WHERE quests_tg MATCH ?4))
   ORDER BY (q.title = ?2) DESC, (q.title LIKE ?2 || '%') DESC, q.level
@@ -1384,6 +1393,10 @@ export const Q_SUBZONE_OBJECTS = `
   FROM spawn_points s INDEXED BY idx_spawn_zone JOIN gameobjects g ON g.entry = s.id
   WHERE s.kind = 'o' AND s.zone = ?2 AND s.sub = ?1
   LIMIT 4000`;
+// Does this area id have a subzone PAGE? A quest's `zone` is a LEAF area, so it is
+// often a sub-area with no parchment of its own -- the quest header needs to know
+// whether to link it as ?subzone= rather than print it as dead text.
+export const Q_SUBZONE_EXISTS = `SELECT entry FROM subzones WHERE entry = ?1`;
 // The sub-areas of one zone -> the zone page's Subzones tab and its map dropdown.
 export const Q_ZONE_SUBZONES = `
   SELECT entry, name, spawns, npcs, objects, quests FROM subzones
