@@ -75,14 +75,19 @@ export function buildStaging(db, SQL_DIR, UPD_DIR, specs) {
     // INSERT/REPLACE column lists and ALTER-add any missing columns to the staged
     // table, else those statements would error on "no such column" and be dropped.
     const colRe = /(?:INSERT(?:\s+IGNORE)?|REPLACE)\s+INTO\s+`?(\w+)`?\s*\(([^)]+)\)/gi;
+    // A migration may also declare the new column itself and then UPDATE it -- the
+    // executor skips DDL, so without reading the ALTER those UPDATEs all die on "no
+    // such column" (377 of them on spell_template.script_name alone). Harmless while
+    // nothing here reads that column; silent data loss the day something does.
+    const altRe = /ALTER\s+TABLE\s+`?(\w+)`?([\s\S]*?);/gi;
+    const addRe = /\bADD\s+(?:COLUMN\s+)?`?(\w+)`?/gi;
+    const NOT_A_COLUMN = /^(index|key|unique|primary|constraint|fulltext|spatial|foreign)$/i;
     for (const f of files) {
       const sql = readFileSync(f, "utf8");
-      let m;
-      while ((m = colRe.exec(sql))) {
-        const table = m[1];
-        if (!staged.has(table)) continue;
+      const add = (table, names) => {
+        if (!staged.has(table)) return;
         const cols = colsByTable[table];
-        for (const c of m[2].split(",").map((s) => s.replace(/[`\s]/g, ""))) {
+        for (const c of names) {
           // Case-insensitive: SQLite matches column names case-insensitively, so a
           // migration that inserts into `itemid` against a base `itemId` column must
           // NOT trigger an ALTER (it would fail "duplicate column name").
@@ -91,6 +96,15 @@ export function buildStaging(db, SQL_DIR, UPD_DIR, specs) {
             cols.push(c);
           }
         }
+      };
+      let m;
+      while ((m = colRe.exec(sql))) add(m[1], m[2].split(",").map((s) => s.replace(/[`\s]/g, "")));
+      while ((m = altRe.exec(sql))) {
+        const names = [];
+        let a;
+        addRe.lastIndex = 0;
+        while ((a = addRe.exec(m[2]))) if (!NOT_A_COLUMN.test(a[1])) names.push(a[1]);
+        add(m[1], names);
       }
     }
     for (const f of files) {
