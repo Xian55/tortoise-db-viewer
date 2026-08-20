@@ -2574,6 +2574,7 @@ console.log("Importing zones + spawn points...");
   const zoneSet = new Set(db.prepare(`SELECT areaid FROM zones`).all().map((r) => r.areaid));
   const zoneMapid = new Map(db.prepare(`SELECT areaid, mapid FROM zones`).all().map((r) => [r.areaid, r.mapid]));
   const areaParent = new Map(db.prepare(`SELECT entry, zone_id FROM areas`).all().map((r) => [r.entry, r.zone_id]));
+  const areaMapid = new Map(db.prepare(`SELECT entry, map_id FROM areas`).all().map((r) => [r.entry, r.map_id]));
   const renderZone = (aid) => {
     let c = aid, g = 0;
     while (c && g++ < 12) { if (zoneSet.has(c)) return c; const p = areaParent.get(c); if (!p || p === c) break; c = p; }
@@ -2593,6 +2594,27 @@ console.log("Importing zones + spawn points...");
       console.log("  (no subzone-bounds.json -- run scripts/extract-area-bounds.py; falling back to WMA boxes)");
     }
   }
+  // Second source, and the one the terrain can never supply: what the client calls the
+  // INSIDE of a building or a cave (WMOAreaTable, via scripts/extract-wmo-areas.py).
+  // The terrain chunk over a cave says whatever the surface says -- Turtle painted the
+  // rock above the Firewatch Ridge cave as Sherwood Quarry, so half that cave's spawns
+  // (Highlord Mastrogonde among them) were filed under Northwind, a different zone on a
+  // different continent from the one the game names when you walk in.
+  const wmoByMap = new Map();
+  {
+    const wf = clientData("wmo-areas.json");
+    if (existsSync(wf)) {
+      const wa = JSON.parse(readFileSync(wf, "utf8"));
+      for (const [mid, arr] of Object.entries(wa)) {
+        for (const p of arr) for (const g of p.g) g[6] = (g[1] - g[0]) * (g[3] - g[2]) * Math.max(1, g[5] - g[4]);
+        wmoByMap.set(Number(mid), arr);
+      }
+      const ni = [...wmoByMap.values()].reduce((n, a) => n + a.length, 0);
+      console.log(`  wmo-areas: ${ni} interiors / ${[...wmoByMap.values()].reduce((n, a) => n + a.reduce((m, p) => m + p.g.length, 0), 0)} group boxes / ${wmoByMap.size} maps`);
+    } else {
+      console.log("  (no wmo-areas.json -- run scripts/extract-wmo-areas.py; cave/building interiors keep their terrain area)");
+    }
+  }
   // Returns { zone, sub }: the render zone (as before) plus the EXACT leaf area the
   // point sits in -- the thing the `subzones` feature is built on. `sub` is set ONLY
   // on the clean ADT path below; every guard that rejects a leaf also drops it, since
@@ -2602,28 +2624,71 @@ console.log("Importing zones + spawn points...");
   // zone's own WMA box -- so subzone reads can be zone-scoped (riding idx_spawn_zone,
   // no extra index) and a subzone's markers always land on its parent's parchment.
   const NO_HOME = { zone: null, sub: null };
-  const homeZone = (map, x, y) => {
-    if (x == null || y == null) return NO_HOME;
-    const subs = subByMap.get(map);
-    if (subs) {
-      let best = null, bestArea = Infinity;
-      for (const b of subs) { if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue; if (b.area < bestArea) { bestArea = b.area; best = b; } }
-      // The resolved zone must live on the spawn's own map. Some instance ADTs carry
-      // a continent AreaTable id (e.g. Hateforge Quarry, map 808, has chunks tagged
-      // area 46 = Redridge): without this guard those bosses get dragged onto the
-      // continent zone and vanish from the dungeon map. Reject the cross-map hit and
-      // fall through to the WMA box below (which only holds this map's zones).
-      if (best) {
-        const rz = renderZone(best.i);
-        if (rz && zoneMapid.get(rz) === map) {
-          // Multi-floor instances: the 2D ADT area can't tell stacked floors apart
-          // (Kel'Thuzad's Upper Necropolis chunk resolves to the main Naxxramas zone),
-          // so if the point isn't inside the resolved zone's OWN WMA box, prefer the
-          // WMA-box search below — the per-floor boxes disambiguate by footprint.
-          const bx = (boxesByMap.get(map) || []).find((z) => z.areaid === rz);
-          if (!bx || (x >= bx.locbottom && x <= bx.loctop && y >= bx.locright && y <= bx.locleft)) return { zone: rz, sub: best.i };
-        }
+  // A leaf area is usable only if it survives two guards. First: the resolved zone must
+  // live on the spawn's own map -- some instance ADTs carry a continent AreaTable id
+  // (Hateforge Quarry, map 808, has chunks tagged area 46 = Redridge), and without this
+  // those bosses get dragged onto the continent zone and vanish from the dungeon map.
+  // Second: multi-floor instances -- the 2D ADT area can't tell stacked floors apart
+  // (Kel'Thuzad's Upper Necropolis chunk resolves to the main Naxxramas zone), so a point
+  // outside the resolved zone's OWN WMA box falls through to the WMA-box search, whose
+  // per-floor boxes disambiguate by footprint.
+  const acceptLeaf = (map, x, y, aid) => {
+    const rz = renderZone(aid);
+    if (!rz || zoneMapid.get(rz) !== map) return null;
+    const bx = (boxesByMap.get(map) || []).find((z) => z.areaid === rz);
+    if (bx && !(x >= bx.locbottom && x <= bx.loctop && y >= bx.locright && y <= bx.locleft)) return null;
+    return { zone: rz, sub: aid };
+  };
+  const isAncestor = (a, of) => {
+    let c = areaParent.get(of), g = 0;
+    while (c && g++ < 12) { if (c === a) return true; const p = areaParent.get(c); if (!p || p === c) break; c = p; }
+    return false;
+  };
+  // The smallest GROUP box containing the point, off the placement whose outer AABB
+  // contains it. Group boxes, not the placement AABB: Stormwind's is 1488 yards square
+  // and would swallow half of Elwynn.
+  const wmoLeaf = (map, x, y, z) => {
+    if (z == null) return null;
+    let best = null, bestVol = Infinity;
+    for (const p of wmoByMap.get(map) || []) {
+      if (x < p.x0 || x > p.x1 || y < p.y0 || y > p.y1 || z < p.z0 || z > p.z1) continue;
+      for (const g of p.g) {
+        if (x < g[0] || x > g[1] || y < g[2] || y > g[3] || z < g[4] || z > g[5]) continue;
+        if (g[6] < bestVol) { bestVol = g[6]; best = p.i; }
       }
+    }
+    return best;
+  };
+  const terrainLeaf = (map, x, y) => {
+    let best = null, bestArea = Infinity;
+    for (const b of subByMap.get(map) || []) {
+      if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
+      if (b.area < bestArea) { bestArea = b.area; best = b.i; }
+    }
+    return best;
+  };
+  const homeZone = (map, x, y, z) => {
+    if (x == null || y == null) return NO_HOME;
+    const t = terrainLeaf(map, x, y);
+    let w = wmoLeaf(map, x, y, z);
+    // A WMO box is an AABB around real geometry, so it reaches past the walls. Where it
+    // claims the PARENT of what the terrain already says, the terrain is both correct and
+    // more specific and wins: Stormwind's model reaches over the Valley of Heroes, and
+    // "Stormwind City" is not an improvement on "Valley of Heroes". The cave case this
+    // whole path exists for is never a parent/child pair -- Firewatch Ridge and Sherwood
+    // Quarry sit under different zones entirely.
+    if (w != null && t != null && (w === t || isAncestor(w, t))) w = null;
+    // An instance's ENTRANCE is modelled on the continent but its area belongs to the
+    // instance map (Westfall's Deadmines cave is AreaTable 1581, map 36; the Barrens'
+    // Wailing Caverns cave is map 43). Both have a continent WorldMapArea row too, so
+    // acceptLeaf would happily take them and quietly move those spawns off the zone page
+    // they belong to and into a mini-map that exists to show an entrance. The zone the
+    // client names there is right; the zone this site can draw is the continent one.
+    if (w != null && areaMapid.has(w) && areaMapid.get(w) !== map) w = null;
+    for (const aid of [w, t]) {
+      if (aid == null) continue;
+      const hit = acceptLeaf(map, x, y, aid);
+      if (hit) return hit;
     }
     const boxes = boxesByMap.get(map);
     if (!boxes) return NO_HOME;
@@ -2643,11 +2708,14 @@ console.log("Importing zones + spawn points...");
     // (random-pick); gameobject has only `id`, so the missing cols filter out.
     const idCols = ["id", "id2", "id3", "id4"].map((c) => cols.indexOf(c)).filter((i) => i >= 0);
     const iMap = cols.indexOf("map"), iX = cols.indexOf("position_x"), iY = cols.indexOf("position_y");
+    // z is not stored (spawn_points is 2D) but it is what separates a cave from the
+    // mountain over it, so the WMO-interior test needs it here.
+    const iZ = cols.indexOf("position_z");
     let n = 0;
     db.transaction(() => {
       for (const row of srcRows(table, file)) {
         const map = clean(row[iMap]), x = clean(row[iX]), y = clean(row[iY]);
-        const home = homeZone(map, x, y); // shared by every id at this point
+        const home = homeZone(map, x, y, iZ >= 0 ? clean(row[iZ]) : null); // shared by every id at this point
         const seen = new Set();
         for (const i of idCols) {
           const id = clean(row[i]);
@@ -2715,6 +2783,10 @@ console.log("Importing zones + spawn points...");
   {
     const bbox = new Map(); // areaId -> the SAME box homeZone resolved against
     for (const arr of subByMap.values()) for (const b of arr) if (!bbox.has(b.i)) bbox.set(b.i, b);
+    // An area that exists only as a building/cave interior (Gallows' End Tavern, The
+    // Slag Pit) has no terrain chunks at all; its WMO placement is the only footprint
+    // there is, so the page has something to fit its map to.
+    for (const arr of wmoByMap.values()) for (const p of arr) if (!bbox.has(p.i)) bbox.set(p.i, p);
     const agg = new Map();
     const bump = (id, k, v) => {
       if (id == null) return;
