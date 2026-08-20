@@ -11,11 +11,34 @@
 // WHERE/JOIN matching) except the optional single-column primary key.
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { parseColumns, iterRows, NULL } from "./sqldump.mjs";
 import { splitStatements, translate } from "./mysqlexec.mjs";
 
 const PFX = "stg_";
+
+// The migrations used to be flat `*.sql` under database_updates/; upstream moved them
+// into `world/` + `character/` subdirectories (server commit "Reorganizing database
+// migrations"). A non-recursive readdir then matched NOTHING and the build quietly
+// produced a base-only DB -- 117 migrations, i.e. every 1.18.x zone, quest and rename,
+// dropped while the run reported success. Walk both layouts, and skip `character/`:
+// those target the character DB, which this build does not stage at all.
+function migrationFiles(dir) {
+  const out = [];
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.isDirectory()) {
+        if (e.name.toLowerCase() !== "character") walk(join(d, e.name));
+      } else if (e.name.endsWith(".sql")) {
+        out.push(join(d, e.name));
+      }
+    }
+  };
+  walk(dir);
+  // Ordered by FILENAME, not path: the leading timestamp is the server's own apply
+  // order and is global across directories.
+  return out.sort((a, b) => basename(a).localeCompare(basename(b)) || a.localeCompare(b));
+}
 
 // specs: [{ table, file, pk? }]. Returns an accessor with the same shape the
 // importers expect from the dump (columns + positional rows), plus `drop()`.
@@ -43,20 +66,28 @@ export function buildStaging(db, SQL_DIR, UPD_DIR, specs) {
   // Apply migrations in filename (timestamp) order, exactly as the server does.
   const stats = { files: 0, applied: 0, skipped: 0, errors: 0 };
   if (UPD_DIR && existsSync(UPD_DIR)) {
-    const files = readdirSync(UPD_DIR).filter((f) => f.endsWith(".sql")).sort();
+    const files = migrationFiles(UPD_DIR);
+    // An updates dir that yields no migrations is never normal -- it means the layout
+    // moved again. Say so loudly; the alternative is a base-only DB that looks fine.
+    if (!files.length) console.warn(`  WARNING: ${UPD_DIR} exists but holds no .sql migrations -- building base-only`);
     // Migrations may target columns the base CREATE lacks (Turtle extends some
     // tables, e.g. npc_vendor_template gains slot/condition_id). Pre-scan the
     // INSERT/REPLACE column lists and ALTER-add any missing columns to the staged
     // table, else those statements would error on "no such column" and be dropped.
     const colRe = /(?:INSERT(?:\s+IGNORE)?|REPLACE)\s+INTO\s+`?(\w+)`?\s*\(([^)]+)\)/gi;
+    // A migration may also declare the new column itself and then UPDATE it -- the
+    // executor skips DDL, so without reading the ALTER those UPDATEs all die on "no
+    // such column" (377 of them on spell_template.script_name alone). Harmless while
+    // nothing here reads that column; silent data loss the day something does.
+    const altRe = /ALTER\s+TABLE\s+`?(\w+)`?([\s\S]*?);/gi;
+    const addRe = /\bADD\s+(?:COLUMN\s+)?`?(\w+)`?/gi;
+    const NOT_A_COLUMN = /^(index|key|unique|primary|constraint|fulltext|spatial|foreign)$/i;
     for (const f of files) {
-      const sql = readFileSync(join(UPD_DIR, f), "utf8");
-      let m;
-      while ((m = colRe.exec(sql))) {
-        const table = m[1];
-        if (!staged.has(table)) continue;
+      const sql = readFileSync(f, "utf8");
+      const add = (table, names) => {
+        if (!staged.has(table)) return;
         const cols = colsByTable[table];
-        for (const c of m[2].split(",").map((s) => s.replace(/[`\s]/g, ""))) {
+        for (const c of names) {
           // Case-insensitive: SQLite matches column names case-insensitively, so a
           // migration that inserts into `itemid` against a base `itemId` column must
           // NOT trigger an ALTER (it would fail "duplicate column name").
@@ -65,18 +96,27 @@ export function buildStaging(db, SQL_DIR, UPD_DIR, specs) {
             cols.push(c);
           }
         }
+      };
+      let m;
+      while ((m = colRe.exec(sql))) add(m[1], m[2].split(",").map((s) => s.replace(/[`\s]/g, "")));
+      while ((m = altRe.exec(sql))) {
+        const names = [];
+        let a;
+        addRe.lastIndex = 0;
+        while ((a = addRe.exec(m[2]))) if (!NOT_A_COLUMN.test(a[1])) names.push(a[1]);
+        add(m[1], names);
       }
     }
     for (const f of files) {
       stats.files++;
-      const sql = readFileSync(join(UPD_DIR, f), "utf8");
+      const sql = readFileSync(f, "utf8");
       for (const raw of splitStatements(sql)) {
         const t = translate(raw, staged, PFX);
         if (t === null) { stats.skipped++; continue; }
         try { db.exec(t); stats.applied++; }
         catch (e) {
           stats.errors++;
-          if (stats.errors <= 10) console.warn(`  migration error in ${f}: ${e.message}`);
+          if (stats.errors <= 10) console.warn(`  migration error in ${basename(f)}: ${e.message}`);
         }
       }
     }
