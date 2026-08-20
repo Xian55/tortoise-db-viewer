@@ -37,6 +37,16 @@ export const Q_SAME_MODEL = `
   WHERE i.display_id = ?1 AND i.entry <> ?2 AND i.hidden = 0
   ORDER BY i.quality DESC, i.item_level DESC, i.name LIMIT 250`;
 
+// What this item looks like in 3D: the model (weapons/shields/helms/shoulders) or, for
+// armor that has no model of its own, the component textures painted onto the character.
+// ?1 = display_id. One PK lookup on a WITHOUT ROWID table. OPTIONAL SCHEMA: guard every
+// call with caps().appearance -- a DB built before the feature has no such table.
+export const Q_ITEM_APPEARANCE = `SELECT * FROM item_appearance WHERE display_id = ?1`;
+
+// Same, batched for the dressing room / character sheet (n distinct display_ids).
+export const qItemAppearanceIn = (n) =>
+  `SELECT * FROM item_appearance WHERE display_id IN (${Array.from({ length: n }, (_, i) => `?${i + 1}`).join(",")})`;
+
 // all derived gear stats for one item (compare view stat-delta table).
 export const Q_ITEM_STATS = `SELECT stat, value FROM item_stats WHERE item = ?1`;
 

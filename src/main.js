@@ -11,7 +11,7 @@ import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { externalMenuHtml, wireExternalMenu, chatMacro, chatButtonHtml, wireChatButton } from "./external.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown, ftsQuery } from "./search.js";
-import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
+import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, OWN_ITEM_MODELS, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
@@ -152,6 +152,10 @@ function wireTabs() {
     if (!btn) return;
     app.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
     app.querySelectorAll(".tabpane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== btn.dataset.tab));
+    // A pane whose content is expensive (the 3D viewer's chunk is ~600 KB of three.js)
+    // mounts on first show rather than on page render, so opening an item page costs
+    // nothing extra for the visitors who never touch the tab.
+    bar.dispatchEvent(new CustomEvent("tabshow", { detail: { id: btn.dataset.tab }, bubbles: true }));
   });
 }
 
@@ -214,10 +218,75 @@ document.getElementById("searchForm").addEventListener("submit", (e) => {
   if (term) navigate(`?search=${encodeURIComponent(term)}`);
 });
 
+// The live 3D viewer, if any. A WebGL context is a scarce, non-GC'd resource: leave one
+// behind per navigation and the browser silently kills the oldest canvas after a handful
+// of pages, so the route owns its teardown exactly like it owns stopAudio().
+let activeViewer = null;
+function destroyViewer() {
+  try { activeViewer?.destroy(); } catch { /* already torn down */ }
+  activeViewer = null;
+}
+
+// Is WebGL available at all? Asked BEFORE the 3D tab is offered, and answered without
+// importing the viewer chunk -- on a machine that cannot render, downloading ~600 KB of
+// three.js to discover that would be the whole cost of the feature for no benefit.
+let webglCached = null;
+function webglOk() {
+  if (webglCached === null) {
+    try {
+      const c = document.createElement("canvas");
+      webglCached = !!(c.getContext("webgl2") || c.getContext("webgl"));
+    } catch { webglCached = false; }
+  }
+  return webglCached;
+}
+
+// Mount the 3D pane the first time its tab is opened. Deferred on purpose: the chunk is
+// the largest on the site after the zone map, and most visitors to an item page never
+// open it. Any failure -- chunk, model file, WebGL context -- degrades to a line of text
+// inside the pane; the rest of the page has already rendered and must not be disturbed.
+function mountModelTab(appearance) {
+  const bar = app.querySelector(".tabbar");
+  const host = app.querySelector("#mv-host");
+  if (!bar || !host) return;
+  let started = false;
+  const mount = async () => {
+    if (started) return;
+    started = true;
+    try {
+      const { mountItemViewer } = await import("./modelviewer.js");
+      host.innerHTML = "";
+      destroyViewer();
+      activeViewer = await mountItemViewer(host, {
+        model: appearance.model_l,
+        texture: appearance.tex_l,
+      });
+    } catch (err) {
+      host.innerHTML = `<p class="muted">3D preview unavailable${err?.message ? ` — ${esc(err.message)}` : ""}.</p>`;
+    }
+  };
+  // Mount when the pane BECOMES VISIBLE, not when its tab is clicked. The click is only
+  // one way to get there, and relying on it leaves the pane stuck on "Loading model…"
+  // whenever the listener is missing -- which is exactly what a Vite HMR update does, by
+  // re-running this module while leaving the already-rendered DOM in place. Visibility is
+  // the actual condition we care about, so observe that instead.
+  if (typeof IntersectionObserver === "function") {
+    const io = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      io.disconnect();
+      mount();
+    });
+    io.observe(host);
+  } else {
+    bar.addEventListener("tabshow", (e) => { if (e.detail?.id === "model3d") mount(); });
+  }
+}
+
 function route() {
   // Audio must not outlive the page that started it -- a zone track would keep playing
   // over whatever you navigated to.
   stopAudio();
+  destroyViewer();
   const params = new URLSearchParams(location.search);
   const item = params.get("item");
   const npc = params.get("npc");
@@ -784,6 +853,12 @@ async function showItem(id) {
   const sockets = (it.socketColor_1 || it.GemProperties)
     ? await queryOne(Q.Q_ITEM_SOCKETS, [it.socketBonus || 0, it.GemProperties || 0]).catch(() => null)
     : null;
+  // What this item looks like in 3D. OPTIONAL SCHEMA (caps().appearance): a dev/cMaNGOS
+  // DB built before the feature simply has no table, and the tab disappears rather than
+  // the page breaking.
+  const appearance = (OWN_ITEM_MODELS && it.display_id && (await caps()).appearance)
+    ? await queryOne(Q.Q_ITEM_APPEARANCE, [it.display_id]).catch(() => null)
+    : null;
   // random suffixes this item can roll ("of the Bear", …)
   const suffixes = it.rolls_suffix ? await query(Q.Q_ITEM_SUFFIXES, [id]) : [];
   const srcCsv = srcRows.map((r) => r.source).join(",");
@@ -943,6 +1018,18 @@ async function showItem(id) {
     { id: "samemodel", label: "Same model", ...regTable(sameModelCols, sameModel) },
   ];
 
+  // A 3D tab, but only when there is something to show. `per_race` items (every helm,
+  // most shoulders) are modelled once PER RACE AND GENDER, so they need a character to
+  // sit on -- until that exists, offering an empty tab would be worse than none. Armor
+  // with no model of its own is texture-only for the same reason.
+  const model3d = appearance && appearance.model_l && appearance.per_race === 0 && webglOk();
+  if (model3d) {
+    tabDefs.push({
+      id: "model3d", label: "3D", count: 1, noCount: true,
+      html: `<div id="mv-host" class="mv-host"><p class="muted">Loading model…</p></div>`,
+    });
+  }
+
   // quality + item-class subtitle, each a link into the item browser filtered by it
   // (e.g. "Common · Trade Goods"). Mirrors what the embed tooltip surfaces.
   const qual = QUALITY[it.quality];
@@ -965,6 +1052,7 @@ async function showItem(id) {
     </div>`;
   mountTables();
   wireTabs();
+  if (model3d) mountModelTab(appearance);
   // Per-suffix chat link. Delegated, so it survives nothing in particular here but keeps
   // the macro building where `it` (name + quality) already is, instead of stamping ~30
   // fully-built macros into data- attributes.

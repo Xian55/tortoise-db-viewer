@@ -31,7 +31,7 @@ const PORT = 4317;
 // the map tests fail for a reason that has nothing to do with the code under test
 // (the world-map test needs tiles to actually LOAD, not just be referenced). Say so
 // up front rather than letting it read as a real regression.
-for (const [dir, hint] of [["public/maps", "maps"], ["public/minimap", "minimap"]]) {
+for (const [dir, hint] of [["public/maps", "maps"], ["public/minimap", "minimap"], ["public/model3d", "model3d"]]) {
   const abs = path.resolve(dir);
   const empty = !existsSync(abs) || readdirSync(abs).length === 0;
   if (empty) {

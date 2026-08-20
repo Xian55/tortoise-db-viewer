@@ -30,6 +30,11 @@ export const ASSET_SETS = {
   "maps-tbc-cmangos": { dir: "public/maps-tbc-cmangos", prefix: "maps-tbc-cmangos" },
   "minimap-tbc-cmangos": { dir: "public/minimap-tbc-cmangos", prefix: "minimap-tbc-cmangos" },
   "model-thumbs": { dir: "public/model-thumbs", prefix: "model-thumbs" },
+  // Converted 3D models + their textures for the interactive item viewer (.m2b/.webp,
+  // written by scripts/export-models.py). `optional` for the same reason as sounds: maps
+  // are needed to render a zone page at all, whereas this feeds one tab -- and a local
+  // run that never opens it should not pull the set.
+  model3d: { dir: "public/model3d", prefix: "model3d", optional: true },
   // `optional` sets are excluded from a bare `bun run assets` and must be named
   // explicitly (`--only sounds`) or pulled with `--all`. The audio is 1.86 GB across the
   // two clients -- 25x every other set combined -- and a local run only needs it to hear

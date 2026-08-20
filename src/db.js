@@ -98,12 +98,13 @@ export function caps() {
         (SELECT COUNT(*) FROM pragma_table_info('spawn_points') WHERE name = 'sub') AS spawn_sub,
         (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sounds') AS sounds,
         (SELECT COUNT(*) FROM pragma_table_info('sound_text') WHERE name = 'take') AS sound_take,
-        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'npc_gossip') AS gossip`)
+        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'npc_gossip') AS gossip,
+        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'item_appearance') AS appearance`)
       .then((r) => ({
         subzones: !!r[0]?.subzones, spawnSub: !!r[0]?.spawn_sub, sounds: !!r[0]?.sounds,
-        soundTake: !!r[0]?.sound_take, gossip: !!r[0]?.gossip,
+        soundTake: !!r[0]?.sound_take, gossip: !!r[0]?.gossip, appearance: !!r[0]?.appearance,
       }))
-      .catch(() => ({ subzones: false, spawnSub: false, sounds: false, soundTake: false, gossip: false }));
+      .catch(() => ({ subzones: false, spawnSub: false, sounds: false, soundTake: false, gossip: false, appearance: false }));
   }
   return capsPromise;
 }

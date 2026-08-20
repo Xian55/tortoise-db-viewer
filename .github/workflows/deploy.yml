@@ -319,7 +319,7 @@ jobs:
       # in the Pages artifact (~75 MB DB + ~13 MB brotli + ~2700 tile files). Drop them
       # so the artifact is just the site shell + OG stubs.
       - name: Trim R2-served assets from the Pages artifact
-        run: rm -rf dist/data/tortoise.sqlite dist/data/tortoise.sqlite.br dist/maps dist/minimap dist/model-thumbs
+        run: rm -rf dist/data/tortoise.sqlite dist/data/tortoise.sqlite.br dist/maps dist/minimap dist/model-thumbs dist/model3d
 
       # Lets the deploy job ask the LIVE SITE whether this build actually published,
       # instead of trusting actions/deploy-pages' exit code (see the deploy job).

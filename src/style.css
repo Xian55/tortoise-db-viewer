@@ -590,6 +590,17 @@ a.ilink.zone { color: #8fd18f; }
   border: 1px solid var(--border); border-radius: 8px; background: #06060a; }
 /* native fullscreen: fill the screen, drop the framing so no gaps show */
 #zonemap:fullscreen { border: 0; border-radius: 0; }
+/* 3D item preview (src/modelviewer.js). Needs an explicit height: the canvas is sized
+   from the host element, and a host that sizes itself from its content collapses to 0. */
+.mv-host { height: 60vh; min-height: 320px; position: relative; display: flex;
+  align-items: center; justify-content: center; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 8px;
+  /* A dark item on a near-black pane disappears; the soft radial lifts the middle
+     just enough to read a silhouette without looking like a lit stage. */
+  background: radial-gradient(circle at 50% 45%, #1c1c26 0%, #0b0b11 70%);
+  cursor: grab; touch-action: none; }
+.mv-host:active { cursor: grabbing; }
+.mv-host canvas { display: block; width: 100%; height: 100%; }
 #zonemap .wm-fs a { display: flex; align-items: center; justify-content: center; }
 .zone-page .npc-head { margin-bottom: 12px; }
 /* Dark theme for Leaflet controls. leaflet.css ships in the lazy zonemap chunk

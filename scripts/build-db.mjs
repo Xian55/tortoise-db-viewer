@@ -283,6 +283,58 @@ db.exec("ALTER TABLE creatures ADD COLUMN team INTEGER NOT NULL DEFAULT 0");
   }
 }
 
+// What an item LOOKS like: the 3D model (weapons/shields/helms/shoulders) or, for the
+// ~5.1k armor displays that have no model at all, the eight component textures painted
+// onto the character's body atlas. Client-only data (ItemDisplayInfo.dbc), extracted by
+// scripts/extract-item-appearance.py and committed, since CI has no client.
+//
+// Its own table rather than columns on item_display_info: that table is joined by nearly
+// every item query for its icon, and widening it by 18 columns would tax every one of
+// them to serve the one tab that needs appearance. Reads here are single PK lookups.
+//
+// TURTLE-client artefact, like the icon supplement above -- a display id is not a shared
+// namespace, so it is loaded only when the source IS Turtle. The other datasets get no
+// table at all, and the frontend hides the feature via caps().
+{
+  const f = join(ROOT, "scripts", "data", "item-appearance.json");
+  if (existsSync(f) && SQL_SOURCE === "turtle") {
+    const doc = JSON.parse(readFileSync(f, "utf8"));
+    const S = doc.s || [""];
+    const str = (i) => S[i] || null;
+    db.exec(`CREATE TABLE item_appearance (
+      display_id INTEGER PRIMARY KEY,
+      -- per_race: 1 when the bare model name does not exist and only <name>_<RaceSex>
+      -- variants do (every helm, many shoulders). NULL when there is no model at all.
+      model_l TEXT, model_r TEXT, model_dir TEXT, per_race INTEGER,
+      tex_l TEXT, tex_r TEXT,
+      geo1 INTEGER, geo2 INTEGER, geo3 INTEGER,
+      helm_m INTEGER, helm_f INTEGER,
+      t_arm_u TEXT, t_arm_l TEXT, t_hand TEXT, t_torso_u TEXT, t_torso_l TEXT,
+      t_leg_u TEXT, t_leg_l TEXT, t_foot TEXT,
+      item_visual INTEGER
+    ) WITHOUT ROWID`);
+    const stmt = db.prepare(`INSERT INTO item_appearance VALUES (${Array(21).fill("?").join(",")})`);
+    let n = 0, withModel = 0;
+    db.transaction(() => {
+      for (const [id, row] of Object.entries(doc.d)) {
+        // rows are stored with trailing zeros trimmed -- pad back to the full 18 slots
+        const r = row.concat(Array(Math.max(0, 18 - row.length)).fill(0));
+        const where = doc.m?.[String(r[0])] || null;   // [dir, 1 = the bare name exists]
+        if (where) withModel++;
+        stmt.run([Number(id), str(r[0]), str(r[1]), where ? where[0] : null, where ? (where[1] ? 0 : 1) : null,
+          str(r[2]), str(r[3]), r[4] || null, r[5] || null, r[6] || null, r[7] || null, r[8] || null,
+          ...Array.from({ length: 8 }, (_, i) => str(r[9 + i])), r[17] || null]);
+        n++;
+      }
+    })();
+    console.log(`  item_appearance: ${n} displays (${withModel} with a 3D model)`);
+  } else if (existsSync(f)) {
+    console.log(`  (skip item_appearance: ${SQL_SOURCE} source -- display ids are not a shared namespace)`);
+  } else {
+    console.log("  (no item-appearance.json -- run scripts/extract-item-appearance.py)");
+  }
+}
+
 // ---- Loot tables (shared shape) ----
 console.log("Importing loot tables...");
 for (const lt of LOOT_TABLES) {

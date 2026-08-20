@@ -138,6 +138,8 @@ python scripts/extract-cmangos-dbc.py # LOCAL: vanilla 1.12 client DBCs -> scrip
 SQL_SOURCE=cmangos DATA_SUBDIR=data-vanilla-cmangos bun scripts/build-db.mjs # build the vanilla/cmangos dataset from cmangos's SQLite DB (+ cmangos-dbc.json) instead of Turtle dumps
 bun scripts/probe-wowhead-thumbs.mjs  # LOCAL: classify every creature display_id by whether Wowhead's Classic webthumb exists -> scripts/data/model-thumb-missing.json (the 404 set = Turtle-custom models to render ourselves). Needs built DB. --fresh ignores the cache
 python scripts/render-model-thumbs.py # LOCAL: render the missing-worklist creature models (client MPQ -> M2 v256 parse -> headless-GL) -> public/model-thumbs/<displayId>.webp (300x300 transparent) + manifest.json. Skips CHARACTER models (need char-texture compositing). --only ID / --size N / --characters / --force. Needs moderngl+numpy+Pillow+StormLib+GPU
+python scripts/extract-item-appearance.py # LOCAL: client ItemDisplayInfo.dbc + the built DB -> scripts/data/item-appearance.json (display_id -> model/texture/geosets/component textures; powers the 3D tab). --probe prints the field-layout evidence and writes nothing. Run build-db FIRST
+python scripts/export-models.py       # LOCAL: client M2 v256 -> public/model3d/**.m2b + .webp textures (R2-only) for the in-browser viewer. --only NAME / --limit N / --force
 bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
 bun scripts/build-api.mjs             # public JSON API: rich per-entity JSON + tooltipHtml -> dist/api/<i|n|q|s>/<id>.json (served from R2 at api.tortoiseclothing.org); API_LIMIT=N for a fast subset
 ```
@@ -586,6 +588,59 @@ What an NPC says when you *talk* to it, and the only place a quoted phrase is se
 - Rendered through `questText()`, since gossip carries the same `$B`/`$N` tokens quest text
   does. **Optional schema** — `caps().gossip` gates the tab and the search query.
 
+### 3D model viewer (item page "3D" tab)
+
+An interactive preview of the item's real model, rendered in the browser with three.js
+from models we convert ourselves. **44% of this site's 15,534 equippable items are
+Turtle-custom**, so every Wowhead-backed viewer is structurally blind to the half of the
+wardrobe people actually come here for — and `Miorey/wow-model-viewer`, the obvious
+dependency, is a thin wrapper over Wowhead's proprietary `ZamModelViewer` that needs
+jQuery and a **CORS proxy server** besides. Same call, same reason, as `OWN_MODEL_THUMBS`.
+
+- **`item_appearance`** (`scripts/data/item-appearance.json` via
+  `extract-item-appearance.py`, committed; build-db loads it) is display_id → the model
+  (`model_l`/`model_dir`), its texture (`tex_l`), the geoset groups, the helmet-visibility
+  ids, and the 8 armor component textures. **Turtle-only** and gated by `caps().appearance`
+  — a display id is not a shared namespace.
+- **`ItemDisplayInfo.dbc` is 23 fields in 1.12 and the layout everyone quotes is WotLK's**,
+  which has a second icon field and shifts the whole `Texture[8]` block by one. The real
+  order is `ID, ModelName[2], ModelTexture[2], InventoryIcon, GeosetGroup[3], Flags,
+  SpellVisualID, GroupSoundIndex, HelmetGeosetVis[2], Texture[8], ItemVisual`, and it is
+  pinned by evidence, not memory: field 11's values are all valid `ItemGroupSounds` ids,
+  12-13's all valid `HelmetGeosetVisData` ids, field 9 only ever holds 1/2/4 (bits), and
+  every chest writes torso-upper+lower while every glove writes arm-lower+hand.
+  `extract-item-appearance.py --probe` re-prints that evidence and writes nothing.
+- **`.m2b`, not glTF** (`scripts/export-models.py` → `src/m2b.js`). The semantics that must
+  survive have no glTF home: geoset ids, ADDITIVE blend, and above all the texture-unit
+  **type** (0 embedded / 1 char skin / 2 object skin / 6 hair), which is the whole
+  mechanism by which one mesh is re-textured per item. In glTF each would be an `extras`
+  bag we parse ourselves — a custom format wearing a costume, plus a ~150 KB loader.
+  The pose is **baked** (Stand frame 0, the same `skin()` the thumbs use), so v1 needs no
+  runtime skinning; bones and attachments still ship for the character work.
+- **A texture is bound per SLOT, never per model.** An effect weapon is its own mesh plus
+  glow/lightning planes that name their own textures inside the file (Thunderfury:
+  `SPELLS\ZAP1.BLP`, `LIGHTNINGBALL.BLP`, and only slot 4 is the blade). Binding the item
+  texture to everything painted the blade onto its own glow and rendered as a lit square.
+  Embedded textures export by client path to `model3d/tex/<path>.webp`.
+- **Framing uses the opaque submeshes only** — effect planes reach well past the mesh, so
+  including them shrinks the item and pushes it off-centre. Lighting copies the thumb
+  renderer's (amb+key+fill); these textures are pre-shaded and a "normal" 3-point rig
+  blows them out.
+- **It must cost nothing when idle**, which is not free: the loop renders only while
+  something moves, sleeps when the pane is hidden (IntersectionObserver) or the browser
+  tab is, and the idle spin stops after one full revolution. Measured under software
+  rendering: 3.3% of a core while spinning, **0.0% at rest or hidden**. The spin is
+  per-SECOND, not per-frame — a frame-based step silently doubled the revolution once the
+  draw rate was throttled to 30fps.
+- **The pane mounts on VISIBILITY, not on the tab click.** Relying on the click leaves it
+  stuck on "Loading model…" whenever the listener is missing — which is exactly what a
+  Vite HMR update does, by re-running `main.js` while leaving the rendered DOM in place.
+- Offered only for models that stand alone: `per_race` items (every helm, most shoulders,
+  modelled once per race+gender) and texture-only armor need a character to sit on, so
+  they get no tab rather than an empty one. ~2.5k of 10.2k displays qualify today.
+- Assets are the R2 set `model3d/` (817 models 7.7 MB + 1,559 item textures 6.9 MB + 274
+  embedded 1.8 MB), `optional` like `sounds`. The DB cost is **+0.11 MB brotli**.
+
 ### Custom icons
 
 Turtle adds items whose icons are **not on Blizzard's CDN**; they live only in
@@ -726,6 +781,19 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
   all-class data, 9 classes / 476 talents, extracted from the Turtle client). DBC
   offsets are verified in the script header; re-run + commit on client changes. See
   the talent calculator route `?talents=<class>`.
+- `scripts/extract-item-appearance.py` — LOCAL: the client half of "what does this item
+  look like" (`ItemDisplayInfo.dbc` + the built DB for which display ids are used) ->
+  committed `scripts/data/item-appearance.json`. `--probe` prints the field-layout
+  evidence rather than trusting the WotLK layout everyone quotes. See "3D model viewer".
+- `scripts/export-models.py` — LOCAL: client M2 v256 -> `public/model3d/**` (R2-only):
+  `.m2b` meshes (pose baked, submesh/blend/texture-slot metadata kept) plus the item and
+  embedded effect textures as WebP, and a `manifest.json`. Reads `scripts/lib/m2.py`.
+- `scripts/lib/m2.py` — the shared client-3D reader (MPQ, WDBC, M2 v256 parse, bone
+  posing, BLP decode), factored out of `render-model-thumbs.py`, which still imports it
+  and is the regression oracle: its thumbs must stay byte-identical across changes here.
+- `src/m2b.js` — pure `.m2b` -> plain-object decode (typed-array views, no three import,
+  so it is testable without WebGL). `src/modelviewer.js` — the lazy three.js chunk that
+  turns that into a rendered, orbitable preview.
 - `scripts/build-tooltips.mjs` — dumps compact per-entity JSON
   (`dist/tt/<prefix>/<id>.json`, prefixes i/n/q/s) for the embeddable powered-tooltip
   widget `public/embed/tw-power.js`. Content-hashed like the OG stubs (HASH_ONLY=1);
@@ -1077,6 +1145,7 @@ Client-derived **image** trees are no longer committed. CI still can't regenerat
 | zone parchments | `maps/`, `maps-<dataset>/` |
 | minimap pyramids | `minimap/`, `minimap-<dataset>/` |
 | creature model thumbs | `model-thumbs/` |
+| converted 3D models + textures | `model3d/` |
 | extracted game audio | `sounds/`, `sounds-<dataset>/` |
 
 - `scripts/lib/assets.mjs` defines the sets; `scripts/data/assets-manifest.json`
