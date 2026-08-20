@@ -162,6 +162,22 @@ stage), **not** a general SQL engine. CI sparse-checks out both `sql/base` **and
 `sql/database_updates` (see `deploy.yml`); a missing updates dir falls back to
 base-only.
 
+- **The layout is walked recursively, and that is not cosmetic.** Upstream moved the
+  migrations out of a flat `database_updates/*.sql` into `world/` + `character/`
+  subdirectories, at which point a non-recursive `readdir` matched **nothing**: 117
+  migrations dropped, the build reported success, and main's deploy went red on content
+  tests (Balor empty, "Thorn Gorge" un-renamed, a quest and a pet family gone). Both
+  layouts are accepted; `character/` is skipped (it targets the character DB, which this
+  build never stages); ordering is by **filename**, since the timestamp prefix is the
+  server's own apply order and is global across directories. An updates dir that yields
+  zero `.sql` files now **warns loudly** — that state is never legitimate.
+- **DDL is read even though it is not executed.** The executor skips `ALTER TABLE`, so a
+  migration that adds a column and then UPDATEs it would lose every one of those writes
+  (`spell_template.script_name`: 377 failures). The pre-scan that ALTERs staged tables to
+  match INSERT column lists also parses `ALTER TABLE … ADD [COLUMN]`, skipping
+  index/key/constraint clauses. Migration errors should sit at **0**; a non-zero count in
+  the build log means the executor met something new.
+
 ### Peer baselines ("vs. typical …")
 
 A raw stat means nothing alone, so a stat is shown next to the **median of a
