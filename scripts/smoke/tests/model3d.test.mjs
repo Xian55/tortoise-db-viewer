@@ -2,11 +2,33 @@
 // canvas actually draws something, and the context is released on navigation.
 import { page, nav, T, smoke } from "../harness.mjs";
 
+// The 3D feature is OPTIONAL SCHEMA: it needs item_appearance, which a DB built before
+// it simply does not have. That is not hypothetical here -- config.js RACES several
+// origins for the database (R2, the mirrors, then the local server), so a preview build
+// can legitimately end up running against the DEPLOYED DB, and until the next deploy
+// that one predates the table. The page then hides the tab exactly as designed. Treat
+// that as "not applicable" rather than a failure, the same way the site treats it, and
+// say so loudly enough that a REAL regression is not mistaken for it.
+async function appearanceMissing() {
+  const reason = await page.evaluate(() => document.querySelector("#app")?.dataset.model3d);
+  return reason === "no-appearance-row";
+}
+
 const openTab = async (id) => {
   await nav(`?item=${id}`);
   await page.waitForSelector(".item-rel .tab", { timeout: T });
   const btn = await page.$('.tab[data-tab="model3d"]');
-  if (!btn) return null;
+  if (!btn) {
+    // Say WHY there is no tab. It is gated on three independent things, and a bare
+    // "no 3D tab" sent an earlier investigation looking at the model files when the
+    // actual cause was caps() having cached a failed probe.
+    const why = await page.evaluate(() => ({
+      reason: document.querySelector("#app")?.dataset.model3d,
+      webgl: !!document.createElement("canvas").getContext("webgl2"),
+    })).catch(() => ({}));
+    console.log(`  (no tab; reason=${why.reason} webgl=${why.webgl})`);
+    return null;
+  }
   await btn.click();
   await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
   return page.evaluate(() => window.__mv());
@@ -15,6 +37,10 @@ const openTab = async (id) => {
 // Item 10571 (Ebony Boneclub) is a one-hand mace: a model of its own, no race variants.
 async function testItemModel(id) {
   const st = await openTab(id);
+  if (!st && await appearanceMissing()) {
+    console.log(`model3d ${id}: SKIPPED -- this DB has no item_appearance table`);
+    return true;
+  }
   console.log(`model3d ${id}: ${JSON.stringify(st)}`);
   return !!st && st.triangles > 0 && st.meshes > 0 && st.textured;
 }
@@ -27,6 +53,10 @@ async function testItemModel(id) {
 // something" means the same thing on both renderers.
 async function testCanvasNotBlank(id) {
   const st = await openTab(id);
+  if (!st && await appearanceMissing()) {
+    console.log(`model3d ${id}: SKIPPED -- this DB has no item_appearance table`);
+    return true;
+  }
   if (!st) { console.log(`model3d ${id}: no 3D tab`); return false; }
   const opaque = await page.evaluate(async () => {
     const url = window.__mv.snapshot();
@@ -77,6 +107,10 @@ async function testContextReleased(id) {
 // watching the frame counter rather than by trusting the code to have stopped.
 async function testIdleCostsNothing(id) {
   const st = await openTab(id);
+  if (!st && await appearanceMissing()) {
+    console.log(`model3d ${id}: SKIPPED -- this DB has no item_appearance table`);
+    return true;
+  }
   if (!st) { console.log(`model3d ${id}: no 3D tab`); return false; }
   // Switch to a different tab: the canvas stays in the DOM, so only the visibility
   // handling stops it drawing.

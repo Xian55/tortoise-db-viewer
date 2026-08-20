@@ -388,6 +388,7 @@ function section(data, race, sex, kind, variation, color) {
 // 1502-1506 are the cloak sheets themselves (texType 2). Dropping the group punched a
 // hole between the shoulders of every character on the site.
 const NOT_BODY_GROUPS = new Set();
+const EAR_GROUP = 7;
 
 /** Which geosets a naked character shows: the body, its bare limbs, the chosen hairstyle
  *  and the chosen facial hair. Equipment overrides its own group later.
@@ -404,7 +405,11 @@ export function baseGeosets(model, { hairGeoset = 0, facial = [] } = {}) {
   const out = new Set([0]);                       // geoset 0 is the body itself
   for (const group of groups) {
     if (group === 0 || NOT_BODY_GROUPS.has(group)) continue;
-    if (present.has(group * 100 + 1)) out.add(group * 100 + 1);
+    // Ears are the one group whose default is variant 2, not 1: 701 is the EARLESS head
+    // used when a helmet covers them, so defaulting to it leaves a night elf with holes
+    // in the sides of her head. Every other group's variant 1 is its bare state.
+    const want = group === EAR_GROUP && present.has(group * 100 + 2) ? 2 : 1;
+    if (present.has(group * 100 + want)) out.add(group * 100 + want);
   }
   if (hairGeoset) out.add(hairGeoset);
   // Facial hair lives in groups 1/2/3 (beard, moustache, sideburns); a 0 means "none".
@@ -473,8 +478,17 @@ export async function mountCharacterViewer(el, opts = {}) {
     if (t.type !== TEX_HAIR && t.name) slotTex[i] = await loadTexture(embeddedUrl(t.name));
   }));
 
-  const hairGeoset = (data.hair[`${race}-${sex}`] || []).find((h) => h[0] === hairStyle)?.[1] || 0;
-  const facialGeosets = (data.facial[`${race}-${sex}`] || []).find((f) => f[0] === facialStyle)?.slice(1) || [];
+  // Fall back to variation 0 when the requested one does not exist for this race. That
+  // is not cosmetic tidying: a geoset in groups 1-3 is only "facial hair" on the races
+  // that have some. On Turtle's goblins, facial variation 0 maps to geoset 102, which is
+  // part of the HEAD -- so a URL naming a variation the goblin does not have (they offer
+  // 0-4) added nothing and left the character headless, with its hair floating above an
+  // empty neck.
+  const hairRows = data.hair[`${race}-${sex}`] || [];
+  const facialRows = data.facial[`${race}-${sex}`] || [];
+  const hairGeoset = (hairRows.find((h) => h[0] === hairStyle) || hairRows.find((h) => h[0] === 0))?.[1] || 0;
+  const facialGeosets = (facialRows.find((f) => f[0] === facialStyle)
+    || facialRows.find((f) => f[0] === 0))?.slice(1) || [];
 
   return buildViewer(el, model, slotTex, {
     label: `${race}-${sex}`,

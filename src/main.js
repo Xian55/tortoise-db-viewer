@@ -858,7 +858,13 @@ async function showItem(id) {
   // DB built before the feature simply has no table, and the tab disappears rather than
   // the page breaking.
   const appearance = (OWN_ITEM_MODELS && it.display_id && (await caps()).appearance)
-    ? await queryOne(Q.Q_ITEM_APPEARANCE, [it.display_id]).catch(() => null)
+    ? await queryOne(Q.Q_ITEM_APPEARANCE, [it.display_id]).catch((e) => {
+      // Losing the row silently means the 3D tab just is not there, with nothing
+      // anywhere saying why -- which is exactly how this went unexplained for three
+      // smoke runs.
+      console.warn("item appearance lookup failed:", e?.message || e);
+      return null;
+    })
     : null;
   // random suffixes this item can roll ("of the Bear", …)
   const suffixes = it.rolls_suffix ? await query(Q.Q_ITEM_SUFFIXES, [id]) : [];
@@ -1024,6 +1030,16 @@ async function showItem(id) {
   // sit on -- until that exists, offering an empty tab would be worse than none. Armor
   // with no model of its own is texture-only for the same reason.
   const model3d = appearance && appearance.model_l && appearance.per_race === 0 && webglOk();
+  // Why the tab is absent, on the element itself. Four independent gates can hide it and
+  // three of them are invisible from the outside, which turned one flaky smoke failure
+  // into a long hunt; it also answers "why do I not have the 3D tab" for a visitor.
+  app.dataset.model3d = model3d ? "on"
+    : !OWN_ITEM_MODELS ? "dataset"
+      : !it.display_id ? "no-display"
+        : !appearance ? "no-appearance-row"
+          : !appearance.model_l ? "texture-only"
+            : appearance.per_race !== 0 ? "per-race-model"
+              : "no-webgl";
   if (model3d) {
     tabDefs.push({
       id: "model3d", label: "3D", count: 1, noCount: true,
@@ -1120,6 +1136,15 @@ async function showDressingRoom(params, navigate) {
     const rows = data.sections[`${state.race}-${state.sex}-${kind}`] || [];
     return [...new Set(rows.map((r) => r[idx]))].sort((a, b) => a - b);
   };
+  // Hair and facial-hair VARIATIONS come from the geoset tables, not from the texture
+  // sections: a variation can exist as geometry while painting no texture at all (every
+  // race's bald, and all five of the goblin's facial options), and offering only the
+  // textured ones hides real choices -- while offering ones the race lacks used to leave
+  // it headless.
+  const hasFacialArt = () =>
+    (data.sections[`${state.race}-${state.sex}-facial`] || []).some((r) => r[2].length);
+  const geosetOpts = (table) =>
+    [...new Set((data[table][`${state.race}-${state.sex}`] || []).map((r) => r[0]))].sort((a, b) => a - b);
   const pick = (label, key, values, cur) => values.length > 1
     ? `<label class="dress-pick">${esc(label)}<select data-key="${key}">`
       + values.map((v) => `<option value="${v}"${v === cur ? " selected" : ""}>${v + 1}</option>`).join("")
@@ -1135,9 +1160,15 @@ async function showDressingRoom(params, navigate) {
       + `<option value="f"${state.sex === "f" ? " selected" : ""}>Female</option></select></label>`
       + pick("Skin", "skin", opts("skin", 1), state.skin)
       + pick("Face", "face", opts("face", 0), state.face)
-      + pick("Hair", "hair", opts("hair", 0), state.hair)
+      + pick("Hair", "hair", geosetOpts("hair"), state.hair)
       + pick("Hair colour", "hcolor", opts("hair", 1), state.hairColor)
-      + pick("Facial hair", "facial", opts("facial", 0), state.facialHair);
+      // The groups 1-3 mechanism is "facial hair" only where the race HAS facial-hair
+      // art. Turtle reuses it on goblin females for the eyes -- variation 0 is a
+      // heavy-lidded look, 2 is open eyes with pupils -- and calling that "Facial hair"
+      // sends people hunting for a bug in the eye textures. Detect it from the data:
+      // no facial texture rows means the geosets are something else on this race.
+      + pick(hasFacialArt() ? "Facial hair" : "Face detail", "facial",
+        geosetOpts("facial"), state.facialHair);
   };
   const KEY = { hcolor: "hairColor", facial: "facialHair" };
   const mount = async () => {

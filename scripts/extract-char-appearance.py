@@ -142,16 +142,22 @@ def main():
         if sec is None:
             continue
         tex = []
+        referenced = 0
         for i in range(3):
             t = css(r[CS_TEX + i])
             if not t:
                 continue
+            referenced += 1
             if exists(t):
                 tex.append(t)
                 textures.add(t)
             else:
                 dropped_tex += 1
-        if not tex:
+        # A row with NO texture references is not broken, it is an option that paints
+        # nothing -- "bald", "no facial hair". Dropping those (as an earlier version did,
+        # by testing `not tex`) deleted hair variation 0 for every race, so choosing bald
+        # fell through to whatever hairstyle happened to be first.
+        if referenced and not tex:
             dropped_rows += 1
             continue
         key = f"{r[CS_RACE]}-{sex_key(r[CS_SEX])}-{sec}"
