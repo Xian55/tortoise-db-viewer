@@ -356,6 +356,27 @@ tbody tr:hover { background: var(--panel2); }
 .share-btn:hover { border-color: var(--gold); color: var(--gold); }
 .share-btn.json-btn { margin-left: 6px; font-family: ui-monospace, monospace; text-decoration: none; }
 .share-btn.json-btn:hover { text-decoration: none; }
+/* "Open in" -> the same entity on the other WoW databases (src/external.js). The wrap
+   is the positioning context; the menu is absolute so opening it can't reflow the page
+   under the cursor. A row the current dataset/entity can't reach (.xt-off) stays in the
+   list, greyed, with the reason -- see the module header for why. */
+.xt-wrap { position: relative; display: inline-block; margin-left: 6px; }
+.xt-menu { position: absolute; z-index: 20; top: calc(100% - 4px); left: 0; min-width: 210px;
+  padding: 4px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 8px 22px rgba(0, 0, 0, .55); }
+.xt-menu[hidden] { display: none; }
+.xt-item { display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 5px 9px; border-radius: 5px; font-size: 12px; color: var(--text); text-decoration: none; }
+a.xt-item:hover { background: var(--panel2); color: var(--gold); text-decoration: none; }
+.xt-name { font-weight: 600; white-space: nowrap; }
+.xt-host { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.xt-off { cursor: not-allowed; opacity: .5; }
+.xt-off .xt-host { font-style: italic; }
+/* per-suffix "copy an in-game chat link" button on the random-suffix list */
+.suf-chat { padding: 0 5px; font-size: 12px; line-height: 1.4; cursor: pointer;
+  color: var(--muted); background: none; border: 1px solid transparent; border-radius: 4px; }
+.suf-list li:hover .suf-chat { color: var(--text); border-color: var(--border); }
+.suf-chat:hover { color: var(--gold); border-color: var(--gold); }
 /* "Compare" toggle on the item meta line + the floating cross-page compare tray */
 .cmp-add { margin-left: 10px; padding: 2px 9px; font-size: 12px; font-weight: 600; cursor: pointer;
   color: var(--text); background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; }

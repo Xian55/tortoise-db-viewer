@@ -8,6 +8,7 @@ import { showBrowse } from "./browse.js";
 import { selbarHtml, updateSelbar, wireSelbar } from "./selbar.js";
 import { showCharacters, showCharacter, showSharedLoadout } from "./character.js";
 import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
+import { externalMenuHtml, wireExternalMenu, chatMacro, chatButtonHtml, wireChatButton } from "./external.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown, ftsQuery } from "./search.js";
 import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
@@ -327,6 +328,42 @@ function addShareButton() {
   }
 }
 
+// "🌐 Open in ▾" — the same entity on TurtleDB / OctoWow / Wowhead / WoW Classic DB.
+// Kept OUT of addShareButton and run separately because it is async (it looks up the
+// Turtle-custom flag) and Share must not wait on a DB round-trip to appear.
+async function addExternalMenu() {
+  const params = new URLSearchParams(location.search);
+  let param = null, id = null;
+  for (const k in SHARE_PREFIX) { const v = params.get(k); if (v) { param = k; id = v; break; } }
+  if (!id) return;
+  // After the LAST existing button, so the row reads Share · JSON · Open in rather than
+  // the menu wedging itself between Share and JSON.
+  const btns = app.querySelectorAll(".share-btn:not(.xt-btn)");
+  const anchor = btns[btns.length - 1] || app.querySelector("h1, .item-meta, .spell-sub");
+  if (!anchor || app.querySelector(".xt-wrap")) return;
+  // One row: the display name (for the chat macro) and the Turtle-custom flag. Only
+  // items/creatures/quests carry the flag; the rest are offered everywhere rather than
+  // greyed on an id-range guess. A DB without the column just answers null.
+  const sql = Q.qEntityMeta(param);
+  const row = sql ? await queryOne(sql, [Number(id)]).catch(() => null) : null;
+  const custom = !!(row && row.custom);
+  // The route may have changed while that query was in flight (fast clicking) -- adding
+  // the buttons then would attach the previous entity's links to the new page.
+  if (new URLSearchParams(location.search).get(param) !== id || app.querySelector(".xt-wrap")) return;
+  const menu = externalMenuHtml(param, id, custom);
+  if (menu) {
+    anchor.insertAdjacentHTML("afterend", menu);
+    wireExternalMenu(app.querySelector(".xt-wrap"));
+  }
+  // Chat link: only item/quest/spell are linkable in-game at all, so the button is
+  // simply absent on an NPC/object/zone/faction rather than copying something inert.
+  const macro = chatMacro(param, id, row);
+  if (macro) {
+    (app.querySelector(".xt-wrap") || anchor).insertAdjacentHTML("afterend", chatButtonHtml(macro));
+    wireChatButton(app.querySelector(".xt-chat"));
+  }
+}
+
 // ---- compare tray (a small localStorage-backed basket of items) ----
 // Lets you collect items across pages, then open them side-by-side via ?compare=.
 const CMP_KEY = "tw_compare", CMP_MAX = 8;
@@ -399,7 +436,7 @@ function renderRoute() {
   syncDsToggle(); // reflect the new URL immediately -- location.search is already
                   // updated, so don't wait for a slow async render to finish
   const p = Promise.resolve(route());
-  const after = () => { addShareButton(); addCompareButton(); renderCompareTray(); };
+  const after = () => { addShareButton(); addCompareButton(); renderCompareTray(); addExternalMenu(); };
   p.then(after, after);
   return p;
 }
@@ -640,13 +677,23 @@ function suffixSection(rows) {
     const st = JSON.parse(r.stats || "{}");
     const key = r.name || "(+stats)";
     let g = groups.get(key);
-    if (!g) { g = { chance: 0, stats: {} }; groups.set(key, g); }
+    if (!g) { g = { chance: 0, stats: {}, best: 0 }; groups.set(key, g); }
     g.chance += r.chance || 0;
+    // Within one suffix NAME the ids are the stat permutations, not tiers ("of the Bear"
+    // = 8/8, 9/8, 8/9, 9/9), so the highest id is that suffix's MAX roll -- the one worth
+    // handing someone as a chat link.
+    if (r.id > g.best) g.best = r.id;
     for (const k in st) { const c = g.stats[k] || [Infinity, -Infinity]; g.stats[k] = [Math.min(c[0], st[k]), Math.max(c[1], st[k])]; }
   }
   const lis = [...groups.entries()].sort((a, b) => b[1].chance - a[1].chance).map(([name, g]) => {
     const statStr = Object.entries(g.stats).map(([k, [mn, mx]]) => `+${mn === mx ? mn : `${mn}–${mx}`} ${esc(GEAR_STAT_LABEL[k] || k)}`).join(", ");
-    return `<li><span class="suf-name">${esc(name)}</span> <span class="muted suf-stats">${statStr}</span> <span class="suf-chance muted">${g.chance.toFixed(1)}%</span></li>`;
+    // The chat link's bracket text is LITERAL -- the client does not append the suffix to
+    // it -- so the button carries the suffix name as well as the id.
+    const copy = g.best
+      ? ` <button type="button" class="suf-chat" data-ench="${g.best}" data-suf="${esc(name)}"
+           title="Copy an in-game chat link for the best roll of this suffix">\u{1F4AC}</button>`
+      : "";
+    return `<li><span class="suf-name">${esc(name)}</span> <span class="muted suf-stats">${statStr}</span> <span class="suf-chance muted">${g.chance.toFixed(1)}%</span>${copy}</li>`;
   });
   return `<div class="item-suffixes">
     <h2>🎲 Random suffixes</h2>
@@ -918,6 +965,20 @@ async function showItem(id) {
     </div>`;
   mountTables();
   wireTabs();
+  // Per-suffix chat link. Delegated, so it survives nothing in particular here but keeps
+  // the macro building where `it` (name + quality) already is, instead of stamping ~30
+  // fully-built macros into data- attributes.
+  const sufList = app.querySelector(".item-suffixes");
+  if (sufList) sufList.addEventListener("click", async (e) => {
+    const b = e.target.closest(".suf-chat");
+    if (!b) return;
+    const named = { ...it, name: `${it.name} ${b.dataset.suf}`.trim() };
+    const macro = chatMacro("item", it.entry, named, Number(b.dataset.ench));
+    const was = b.textContent;
+    try { await navigator.clipboard.writeText(macro); b.textContent = "✓"; }
+    catch { b.textContent = "✗"; }
+    setTimeout(() => { b.textContent = was; }, 1400);
+  });
 }
 
 // ---- random page (surprise-me) ----

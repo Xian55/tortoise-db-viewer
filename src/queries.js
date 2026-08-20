@@ -229,6 +229,18 @@ export const Q_SEARCH_OBJECTS = `
 export const Q_ID_ITEM = `
   SELECT i.entry, i.name, i.quality, di.icon FROM items i
   LEFT JOIN item_display_info di ON di.ID = i.display_id WHERE i.entry = ?1`;
+// The one row the header buttons need: the display name (for the in-game chat macro)
+// and the Turtle-custom flag (so "Open in" doesn't offer a Wowhead link for something
+// Wowhead has never heard of). Only items/creatures/quests carry `custom` -- see
+// build-db's vanilla id list + field diff. Keyed by OUR route param, one fixed string
+// per kind, so nothing here is ever assembled from user input.
+const ENTITY_META = {
+  item: `SELECT name, quality, custom FROM items WHERE entry = ?1`,
+  npc: `SELECT name, custom FROM creatures WHERE entry = ?1`,
+  quest: `SELECT title AS name, level, custom FROM quests WHERE entry = ?1`,
+  spell: `SELECT name FROM spells WHERE entry = ?1`,
+};
+export const qEntityMeta = (kind) => ENTITY_META[kind] || null;
 export const Q_ID_NPC = `SELECT entry, name, subname FROM creatures WHERE entry = ?1`;
 export const Q_ID_QUEST = `SELECT entry, title FROM quests WHERE entry = ?1`;
 export const Q_ID_SPELL = `SELECT entry, name, icon FROM spells WHERE entry = ?1`;
@@ -571,7 +583,7 @@ export const Q_SPELL_SOURCE = `
 // Possible random suffixes an item can roll (item.random_property -> suffix_pool ->
 // random_suffix). One row per rollable ItemRandomProperties variant + its chance.
 export const Q_ITEM_SUFFIXES = `
-  SELECT rs.name, rs.stats, sp.chance
+  SELECT rs.name, rs.stats, sp.chance, sp.ench AS id
   FROM items i JOIN suffix_pool sp ON sp.entry = i.random_property
   JOIN random_suffix rs ON rs.id = sp.ench
   WHERE i.entry = ?1 ORDER BY rs.name, sp.chance DESC`;
