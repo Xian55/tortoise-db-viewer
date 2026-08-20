@@ -364,6 +364,12 @@ smoke("npc map-zone 11501 Dire Maul", () => testNpcMapZone(11501, 2557));
 smoke("npc map-zone 80208", () => testNpcMapZone(80208, 5225));
 smoke("npc map-zone 14890 Ashenvale", () => testNpcMapZone(14890, 331));
 smoke("npc map-zone 60735 Hateforge", () => testNpcMapZone(60735, 5103));
+// Interior areas come from the WMO the spawn stands in, not the terrain over it:
+// Highlord Mastrogonde is in the Firewatch Ridge cave, whose rock Turtle painted as
+// Sherwood Quarry (Northwind) -- he belongs to Searing Gorge (51), a different zone
+// on a different continent from what the terrain alone says.
+smoke("npc map-zone 8282 Firewatch cave", () => testNpcMapZone(8282, 51));
+smoke("npc loc-label 8282 Searing Gorge", () => testNpcLocationLabel(8282, 51));
 smoke("npc loc-label 80208", () => testNpcLocationLabel(80208, 5225));
 smoke("npc loc-label 596", () => testNpcLocationLabel(596, 40));
 smoke("npc floor-and-model 15990 KT", () => testNpcFloorAndModel(15990));
