@@ -47,6 +47,18 @@ export const Q_ITEM_APPEARANCE = `SELECT * FROM item_appearance WHERE display_id
 export const qItemAppearanceIn = (n) =>
   `SELECT * FROM item_appearance WHERE display_id IN (${Array.from({ length: n }, (_, i) => `?${i + 1}`).join(",")})`;
 
+// Everything the dressing room needs to WEAR a set of items: the item (for its name,
+// slot and icon) joined to how it looks. One round trip for the whole outfit rather than
+// one per slot -- the room re-resolves on every change.
+export const qDressItemsIn = (n) => `
+  SELECT i.entry, i.name, i.quality, i.inventory_type AS inv, i.display_id, di.icon,
+         a.model_l, a.model_dir, a.per_race, a.tex_l, a.geo1, a.geo2, a.geo3,
+         a.t_arm_u, a.t_arm_l, a.t_hand, a.t_torso_u, a.t_torso_l, a.t_leg_u, a.t_leg_l, a.t_foot
+  FROM items i
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  LEFT JOIN item_appearance a ON a.display_id = i.display_id
+  WHERE i.entry IN (${Array.from({ length: n }, (_, i) => `?${i + 1}`).join(",")})`;
+
 // all derived gear stats for one item (compare view stat-delta table).
 export const Q_ITEM_STATS = `SELECT stat, value FROM item_stats WHERE item = ?1`;
 

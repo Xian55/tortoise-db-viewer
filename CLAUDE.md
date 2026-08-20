@@ -700,6 +700,36 @@ looking rather than by recalling:
   trusting the table renders a Troll at skin colour 9 nude and leaves bald patches where a
   scalp is missing. An appearance the client cannot paint is not offered in the picker.
 
+### Wearing armor (`src/chargear.js`)
+
+Most gear is not a model: 5,362 of 10,204 item displays carry nothing but the eight
+component textures painted into the body atlas, plus a geoset swap. `export-models.py
+--sets comp` writes them (10,072 files / 18.8 MB), `chargear.js` holds the rules, and the
+character sheet's **Show in 3D** panel wears a real `?loadout=`.
+
+- **A geoset value is an OFFSET FROM THE BARE VARIANT, not a variant number.** Robe of the
+  Archmage settles it: its third value is 1 and a robe must show geoset 1302, because 1301
+  is the bare leg. Same for a glove's 1 -> 402, since 401 is the bare hand. So
+  `geoset = group*100 + value + 1`, and 0 means "leave the body alone".
+- **Which group each of the three values addresses depends on the slot**, derived by
+  cross-tabbing `item_appearance` against the groups the models contain: chest/shirt/robe
+  write sleeves/chest/robe (8/10/13), legs write kneepads/pants/robe (9/11/13), gloves 4,
+  boots 5, tabard 12, cloak 15 -- whose values 1..5 land exactly on the 1502..1506 cape
+  variants every model carries.
+- **Paint order is the order the pieces overlap in life**: shirt, chest, bracer, legs,
+  boots, belt, glove, tabard, cloak. A glove covers its bracer; a boot covers the trouser
+  leg; a belt sits over both.
+- **A cloak is neither texture nor model.** It is the character's own cape geoset textured
+  from the ITEM -- that is what texture-unit type 2 means on a character, so binding the
+  body atlas there painted the cape with skin and belt.
+- Armor ships as a male+female PAIR or a single unisex file, never both, so each layer
+  carries candidate urls and takes the first that loads.
+- **The key light rides the camera.** Fixed in world space it lit one side only, so
+  turning a character around to look at the back of a cloak showed it in shadow -- the
+  exact thing you rotated to see.
+- Head and shoulder are per-race MODELS rather than textures and wait for the attachment
+  phase; the sheet says so rather than silently omitting them.
+
 DBC layouts, likewise derived: `ChrRaces` keeps the internal name at 15 and the localized
 block at 17 (deDE at 20, zhCN 21, ruRU 22 -- which is how the block was located), and the
 male/female display ids at 4/5, where field 3 ALSO resolves to a valid character model but

@@ -1597,3 +1597,24 @@ td .pet-rank { margin: 1px 0; }
 .dress-bar { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 12px 0; }
 .dress-pick { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
 .dress-pick select { min-width: 92px; }
+
+/* Dressing room gear: the equip search, what is worn, and the result list. */
+.dress-gear { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin: 8px 0; }
+.dress-gear input[type="search"] { min-width: 220px; }
+.dress-worn { display: flex; flex-wrap: wrap; gap: 6px; }
+.dress-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px;
+  border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+.dress-off { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
+.dress-off:hover { color: var(--fg); }
+.dress-hits { display: flex; flex-direction: column; max-height: 260px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 6px; margin-bottom: 10px; }
+.dress-hit { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: none;
+  border: 0; border-bottom: 1px solid var(--border); color: inherit; cursor: pointer; text-align: left; }
+.dress-hit:last-child { border-bottom: 0; }
+.dress-hit:hover { background: var(--panel); }
+
+/* Character-sheet 3D preview: collapsed to just its bar until asked for. */
+.char-3d { margin: 14px 0; }
+.char-3d-bar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.char-3d .mv-host { display: none; }
+.char-3d.open .mv-host { display: flex; }

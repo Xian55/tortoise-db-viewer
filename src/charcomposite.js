@@ -67,8 +67,16 @@ export async function compositeBody({ base, layers = [] }) {
   else ctx.fillStyle = "#b98d6a", ctx.fillRect(0, 0, ATLAS, ATLAS);   // untextured stand-in
 
   // Loaded in parallel, drawn in order: the sequence is what makes layering correct, and
-  // awaiting them one at a time would serialise ~10 requests for no reason.
-  const imgs = await Promise.all(layers.map((l) => loadImage(l.url)));
+  // awaiting them one at a time would serialise ~10 requests for no reason. A layer may
+  // list SEVERAL candidate urls -- armor ships either a male+female pair or one unisex
+  // file, never both -- and the first that loads wins.
+  const imgs = await Promise.all(layers.map(async (l) => {
+    for (const url of (l.urls || [l.url])) {
+      const img = await loadImage(url);
+      if (img) return img;
+    }
+    return null;
+  }));
   imgs.forEach((img, i) => {
     if (!img) return;
     const r = REGIONS[layers[i].region];

@@ -225,6 +225,10 @@ let activeViewer = null;
 function destroyViewer() {
   try { activeViewer?.destroy(); } catch { /* already torn down */ }
   activeViewer = null;
+  // The character sheet mounts its own viewer, and this module must not import the
+  // three.js chunk just to be able to tear one down. modelviewer.js publishes this hook
+  // when (and only when) it has actually been loaded.
+  try { window.__mvDestroy?.(); } catch { /* already torn down */ }
 }
 
 // Is WebGL available at all? Asked BEFORE the 3D tab is offered, and answered without
@@ -1107,10 +1111,27 @@ async function showDressingRoom(params, navigate) {
     skin: num("skin", 0), face: num("face", 0),
     hair: num("hair", 0), hairColor: num("hcolor", 0), facialHair: num("facial", 0),
   };
+  // Visual slots only. Head and shoulder are per-race MODELS rather than textures, so
+  // they wait for the attachment phase; a ring changes nothing about how you look.
+  const SLOT_PARAM = { 4: "shirt", 5: "chest", 6: "waist", 7: "legs", 8: "feet",
+    9: "wrist", 10: "hands", 16: "back", 19: "tabard", 20: "chest" };
+  const WEARABLE = [...new Set(Object.keys(SLOT_PARAM).map(Number))];
+  const worn = new Map();                    // slot param -> item entry
+  for (const [inv, key] of Object.entries(SLOT_PARAM)) {
+    const v = num(key, 0);
+    if (v) worn.set(key, v);
+  }
   app.innerHTML = `<div class="dressing">
       <h1>Dressing room</h1>
       <p class="muted">Pick a race and appearance. Gear comes next.</p>
       <div class="dress-bar" id="dress-bar"></div>
+      <div class="dress-gear">
+        <label class="dress-pick">Equip
+          <input id="dress-find" type="search" placeholder="Search armor by name…" autocomplete="off">
+        </label>
+        <div id="dress-worn" class="dress-worn"></div>
+      </div>
+      <div id="dress-hits" class="dress-hits hidden"></div>
       <div id="mv-host" class="mv-host"><p class="muted">Loading character…</p></div>
     </div>`;
   const host = app.querySelector("#mv-host");
@@ -1173,15 +1194,84 @@ async function showDressingRoom(params, navigate) {
         geosetOpts("facial"), state.facialHair);
   };
   const KEY = { hcolor: "hairColor", facial: "facialHair" };
+
+  const wornEl = app.querySelector("#dress-worn");
+  const hitsEl = app.querySelector("#dress-hits");
+  const findEl = app.querySelector("#dress-find");
+  let wornRows = [];                          // qDressItemsIn rows for what is equipped
+
+  const syncUrl = () => {
+    const q = new URLSearchParams({ dressing: "", race: state.race, sex: state.sex,
+      skin: state.skin, face: state.face, hair: state.hair, hcolor: state.hairColor,
+      facial: state.facialHair });
+    for (const [slot, entry] of worn) q.set(slot, entry);
+    history.replaceState({}, "", `?${q}`);
+  };
+
+  const renderWorn = () => {
+    wornEl.innerHTML = wornRows.length
+      ? wornRows.map((r) => `<span class="dress-chip">${iconImg(r.icon, "icon-sm")}`
+        + `<a class="nav" href="?item=${r.entry}" title="Where it drops">${esc(r.name)}</a>`
+        + `<button class="dress-off" data-slot="${SLOT_PARAM[r.inv]}" title="Take off">✕</button></span>`).join("")
+      : `<span class="muted">Nothing equipped yet.</span>`;
+  };
+
+  // Resolve everything equipped in ONE query, then hand the rows to the viewer.
   const mount = async () => {
+    const ids = [...worn.values()];
+    if (ids.length) {
+      try {
+        wornRows = await query(Q.qDressItemsIn(ids.length), ids);
+      } catch (e) { wornRows = []; }
+    } else wornRows = [];
+    renderWorn();
     destroyViewer();
     host.innerHTML = "";
     try {
-      activeViewer = await mod.mountCharacterViewer(host, state);
+      activeViewer = await mod.mountCharacterViewer(host, { ...state, items: wornRows });
     } catch (e) {
       host.innerHTML = `<p class="muted">Could not load this character — ${esc(e.message)}.</p>`;
     }
   };
+
+  // Equip by name. Reuses the character sheet's own slot-search query, restricted to the
+  // slots that change how you LOOK -- searching rings in a dressing room is noise.
+  let findTimer = 0;
+  findEl.addEventListener("input", () => {
+    clearTimeout(findTimer);
+    findTimer = setTimeout(async () => {
+      const term = findEl.value.trim();
+      if (term.length < 2) { hitsEl.classList.add("hidden"); return; }
+      let rows = [];
+      try {
+        rows = await query(Q.qItemSearchInv(WEARABLE.join(",")),
+          [ftsQuery(term), ftsQuery(term), 40, Number(term) || 0]);
+      } catch { rows = []; }
+      hitsEl.classList.toggle("hidden", !rows.length);
+      hitsEl.innerHTML = rows.slice(0, 40).map((r) =>
+        `<button class="dress-hit" data-entry="${r.entry}" data-inv="${r.inv}">`
+        + `${iconImg(r.icon, "icon-sm")}<span class="q${r.quality}">${esc(r.name)}</span>`
+        + `<span class="dim">${esc(INV_TYPE[r.inv] || "")}</span></button>`).join("");
+    }, 180);
+  });
+
+  hitsEl.addEventListener("click", async (e) => {
+    const b = e.target.closest(".dress-hit");
+    if (!b) return;
+    worn.set(SLOT_PARAM[Number(b.dataset.inv)], Number(b.dataset.entry));
+    hitsEl.classList.add("hidden");
+    findEl.value = "";
+    syncUrl();
+    await mount();
+  });
+
+  wornEl.addEventListener("click", async (e) => {
+    const b = e.target.closest(".dress-off");
+    if (!b) return;
+    worn.delete(b.dataset.slot);
+    syncUrl();
+    await mount();
+  });
   bar.addEventListener("change", async (e) => {
     const sel = e.target.closest("select");
     if (!sel) return;
@@ -1190,10 +1280,7 @@ async function showDressingRoom(params, navigate) {
     // A new race has its own option counts, so the picker list is rebuilt, and the URL
     // keeps the look shareable.
     render();
-    const q = new URLSearchParams({ dressing: "", race: state.race, sex: state.sex,
-      skin: state.skin, face: state.face, hair: state.hair, hcolor: state.hairColor,
-      facial: state.facialHair });
-    history.replaceState({}, "", `?${q}`);
+    syncUrl();
     await mount();
   });
   render();

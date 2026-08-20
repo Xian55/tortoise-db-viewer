@@ -197,3 +197,23 @@ async function testBaldScalp(race, sex, expectHair) {
 smoke("dressing room bald human keeps its scalp", () => testBaldScalp(1, "m", false));
 smoke("dressing room bald troll keeps its head", () => testBaldScalp(8, "m", false));
 smoke("dressing room gnome variation 0 is a real hairstyle", () => testBaldScalp(7, "f", true));
+
+// Wearing armor: most gear has no model at all, only textures painted into the body
+// atlas plus a geoset swap. Both halves are asserted -- the geoset ids encode the rule
+// that a value is an OFFSET from the bare variant (gloves geo1=1 -> 402, because 401 is
+// the bare hand), which is the thing most likely to drift.
+async function testWornGear() {
+  await nav("?dressing&race=1&sex=m&hair=1&hands=888&feet=1121");
+  await page.waitForSelector("#mv-host canvas", { timeout: T });
+  await page.waitForFunction(() => window.__mv && window.__mv().geosets, { timeout: T });
+  const g = await page.evaluate(() => window.__mv().geosets);
+  const chips = await page.$$eval(".dress-chip a", (e) => e.map((x) => x.textContent));
+  const links = await page.$$eval(".dress-chip a", (e) => e.every((x) => x.getAttribute("href").startsWith("?item=")));
+  console.log(`worn gear: geosets=[${g}] chips=[${chips.join(", ")}] itemLinks=${links}`);
+  // 402 = gloves over the bare 401; 504 = the boot variant; both must have REPLACED the
+  // bare ones rather than drawing alongside them.
+  return g.includes(402) && !g.includes(401) && g.includes(504) && !g.includes(501)
+    && chips.length === 2 && links;
+}
+
+smoke("dressing room wears gloves and boots", () => testWornGear());

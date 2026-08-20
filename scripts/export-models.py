@@ -162,6 +162,48 @@ def write_webp(img, path, quality=88):
     return os.path.getsize(path)
 
 
+# Item\TextureComponents\<dir>\<base>_<sex>.blp, in the Texture[8] order item_appearance
+# stores. `_U` is the unisex file; a piece ships either M+F or U, never a mix.
+COMP_DIRS = [
+    ("arm_u", "ArmUpperTexture"), ("arm_l", "ArmLowerTexture"), ("hand", "HandTexture"),
+    ("torso_u", "TorsoUpperTexture"), ("torso_l", "TorsoLowerTexture"),
+    ("leg_u", "LegUpperTexture"), ("leg_l", "LegLowerTexture"), ("foot", "FootTexture"),
+]
+
+
+def export_components(storm, args):
+    """The armor textures painted onto the character's body atlas -- the ONLY thing most
+    gear has: 5,362 of 10,204 item displays carry no model at all, just these."""
+    doc = json.load(open(APPEARANCE, encoding="utf-8"))
+    S = doc["s"]
+    want = {}                                     # (region, dir) -> {base names}
+    for row in doc["d"].values():
+        for i, (region, d) in enumerate(COMP_DIRS):
+            si = row[9 + i] if len(row) > 9 + i else 0
+            if si and S[si]:
+                want.setdefault((region, d), set()).add(S[si])
+    total = sum(len(v) for v in want.values())
+    print(f"component textures: {total} names across {len(want)} regions")
+    n = fail = skip = 0
+    tbytes = 0
+    for (region, d), names in sorted(want.items()):
+        for base in sorted(names):
+            for suf in ("M", "F", "U"):
+                out = os.path.join(OUT_DIR, "comp", region, f"{base}_{suf}".lower() + ".webp")
+                if os.path.exists(out) and not args.force:
+                    skip += 1
+                    continue
+                img = blp_to_rgba(storm, f"Item\\TextureComponents\\{d}\\{base}_{suf}.blp")
+                if img is None:
+                    continue                      # a piece ships M+F or U, not all three
+                if not args.dry_run:
+                    tbytes += write_webp(img, out)
+                n += 1
+        # a base that resolved nothing at all is worth knowing about
+    print(f"  components: {n} written ({tbytes/1e6:.1f} MB), {skip} already present")
+    return n
+
+
 def export_characters(storm, args):
     """The 22 playable character models (10 races x 2 genders) plus every skin/face/hair
     /underwear texture the client offers for them, and a copy of the appearance JSON the
@@ -254,8 +296,9 @@ def export_characters(storm, args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", help="export just this model basename")
-    ap.add_argument("--sets", default="item,char",
-                    help="which sets to export: item (weapons/shields/...), char (playable models)")
+    ap.add_argument("--sets", default="item,char,comp",
+                    help="which sets to export: item (weapons/shields/...), char (playable "
+                         "models), comp (armor textures painted onto the character)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--force", action="store_true", help="re-export files that already exist")
     ap.add_argument("--verbose", action="store_true")
@@ -365,6 +408,9 @@ def main():
         ne += 1
     if ne or embedded:
         print(f"  embedded textures: {ne} written, {len(embedded)} referenced ({ebytes/1e6:.1f} MB)")
+
+    if "comp" in sets and not args.only:
+        export_components(storm, args)
 
     if "char" in sets and not args.only:
         export_characters(storm, args)

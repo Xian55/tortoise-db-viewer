@@ -12,9 +12,29 @@
 // spinning in a hidden pane burns battery for nothing.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { parseM2B, bounds, TEX_HAIR } from "./m2b.js";
+import { parseM2B, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
 import { compositeBody, SECTION_REGIONS } from "./charcomposite.js";
+import { COMPONENT_REGIONS, applyGear, inPaintOrder } from "./chargear.js";
 import { MODELS_BASE } from "./config.js";
+
+// The ONE live viewer. A WebGL context is scarce and is not garbage-collected, so
+// mounting a second without dropping the first eventually kills the oldest canvas. The
+// registry lives here rather than in a caller because two different pages now mount
+// viewers (the item tab and the character sheet), and the router needs a single teardown
+// that works whichever one is up -- exposed as window.__mvDestroy so the router can call
+// it WITHOUT importing this chunk and paying for three.js on every page.
+let active = null;
+function register(viewer) {
+  if (active && active !== viewer) { try { active.destroy(); } catch { /* already gone */ } }
+  active = viewer;
+  return viewer;
+}
+export function destroyActive() {
+  if (!active) return;
+  try { active.destroy(); } catch { /* already gone */ }
+  active = null;
+}
+if (typeof window !== "undefined") window.__mvDestroy = destroyActive;
 
 /** Cheap probe -- callers use it to decide whether to offer a 3D tab at all. Creating
  *  and dropping one throwaway context is far cheaper than importing this chunk, but this
@@ -119,7 +139,7 @@ export async function mountItemViewer(el, opts = {}) {
       ? loadTexture(embeddedUrl(t.name))
       : (opts.texture ? loadTexture(textureUrl(opts.texture)) : Promise.resolve(null))
   )));
-  return buildViewer(el, model, slotTex, { label: opts.model, texture: opts.texture || null });
+  return register(buildViewer(el, model, slotTex, { label: opts.model, texture: opts.texture || null }));
 }
 
 /**
@@ -244,6 +264,13 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // the loop may stop.
   const draw = () => {
     const changed = controls.update();
+    // The key light RIDES THE CAMERA. With it fixed in world space the model is lit from
+    // one side only, so turning a character around to look at the back of a cloak showed
+    // it in shadow -- the exact thing you rotated to see. Offset up-and-left of the eye
+    // so the lighting still has direction rather than going flat.
+    key.position.copy(camera.position);
+    key.position.y += radius * 1.5;
+    key.position.x -= radius * 0.8;
     renderer.render(scene, camera);
     frames++;
     return changed;
@@ -450,6 +477,12 @@ export async function mountCharacterViewer(el, opts = {}) {
   const hairRow = section(data, race, sex, "hair", hairStyle, hairColor);
 
   const layers = [];
+  // Armor textures ship as a male+female pair OR one unisex file; try this character's
+  // sex first, then _u.
+  const compUrls = (region, base) => [
+    `${MODELS_BASE}comp/${region}/${String(base).toLowerCase()}_${sex}.webp`,
+    `${MODELS_BASE}comp/${region}/${String(base).toLowerCase()}_u.webp`,
+  ];
   const push = (row, regions) => {
     if (!row) return;
     // A hole in the list is a texture the client does not ship; skip it WITHOUT shifting
@@ -468,6 +501,15 @@ export async function mountCharacterViewer(el, opts = {}) {
   push(underRow, SECTION_REGIONS.underwear);
   push(facialRow, SECTION_REGIONS.facial);
 
+  // Worn gear paints over the skin, in the order the pieces overlap in life: a glove
+  // covers its bracer, a boot covers the trouser leg, a belt sits over both.
+  const worn = inPaintOrder(opts.items || []);
+  for (const item of worn) {
+    for (const [col, region] of COMPONENT_REGIONS) {
+      if (item[col]) layers.push({ urls: compUrls(region, item[col]), region });
+    }
+  }
+
   const canvas = await compositeBody({
     base: skinRow?.[2]?.[0] ? charTexUrl(skinRow[2][0]) : null,
     layers,
@@ -484,10 +526,18 @@ export async function mountCharacterViewer(el, opts = {}) {
   // names a file gets that file. Type is not enough on its own -- a Blood Elf's eye glow
   // is type 8 AND names its own BLP, so a rule keyed only on `type === 0` handed it the
   // body atlas and painted skin over the eyes.
+  // A cloak is the one piece of "armor" that is neither a texture on the body nor a
+  // model: it is the character's own cape geoset (15xx), textured from the ITEM. That is
+  // what texture-unit type 2 (object skin) means on a character, so binding the body
+  // atlas there painted the cape with skin and belt.
+  const backItem = worn.find((it) => it.inv === 16 && it.tex_l);
+  const capeTex = backItem ? await loadTexture(textureUrl(backItem.tex_l)) : null;
+
   const slotTex = model.textures.map((t) => {
     if (t.type === TEX_HAIR) return hairTex || body;
+    if (t.type === TEX_OBJECT_SKIN) return capeTex || body;
     if (t.name) return null;                       // named; loaded below
-    return body;                                   // 1 = character skin, 2 = object skin
+    return body;                                   // 1 = character skin
   });
   await Promise.all(model.textures.map(async (t, i) => {
     if (t.type !== TEX_HAIR && t.name) slotTex[i] = await loadTexture(embeddedUrl(t.name));
@@ -505,14 +555,15 @@ export async function mountCharacterViewer(el, opts = {}) {
   const facialGeosets = (facialRows.find((f) => f[0] === facialStyle)
     || facialRows.find((f) => f[0] === 0))?.slice(1) || [];
 
-  return buildViewer(el, model, slotTex, {
+  const present = new Set(model.submeshes.map((sm) => sm.geoset));
+  return register(buildViewer(el, model, slotTex, {
     label: `${race}-${sex}`,
-    geosets: baseGeosets(model, { hairGeoset, facial: facialGeosets }),
+    geosets: applyGear(baseGeosets(model, { hairGeoset, facial: facialGeosets }), worn, present),
     skipEmbedded: true,
     // Straight on: a character model faces WoW +Y, which is -Z after the Y-up swap.
     // The distance is not a taste choice -- `radius` is half the LARGEST dimension, and
     // for an upright figure that is its height, so at a 35 degree FOV anything closer
     // than ~3.2 radii crops the head.
     front: [0, 0.2, -3.6],
-  });
+  }));
 }
