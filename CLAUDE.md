@@ -878,6 +878,33 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
   mobs" headline, which only fires on a top/bottom-decile stat ≥15% off the median.
   Shared by the NPC Stats tab, the item page's peer card and the zone profile strip.
   See "Peer baselines".
+- `src/external.js` — the detail page's **"Open in ▾"** menu (the same entity on another
+  WoW database) and the **in-game chat-link macro**. Two rules do the real work, and both
+  exist because an entry id is NOT a shared namespace:
+  - **Which sites cover which game.** TurtleDB (`turtledb.cthuly.com/site/<kind>/<id>.html`)
+    and OctoWow (`octowow.st/db/?<kind>=<id>`, an aowow instance — the path form silently
+    serves its homepage) index Turtle and resolve Turtle's own ids; Wowhead
+    (`/{classic|tbc}/<kind>=<id>`) and WoW Classic DB (`/{tbc/}<kind>/<id>`) index retail
+    Classic. So the Turtle pair is offered only on a `core: "turtle"` dataset, and a
+    Turtle-**custom** entity (the build-time `custom` flag, items/creatures/quests only)
+    greys the retail pair with a reason instead of linking into a 404. A site with no page
+    for the KIND at all is DROPPED rather than greyed — TurtleDB has no zones, and a dead
+    row on every zone page says nothing about that zone. wowdb.com is deliberately absent:
+    it 403s on every URL including its homepage.
+  - **The chat macro is not Wowhead's.** Wowhead Classic hands out the RETAIL item payload
+    (`Hitem:2536::::::::60:::::`, 14 fields) from its shared generator; a 1.12 client's
+    `SetItemRef` parses exactly FOUR (`item:id:enchant:suffix:unique`) and TBC eight (four
+    gem slots before the suffix), so Wowhead's string does not resolve on the clients this
+    site is about. We emit per `EXPANSION`, and colour by real item quality / 71d5ff for a
+    spell rather than Wowhead's flat white. The `T` escapes are load-bearing: `|` cannot
+    be typed into a chat command, so the pasteable form is a `/script ... AddMessage`. Only
+    item/quest/spell are linkable in-game at all — an NPC/object/zone/faction gets no
+    button. The client's edit box caps at **255 chars** and truncates rather than refusing,
+    so the bracket text (cosmetic; the payload is what makes it clickable) is what gives.
+  - **Random suffixes** get their own copy button per row of the item page's suffix list.
+    Within one suffix NAME the pool ids are the stat permutations, not tiers ("of the Bear"
+    = 8/8, 9/8, 8/9, 9/9), so the highest id is that suffix's max roll; the bracket text is
+    literal, so the button carries the suffixed name too.
 - `src/constants.js` — WoW 1.12 enum maps (quality, class/slot/stat, creature
   type/rank, quest type/sort, etc.) + `questZoneLabel`/`classRestrictions`/
   `raceRestrictions` helpers.
