@@ -95,3 +95,47 @@ smoke("model3d stops rendering when its pane is hidden", () => testIdleCostsNoth
 smoke("model3d item 10571 canvas is not blank", () => testCanvasNotBlank(10571));
 smoke("model3d no tab for texture-only 7457 / per-race helm 83216", () => testNoTabWithoutModel(7457, 83216));
 smoke("model3d releases its WebGL context on navigation", () => testContextReleased(10571));
+
+// ---- dressing room (?dressing) -------------------------------------------------
+
+async function testDressingRoom(race, sex) {
+  await nav(`?dressing&race=${race}&sex=${sex}&hair=1`);
+  await page.waitForSelector("#mv-host canvas", { timeout: T });
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const st = await page.evaluate(() => window.__mv());
+  const pickers = await page.$$eval(".dress-pick select", (e) => e.map((s) => s.dataset.key));
+  console.log(`dressing ${race}-${sex}: tris=${st.triangles} meshes=${st.meshes} geosets=[${st.geosets}] pickers=[${pickers}]`);
+  return st.triangles > 0 && st.meshes > 1 && pickers.includes("race") && pickers.includes("sex");
+}
+
+// The naked mannequin must show the body and its bare limbs, and nothing it is not
+// wearing. Both obvious rules fail here and both failures are silent-ish, so they are
+// pinned: dropping the clothing groups leaves a torso with no legs (no 1301), and taking
+// each group's lowest variant puts a sleeve and a kilt on a naked character (802/1302).
+async function testNakedGeosets() {
+  await nav("?dressing&race=1&sex=m&hair=1");
+  await page.waitForFunction(() => window.__mv && window.__mv().geosets, { timeout: T });
+  const g = await page.evaluate(() => window.__mv().geosets);
+  const has = (x) => g.includes(x);
+  const ok = has(0) && has(1301) && !has(802) && !has(1302) && !has(1501);
+  console.log(`naked geosets: [${g}] (want 0 + 1301, no 802/1302/1501)`);
+  return ok;
+}
+
+// Hair is a separate texture slot (texType 6) on its own geoset, and its BLP is
+// palettized with a 1-bit alpha section -- decoded wrongly it comes out fully
+// transparent and every hairstyle silently disappears. So assert the hair submesh is
+// actually drawn WITH a texture, not merely selected.
+async function testHairDrawn() {
+  await nav("?dressing&race=1&sex=m&hair=1");
+  await page.waitForFunction(() => window.__mv && window.__mv().drawn, { timeout: T });
+  const drawn = await page.evaluate(() => window.__mv().drawn);
+  const hair = drawn.filter((d) => d[1] === 6);
+  console.log(`hair submeshes drawn: ${JSON.stringify(hair)} (want at least one, with a texture)`);
+  return hair.length > 0 && hair.every((d) => d[3] === 1);
+}
+
+smoke("dressing room renders human male", () => testDressingRoom(1, "m"));
+smoke("dressing room renders tauren female", () => testDressingRoom(6, "f"));
+smoke("dressing room naked geoset rule", () => testNakedGeosets());
+smoke("dressing room draws hair with its own texture", () => testHairDrawn());

@@ -162,13 +162,78 @@ def write_webp(img, path, quality=88):
     return os.path.getsize(path)
 
 
+def export_characters(storm, args):
+    """The 22 playable character models (10 races x 2 genders) plus every skin/face/hair
+    /underwear texture the client offers for them, and a copy of the appearance JSON the
+    viewer fetches at runtime.
+
+    The models are ~3.5 MB each in the client and come out ~40x smaller here: almost all
+    of that is animation keyframes, and v1 bakes the Stand pose instead of shipping them."""
+    src = os.path.join(ROOT, "scripts", "data", "char-appearance.json")
+    if not os.path.exists(src):
+        print(f"  (skip characters: {src} not found -- run extract-char-appearance.py)")
+        return 0, 0
+    doc = json.load(open(src, encoding="utf-8"))
+    nm = nt = fail = 0
+    mbytes = tbytes = 0
+    for race in doc["races"]:
+        for sex in ("m", "f"):
+            path = race.get(sex)
+            if not path:
+                continue
+            out = os.path.join(OUT_DIR, "char", f"{race['id']}-{sex}.m2b")
+            if os.path.exists(out) and not args.force:
+                continue
+            raw = storm.read(path.rsplit(".", 1)[0] + ".m2") or storm.read(path)
+            if not raw:
+                print(f"  MISS char {path}"); fail += 1; continue
+            try:
+                blob, stats = build_m2b(parse_m2(raw))
+            except Exception as e:                              # noqa: BLE001
+                print(f"  FAIL char {path}: {e}"); fail += 1; continue
+            if not args.dry_run:
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                with open(out, "wb") as f:
+                    f.write(blob)
+                mbytes += len(blob)
+            nm += 1
+            if args.verbose:
+                print(f"  char {race['name']} {sex}: {stats}")
+
+    for name in doc["textures"]:
+        out = os.path.join(OUT_DIR, "chartex", *embedded_path(name).split("/"))
+        if os.path.exists(out) and not args.force:
+            continue
+        img = blp_to_rgba(storm, name.replace("/", "\\"))
+        if img is None:
+            fail += 1; continue
+        if not args.dry_run:
+            tbytes += write_webp(img, out)
+        nt += 1
+
+    if not args.dry_run:
+        # The viewer fetches this rather than bundling it: at ~1 MB it would be the
+        # single largest thing in the main JS chunk, paid by every visitor, to serve one
+        # page. It rides the same R2 set as the meshes it describes.
+        os.makedirs(OUT_DIR, exist_ok=True)
+        with open(os.path.join(OUT_DIR, "char-appearance.json"), "w", encoding="utf-8") as f:
+            json.dump(doc, f, separators=(",", ":"))
+    print(f"  characters: {nm} models ({mbytes/1e6:.1f} MB), {nt} textures "
+          f"({tbytes/1e6:.1f} MB), {fail} failed")
+    return nm, nt
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", help="export just this model basename")
+    ap.add_argument("--sets", default="item,char",
+                    help="which sets to export: item (weapons/shields/...), char (playable models)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--force", action="store_true", help="re-export files that already exist")
+    ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+    sets = {s.strip() for s in args.sets.split(",") if s.strip()}
 
     if not os.path.exists(APPEARANCE):
         sys.exit(f"{APPEARANCE} not found -- run scripts/extract-item-appearance.py first")
@@ -197,7 +262,9 @@ def main():
             sys.exit(f"{args.only} is not a bare-name model in {os.path.basename(APPEARANCE)}")
         textures = {}
 
-    names = sorted(models)
+    names = sorted(models) if "item" in sets or args.only else []
+    if not ("item" in sets or args.only):
+        textures = {}
     if args.limit:
         names = names[: args.limit]
     print(f"models to export: {len(names)}   model textures: {len(textures)}")
@@ -226,7 +293,7 @@ def main():
             blob, stats = build_m2b(parsed)
         except Exception as e:                                  # noqa: BLE001
             print(f"  FAIL {d}/{name}: {e}"); fail += 1; continue
-        if args.only or args.dry_run:
+        if args.only or args.verbose or args.dry_run:
             print(f"  {name}: {stats}")
         if not args.dry_run:
             os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -266,6 +333,9 @@ def main():
         ne += 1
     if ne or embedded:
         print(f"  embedded textures: {ne} written, {len(embedded)} referenced ({ebytes/1e6:.1f} MB)")
+
+    if "char" in sets and not args.only:
+        export_characters(storm, args)
 
     if not args.dry_run and not args.only:
         os.makedirs(OUT_DIR, exist_ok=True)

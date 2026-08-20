@@ -334,6 +334,7 @@ function route() {
   else if (params.get("pets") !== null) return showPets();
   else if (params.get("profplan") !== null) return showProfPlan(params.get("profplan"));
   else if (params.get("talents") !== null) return showTalents(params.get("talents"));
+  else if (params.get("dressing") !== null) return showDressingRoom(params, navigate);
   else if (params.get("loadout")) return showSharedLoadout(params.get("loadout"), navigate);
   else if (params.get("character")) return showCharacter(params.get("character"), navigate);
   else if (params.get("characters") !== null) return showCharacters(navigate);
@@ -1067,6 +1068,103 @@ async function showItem(id) {
     catch { b.textContent = "✗"; }
     setTimeout(() => { b.textContent = was; }, 1400);
   });
+}
+
+// ---- dressing room (?dressing) ----
+// The character mannequin. Phase one of the transmog builder: race/gender/appearance
+// only, no gear yet -- the rig everything else hangs off. State rides in the URL so a
+// look is shareable, the same way ?talents= and ?compare= work.
+async function showDressingRoom(params, navigate) {
+  if (!OWN_ITEM_MODELS) {
+    app.innerHTML = errorBox(new Error("The 3D dressing room is only available on the Turtle dataset — "
+      + "a display id means a different model on each game."));
+    return;
+  }
+  if (!webglOk()) {
+    app.innerHTML = `<div class="panel"><h2>Dressing room</h2>`
+      + `<p class="muted">This needs WebGL, which this browser has turned off or does not support.</p></div>`;
+    return;
+  }
+  const num = (k, d) => (params.get(k) !== null && params.get(k) !== "" ? Number(params.get(k)) : d);
+  const state = {
+    race: num("race", 1), sex: params.get("sex") === "f" ? "f" : "m",
+    skin: num("skin", 0), face: num("face", 0),
+    hair: num("hair", 0), hairColor: num("hcolor", 0), facialHair: num("facial", 0),
+  };
+  app.innerHTML = `<div class="dressing">
+      <h1>Dressing room</h1>
+      <p class="muted">Pick a race and appearance. Gear comes next.</p>
+      <div class="dress-bar" id="dress-bar"></div>
+      <div id="mv-host" class="mv-host"><p class="muted">Loading character…</p></div>
+    </div>`;
+  const host = app.querySelector("#mv-host");
+  const bar = app.querySelector("#dress-bar");
+
+  let mod;
+  try {
+    mod = await import("./modelviewer.js");
+  } catch (e) {
+    host.innerHTML = errorBox(e); return;
+  }
+  let data;
+  try {
+    data = await mod.charAppearance();
+  } catch (e) {
+    host.innerHTML = `<p class="muted">Character data unavailable — ${esc(e.message)}.</p>`;
+    return;
+  }
+
+  // How many variations/colours this race+gender actually offers. Asked of the data
+  // rather than assumed: Turtle's own races do not carry the same counts as Blizzard's.
+  const opts = (kind, idx) => {
+    const rows = data.sections[`${state.race}-${state.sex}-${kind}`] || [];
+    return [...new Set(rows.map((r) => r[idx]))].sort((a, b) => a - b);
+  };
+  const pick = (label, key, values, cur) => values.length > 1
+    ? `<label class="dress-pick">${esc(label)}<select data-key="${key}">`
+      + values.map((v) => `<option value="${v}"${v === cur ? " selected" : ""}>${v + 1}</option>`).join("")
+      + `</select></label>`
+    : "";
+  const render = () => {
+    bar.innerHTML =
+      `<label class="dress-pick">Race<select data-key="race">`
+      + data.races.map((r) => `<option value="${r.id}"${r.id === state.race ? " selected" : ""}>${esc(r.name)}</option>`).join("")
+      + `</select></label>`
+      + `<label class="dress-pick">Gender<select data-key="sex">`
+      + `<option value="m"${state.sex === "m" ? " selected" : ""}>Male</option>`
+      + `<option value="f"${state.sex === "f" ? " selected" : ""}>Female</option></select></label>`
+      + pick("Skin", "skin", opts("skin", 1), state.skin)
+      + pick("Face", "face", opts("face", 0), state.face)
+      + pick("Hair", "hair", opts("hair", 0), state.hair)
+      + pick("Hair colour", "hcolor", opts("hair", 1), state.hairColor)
+      + pick("Facial hair", "facial", opts("facial", 0), state.facialHair);
+  };
+  const KEY = { hcolor: "hairColor", facial: "facialHair" };
+  const mount = async () => {
+    destroyViewer();
+    host.innerHTML = "";
+    try {
+      activeViewer = await mod.mountCharacterViewer(host, state);
+    } catch (e) {
+      host.innerHTML = `<p class="muted">Could not load this character — ${esc(e.message)}.</p>`;
+    }
+  };
+  bar.addEventListener("change", async (e) => {
+    const sel = e.target.closest("select");
+    if (!sel) return;
+    const k = sel.dataset.key;
+    state[KEY[k] || k] = k === "sex" ? sel.value : Number(sel.value);
+    // A new race has its own option counts, so the picker list is rebuilt, and the URL
+    // keeps the look shareable.
+    render();
+    const q = new URLSearchParams({ dressing: "", race: state.race, sex: state.sex,
+      skin: state.skin, face: state.face, hair: state.hair, hcolor: state.hairColor,
+      facial: state.facialHair });
+    history.replaceState({}, "", `?${q}`);
+    await mount();
+  });
+  render();
+  await mount();
 }
 
 // ---- random page (surprise-me) ----

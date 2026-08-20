@@ -139,7 +139,8 @@ SQL_SOURCE=cmangos DATA_SUBDIR=data-vanilla-cmangos bun scripts/build-db.mjs # b
 bun scripts/probe-wowhead-thumbs.mjs  # LOCAL: classify every creature display_id by whether Wowhead's Classic webthumb exists -> scripts/data/model-thumb-missing.json (the 404 set = Turtle-custom models to render ourselves). Needs built DB. --fresh ignores the cache
 python scripts/render-model-thumbs.py # LOCAL: render the missing-worklist creature models (client MPQ -> M2 v256 parse -> headless-GL) -> public/model-thumbs/<displayId>.webp (300x300 transparent) + manifest.json. Skips CHARACTER models (need char-texture compositing). --only ID / --size N / --characters / --force. Needs moderngl+numpy+Pillow+StormLib+GPU
 python scripts/extract-item-appearance.py # LOCAL: client ItemDisplayInfo.dbc + the built DB -> scripts/data/item-appearance.json (display_id -> model/texture/geosets/component textures; powers the 3D tab). --probe prints the field-layout evidence and writes nothing. Run build-db FIRST
-python scripts/export-models.py       # LOCAL: client M2 v256 -> public/model3d/**.m2b + .webp textures (R2-only) for the in-browser viewer. --only NAME / --limit N / --force
+python scripts/extract-char-appearance.py # LOCAL: client ChrRaces/CharSections/CharHairGeosets/CharacterFacialHairStyles/HelmetGeosetVisData -> scripts/data/char-appearance.json (the mannequin's model paths + appearance options). --probe prints the layout evidence
+python scripts/export-models.py       # LOCAL: client M2 v256 -> public/model3d/**.m2b + .webp textures (R2-only) for the in-browser viewer. --sets item,char / --only NAME / --limit N / --force
 bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
 bun scripts/build-api.mjs             # public JSON API: rich per-entity JSON + tooltipHtml -> dist/api/<i|n|q|s>/<id>.json (served from R2 at api.tortoiseclothing.org); API_LIMIT=N for a fast subset
 ```
@@ -640,6 +641,54 @@ jQuery and a **CORS proxy server** besides. Same call, same reason, as `OWN_MODE
   they get no tab rather than an empty one. ~2.5k of 10.2k displays qualify today.
 - Assets are the R2 set `model3d/` (817 models 7.7 MB + 1,559 item textures 6.9 MB + 274
   embedded 1.8 MB), `optional` like `sounds`. The DB cost is **+0.11 MB brotli**.
+
+### The mannequin (`?dressing`)
+
+The playable character model, rendered from the same pipeline, with race / gender / skin /
+face / hair / facial-hair pickers whose state rides in the URL. Phase one of the transmog
+builder: the rig everything else hangs off. `scripts/extract-char-appearance.py` writes the
+committed `scripts/data/char-appearance.json` (10 races x 2 genders, 6,617 CharSections
+rows, 5,552 textures); `export-models.py --sets char` writes the 20 models (4.0 MB -- 40x
+smaller than the client's 3.5 MB each, since the animation tracks are not shipped) plus
+their textures, and copies the JSON into the R2 set. The viewer FETCHES that JSON rather
+than bundling it: at ~1 MB it would otherwise be the largest single thing in the main JS
+chunk, paid by every visitor to serve one page.
+
+Four things here are counter-intuitive enough to be worth stating, all of them found by
+looking rather than by recalling:
+
+- **The body texture is composited, and the client never ships the result.** It paints
+  skin, face, underwear (and later every armor piece) into fixed rectangles of one 256x256
+  atlas. `src/charcomposite.js` `REGIONS` holds those rectangles; they were recovered by
+  matching real component textures into the client's own `Textures\BakedNpcTextures\`
+  composites and taking the modal offset over hundreds of bakes. Eight of ten agreed
+  unanimously; `torso_u` matched nothing confidently and is pinned by exhaustion instead --
+  the two columns tile the atlas exactly, and it is the only slot left.
+- **Geoset selection is "variant 1, or nothing if the model has no variant 1"** -- not
+  "lowest variant", and not "body groups only". Both alternatives were tried and both are
+  wrong in a way that looks like a different bug: dropping the clothing groups leaves a
+  torso, hands and feet floating with no legs (Human male's bare legs ARE geoset 1301),
+  while taking each group's lowest variant dresses a naked character in a sleeve (802) and
+  a kilt (1302), because that group has no variant 1 at all. The cape group (15) is the one
+  explicit exclusion: with no cloak equipped its geoset still draws an untextured sheet.
+- **Pillow decodes palettized BLP2 with alpha 0 everywhere**, because it takes alpha from
+  the palette entry instead of from the separate alpha section that follows the indices.
+  Those are exactly the CUTOUT textures -- hair, capes, fur -- so the mesh does not look
+  wrong, it vanishes at the alpha test, and every hairstyle on every race was invisible.
+  `m2.py` `_decode_blp2_raw` handles encoding 1 with alpha depth 0/1/4/8; DXT and BLP1
+  still go through Pillow, which gets those right.
+- **A hairstyle is two halves.** Its `CharSections` row carries three textures: [0] is the
+  hair MESH texture, bound to the model's own texType 6 slot, while [1]/[2] are the scalp,
+  composited into the face rectangles so the hairline meets the head. Using only the first
+  gives a floating wig; using only the others gives a bald character with a painted-on
+  hairline.
+
+DBC layouts, likewise derived: `ChrRaces` keeps the internal name at 15 and the localized
+block at 17 (deDE at 20, zhCN 21, ruRU 22 -- which is how the block was located), and the
+male/female display ids at 4/5, where field 3 ALSO resolves to a valid character model but
+points at the wrong race. `CharacterFacialHairStyles` has three junk fields holding
+`0xCCCCCCCC` -- uninitialised memory shipped in the DBC -- before its real geoset ids at
+6-8. Turtle relabels race 10 as "High Elf" and 5 as "Undead" in the enUS block.
 
 ### Custom icons
 

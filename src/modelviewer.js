@@ -12,7 +12,8 @@
 // spinning in a hidden pane burns battery for nothing.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { parseM2B, bounds } from "./m2b.js";
+import { parseM2B, bounds, TEX_HAIR } from "./m2b.js";
+import { compositeBody, SECTION_REGIONS } from "./charcomposite.js";
 import { MODELS_BASE } from "./config.js";
 
 /** Cheap probe -- callers use it to decide whether to offer a 3D tab at all. Creating
@@ -118,8 +119,18 @@ export async function mountItemViewer(el, opts = {}) {
       ? loadTexture(embeddedUrl(t.name))
       : (opts.texture ? loadTexture(textureUrl(opts.texture)) : Promise.resolve(null))
   )));
-  const itemTex = slotTex.find((t, i) => t && model.textures[i].type !== 0) || null;
-  const tex = itemTex;
+  return buildViewer(el, model, slotTex, { label: opts.model, texture: opts.texture || null });
+}
+
+/**
+ * The shared scene: geometry, materials, camera, controls and the render scheduling.
+ * Both entry points end here -- an item and a character differ only in which model they
+ * load, which textures fill its slots, and which geosets are visible.
+ *   opts: { label, texture, geosets (Set of visible geoset ids, or null for all) }
+ */
+function buildViewer(el, model, slotTex, opts = {}) {
+  const tex = slotTex.find((t, i) => t && model.textures[i].type !== 0)
+    || slotTex.find(Boolean) || null;
 
   const width = () => Math.max(1, el.clientWidth || 480);
   const height = () => Math.max(1, el.clientHeight || 360);
@@ -163,14 +174,20 @@ export async function mountItemViewer(el, opts = {}) {
   geom.setIndex(new THREE.BufferAttribute(model.idx, 1));
 
   const materials = [];
+  const drawnSubs = [];
   let drawn = 0;
   model.submeshes.forEach((sub) => {
     if (!sub.count) return;
+    // A character model carries EVERY variant of every geoset -- all hairstyles, all
+    // beards, gloves, boots, robe, cape -- and drawing them all gives you a figure with
+    // four hairstyles at once. The caller passes the set it wants.
+    if (opts.geosets && !opts.geosets.has(sub.geoset)) return;
     geom.addGroup(sub.first, sub.count, materials.length);
     // texSlot 0xFF means the submesh resolved no texture at all; fall back to the item's
     // own rather than drawing it untextured.
     const map = (sub.texSlot < slotTex.length ? slotTex[sub.texSlot] : null) || tex;
     materials.push(materialFor(sub, map));
+    drawnSubs.push([sub.geoset, sub.texType, sub.blend, map ? 1 : 0]);
     drawn++;
   });
   const mesh = new THREE.Mesh(geom, materials);
@@ -182,7 +199,10 @@ export async function mountItemViewer(el, opts = {}) {
   const { center, radius } = opaqueBounds(model) || bounds(model);
   const camera = new THREE.PerspectiveCamera(35, width() / height(), radius / 100, radius * 100);
   const target = new THREE.Vector3(center[0], center[2], -center[1]);  // same swap as root
-  camera.position.set(target.x + radius * 2.2, target.y + radius * 1.1, target.z + radius * 2.6);
+  // A weapon reads best from a three-quarter angle; a character has a front, and showing
+  // it in profile makes the face -- the thing the pickers change -- invisible.
+  const dir = opts.front || [2.2, 1.1, 2.6];
+  camera.position.set(target.x + radius * dir[0], target.y + radius * dir[1], target.z + radius * dir[2]);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.copy(target);
@@ -283,10 +303,15 @@ export async function mountItemViewer(el, opts = {}) {
 
   const viewer = {
     state: () => ({
-      status: "ok", model: opts.model, texture: opts.texture || null,
+      status: "ok", model: opts.label || null, texture: opts.texture || null,
       textured: !!tex, meshes: drawn, triangles: model.idx.length / 3,
       vertices: model.pos.length / 3, frames, spinning: spin,
       running, visible,                  // false/false = costing nothing right now
+      geosets: opts.geosets ? [...opts.geosets].sort((a, b) => a - b) : null,
+      // [geoset, texType, blend, hasTexture] per drawn submesh -- what actually
+      // reached the GPU, which is the only way to tell "filtered out" from
+      // "drawn but invisible".
+      drawn: drawnSubs,
     }),
     /** Render and read back in ONE tick. A WebGL canvas is blank to toDataURL() unless
      *  it is read in the same frame as the draw, and paying preserveDrawingBuffer
@@ -319,4 +344,138 @@ export async function mountItemViewer(el, opts = {}) {
   hook.snapshot = viewer.snapshot;
   window.__mv = hook;                    // smoke-test hook, same convention as __zoneDots
   return viewer;
+}
+
+// ---------------------------------------------------------------------------
+// Characters (the dressing-room mannequin)
+// ---------------------------------------------------------------------------
+
+let charDataPromise = null;
+/** The race/skin/face/hair option tables (scripts/data/char-appearance.json). Fetched,
+ *  not bundled: at ~1 MB it would be the largest single thing in the main JS chunk, paid
+ *  by every visitor to serve one page. Cached for the session. */
+export function charAppearance() {
+  if (!charDataPromise) {
+    charDataPromise = fetch(`${MODELS_BASE}char-appearance.json`)
+      .then((r) => { if (!r.ok) throw new Error(`char-appearance.json (${r.status})`); return r.json(); })
+      .catch((e) => { charDataPromise = null; throw e; });
+  }
+  return charDataPromise;
+}
+
+const charTexUrl = (name) =>
+  `${MODELS_BASE}chartex/${String(name).toLowerCase().replace(/\\/g, "/").replace(/\.blp$/, "")}.webp`;
+
+/** The CharSections row for one option, or the first row of that section as a fallback
+ *  (a race may simply not offer the variation/colour a shared default asks for). */
+function section(data, race, sex, kind, variation, color) {
+  const rows = data.sections[`${race}-${sex}-${kind}`] || [];
+  return rows.find((r) => r[0] === variation && r[1] === color)
+    || rows.find((r) => r[0] === variation)
+    || rows[0] || null;
+}
+
+// A group whose lowest variant is NOT part of the naked body. The cape (15) is the clear
+// case: with no cloak equipped its geoset still exists and draws an untextured sheet
+// hanging off the shoulders.
+//
+// Everything else keeps its lowest variant, and it is worth saying why, because the
+// tidier-looking rule is wrong: the "clothing" groups double as the bare limbs. Dropping
+// groups 8/9/11/13 as equipment left a mannequin of torso, hands and feet floating apart
+// with no legs or forearms at all -- on Human male those geosets start at variant 2
+// (there is no 801), and that lowest variant IS the bare limb.
+const NOT_BODY_GROUPS = new Set([15]);
+
+/** Which geosets a naked character shows: the body, its bare limbs, the chosen hairstyle
+ *  and the chosen facial hair. Equipment overrides its own group later.
+ *
+ *  The rule is variant **1**, or nothing when the model has no variant 1 -- which is what
+ *  the client does, and neither of the two obvious alternatives. Dropping the clothing
+ *  groups entirely leaves a torso, hands and feet floating with no legs (Human male's
+ *  bare legs live in geoset 1301). Taking each group's LOWEST variant instead dresses the
+ *  mannequin in whatever garment happens to be numbered first -- on Human male that is a
+ *  sleeve (802) and a kilt (1302), because the group has no variant 1 at all. */
+export function baseGeosets(model, { hairGeoset = 0, facial = [] } = {}) {
+  const present = new Set(model.submeshes.map((s) => s.geoset));
+  const groups = new Set(model.submeshes.map((s) => Math.floor(s.geoset / 100)));
+  const out = new Set([0]);                       // geoset 0 is the body itself
+  for (const group of groups) {
+    if (group === 0 || NOT_BODY_GROUPS.has(group)) continue;
+    if (present.has(group * 100 + 1)) out.add(group * 100 + 1);
+  }
+  if (hairGeoset) out.add(hairGeoset);
+  // Facial hair lives in groups 1/2/3 (beard, moustache, sideburns); a 0 means "none".
+  facial.forEach((v, i) => { if (v) out.add((i + 1) * 100 + v); });
+  return out;
+}
+
+/**
+ * Mount a character mannequin.
+ *   opts: { race (ChrRaces id), sex ("m"|"f"), skin, face, hair, hairColor, facialHair }
+ */
+export async function mountCharacterViewer(el, opts = {}) {
+  const data = await charAppearance();
+  const race = opts.race || 1;
+  const sex = opts.sex === "f" ? "f" : "m";
+  const skin = opts.skin || 0, face = opts.face || 0;
+  const hairStyle = opts.hair || 0, hairColor = opts.hairColor || 0;
+  const facialStyle = opts.facialHair || 0;
+
+  const res = await fetch(`${MODELS_BASE}char/${race}-${sex}.m2b`);
+  if (!res.ok) throw new Error(`character ${race}-${sex} unavailable (${res.status})`);
+  const model = parseM2B(await res.arrayBuffer());
+
+  // The body atlas, painted in the client's own order: skin, then the face, then
+  // underwear over it.
+  const skinRow = section(data, race, sex, "skin", 0, skin);
+  const faceRow = section(data, race, sex, "face", face, skin);
+  const underRow = section(data, race, sex, "underwear", 0, skin);
+  const facialRow = section(data, race, sex, "facial", facialStyle, hairColor);
+  const hairRow = section(data, race, sex, "hair", hairStyle, hairColor);
+
+  const layers = [];
+  const push = (row, regions) => {
+    if (!row) return;
+    row[2].forEach((tex, i) => {
+      if (regions[i]) layers.push({ url: charTexUrl(tex), region: regions[i] });
+    });
+  };
+  push(faceRow, SECTION_REGIONS.face);
+  if (hairStyle) push(hairRow, SECTION_REGIONS.hair);   // scalp/hairline over the face
+  push(underRow, SECTION_REGIONS.underwear);
+  if (facialStyle) push(facialRow, SECTION_REGIONS.facial);
+
+  const canvas = await compositeBody({
+    base: skinRow?.[2]?.[0] ? charTexUrl(skinRow[2][0]) : null,
+    layers,
+  });
+  const body = new THREE.CanvasTexture(canvas);
+  body.colorSpace = THREE.SRGBColorSpace;
+  body.flipY = false;
+
+  // The hairstyle's own texture is a separate slot (texType 6) -- it is not part of the
+  // body atlas, which is why a hairless mannequin is what you get if it is skipped.
+  const hairTex = hairRow?.[2]?.[0] ? await loadTexture(charTexUrl(hairRow[2][0])) : null;
+
+  const slotTex = model.textures.map((t) => {
+    if (t.type === TEX_HAIR) return hairTex || body;
+    if (t.type === 0 && t.name) return null;       // embedded; resolved below
+    return body;                                   // 1 = character skin, 2 = object skin
+  });
+  await Promise.all(model.textures.map(async (t, i) => {
+    if (t.type === 0 && t.name) slotTex[i] = await loadTexture(embeddedUrl(t.name));
+  }));
+
+  const hairGeoset = (data.hair[`${race}-${sex}`] || []).find((h) => h[0] === hairStyle)?.[1] || 0;
+  const facialGeosets = (data.facial[`${race}-${sex}`] || []).find((f) => f[0] === facialStyle)?.slice(1) || [];
+
+  return buildViewer(el, model, slotTex, {
+    label: `${race}-${sex}`,
+    geosets: baseGeosets(model, { hairGeoset, facial: facialGeosets }),
+    // Straight on: a character model faces WoW +Y, which is -Z after the Y-up swap.
+    // The distance is not a taste choice -- `radius` is half the LARGEST dimension, and
+    // for an upright figure that is its height, so at a 35 degree FOV anything closer
+    // than ~3.2 radii crops the head.
+    front: [0, 0.2, -3.6],
+  });
 }

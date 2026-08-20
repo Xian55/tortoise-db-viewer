@@ -1591,3 +1591,9 @@ td .pet-rank { margin: 1px 0; }
 .sound-files li, .sound-lines li { padding: 3px 0; }
 .snd-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); word-break: break-all; }
 .sound-player { margin: 10px 0 6px; }
+
+/* Dressing room (?dressing): the mannequin plus its appearance pickers. */
+.dressing h1 { margin-bottom: 4px; }
+.dress-bar { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 12px 0; }
+.dress-pick { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.dress-pick select { min-width: 92px; }

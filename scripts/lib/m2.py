@@ -416,13 +416,72 @@ def skin(m2, anim=None, tfrac=0.0):
     return out_p.astype("f4"), out_n.astype("f4")
 
 
+def _decode_blp2_raw(data):
+    """BLP2, encoding 1 (palettized) -> a Pillow RGBA image, or None if not that shape.
+
+    Pillow is used for everything else, but NOT for this case: it returns alpha 0 for
+    every pixel of a palettized BLP that carries a separate alpha section, because it
+    takes alpha from the palette entry (which is 0) instead of from that section. The
+    result is a texture that is entirely transparent -- and since these are exactly the
+    CUTOUT textures (hair, capes, fur, foliage), the mesh vanishes at the alpha test
+    rather than looking wrong, which makes it read as a geometry bug. Every hairstyle on
+    every character was invisible until this was written.
+
+    Layout: header (magic, type, encoding, alphaDepth, alphaEncoding, hasMips, w, h),
+    16 mip offsets, 16 mip sizes, a 256-entry BGRA palette, then the mip data: one index
+    byte per pixel, followed by the alpha section at alphaDepth bits per pixel.
+    """
+    from PIL import Image
+    if len(data) < 148 + 1024 or data[:4] != b"BLP2":
+        return None
+    encoding, alpha_depth = data[8], data[9]
+    if encoding != 1:                       # 2 = DXT; Pillow handles those correctly
+        return None
+    w, h = struct.unpack_from("<2I", data, 12)
+    mip_off = struct.unpack_from("<I", data, 20)[0]
+    palette = data[148:148 + 1024]
+    npx = w * h
+    if not npx or mip_off + npx > len(data):
+        return None
+    # numpy, not a per-pixel loop: this runs over ~7,000 textures, and the loop version
+    # spent minutes of CPU on the palette lookup alone before it was replaced.
+    import numpy as np
+    pal = np.frombuffer(palette, dtype=np.uint8).reshape(256, 4)[:, [2, 1, 0]]  # BGRA -> RGB
+    idx = np.frombuffer(data, dtype=np.uint8, count=npx, offset=mip_off)
+    rgba = np.empty((npx, 4), dtype=np.uint8)
+    rgba[:, :3] = pal[idx]
+    rgba[:, 3] = 255
+
+    ao = mip_off + npx
+    if alpha_depth == 8 and ao + npx <= len(data):
+        rgba[:, 3] = np.frombuffer(data, dtype=np.uint8, count=npx, offset=ao)
+    elif alpha_depth == 1 and ao + (npx + 7) // 8 <= len(data):
+        packed = np.frombuffer(data, dtype=np.uint8, count=(npx + 7) // 8, offset=ao)
+        # bit-packed, least significant bit first -- hence bitorder="little"
+        rgba[:, 3] = np.unpackbits(packed, bitorder="little")[:npx] * 255
+    elif alpha_depth == 4 and ao + (npx + 1) // 2 <= len(data):
+        packed = np.frombuffer(data, dtype=np.uint8, count=(npx + 1) // 2, offset=ao)
+        nib = np.empty(len(packed) * 2, dtype=np.uint8)
+        nib[0::2] = packed & 0x0F
+        nib[1::2] = packed >> 4
+        rgba[:, 3] = nib[:npx] * 17
+    # any other depth (or a truncated section) leaves alpha at 255: opaque beats invisible
+    return Image.frombytes("RGBA", (w, h), rgba.tobytes())
+
+
 def blp_to_rgba(storm, path):
-    """Decode a client BLP to a Pillow RGBA image, or None. Pillow handles BLP1
-    (JPEG + palettized) and BLP2 (palettized + DXT1/3/5); only mip 0 is used."""
+    """Decode a client BLP to a Pillow RGBA image, or None. Palettized BLP2 is decoded
+    here (see _decode_blp2_raw); BLP1 and the DXT-compressed BLP2s go through Pillow."""
     from PIL import Image
     data = storm.read(path)
     if not data:
         return None
+    try:
+        own = _decode_blp2_raw(data)
+        if own is not None:
+            return own
+    except Exception:
+        pass
     try:
         return Image.open(BytesIO(data)).convert("RGBA")
     except Exception:
