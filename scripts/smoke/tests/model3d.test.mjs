@@ -178,3 +178,22 @@ smoke("dressing room renders human male", () => testDressingRoom(1, "m"));
 smoke("dressing room renders tauren female", () => testDressingRoom(6, "f"));
 smoke("dressing room naked geoset rule", () => testNakedGeosets());
 smoke("dressing room draws hair with its own texture", () => testHairDrawn());
+
+// Bald is not "draw nothing". CharHairGeosets gives geoset 0 (no hair mesh) and geoset 1
+// is the cap that closes the top of the skull -- without it the body mesh stops below
+// the crown, which read as a scalpless human and a headless troll. Meanwhile variation 0
+// is only "bald" on SOME races: on a gnome it is a real hairstyle, so the check is that
+// the model gains a scalp exactly where it has no hair mesh.
+async function testBaldScalp(race, sex, expectHair) {
+  await nav(`?dressing&race=${race}&sex=${sex}&hair=0&hcolor=0&facial=0`);
+  await page.waitForFunction(() => window.__mv && window.__mv().geosets, { timeout: T });
+  const st = await page.evaluate(() => window.__mv());
+  const hairMesh = st.drawn.some((d) => d[1] === 6);
+  const scalp = st.geosets.includes(1);
+  console.log(`bald ${race}-${sex}: geosets=[${st.geosets}] hairMesh=${hairMesh} scalp=${scalp} (want hairMesh=${expectHair})`);
+  return hairMesh === expectHair && (hairMesh || scalp);
+}
+
+smoke("dressing room bald human keeps its scalp", () => testBaldScalp(1, "m", false));
+smoke("dressing room bald troll keeps its head", () => testBaldScalp(8, "m", false));
+smoke("dressing room gnome variation 0 is a real hairstyle", () => testBaldScalp(7, "f", true));

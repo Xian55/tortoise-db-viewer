@@ -141,7 +141,13 @@ def main():
         sec = SECTIONS.get(r[CS_SECTION])
         if sec is None:
             continue
-        tex = []
+        # SLOT POSITION IS MEANING. The three textures are (hair mesh, scalp lower, scalp
+        # upper) for hair and (lower, upper) for a face, and the viewer maps them to
+        # rectangles BY INDEX. An earlier version appended only the surviving textures,
+        # which silently shifted every later one down a slot whenever the client was
+        # missing an entry -- troll female hairstyle 5 has no ScalpLower, so its
+        # ScalpUpper was painted onto the lower face. Missing entries stay as holes.
+        tex = [""] * 3
         referenced = 0
         for i in range(3):
             t = css(r[CS_TEX + i])
@@ -149,7 +155,7 @@ def main():
                 continue
             referenced += 1
             if exists(t):
-                tex.append(t)
+                tex[i] = t
                 textures.add(t)
             else:
                 dropped_tex += 1
@@ -157,9 +163,11 @@ def main():
         # nothing -- "bald", "no facial hair". Dropping those (as an earlier version did,
         # by testing `not tex`) deleted hair variation 0 for every race, so choosing bald
         # fell through to whatever hairstyle happened to be first.
-        if referenced and not tex:
+        if referenced and not any(tex):
             dropped_rows += 1
             continue
+        while tex and not tex[-1]:          # trailing holes carry no information
+            tex.pop()
         key = f"{r[CS_RACE]}-{sex_key(r[CS_SEX])}-{sec}"
         sections.setdefault(key, []).append([r[CS_VAR], r[CS_COLOR], tex])
 

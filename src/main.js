@@ -1147,7 +1147,9 @@ async function showDressingRoom(params, navigate) {
     [...new Set((data[table][`${state.race}-${state.sex}`] || []).map((r) => r[0]))].sort((a, b) => a - b);
   const pick = (label, key, values, cur) => values.length > 1
     ? `<label class="dress-pick">${esc(label)}<select data-key="${key}">`
-      + values.map((v) => `<option value="${v}"${v === cur ? " selected" : ""}>${v + 1}</option>`).join("")
+      // Label with the value itself, not v+1: the URL carries the raw variation, and a
+      // 1-based label makes the picker and the link disagree about which style is which.
+      + values.map((v) => `<option value="${v}"${v === cur ? " selected" : ""}>${v}</option>`).join("")
       + `</select></label>`
     : "";
   const render = () => {

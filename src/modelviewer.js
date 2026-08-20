@@ -389,6 +389,7 @@ function section(data, race, sex, kind, variation, color) {
 // hole between the shoulders of every character on the site.
 const NOT_BODY_GROUPS = new Set();
 const EAR_GROUP = 7;
+const BALD_SCALP = 1;   // geoset 1: the scalp cap worn when no hairstyle is drawn
 
 /** Which geosets a naked character shows: the body, its bare limbs, the chosen hairstyle
  *  and the chosen facial hair. Equipment overrides its own group later.
@@ -412,6 +413,13 @@ export function baseGeosets(model, { hairGeoset = 0, facial = [] } = {}) {
     if (present.has(group * 100 + want)) out.add(group * 100 + want);
   }
   if (hairGeoset) out.add(hairGeoset);
+  // A hairstyle carries its own scalp piece under its own geoset id (the texType 1
+  // submesh alongside the texType 6 hair). BALD has no such piece: CharHairGeosets gives
+  // geoset 0, i.e. no hair mesh at all, and geoset 1 is the cap that closes the top of
+  // the skull. Without it the body mesh simply stops below the crown -- a human went
+  // scalpless and a troll looked headless, because their bodies end at z 1.93 and 2.12
+  // while the head reaches 1.99 and 2.20.
+  else if (present.has(BALD_SCALP)) out.add(BALD_SCALP);
   // Facial hair lives in groups 1/2/3 (beard, moustache, sideburns); a 0 means "none".
   facial.forEach((v, i) => { if (v) out.add((i + 1) * 100 + v); });
   return out;
@@ -444,14 +452,21 @@ export async function mountCharacterViewer(el, opts = {}) {
   const layers = [];
   const push = (row, regions) => {
     if (!row) return;
+    // A hole in the list is a texture the client does not ship; skip it WITHOUT shifting
+    // the ones after it, since the slot index is what decides the rectangle.
     row[2].forEach((tex, i) => {
-      if (regions[i]) layers.push({ url: charTexUrl(tex), region: regions[i] });
+      if (tex && regions[i]) layers.push({ url: charTexUrl(tex), region: regions[i] });
     });
   };
   push(faceRow, SECTION_REGIONS.face);
-  if (hairStyle) push(hairRow, SECTION_REGIONS.hair);   // scalp/hairline over the face
+  // Push the ROW, never gate on the variation being non-zero: variation 0 is only "none"
+  // on the races where it happens to be (human/troll bald). For a gnome or a goblin it is
+  // a real hairstyle, and skipping its scalp left the hairline unpainted -- bare skin
+  // meeting the hair mesh at a hard edge. A row that paints nothing already carries an
+  // empty texture list, so the bald case needs no special case at all.
+  push(hairRow, SECTION_REGIONS.hair);                  // scalp/hairline over the face
   push(underRow, SECTION_REGIONS.underwear);
-  if (facialStyle) push(facialRow, SECTION_REGIONS.facial);
+  push(facialRow, SECTION_REGIONS.facial);
 
   const canvas = await compositeBody({
     base: skinRow?.[2]?.[0] ? charTexUrl(skinRow[2][0]) : null,
