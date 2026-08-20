@@ -374,8 +374,13 @@ async function testZoneSubzoneFocus(id, sub) {
     return d && d.length > 0 && d.length < n ? d.length : null;
   }, { timeout: T }, before).then((h) => h.jsonValue()).catch(() => 0);
   const url = await page.evaluate(() => location.search);
-  console.log(`zone-subzone-focus ${id}->${sub}: dots ${before} -> ${after} url="${url}"`);
-  return before > 0 && after > 0 && after < before && url.includes(`sub=${sub}`);
+  // The dropdown NAMES the sub-area, so it must also be able to reach its page --
+  // the "Open >" link beside it (hidden while no sub-area is focused).
+  const open = await page.$eval("#zonemap .wm-filter .wm-sub-open",
+    (a) => ({ href: a.getAttribute("href"), shown: a.style.display !== "none" })).catch(() => null);
+  console.log(`zone-subzone-focus ${id}->${sub}: dots ${before} -> ${after} url="${url}" open=${JSON.stringify(open)}`);
+  return before > 0 && after > 0 && after < before && url.includes(`sub=${sub}`)
+    && !!open && open.shown && open.href === `?subzone=${sub}`;
 }
 
 smoke("farm-route 17 copper", () => testFarmRoute(17, 2770));

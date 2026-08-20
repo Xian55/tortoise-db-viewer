@@ -2,7 +2,7 @@
 // embed, video link, quest chain (branches/merges), zone chain, NPC/kill locations,
 // required drops, quest map (single/multi/bounds), object + rep links, origin badge.
 import { page, nav, T, smoke } from "../harness.mjs";
-import { testBrowse, testShareButton } from "./_shared.mjs";
+import { testBrowse, testShareButton, testLocationSubzoneLink } from "./_shared.mjs";
 
 // quest detail: header + tabs (givers/objectives/rewards) + sortable pane + desc.
 async function testQuest(id, expectName) {
@@ -83,7 +83,10 @@ async function testQuestZoneChain(id) {
   await page.waitForSelector(".quest-page .npc-head", { timeout: T });
   const meta = await page.$eval(".quest-page .npc-head", (e) => e.textContent.replace(/\s+/g, " ").trim());
   const zoneHrefs = await page.$$eval(".quest-page .npc-head a.ilink.zone", (a) => a.map((x) => x.getAttribute("href")));
-  const ok = meta.includes("Eastern Kingdoms") && meta.includes("Elwynn Forest") && meta.includes("Northshire Valley") && zoneHrefs.some((h) => h.includes("zone=12"));
+  // The LEAF is a sub-area with no parchment of its own, so it links to ?subzone=,
+  // not ?zone= -- it used to render as dead text.
+  const ok = meta.includes("Eastern Kingdoms") && meta.includes("Elwynn Forest") && meta.includes("Northshire Valley")
+    && zoneHrefs.some((h) => h.includes("zone=12")) && zoneHrefs.some((h) => h.startsWith("?subzone="));
   console.log(`quest-zone-chain ${id}: meta="${meta.slice(0, 90)}" zoneHrefs=${JSON.stringify(zoneHrefs)} ok=${ok}`);
   return ok;
 }
@@ -285,6 +288,7 @@ smoke("quest video-link 14", () => testQuestVideoLink(14));
 smoke("share quest 14", () => testShareButton("quest", 14, "q"));
 smoke("quest chain 55220", () => testQuestChain(55220, 11));
 smoke("quest npc-location 55220", () => testQuestNpcLocation(55220));
+smoke("quest location-subzone-link 107", () => testLocationSubzoneLink("?quest=107", "The Stonefield Farm", "Starts (NPC)"));
 smoke("quest zone-chain 783", () => testQuestZoneChain(783));
 smoke("quest branch 783", () => testQuestBranch(783));
 smoke("quest merge 5862", () => testQuestBranch(5862, ".qc-merge"));

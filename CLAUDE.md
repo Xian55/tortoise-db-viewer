@@ -253,6 +253,26 @@ feature rests on.
   change would drop the WebGL context and silently reset category toggles, "Selected"
   rows and pan/zoom. The dropdown is suppressed in `focus` mode (a `?zone=X&gather=Y`
   view builds no category sprites at all).
+- **Every rendered sub-area name is a link.** A page exists for each one, so printing
+  the name as dead text is a bug, and the places that did it were all *downstream* of
+  the subzone work rather than part of it:
+  - `main.js` `subSuffix` — the second half of the shared Location cell, which
+    `resolveNpcLocations` builds for **every** Location column on the site (quest
+    givers/enders, item Dropped-by/Sold-by, faction members, spell trainers). One
+    helper, ~8 tables.
+  - the quest header's `continent > zone > sub-zone` chain and the Zone cell on both
+    `?browse=quests` and the search Quests tab. `quests.zone` is a **leaf** area, so it
+    is a sub-area about as often as a zone; the old code linked it only when it had a
+    parchment (`zones.areaid`) and printed the rest. `Q_SUBZONE_EXISTS` / a `sub_page`
+    column decides which of the two pages it gets.
+  - the zone map's subzone dropdown, which names an area a `<select>` can't link —
+    hence the `Open ›` anchor beside it.
+- **The trainer Location column was the last user of the pre-subzone locator** — "the
+  largest WorldMapArea box containing the spawn". Those boxes overlap far too badly for
+  that (Sayoc, NPC 11868, stands in Orgrimmar and the biggest box over him is Azshara's),
+  so the spell page and the NPC's own page named different zones. Every Location now goes
+  through `resolveNpcLocations` → ADT-exact `spawn_points.zone`. If a location disagrees
+  across two pages, look for a second locator rather than bad data.
 - **Optional schema.** The frontend is shared by every dataset, so a deploy lands on
   DBs built before this. `db.js` `caps()` probes for the table + column once and the
   UI degrades: no Subzones tab, no dropdown, empty search tab, zone-only Location

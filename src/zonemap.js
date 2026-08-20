@@ -782,11 +782,26 @@ export function initZoneMap(el, zone, spawns, objects, navigate, opts = {}) {
     header = L.DomUtil.create("div", "wm-filter");
     const optHtml = ['<option value="">All subzones</option>'].concat(subzones.map((s) =>
       `<option value="${s.entry}"${s.entry === subFocus ? " selected" : ""}>${esc(s.name)}${s.spawns ? ` (${s.spawns})` : ""}</option>`)).join("");
-    header.innerHTML = `<select class="wm-zone" title="Focus a subzone">${optHtml}</select>`;
+    // The dropdown NAMES a sub-area, so it also has to be able to reach its page --
+    // the same rule the Location cells follow. Shown only while one is focused.
+    header.innerHTML = `<select class="wm-zone" title="Focus a subzone">${optHtml}</select>`
+      + `<a class="wm-sub-open" href="?subzone=" title="Open this subzone's page">Open ›</a>`;
     const sel = header.querySelector(".wm-zone");
+    const openLink = header.querySelector(".wm-sub-open");
+    const syncOpen = () => {
+      openLink.style.display = subFocus != null ? "" : "none";
+      if (subFocus != null) openLink.href = `?subzone=${subFocus}`;
+    };
+    syncOpen();
+    L.DomEvent.on(openLink, "click", (e) => {
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; // let the browser open a tab
+      L.DomEvent.stop(e);
+      if (subFocus != null) navigate(`?subzone=${subFocus}`);
+    });
     sel.addEventListener("change", () => {
       subFocus = sel.value ? Number(sel.value) : null;
       applySubFocus();
+      syncOpen();
       const b = subFocus != null && subSpriteBounds(subFocus);
       map.fitBounds(b && b.isValid() ? b.pad(0.4) : bounds,
         b && b.isValid() ? { maxZoom: Math.min(map.getMaxZoom(), fitZoom + 2), padding: [30, 30] } : undefined);

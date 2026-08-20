@@ -597,6 +597,9 @@ a.ilink.zone { color: #8fd18f; }
 #zonemap .wm-filter select { max-width: 150px; }
 #zonemap .wm-filter input { width: 120px; }
 #zonemap .wm-filter input::placeholder { color: var(--muted); }
+/* "Open >" beside the subzone dropdown -- the map names a sub-area, so it must
+   also be able to reach its page (same rule as the Location cells). */
+#zonemap .wm-filter .wm-sub-open { font-size: 12px; white-space: nowrap; padding: 3px 2px; }
 /* docked, collapsible, searchable layer panel (replaces the stock layer control on
    both maps). One global search + collapsible groups; persistent (no hover). */
 #zonemap .wm-panel { background: var(--panel); color: var(--text);

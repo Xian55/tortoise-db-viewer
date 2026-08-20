@@ -68,9 +68,31 @@ async function testRageCost(id) {
   return cost === "15 Rage";
 }
 
+// The "Trained by" Location must name the SAME zone the trainer's own NPC page does.
+// It used to run its own "largest WorldMapArea box containing the spawn" lookup, and
+// those boxes overlap far too badly for that: Sayoc (11868) stands in Orgrimmar and
+// the biggest box over him is Azshara's, so the two pages disagreed. Both sides now
+// read the ADT-exact spawn_points.zone.
+async function testTrainerLocation(spell, npc, expectZone) {
+  await nav(`?spell=${spell}`);
+  await page.evaluate(() => { const b = [...document.querySelectorAll(".tab")].find((t) => t.textContent.includes("Trained by")); if (b) b.click(); });
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: T });
+  const row = await page.$$eval(".tabpane:not(.hidden) tbody tr", (trs, id) => {
+    const tr = trs.find((t) => t.querySelector(`a.ilink[href="?npc=${id}"]`));
+    return tr ? tr.lastElementChild.textContent.replace(/\s+/g, " ").trim() : null;
+  }, npc);
+  await nav(`?npc=${npc}`);
+  await page.waitForSelector(".npc-head .npc-meta", { timeout: T });
+  const npcMeta = await page.$eval(".npc-head .npc-meta", (e) => e.textContent.replace(/\s+/g, " ").trim());
+  const ok = !!row && row.includes(expectZone) && npcMeta.includes(expectZone);
+  console.log(`trainer-loc spell=${spell} npc=${npc}: spellPage="${row}" npcPage has "${expectZone}"=${npcMeta.includes(expectZone)} ok=${ok}`);
+  return ok;
+}
+
 smoke("spell 41746 Shadowforged Eye", () => testSpell(41746, "Shadowforged Eye"));
 smoke("spell detail 10 Blizzard", () => testSpellDetail(10, "Frost"));
 smoke("spell rage-cost 284", () => testRageCost(284));
+smoke("spell trainer-location 197/11868", () => testTrainerLocation(197, 11868, "Orgrimmar"));
 smoke("spell quest-reward 23161", () => testSpellQuestReward(23161));
 smoke("share spell 41746", () => testShareButton("spell", 41746, "s"));
 smoke("search spells Shadowforged", () => testSearchSpells("Shadowforged"));

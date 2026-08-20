@@ -2,7 +2,7 @@
 // custom icons, world-drop split, same-model, compare, sources, buy price,
 // gather/spell links, crafting/reagent relations, share button.
 import { page, nav, T, smoke } from "../harness.mjs";
-import { testShareButton } from "./_shared.mjs";
+import { testShareButton, testLocationSubzoneLink } from "./_shared.mjs";
 
 async function testItem(id, expectName) {
   await nav(`?item=${id}`);
@@ -368,6 +368,7 @@ smoke("item 2770 Copper Ore", () => testItem(2770, "Copper Ore"));
 smoke("item 55356 Netherwrought", () => testItem(55356, "Netherwrought"));
 smoke("item 647 Destiny", () => testItem(647, "Destiny"));
 smoke("item-worlddrop 14555", () => testItemWorldDrop(14555));
+smoke("item location-subzone-link 10319", () => testLocationSubzoneLink("?item=10319", null, "Dropped by"));
 smoke("item-set 22416/523", () => testItemSet(22416, 523));
 smoke("set-membership 640", () => testSetMembership(640, 55108, 70517));
 smoke("item reward-faction 22113", () => testQuestRewardFaction(22113));

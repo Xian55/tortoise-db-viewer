@@ -56,3 +56,27 @@ export async function testShareButton(param, id, prefix) {
   console.log(`share-btn ${param}=${id}: copied="${copied}" ok=${ok}`);
   return ok;
 }
+
+// The Location cell names BOTH halves and both are reachable: the zone, and the
+// sub-area when one dominates the NPC's spawns. The subzone half was plain text
+// until the shared `subSuffix` helper started linking it -- and that one cell is
+// rendered by every Location column on the site (quest givers, drop sources,
+// vendors, faction members), so the topic modules each point it at their own.
+// `tab` clicks a tab by label first, for pages where Location isn't the default pane.
+export async function testLocationSubzoneLink(url, expectSub, tab = null) {
+  await nav(url);
+  await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: T });
+  if (tab) {
+    await page.evaluate((t) => { const b = [...document.querySelectorAll(".tab")].find((x) => x.textContent.includes(t)); if (b) b.click(); }, tab);
+    await page.waitForSelector(".tabpane:not(.hidden) table tbody tr", { timeout: T });
+  }
+  const cell = await page.$$eval(".tabpane:not(.hidden) tbody tr td", (tds) => {
+    const td = tds.find((t) => t.querySelector('a.ilink[href^="?subzone="]'));
+    if (!td) return null;
+    const a = td.querySelector('a.ilink[href^="?subzone="]');
+    return { href: a.getAttribute("href"), name: a.textContent.trim(),
+             zoneLink: !!td.querySelector('a.ilink[href^="?zone="]') };
+  });
+  console.log(`loc-subzone-link ${url}${tab ? ` [${tab}]` : ""}: ${JSON.stringify(cell)}`);
+  return !!cell && cell.zoneLink && /^\?subzone=\d+$/.test(cell.href) && (!expectSub || cell.name === expectSub);
+}

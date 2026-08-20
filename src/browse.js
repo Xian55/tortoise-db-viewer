@@ -1,7 +1,7 @@
 // Browse / finder views with filters (wowhead-style). Filtering runs as SQL
 // against the in-memory DB; sorting + pagination are handled client-side by the
 // shared sortable table (src/table.js), the same one used everywhere else.
-import { query } from "./db.js";
+import { query, caps } from "./db.js";
 import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SUBZONES, Q_BROWSE_SPELLS, Q_BROWSE_ITEMSETS, Q_BROWSE_OBJECTS, Q_PROFESSION_LEARN } from "./queries.js";
 import { itemLink, npcLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, objectLink, sourceTags, moneyHtml, teamBadge, esc } from "./render.js";
 import { createTable } from "./table.js";
@@ -737,10 +737,17 @@ async function browseQuests(p) {
   if (f.faction === "a") { where.push(factionCond); binds.push(RACE_ALLIANCE, RACE_HORDE); }
   else if (f.faction === "h") { where.push(factionCond); binds.push(RACE_HORDE, RACE_ALLIANCE); }
   const whereSql = "WHERE " + where.join(" AND ");
+  // `quests.zone` is a LEAF area, so plenty of them are sub-areas with no parchment
+  // of their own (Northshire Valley) -- those used to print as dead text. `sub_page`
+  // gives them their ?subzone= page. Optional schema: a DB built before subzones has
+  // no such table, so the join only goes in when caps() says it exists.
+  const hasSub = (await caps()).subzones;
   const rows = await query(
     `SELECT q.entry, q.title, q.level, q.zone, q.type, q.custom, a.name AS zone_name, z.areaid AS zone_page
+            ${hasSub ? ", sz.entry AS sub_page" : ", NULL AS sub_page"}
      FROM quests q LEFT JOIN areas a ON a.entry = q.zone
-     LEFT JOIN zones z ON z.areaid = q.zone ${whereSql}
+     LEFT JOIN zones z ON z.areaid = q.zone
+     ${hasSub ? "LEFT JOIN subzones sz ON sz.entry = q.zone" : ""} ${whereSql}
      ORDER BY q.level, q.title`, binds);
 
   // Zone dropdown: only zones/categories that actually carry quests, labeled.
@@ -763,7 +770,9 @@ async function browseQuests(p) {
     { key: "zone", label: "Zone", cls: "muted",
       cell: (r) => isBridged(r)
         ? `<span title="Filed under ${esc(questZoneLabel(r.zone, r.zone_name) || "—")}">${esc(selZoneLabel)}</span>`
-        : (r.zone_page ? zoneLink(r.zone, questZoneLabel(r.zone, r.zone_name)) : esc(questZoneLabel(r.zone, r.zone_name))),
+        : r.zone_page ? zoneLink(r.zone, questZoneLabel(r.zone, r.zone_name))
+        : r.sub_page ? subzoneLink(r.zone, questZoneLabel(r.zone, r.zone_name))
+        : esc(questZoneLabel(r.zone, r.zone_name)),
       value: (r) => isBridged(r) ? selZoneLabel : questZoneLabel(r.zone, r.zone_name) },
     { key: "type", label: "Type", cls: "muted", cell: (r) => QUEST_TYPE[r.type] || "", value: (r) => QUEST_TYPE[r.type] || "" },
   ];
