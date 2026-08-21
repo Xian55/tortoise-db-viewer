@@ -89,15 +89,36 @@ export const SLOT_ATTACH = {
   3: [[6, "l"], [5, "r"]],          // Shoulder -> left + right, one model each
 };
 
-// Weapons are deliberately NOT here yet. An attachment gives a position and the bone's
-// rotation, and for a helm or a pauldron that is the whole answer -- they are rigid and
-// sit square on a bone. A held weapon is not: an M2's bind-pose bone matrices are
-// translation-only, so the hand's ORIENTATION lives in the mesh, not in the bone, and
-// hanging a mace off the hand point leaves it floating horizontally beside the character
-// rather than gripped. Getting it right needs the grip from an animation (and the sheath
-// rules in items.sheath, since a standing character wears its weapons rather than holding
-// them). Showing a weapon in obviously the wrong pose is worse than not showing it.
-export const WEAPON_SLOTS = [13, 14, 15, 17, 21, 22, 23, 25, 26, 28];
+// Held items. WHICH HAND is a property of the SLOT, not of the item: a one-hander
+// (inv 13) is a main hand or an off hand depending on where you put it, and reading the
+// item alone puts a dual-wielder's second sword in the hand that already holds the first.
+// So the slot decides when the caller knows it, and the inventory type is the fallback
+// for the pages that only know what is worn (the character sheet).
+//
+// Attachment ids were measured off a posed body, not recited: on a 2.13-unit human male,
+// 1 and 2 are a mirrored pair at 42% of height on the -Y / +Y side (hands at rest), 0
+// sits further out at 47% on the +Y arm (a shield is strapped to the forearm, not
+// gripped), and 12 is 0.19 behind the spine at 76% (the back).
+export const HAND_BY_SLOT = { mainhand: 1, offhand: 2, ranged: 2 };
+export const HAND_BY_INV = {
+  13: 1, 17: 1, 21: 1, 25: 1,       // one-hand, two-hand, main hand, thrown -> right hand
+  22: 2, 23: 2, 15: 2, 26: 2,       // off hand, held in off hand, bow, gun -> left hand
+  14: 0,                            // shield -> the forearm point
+};
+// Inv 28 (relic -- idol, libram, totem) is deliberately absent: it occupies the ranged
+// slot but a relic is never drawn on the character in game either.
+const SHIELD = 14;
+
+
+// A weapon is posed by the hand bone's own rotation, which the .m2b bakes alongside the
+// attachment position (format v2). The sheath rules in items.sheath are NOT applied: a
+// standing character wears its weapons, but a dressing room exists to show them, so they
+// are drawn as held -- the same choice Wowhead's makes.
+function heldAttach(it) {
+  if (it.inv === SHIELD) return 0;
+  const bySlot = it.slot ? HAND_BY_SLOT[it.slot] : undefined;
+  return bySlot !== undefined ? bySlot : HAND_BY_INV[it.inv];
+}
 
 // ChrRaces id -> the client's model-name code. A helm is modelled once per race AND
 // gender, so `Helm_Mail_D_01` alone is never a file: `Helm_Mail_D_01_HuM` is.
@@ -113,6 +134,15 @@ export function attachedModels(items, { race, sex }) {
   const code = `${RACE_CODE[race] || "hu"}${sex === "f" ? "f" : "m"}`;
   const out = [];
   for (const it of items) {
+    const held = heldAttach(it);
+    if (held !== undefined && it.model_l) {
+      // `grip` asks the viewer to hang the model off the hand rather than leave it in
+      // whatever orientation it was authored in. A shield is exempt: it is strapped flat
+      // to the forearm and already lands right.
+      out.push({ model: it.model_l, texture: it.tex_l, attach: held, item: it.entry,
+        inv: it.inv, grip: held !== 0 });
+      continue;
+    }
     const points = SLOT_ATTACH[it.inv];
     if (!points) continue;
     for (const [attach, which] of points) {

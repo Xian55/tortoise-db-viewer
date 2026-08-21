@@ -43,6 +43,8 @@ const SLOT_KEYS = new Set(SLOTS.map((s) => s.k));
 // loadout ever carries one it should just appear, and an absent slot costs nothing.
 const VISUAL_SLOTS = ["Shirt", "Chest", "Legs", "Feet", "Hands", "Wrist", "Waist",
   "Back", "Tabard", "Head", "Shoulder", "MainHand", "OffHand", "Ranged"];
+// The three slots whose item lands in a HAND, where the slot decides which one.
+const HELD_SLOT = { MainHand: "mainhand", OffHand: "offhand", Ranged: "ranged" };
 
 // The loadout stores race as its BITMASK (GearExport's shape); ChrRaces -- and so the
 // character models -- are numbered 1..10, and bit = 1 << (id - 1) throughout, including
@@ -1023,7 +1025,15 @@ export async function showCharacter(idOrChar, navigate) {
         const mod = await import("./modelviewer.js");
         // Only the slots that change how a character LOOKS; a ring is not one of them.
         const ids = VISUAL_SLOTS.map((k) => ch.slots?.[k]?.itemId).filter(Boolean);
-        const rows = ids.length ? await query(qDressItemsIn(ids.length), ids).catch(() => []) : [];
+        const found = ids.length ? await query(qDressItemsIn(ids.length), ids).catch(() => []) : [];
+        // Which hand a weapon ends up in follows from the SLOT it is worn in, and a
+        // one-hander says nothing about that by itself, so keep the loadout's own slot
+        // alongside each row (see chargear.js HAND_BY_SLOT).
+        const byEntry = new Map(found.map((r) => [r.entry, r]));
+        const rows = VISUAL_SLOTS.map((k) => {
+          const r = byEntry.get(ch.slots?.[k]?.itemId);
+          return r ? { ...r, slot: HELD_SLOT[k] } : null;
+        }).filter(Boolean);
         if (!hostEl.isConnected) return;
         hostEl.innerHTML = "";
         await mod.mountCharacterViewer(hostEl, {

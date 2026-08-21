@@ -740,12 +740,31 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
 - **A helm is 20 files**, one per race+gender (`Helm_Mail_D_01_HuM` … `_BeF`); the bare
   name does not exist. `export-models.py` expands them, which is most of the 4,015 item
   models.
-- **Weapons are deliberately not attached yet.** An M2's bind-pose bone matrices are
-  translation-only, so a hand's ORIENTATION lives in the mesh rather than the bone: a mace
-  hung off the hand point floats horizontally beside the character instead of being
-  gripped. Doing it properly needs the grip from an animation plus `items.sheath` (a
-  standing character wears its weapons rather than holding them), so the slots are listed
-  in `WEAPON_SLOTS` and skipped.
+- **Which hand a weapon lands in is a property of the SLOT, not of the item.** A
+  one-hander (inv 13) is a main hand or an off hand depending on where it was equipped, so
+  reading the item alone puts a dual-wielder's second sword in the hand that already holds
+  the first. Both the dressing room and the character sheet therefore carry the slot on
+  each row (`HAND_BY_SLOT`), with the inventory type as the fallback. A shield goes to the
+  forearm point (attachment 0), not into a fist. Attachment ids were measured off a posed
+  body: 1 and 2 are a mirrored pair at 42% of height, 0 sits further out at 47%, 12 is
+  behind the spine at 76%. Inv 28 (relic) is excluded -- the game does not draw it either.
+- **A held weapon has no pose of its own, and there is no single rotation that fixes it.**
+  The `.m2b` bakes Stand frame 0, and a vanilla character's bind pose is ALREADY arms-down,
+  so the hand bone sits only ~14 degrees off bind -- a weapon lands in the hand exactly as
+  it was authored, which for most is lying flat out in front of the character. The models
+  do not share one authored axis (a claymore points forward, a bow does not), so a constant
+  correction fixes swords and tilts bows. What they do share is a shape: the grip is at the
+  model's origin and the mass hangs off one side of it. `modelviewer.js` `hangDown()` points
+  that direction DOWN by the shortest arc, which leaves the roll about it exactly as
+  authored (a sword's edge keeps facing where it did) and needs nothing per weapon type. A
+  fist weapon, whose mass IS the origin, correctly gets no rotation at all. This is a pose
+  choice rather than a client behaviour -- WoW poses held weapons from the weapon-drawn
+  animations, which a static viewer does not have; `items.sheath` is likewise unused,
+  because a dressing room exists to show the weapon rather than to wear it.
+- **Framing counts what is held, up to a point.** A claymore reaches ~1.5 body radii from
+  centre and a helm's spikes reach above the head, so framing the body alone crops them;
+  framing the union lets one polearm shrink the character to nothing. The widening is
+  capped at half again, past which the weapon overflows instead.
 
 DBC layouts, likewise derived: `ChrRaces` keeps the internal name at 15 and the localized
 block at 17 (deDE at 20, zhCN 21, ruRU 22 -- which is how the block was located), and the

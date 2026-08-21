@@ -302,3 +302,25 @@ async function testSets() {
 }
 
 smoke("dressing room equips a whole item set", () => testSets());
+
+// Weapons hang off the hands. Two rules are easy to get wrong and both look plausible on
+// screen: WHICH hand is decided by the slot an item is worn in (a one-hander is a main
+// hand or an off hand, and the item itself cannot say), and a shield goes to the forearm
+// point rather than into a fist. Equipping the SAME one-hander in both hands exercises
+// the duplicate-entry path too -- one query row, two slots.
+async function testWeapons() {
+  await nav("?dressing&race=1&sex=m&hair=1&mainhand=15221&offhand=15221");
+  await page.waitForFunction(() => window.__mv && window.__mv().attached?.length === 2, { timeout: T });
+  const dual = (await page.evaluate(() => window.__mv().attached)).map((a) => a.attach).sort();
+  await nav("?dressing&race=1&sex=m&hair=1&mainhand=15258&offhand=22819&ranged=20278");
+  await page.waitForFunction(() => window.__mv && window.__mv().attached?.length === 3, { timeout: T });
+  const mixed = await page.evaluate(() => window.__mv().attached);
+  const ids = mixed.map((a) => a.attach).sort();
+  const filled = await page.$$eval(".dress-slot.filled", (e) => e.map((b) => b.dataset.slot).sort());
+  console.log(`weapons: dual=[${dual}] mixed=${JSON.stringify(mixed)} slots=[${filled}]`);
+  // 1 right hand, 2 left hand, 0 the shield's forearm point
+  return dual.join(",") === "1,2" && ids.join(",") === "0,1,2"
+    && filled.join(",") === "mainhand,offhand,ranged";
+}
+
+smoke("dressing room puts weapons in the right hands", () => testWeapons());

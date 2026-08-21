@@ -1163,9 +1163,7 @@ async function showDressingRoom(params, navigate) {
     { key: "legs", label: "Legs", inv: [7] },
     { key: "feet", label: "Feet", inv: [8] },
   ];
-  // Weapons get slots even though the models are not attached yet: the URL already
-  // carries them, they belong in a dressing room, and a slot that says so is better than
-  // a missing one. The row says plainly that they are not drawn.
+  // Weapons hang under the model, the way the in-game window arranges them.
   const SLOTS_W = [
     { key: "mainhand", label: "Main hand", inv: [13, 17, 21] },
     { key: "offhand", label: "Off hand", inv: [13, 14, 22, 23] },
@@ -1190,10 +1188,7 @@ async function showDressingRoom(params, navigate) {
         <div id="mv-host" class="mv-host"><p class="muted">Loading character…</p></div>
         <div class="dress-col dress-col-r">${slotCol(SLOTS_R)}</div>
       </div>
-      <div class="dress-weapons">
-        ${slotCol(SLOTS_W)}
-        <span class="muted dress-note">Weapons aren't drawn on the model yet.</span>
-      </div>
+      <div class="dress-weapons">${slotCol(SLOTS_W)}</div>
       <div class="search-dropdown dress-pop" id="dress-pop" hidden>
         <input id="dress-find" type="search" placeholder="Search by name…" autocomplete="off">
         <div id="dress-hits"></div>
@@ -1280,7 +1275,7 @@ async function showDressingRoom(params, navigate) {
   // Paint each slot with what is in it. The icon IS the slot, so an empty one keeps its
   // label and a filled one shows the item, quality-coloured, with a way to take it off.
   const renderSlots = () => {
-    const bySlot = new Map(wornRows.map((r) => [SLOT_PARAM[r.inv], r]));
+    const bySlot = new Map(wornRows.map((r) => [r.slot || SLOT_PARAM[r.inv], r]));
     for (const btn of app.querySelectorAll(".dress-slot")) {
       const row = bySlot.get(btn.dataset.slot);
       btn.classList.toggle("filled", !!row);
@@ -1313,7 +1308,17 @@ async function showDressingRoom(params, navigate) {
     const my = ++mountSeq;
     const ids = [...worn.values()];
     if (ids.length) {
-      try { wornRows = await query(Q.qDressItemsIn(ids.length), ids); } catch { wornRows = []; }
+      try {
+        const rows = await query(Q.qDressItemsIn(ids.length), ids);
+        // One row per SLOT, not per item: which hand a one-hander goes in follows from
+        // where it was equipped, and the same entry can legitimately fill two slots
+        // (dual-wielding a pair of the same sword).
+        const byEntry = new Map(rows.map((r) => [r.entry, r]));
+        wornRows = [...worn].map(([slot, entry]) => {
+          const r = byEntry.get(entry);
+          return r ? { ...r, slot } : null;
+        }).filter(Boolean);
+      } catch { wornRows = []; }
     } else wornRows = [];
     if (stale(my)) return;
     renderSlots();
