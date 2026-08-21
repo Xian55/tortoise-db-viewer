@@ -1014,12 +1014,17 @@ export async function showCharacter(idOrChar, navigate) {
     const sexOf = () => (localStorage.getItem("tw_char3d_sex") === "f" ? "f" : "m");
     const mount = async () => {
       if (!hostEl) return;
+      // Same rule as the dressing room: the sheet may be gone by the time the model
+      // finishes loading, and mounting into a detached host leaves the router holding a
+      // viewer nobody can see.
+      if (!hostEl.isConnected) return;
       hostEl.innerHTML = `<p class="muted">Loading model…</p>`;
       try {
         const mod = await import("./modelviewer.js");
         // Only the slots that change how a character LOOKS; a ring is not one of them.
         const ids = VISUAL_SLOTS.map((k) => ch.slots?.[k]?.itemId).filter(Boolean);
         const rows = ids.length ? await query(qDressItemsIn(ids.length), ids).catch(() => []) : [];
+        if (!hostEl.isConnected) return;
         hostEl.innerHTML = "";
         await mod.mountCharacterViewer(hostEl, {
           race: raceIdOf(ch.race), sex: sexOf(), items: rows,

@@ -222,6 +222,13 @@ document.getElementById("searchForm").addEventListener("submit", (e) => {
 // behind per navigation and the browser silently kills the oldest canvas after a handful
 // of pages, so the route owns its teardown exactly like it owns stopAudio().
 let activeViewer = null;
+// Bumped on every route render. A page that mounts a viewer captures this and checks it
+// after each await: mounting is asynchronous (a query plus a dozen model/texture
+// fetches), and without the check a mount left over from the PREVIOUS page finishes late,
+// calls destroyViewer() -- which is module-level, so it kills the CURRENT page's viewer --
+// and empties the host. Switching between two dressing-room links did exactly that, and
+// left a room with no character and nothing in the console.
+let routeSeq = 0;
 function destroyViewer() {
   try { activeViewer?.destroy(); } catch { /* already torn down */ }
   activeViewer = null;
@@ -290,6 +297,7 @@ function route() {
   // Audio must not outlive the page that started it -- a zone track would keep playing
   // over whatever you navigated to.
   stopAudio();
+  routeSeq++;
   destroyViewer();
   const params = new URLSearchParams(location.search);
   const item = params.get("item");
@@ -1285,22 +1293,24 @@ async function showDressingRoom(params, navigate) {
   // appending its canvas into an element the newer mount already emptied -- which showed
   // up as a dressing room with no character in it at all.
   let mountSeq = 0;
+  const myRoute = routeSeq;
+  const stale = (my) => my !== mountSeq || myRoute !== routeSeq;
   const mount = async () => {
     const my = ++mountSeq;
     const ids = [...worn.values()];
     if (ids.length) {
       try { wornRows = await query(Q.qDressItemsIn(ids.length), ids); } catch { wornRows = []; }
     } else wornRows = [];
-    if (my !== mountSeq) return;
+    if (stale(my)) return;
     renderSlots();
     destroyViewer();
     host.innerHTML = "";
     try {
       const viewer = await mod.mountCharacterViewer(host, { ...state, items: wornRows });
-      if (my !== mountSeq) { try { viewer.destroy(); } catch { /* already gone */ } return; }
+      if (stale(my)) { try { viewer.destroy(); } catch { /* already gone */ } return; }
       activeViewer = viewer;
     } catch (e) {
-      if (my === mountSeq) host.innerHTML = `<p class="muted">Could not load this character - ${esc(e.message)}.</p>`;
+      if (!stale(my)) host.innerHTML = `<p class="muted">Could not load this character - ${esc(e.message)}.</p>`;
     }
   };
 
@@ -1399,6 +1409,18 @@ async function showDressingRoom(params, navigate) {
   });
   addEventListener("resize", () => {
     if (activeSlot) place(app.querySelector(`.dress-slot[data-slot="${activeSlot}"]`));
+  });
+
+  // Race / gender / skin / face / hair. A new race has its own option counts, so the
+  // picker list is rebuilt, and the URL keeps the look shareable.
+  bar.addEventListener("change", async (e) => {
+    const sel = e.target.closest("select");
+    if (!sel) return;
+    const k = sel.dataset.key;
+    state[KEY[k] || k] = k === "sex" ? sel.value : Number(sel.value);
+    render();
+    syncUrl();
+    await mount();
   });
 
   render();
