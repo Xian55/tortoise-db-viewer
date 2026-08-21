@@ -1145,7 +1145,15 @@ async function showDressingRoom(params, navigate) {
     { key: "legs", label: "Legs", inv: [7] },
     { key: "feet", label: "Feet", inv: [8] },
   ];
-  const ALL_SLOTS = [...SLOTS_L, ...SLOTS_R];
+  // Weapons get slots even though the models are not attached yet: the URL already
+  // carries them, they belong in a dressing room, and a slot that says so is better than
+  // a missing one. The row says plainly that they are not drawn.
+  const SLOTS_W = [
+    { key: "mainhand", label: "Main hand", inv: [13, 17, 21] },
+    { key: "offhand", label: "Off hand", inv: [13, 14, 22, 23] },
+    { key: "ranged", label: "Ranged", inv: [15, 25, 26, 28] },
+  ];
+  const ALL_SLOTS = [...SLOTS_L, ...SLOTS_R, ...SLOTS_W];
   const slotCol = (list) => list.map((s) =>
     `<button type="button" class="dress-slot" data-slot="${s.key}" title="${esc(s.label)}">
        <span class="dress-slot-icon"></span><span class="dress-slot-label">${esc(s.label)}</span>
@@ -1159,12 +1167,13 @@ async function showDressingRoom(params, navigate) {
         <div id="mv-host" class="mv-host"><p class="muted">Loading character…</p></div>
         <div class="dress-col dress-col-r">${slotCol(SLOTS_R)}</div>
       </div>
-      <div class="dress-find-wrap" id="dress-find-wrap" hidden>
-        <label class="dress-pick"><span id="dress-find-label">Equip</span>
-          <input id="dress-find" type="search" placeholder="Search by name…" autocomplete="off">
-        </label>
-        <button type="button" class="btn-sm" id="dress-find-close">Done</button>
-        <div id="dress-hits" class="dress-hits hidden"></div>
+      <div class="dress-weapons">
+        ${slotCol(SLOTS_W)}
+        <span class="muted dress-note">Weapons aren't drawn on the model yet.</span>
+      </div>
+      <div class="search-dropdown dress-pop" id="dress-pop" hidden>
+        <input id="dress-find" type="search" placeholder="Search by name…" autocomplete="off">
+        <div id="dress-hits"></div>
       </div>
     </div>`;
   const host = app.querySelector("#mv-host");
@@ -1230,11 +1239,12 @@ async function showDressingRoom(params, navigate) {
 
   const hitsEl = app.querySelector("#dress-hits");
   const findEl = app.querySelector("#dress-find");
-  const findWrap = app.querySelector("#dress-find-wrap");
-  const findLabel = app.querySelector("#dress-find-label");
-  const roomEl = app.querySelector(".dress-room");
+  const popEl = app.querySelector("#dress-pop");
+  const roomEl = app.querySelector(".dressing");
   let wornRows = [];                          // qDressItemsIn rows for what is equipped
   let activeSlot = null;                      // the slot being edited, if any
+  let hits = [];                              // current result rows
+  let cursor = -1;                            // keyboard selection within them
 
   const syncUrl = () => {
     const q = new URLSearchParams({ dressing: "", race: state.race, sex: state.sex,
@@ -1245,7 +1255,7 @@ async function showDressingRoom(params, navigate) {
   };
 
   // Paint each slot with what is in it. The icon IS the slot, so an empty one keeps its
-  // label and a filled one shows the item (quality-coloured, with a way to take it off).
+  // label and a filled one shows the item, quality-coloured, with a way to take it off.
   const renderSlots = () => {
     const bySlot = new Map(wornRows.map((r) => [SLOT_PARAM[r.inv], r]));
     for (const btn of app.querySelectorAll(".dress-slot")) {
@@ -1257,8 +1267,8 @@ async function showDressingRoom(params, navigate) {
       if (row) {
         icon.innerHTML = iconImg(row.icon, "icon-sm");
         icon.style.borderColor = qualityColor(row.quality) || "";
-        label.innerHTML = `<a class="nav" href="?item=${row.entry}" title="Where it drops">${esc(row.name)}</a>`
-          + `<button type="button" class="dress-off" data-slot="${btn.dataset.slot}" title="Take off">✕</button>`;
+        label.innerHTML = `<a class="nav dress-item" href="?item=${row.entry}" title="${esc(row.name)}">${esc(row.name)}</a>`
+          + `<button type="button" class="dress-off" data-slot="${btn.dataset.slot}" title="Take off">\u2715</button>`;
       } else {
         icon.innerHTML = "";
         icon.style.borderColor = "";
@@ -1270,10 +1280,10 @@ async function showDressingRoom(params, navigate) {
   // Resolve everything equipped in ONE query, then hand the rows to the viewer.
   //
   // Re-entrant on purpose: every equip/unequip and every appearance change starts a new
-  // mount, and each one awaits a query plus a dozen model/texture fetches. Without the
+  // mount, and each awaits a query plus a dozen model/texture fetches. Without the
   // sequence guard a slow first mount finishes AFTER a later one has cleared the host,
-  // appending its canvas into an element the newer mount has already emptied -- which
-  // showed up as a dressing room with no character in it at all.
+  // appending its canvas into an element the newer mount already emptied -- which showed
+  // up as a dressing room with no character in it at all.
   let mountSeq = 0;
   const mount = async () => {
     const my = ++mountSeq;
@@ -1290,56 +1300,87 @@ async function showDressingRoom(params, navigate) {
       if (my !== mountSeq) { try { viewer.destroy(); } catch { /* already gone */ } return; }
       activeViewer = viewer;
     } catch (e) {
-      if (my === mountSeq) host.innerHTML = `<p class="muted">Could not load this character — ${esc(e.message)}.</p>`;
+      if (my === mountSeq) host.innerHTML = `<p class="muted">Could not load this character - ${esc(e.message)}.</p>`;
     }
   };
 
-  const openSlot = (key) => {
+  // The slot picker is the SAME panel the top-bar search uses -- `.search-dropdown` with
+  // `.sd-row` rows -- anchored under the slot instead of under the search box, so both
+  // searches on the site look and behave alike (hover, arrow keys, Enter, Escape).
+  const place = (btn) => {
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    popEl.style.left = `${Math.max(8, Math.min(r.left, innerWidth - 340))}px`;
+    popEl.style.top = `${r.bottom + 4}px`;
+    popEl.style.minWidth = `${Math.max(r.width, 300)}px`;
+  };
+  const hint = (label) => `<div class="sd-row sd-all">Type to search ${esc(label)}</div>`;
+  const closeSlot = () => {
+    activeSlot = null; hits = []; cursor = -1;
+    popEl.hidden = true;
+    renderSlots();
+  };
+  const openSlot = (key, btn) => {
     activeSlot = key;
+    hits = []; cursor = -1;
     const slot = ALL_SLOTS.find((x) => x.key === key);
-    findWrap.hidden = false;
-    findLabel.textContent = `Equip ${slot?.label || key}`;
+    findEl.placeholder = `Search ${slot?.label || key}...`;
     findEl.value = "";
-    hitsEl.classList.add("hidden");
+    hitsEl.innerHTML = hint(slot?.label || key);
+    popEl.hidden = false;
+    place(btn);
     renderSlots();
     findEl.focus();
   };
-  const closeSlot = () => {
-    activeSlot = null;
-    findWrap.hidden = true;
-    hitsEl.classList.add("hidden");
-    renderSlots();
+
+  const paintCursor = () => {
+    hitsEl.querySelectorAll(".sd-row").forEach((el, i) => el.classList.toggle("active", i === cursor));
+  };
+  const equip = async (row) => {
+    if (!row) return;
+    worn.set(SLOT_PARAM[row.inv], row.entry);
+    closeSlot();
+    syncUrl();
+    await mount();
   };
 
-  // Search WITHIN the open slot: the same query the character sheet's picker uses, but
-  // restricted to that slot's inventory types, so "Chest" never offers you boots.
   let findTimer = 0;
   findEl.addEventListener("input", () => {
     clearTimeout(findTimer);
     findTimer = setTimeout(async () => {
       const term = findEl.value.trim();
       const slot = ALL_SLOTS.find((x) => x.key === activeSlot);
-      if (!slot || term.length < 2) { hitsEl.classList.add("hidden"); return; }
+      if (!slot) return;
+      if (term.length < 2) {
+        hits = []; cursor = -1;
+        hitsEl.innerHTML = hint(slot.label);
+        return;
+      }
       let rows = [];
       try {
         rows = await query(Q.qItemSearchInv(slot.inv.join(",")),
           [ftsQuery(term), ftsQuery(term), 40, Number(term) || 0]);
       } catch { rows = []; }
-      hitsEl.classList.toggle("hidden", !rows.length);
-      hitsEl.innerHTML = rows.slice(0, 40).map((r) =>
-        `<button class="dress-hit" data-entry="${r.entry}" data-inv="${r.inv}">`
-        + `${iconImg(r.icon, "icon-sm")}<span class="q${r.quality}">${esc(r.name)}</span>`
-        + `<span class="dim">${esc(INV_TYPE[r.inv] || "")}</span></button>`).join("");
-    }, 180);
+      if (findEl.value.trim() !== term) return;             // stale, the user moved on
+      hits = rows.slice(0, 20); cursor = -1;
+      hitsEl.innerHTML = hits.length
+        ? hits.map((r, i) => `<div class="sd-row" data-i="${i}">${iconImg(r.icon, "icon-sm")}`
+          + `<span class="ilink q${r.quality}">${esc(r.name)}</span>`
+          + `<span class="sd-tag">${esc(INV_TYPE[r.inv] || "")}</span></div>`).join("")
+        : `<div class="sd-row sd-all">Nothing matches that name</div>`;
+    }, 150);
   });
 
-  hitsEl.addEventListener("click", async (e) => {
-    const b = e.target.closest(".dress-hit");
-    if (!b) return;
-    worn.set(SLOT_PARAM[Number(b.dataset.inv)], Number(b.dataset.entry));
-    closeSlot();
-    syncUrl();
-    await mount();
+  findEl.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closeSlot(); return; }
+    if (!hits.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); cursor = (cursor + 1) % hits.length; paintCursor(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); cursor = (cursor - 1 + hits.length) % hits.length; paintCursor(); }
+    else if (e.key === "Enter" && cursor >= 0) { e.preventDefault(); equip(hits[cursor]); }
+  });
+  hitsEl.addEventListener("click", (e) => {
+    const row = e.target.closest(".sd-row[data-i]");
+    if (row) equip(hits[Number(row.dataset.i)]);
   });
 
   roomEl.addEventListener("click", async (e) => {
@@ -1353,10 +1394,12 @@ async function showDressingRoom(params, navigate) {
     }
     if (e.target.closest("a")) return;         // the item link is a link, not a slot click
     const btn = e.target.closest(".dress-slot");
-    if (btn) openSlot(btn.dataset.slot);
+    if (btn) { if (btn.dataset.slot === activeSlot) closeSlot(); else openSlot(btn.dataset.slot, btn); }
+    else if (!e.target.closest("#dress-pop")) closeSlot();
   });
-  app.querySelector("#dress-find-close")?.addEventListener("click", closeSlot);
-  findEl.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSlot(); });
+  addEventListener("resize", () => {
+    if (activeSlot) place(app.querySelector(`.dress-slot[data-slot="${activeSlot}"]`));
+  });
 
   render();
   await mount();

@@ -185,6 +185,12 @@ function buildViewer(el, model, slotTex, opts = {}) {
     // A postage-stamp preview of a few thousand triangles has no business waking a
     // discrete GPU on a laptop that has one.
     powerPreference: "low-power",
+    // KEEP THE LAST FRAME. This viewer deliberately stops drawing once nothing is moving,
+    // and without a preserved buffer the browser is free to clear the canvas after it
+    // composites -- so the character appeared for a moment, the idle spin finished, and
+    // it vanished. The alternative (render forever) is exactly the battery cost the
+    // scheduling exists to avoid.
+    preserveDrawingBuffer: true,
   });
   // Beyond 2x the extra pixels are invisible and quadratic in cost.
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));

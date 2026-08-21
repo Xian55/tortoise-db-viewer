@@ -265,13 +265,15 @@ async function testPaperdoll() {
   const slots = await page.$$eval(".dress-slot", (e) => e.map((b) => b.dataset.slot));
   const filled = await page.$$eval(".dress-slot.filled", (e) => e.map((b) => b.dataset.slot));
   const canvases = await page.$$eval("#mv-host canvas", (e) => e.length);
-  // open the Head slot: the search must appear and be scoped to that slot
+  // open the Head slot: the picker must appear, scoped to that slot, and it is the SAME
+  // panel the top-bar search uses -- asserting the class keeps the two from drifting.
   await page.click('.dress-slot[data-slot="head"]');
-  const open = await page.$eval("#dress-find-wrap", (e) => !e.hidden);
-  const label = await page.$eval("#dress-find-label", (e) => e.textContent);
-  console.log(`paperdoll: slots=[${slots.join(",")}] filled=[${filled.join(",")}] canvases=${canvases} search="${label}" open=${open}`);
-  return slots.includes("head") && slots.includes("feet") && filled.length === 2
-    && canvases === 1 && open && /head/i.test(label);
+  const open = await page.$eval("#dress-pop", (e) => !e.hidden);
+  const shared = await page.$eval("#dress-pop", (e) => e.classList.contains("search-dropdown"));
+  const ph = await page.$eval("#dress-find", (e) => e.placeholder);
+  console.log(`paperdoll: slots=[${slots.join(",")}] filled=[${filled.join(",")}] canvases=${canvases} placeholder="${ph}" open=${open} sharedPanel=${shared}`);
+  return slots.includes("head") && slots.includes("mainhand") && filled.length === 2
+    && canvases === 1 && open && shared && /head/i.test(ph);
 }
 
 smoke("dressing room paperdoll equips per slot", () => testPaperdoll());
