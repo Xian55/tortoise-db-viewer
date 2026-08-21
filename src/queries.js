@@ -52,7 +52,8 @@ export const qItemAppearanceIn = (n) =>
 // one per slot -- the room re-resolves on every change.
 export const qDressItemsIn = (n) => `
   SELECT i.entry, i.name, i.quality, i.inventory_type AS inv, i.display_id, di.icon,
-         a.model_l, a.model_dir, a.per_race, a.tex_l, a.geo1, a.geo2, a.geo3,
+         a.model_l, a.model_r, a.model_dir, a.per_race, a.tex_l, a.tex_r,
+         a.geo1, a.geo2, a.geo3,
          a.t_arm_u, a.t_arm_l, a.t_hand, a.t_torso_u, a.t_torso_l, a.t_leg_u, a.t_leg_l, a.t_foot
   FROM items i
   LEFT JOIN item_display_info di ON di.ID = i.display_id

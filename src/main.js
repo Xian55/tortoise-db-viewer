@@ -1111,10 +1111,15 @@ async function showDressingRoom(params, navigate) {
     skin: num("skin", 0), face: num("face", 0),
     hair: num("hair", 0), hairColor: num("hcolor", 0), facialHair: num("facial", 0),
   };
-  // Visual slots only. Head and shoulder are per-race MODELS rather than textures, so
-  // they wait for the attachment phase; a ring changes nothing about how you look.
+  // Visual slots only -- a ring changes nothing about how you look. Head, shoulders and
+  // anything held are MODELS hung off an attachment point rather than textures painted
+  // on the body, but from here they are just another slot.
   const SLOT_PARAM = { 4: "shirt", 5: "chest", 6: "waist", 7: "legs", 8: "feet",
-    9: "wrist", 10: "hands", 16: "back", 19: "tabard", 20: "chest" };
+    9: "wrist", 10: "hands", 16: "back", 19: "tabard", 20: "chest",
+    1: "head", 3: "shoulder",
+    13: "mainhand", 17: "mainhand", 21: "mainhand",
+    14: "offhand", 22: "offhand", 23: "offhand",
+    15: "ranged", 25: "ranged", 26: "ranged", 28: "ranged" };
   const WEARABLE = [...new Set(Object.keys(SLOT_PARAM).map(Number))];
   const worn = new Map();                    // slot param -> item entry
   for (const [inv, key] of Object.entries(SLOT_PARAM)) {

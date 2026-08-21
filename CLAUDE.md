@@ -727,8 +727,25 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
 - **The key light rides the camera.** Fixed in world space it lit one side only, so
   turning a character around to look at the back of a cloak showed it in shadow -- the
   exact thing you rotated to see.
-- Head and shoulder are per-race MODELS rather than textures and wait for the attachment
-  phase; the sheet says so rather than silently omitting them.
+- **Helms and shoulders attach as MODELS** (`SLOT_ATTACH` in `chargear.js`): the .m2b
+  carries the character's 39 attachment points, and the exporter bakes each one through
+  the bone matrices, so it is a position AND a rotation in the same posed space as the
+  vertices -- hang a helm at the BIND-pose head and it is not on the head. Ids were read
+  off a posed body, not recited: 11 is centre at 94% of height, 5/6 a mirrored pair at
+  80%, 1/2 another at 42%.
+- **A shoulder is two models and the DBC already names both** -- ModelName[0] is the left
+  piece, [1] the right (748 displays carry a second model). Guessing an `L`/`R` prefix
+  instead is wrong twice: those names already start with L/R, so it built `LLShoulder_…`
+  and attached nothing.
+- **A helm is 20 files**, one per race+gender (`Helm_Mail_D_01_HuM` … `_BeF`); the bare
+  name does not exist. `export-models.py` expands them, which is most of the 4,015 item
+  models.
+- **Weapons are deliberately not attached yet.** An M2's bind-pose bone matrices are
+  translation-only, so a hand's ORIENTATION lives in the mesh rather than the bone: a mace
+  hung off the hand point floats horizontally beside the character instead of being
+  gripped. Doing it properly needs the grip from an animation plus `items.sheath` (a
+  standing character wears its weapons rather than holding them), so the slots are listed
+  in `WEAPON_SLOTS` and skipped.
 
 DBC layouts, likewise derived: `ChrRaces` keeps the internal name at 15 and the localized
 block at 17 (deDE at 20, zhCN 21, ruRU 22 -- which is how the block was located), and the

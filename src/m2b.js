@@ -18,13 +18,20 @@ export const TEX_CHAR_SKIN = 1;  // the composited character body atlas
 export const TEX_OBJECT_SKIN = 2; // an item's own texture (ItemDisplayInfo.ModelTexture)
 export const TEX_HAIR = 6;
 
+/** Attachment ids, read off the posed body rather than recited: 11 sits centre at 94% of
+ *  the model's height, 5/6 are a mirrored pair at 80%, 1/2 another at 42%. */
+export const ATTACH = { shield: 0, handRight: 1, handLeft: 2, shoulderRight: 5, shoulderLeft: 6, head: 11 };
+
 export function parseM2B(buffer) {
   const dv = new DataView(buffer);
   if (buffer.byteLength < HEADER || dv.getUint32(0, true) !== MAGIC) {
     throw new Error("not an m2b file");
   }
   const version = dv.getUint16(4, true);
-  if (version !== 1) throw new Error(`m2b version ${version} is newer than this reader`);
+  // v2 added the attachment rotation. Refusing v1 outright is deliberate: a stale cached
+  // file would otherwise be read with a 32-byte stride over 16-byte records and hang
+  // every item off nonsense coordinates, which is far harder to recognise than an error.
+  if (version !== 2) throw new Error(`m2b version ${version} is not readable (want 2)`);
   const flags = dv.getUint16(6, true);
   const nVert = dv.getUint32(8, true);
   const nIdx = dv.getUint32(12, true);
@@ -63,10 +70,16 @@ export function parseM2B(buffer) {
   }
   const attachments = [];
   for (let i = 0; i < nAtt; i++) {
-    const b = off.att + i * 16;
+    const b = off.att + i * 32;
+    // `pos` is in the model's own space, in the SAME baked pose as the vertices -- not
+    // bone-local as the M2 stores it. A helm hung at the bind-pose head is not at the head.
     attachments.push({
       id: dv.getUint16(b, true), bone: dv.getUint16(b + 2, true),
       pos: [dv.getFloat32(b + 4, true), dv.getFloat32(b + 8, true), dv.getFloat32(b + 12, true)],
+      // Orientation matters as much as position: without it a weapon hangs horizontally
+      // beside the hand instead of being gripped by it.
+      quat: [dv.getFloat32(b + 16, true), dv.getFloat32(b + 20, true),
+        dv.getFloat32(b + 24, true), dv.getFloat32(b + 28, true)],
     });
   }
 

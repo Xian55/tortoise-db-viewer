@@ -233,3 +233,21 @@ async function testCloakTexture() {
 }
 
 smoke("dressing room textures a cloak from the item", () => testCloakTexture());
+
+// Helms and shoulders are MODELS hung off attachment points, not textures. Three things
+// can each silently produce "no helm": a per-race variant that was never exported (a helm
+// is 20 files, one per race+gender), a shoulder whose second model was not selected (the
+// DBC names left and right separately in ModelName[0] and [1]), and an attachment id that
+// does not exist on the model. Assert all three landed.
+async function testAttachments() {
+  await nav("?dressing&race=1&sex=m&hair=1&head=83216&shoulder=60691");
+  await page.waitForFunction(() => window.__mv && window.__mv().attached, { timeout: T });
+  const att = await page.evaluate(() => window.__mv().attached);
+  const ids = att.map((a) => a.attach).sort((a, b) => a - b);
+  const helm = att.find((a) => a.attach === 11);
+  console.log(`attachments: ${JSON.stringify(att)}`);
+  // 11 head, 5/6 the shoulder pair; the helm must be the race+gender variant, not a bare name
+  return ids.join(",") === "5,6,11" && /_hum$/i.test(helm?.model || "");
+}
+
+smoke("dressing room attaches a helm and both shoulders", () => testAttachments());

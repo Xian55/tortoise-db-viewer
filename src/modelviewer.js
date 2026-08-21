@@ -14,7 +14,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { parseM2B, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
 import { compositeBody, SECTION_REGIONS } from "./charcomposite.js";
-import { COMPONENT_REGIONS, applyGear, inPaintOrder } from "./chargear.js";
+import { COMPONENT_REGIONS, applyGear, inPaintOrder, attachedModels } from "./chargear.js";
 import { MODELS_BASE } from "./config.js";
 
 // The ONE live viewer. A WebGL context is scarce and is not garbage-collected, so
@@ -148,6 +148,31 @@ export async function mountItemViewer(el, opts = {}) {
  * load, which textures fill its slots, and which geosets are visible.
  *   opts: { label, texture, geosets (Set of visible geoset ids, or null for all) }
  */
+/** Geometry + materials for one model, ready to add to a scene. Shared by the character
+ *  body and by everything hung off it, so an attached helm is drawn by exactly the same
+ *  material rules (blend modes, alpha cutoff) as the item tab uses. */
+function meshFor(model, slotTex, { geosets = null, skipEmbedded = false } = {}) {
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(model.pos, 3));
+  geom.setAttribute("normal", new THREE.BufferAttribute(model.nrm, 3));
+  geom.setAttribute("uv", new THREE.BufferAttribute(model.uv, 2));
+  geom.setIndex(new THREE.BufferAttribute(model.idx, 1));
+  const fallback = slotTex.find((t, i) => t && model.textures[i].type !== 0)
+    || slotTex.find(Boolean) || null;
+  const materials = [];
+  const drawn = [];
+  model.submeshes.forEach((sub) => {
+    if (!sub.count) return;
+    if (geosets && !geosets.has(sub.geoset)) return;
+    if (skipEmbedded && sub.texType === 0) return;
+    geom.addGroup(sub.first, sub.count, materials.length);
+    const map = (sub.texSlot < slotTex.length ? slotTex[sub.texSlot] : null) || fallback;
+    materials.push(materialFor(sub, map));
+    drawn.push([sub.geoset, sub.texType, sub.blend, map ? 1 : 0]);
+  });
+  return { mesh: new THREE.Mesh(geom, materials), geom, materials, drawn };
+}
+
 function buildViewer(el, model, slotTex, opts = {}) {
   const tex = slotTex.find((t, i) => t && model.textures[i].type !== 0)
     || slotTex.find(Boolean) || null;
@@ -187,37 +212,27 @@ function buildViewer(el, model, slotTex, opts = {}) {
   fill.position.set(-0.35, -0.8, 0.5);
   scene.add(fill);
 
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute("position", new THREE.BufferAttribute(model.pos, 3));
-  geom.setAttribute("normal", new THREE.BufferAttribute(model.nrm, 3));
-  geom.setAttribute("uv", new THREE.BufferAttribute(model.uv, 2));
-  geom.setIndex(new THREE.BufferAttribute(model.idx, 1));
-
-  const materials = [];
-  const drawnSubs = [];
-  let drawn = 0;
-  model.submeshes.forEach((sub) => {
-    if (!sub.count) return;
-    // A character model carries EVERY variant of every geoset -- all hairstyles, all
-    // beards, gloves, boots, robe, cape -- and drawing them all gives you a figure with
-    // four hairstyles at once. The caller passes the set it wants.
-    if (opts.geosets && !opts.geosets.has(sub.geoset)) return;
-    // Props the client animates at runtime. Turtle's goblin models carry a cloth rag
-    // (Character\Goblin\RAG_02.blp) as an embedded-texture plane; with the pose baked at
-    // Stand frame 0 and no cloth simulation it hangs straight out from the waist like a
-    // flag. A character has no other use for an embedded texture, so the whole class is
-    // skipped rather than special-casing one file.
-    if (opts.skipEmbedded && sub.texType === 0) return;
-    geom.addGroup(sub.first, sub.count, materials.length);
-    // texSlot 0xFF means the submesh resolved no texture at all; fall back to the item's
-    // own rather than drawing it untextured.
-    const map = (sub.texSlot < slotTex.length ? slotTex[sub.texSlot] : null) || tex;
-    materials.push(materialFor(sub, map));
-    drawnSubs.push([sub.geoset, sub.texType, sub.blend, map ? 1 : 0]);
-    drawn++;
-  });
-  const mesh = new THREE.Mesh(geom, materials);
+  const built = meshFor(model, slotTex, { geosets: opts.geosets, skipEmbedded: opts.skipEmbedded });
+  const { mesh, geom, materials } = built;
+  const drawnSubs = built.drawn;
+  const drawn = drawnSubs.length;
   root.add(mesh);
+
+  // Everything hung off the skeleton: helms, shoulder pairs, what is in the hands. The
+  // attachment position is in the model's own space and ALREADY POSED (the exporter bakes
+  // it through the bone matrices), so the item simply sits at that point in the same root
+  // -- no skinning, no bone hierarchy at runtime.
+  const attached = [];
+  for (const a of (opts.attached || [])) {
+    const point = model.attachments.find((at) => at.id === a.attach);
+    if (!point) continue;
+    const sub = meshFor(a.model, a.slotTex, {});
+    sub.mesh.position.set(point.pos[0], point.pos[1], point.pos[2]);
+    sub.mesh.quaternion.set(point.quat[0], point.quat[1], point.quat[2], point.quat[3]);
+    root.add(sub.mesh);
+    attached.push(sub);
+    drawnSubs.push(...sub.drawn.map((d) => [`att${a.attach}`, d[1], d[2], d[3]]));
+  }
 
   // Frame on the SOLID body, not the whole bbox: effect planes reach well past the mesh
   // (Thunderfury's lightning quads are wider than the sword), so including them shrinks
@@ -342,6 +357,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       running, visible,                  // false/false = costing nothing right now
       geosets: opts.geosets ? [...opts.geosets].sort((a, b) => a - b) : null,
       cape: opts.cape || null,
+      attached: (opts.attached || []).map((a) => ({ attach: a.attach, model: a.label || null })),
       // [geoset, texType, blend, hasTexture] per drawn submesh -- what actually
       // reached the GPU, which is the only way to tell "filtered out" from
       // "drawn but invisible".
@@ -367,6 +383,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       controls.dispose();
       geom.dispose();
       materials.forEach((m) => m.dispose());
+      attached.forEach((a) => { a.geom.dispose(); a.materials.forEach((m) => m.dispose()); });
       tex?.dispose();
       renderer.dispose();
       renderer.forceContextLoss?.();
@@ -556,8 +573,25 @@ export async function mountCharacterViewer(el, opts = {}) {
   const facialGeosets = (facialRows.find((f) => f[0] === facialStyle)
     || facialRows.find((f) => f[0] === 0))?.slice(1) || [];
 
+  // Helms, shoulder pairs and held weapons are MODELS, loaded alongside the body. A
+  // per-race variant that this race simply does not have is skipped rather than failing
+  // the whole character.
+  const attached = [];
+  await Promise.all(attachedModels(worn, { race, sex }).map(async (a) => {
+    try {
+      const m = await fetchModel(a.model);
+      const st = await Promise.all(m.textures.map((t) => (
+        t.type === 0 && t.name
+          ? loadTexture(embeddedUrl(t.name))
+          : (a.texture ? loadTexture(textureUrl(a.texture)) : Promise.resolve(null))
+      )));
+      attached.push({ model: m, slotTex: st, attach: a.attach, label: a.model });
+    } catch { /* this race has no such variant, or the file was never exported */ }
+  }));
+
   const present = new Set(model.submeshes.map((sm) => sm.geoset));
   return register(buildViewer(el, model, slotTex, {
+    attached,
     label: `${race}-${sex}`,
     cape: backItem ? { item: backItem.entry, texture: backItem.tex_l, loaded: !!capeTex } : null,
     geosets: applyGear(baseGeosets(model, { hairGeoset, facial: facialGeosets }), worn, present),

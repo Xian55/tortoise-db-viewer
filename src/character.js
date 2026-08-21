@@ -42,7 +42,7 @@ const SLOT_KEYS = new Set(SLOTS.map((s) => s.k));
 // Shirt and Tabard are listed even though GearExport does not send them today: if a
 // loadout ever carries one it should just appear, and an absent slot costs nothing.
 const VISUAL_SLOTS = ["Shirt", "Chest", "Legs", "Feet", "Hands", "Wrist", "Waist",
-  "Back", "Tabard"];
+  "Back", "Tabard", "Head", "Shoulder", "MainHand", "OffHand", "Ranged"];
 
 // The loadout stores race as its BITMASK (GearExport's shape); ChrRaces -- and so the
 // character models -- are numbered 1..10, and bit = 1 << (id - 1) throughout, including
@@ -65,7 +65,7 @@ function char3dHtml(ch) {
             <option value="f"${sex === "f" ? " selected" : ""}>Female</option>
           </select>
         </label>
-        <span class="muted">Armor only for now — helms, shoulders and weapons come next.</span>
+        <span class="muted">Drag to turn, scroll to zoom.</span>
       </div>
       <div class="mv-host" id="char3dHost"></div>
     </section>`;

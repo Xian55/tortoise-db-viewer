@@ -73,3 +73,57 @@ export function applyGear(baseSet, items, present) {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Attached models: helms, shoulders, and what is held in the hands.
+// ---------------------------------------------------------------------------
+
+// Attachment ids, read off a posed body rather than recited (see src/m2b.js ATTACH).
+// A shoulder is TWO models -- `L<name>` and `R<name>` -- hung on the mirrored pair.
+// [attachment id, which of the item's two models]. A shoulder is a PAIR and the DBC
+// names both: ModelName[0] is the left piece, ModelName[1] the right. (Guessing an L/R
+// prefix instead is wrong twice over -- those names already start with L/R, so it built
+// `LLShoulder_...` and hung nothing at all.)
+export const SLOT_ATTACH = {
+  1: [[11, "l"]],                   // Head -> head
+  3: [[6, "l"], [5, "r"]],          // Shoulder -> left + right, one model each
+};
+
+// Weapons are deliberately NOT here yet. An attachment gives a position and the bone's
+// rotation, and for a helm or a pauldron that is the whole answer -- they are rigid and
+// sit square on a bone. A held weapon is not: an M2's bind-pose bone matrices are
+// translation-only, so the hand's ORIENTATION lives in the mesh, not in the bone, and
+// hanging a mace off the hand point leaves it floating horizontally beside the character
+// rather than gripped. Getting it right needs the grip from an animation (and the sheath
+// rules in items.sheath, since a standing character wears its weapons rather than holding
+// them). Showing a weapon in obviously the wrong pose is worse than not showing it.
+export const WEAPON_SLOTS = [13, 14, 15, 17, 21, 22, 23, 25, 26, 28];
+
+// ChrRaces id -> the client's model-name code. A helm is modelled once per race AND
+// gender, so `Helm_Mail_D_01` alone is never a file: `Helm_Mail_D_01_HuM` is.
+export const RACE_CODE = {
+  1: "hu", 2: "or", 3: "dw", 4: "ni", 5: "sc", 6: "ta", 7: "gn", 8: "tr", 9: "go", 10: "be",
+};
+
+/**
+ * The model files an outfit needs hung off the skeleton.
+ * Returns [{ model, texture, attach, item }] -- `model` is the .m2b basename.
+ */
+export function attachedModels(items, { race, sex }) {
+  const code = `${RACE_CODE[race] || "hu"}${sex === "f" ? "f" : "m"}`;
+  const out = [];
+  for (const it of items) {
+    const points = SLOT_ATTACH[it.inv];
+    if (!points) continue;
+    for (const [attach, which] of points) {
+      const name = which === "r" ? it.model_r : it.model_l;
+      if (!name) continue;
+      // Per-race models exist ONLY as <name>_<racecode>; everything else is the name
+      // exactly as the DBC gives it.
+      const base = it.per_race ? `${name}_${code}` : name;
+      out.push({ model: base, texture: (which === "r" ? it.tex_r : it.tex_l) || it.tex_l,
+        attach, item: it.entry, inv: it.inv });
+    }
+  }
+  return out;
+}

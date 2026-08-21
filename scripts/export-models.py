@@ -32,7 +32,7 @@ import struct
 import argparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
-from m2 import Storm, parse_m2, skin, blp_to_rgba, VANILLA_ARCHIVES  # noqa: E402
+from m2 import Storm, parse_m2, skin, bone_matrices, blp_to_rgba, VANILLA_ARCHIVES  # noqa: E402
 from clientprofile import archives  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,12 +43,30 @@ APPEARANCE = os.path.join(ROOT, "scripts", "data", "item-appearance.json")
 OUT_DIR = os.path.join(ROOT, "public", "model3d")
 
 MAGIC = b"M2B1"
-VERSION = 1
+VERSION = 2   # v2: attachments carry the bone's ROTATION as well as its position
 FLAG_POSED = 1
 
 # A section table keeps the loader honest: it reads by offset, so adding a section later
 # cannot silently shift the ones a shipped client already knows.
 SECTIONS = ["pos", "nrm", "uv", "idx", "sub", "tex", "att", "str"]
+
+
+def mat_to_quat(R):
+    """(x, y, z, w) from a normalized 3x3 rotation, via the largest-diagonal branch --
+    the small-angle branches lose precision exactly where a hand or shoulder tends to be."""
+    import numpy as np
+    t = R[0, 0] + R[1, 1] + R[2, 2]
+    if t > 0:
+        sq = np.sqrt(t + 1.0) * 2
+        return ((R[2, 1] - R[1, 2]) / sq, (R[0, 2] - R[2, 0]) / sq, (R[1, 0] - R[0, 1]) / sq, 0.25 * sq)
+    if R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        sq = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2
+        return (0.25 * sq, (R[0, 1] + R[1, 0]) / sq, (R[0, 2] + R[2, 0]) / sq, (R[2, 1] - R[1, 2]) / sq)
+    if R[1, 1] > R[2, 2]:
+        sq = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2
+        return ((R[0, 1] + R[1, 0]) / sq, 0.25 * sq, (R[1, 2] + R[2, 1]) / sq, (R[0, 2] - R[2, 0]) / sq)
+    sq = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2
+    return ((R[0, 2] + R[2, 0]) / sq, (R[1, 2] + R[2, 1]) / sq, 0.25 * sq, (R[1, 0] - R[0, 1]) / sq)
 
 
 def build_m2b(m2):
@@ -102,8 +120,30 @@ def build_m2b(m2):
         subrows.append((sub["part"] & 0xFFFF, ttype, sub["triStart"], sub["triCount"],
                         mat["blend"] & 0xFF, mat["flags"] & 0xFF, tslot & 0xFF))
 
-    attrows = [(a["id"] & 0xFFFF, a["bone"] & 0xFFFF, *a["pos"]) for a in m2["attach"]
-               if a["bone"] < len(m2["bones"]) and a["id"] < 64]
+    # Attachment positions are stored bone-LOCAL in the M2; the mesh here is baked into
+    # the Stand pose, so they are baked the same way. Anything else would put a helm where
+    # the head is in the BIND pose, which is not where the head is.
+    # ...and its ROTATION, which is the half that is easy to forget: hang a weapon at the
+    # right position without the hand's orientation and it floats horizontally beside the
+    # character instead of being gripped. The quaternion is taken from the bone's world
+    # matrix, with scale divided out so a scaled bone cannot skew the item.
+    G = bone_matrices(m2) if m2["bones"] else None
+    attrows = []
+    for a in m2["attach"]:
+        if a["bone"] >= len(m2["bones"]) or a["id"] >= 64:
+            continue
+        if G is None:
+            attrows.append((a["id"] & 0xFFFF, a["bone"] & 0xFFFF, *a["pos"], 0.0, 0.0, 0.0, 1.0))
+            continue
+        M = G[a["bone"]]
+        wp = M @ np.array([*a["pos"], 1.0])
+        R = M[:3, :3].copy()
+        for c in range(3):
+            n = np.linalg.norm(R[:, c])
+            if n > 1e-8:
+                R[:, c] /= n
+        attrows.append((a["id"] & 0xFFFF, a["bone"] & 0xFFFF,
+                        float(wp[0]), float(wp[1]), float(wp[2]), *mat_to_quat(R)))
 
     strblob = b"".join(s.encode("latin1") + b"\0" for s in strings)
 
@@ -114,7 +154,7 @@ def build_m2b(m2):
         "idx": idx.tobytes(),
         "sub": b"".join(struct.pack("<2H2I3BB", *r, 0) for r in subrows),
         "tex": b"".join(struct.pack("<2BH", *r) for r in texrows),
-        "att": b"".join(struct.pack("<2H3f", *r) for r in attrows),
+        "att": b"".join(struct.pack("<2H7f", *r) for r in attrows),
         "str": strblob,
     }
 
@@ -146,6 +186,28 @@ def build_m2b(m2):
     stats = dict(verts=nvert, tris=len(idx) // 3, subs=len(subrows),
                  tex=len(texrows), att=len(attrows))
     return bytes(head) + b"".join(chunks), stats
+
+
+# A head model is modelled PER RACE AND GENDER, so one ItemDisplayInfo name is up to 20
+# files: `Helm_Mail_D_01` does not exist, `Helm_Mail_D_01_HuM` through `_BeF` do. Codes are
+# the ChrRaces client prefixes. (Shoulders need no such expansion -- the DBC names the left
+# and right pieces separately in ModelName[0] and [1].)
+RACE_CODES = ["hu", "or", "dw", "ni", "sc", "ta", "gn", "tr", "go", "be"]
+
+
+def model_variants(storm, name, d):
+    """[(output basename, client basename)] for one ModelName -- itself, plus the 20
+    per-race variants when it is a head."""
+    base = name.rsplit(".", 1)[0]
+
+    def exists(v):
+        return (storm.has(rf"Item\ObjectComponents\{d}\{v}.m2")
+                or storm.has(rf"Item\ObjectComponents\{d}\{v}.mdx"))
+    out = [(base, base)] if exists(base) else []
+    if d == "head":
+        out += [(f"{base}_{c}{x}", f"{base}_{c}{x}") for c in RACE_CODES for x in ("m", "f")
+                if exists(f"{base}_{c}{x}")]
+    return out
 
 
 def embedded_path(name):
@@ -321,9 +383,18 @@ def main():
         mi = row[0] if row else 0
         where = doc["m"].get(str(mi)) if mi else None
         tex_ids = [row[2] if len(row) > 2 else 0, row[3] if len(row) > 3 else 0]
-        if where and where[1]:
+        # Include PER-RACE names too (where[1] false): a helm's bare name does not exist,
+        # only its 20 race+gender variants do, and model_variants() expands them.
+        if where:
             d = where[0]
             models[S[mi]] = d
+            # ModelName[1] is a real second model, not a variant: a shoulder item names
+            # its LEFT piece in [0] and its RIGHT in [1] (748 displays carry one). Missing
+            # it exported only half of every shoulder set.
+            mi2 = row[1] if len(row) > 1 else 0
+            if mi2 and S[mi2]:
+                w2 = doc["m"].get(str(mi2))
+                models[S[mi2]] = w2[0] if w2 else d
             for ti in tex_ids:
                 if ti and S[ti]:
                     textures[S[ti]] = d
@@ -357,13 +428,16 @@ def main():
     nm = nt = fail = skip = 0
     mbytes = tbytes = 0
     embedded = set()     # client paths named inside the models (effect/glow planes)
-    for name in names:
-        d = models[name]
-        out = os.path.join(OUT_DIR, "item", name.lower() + ".m2b")
-        raw = storm.read(f"Item\\ObjectComponents\\{d}\\{name}.m2") or \
-            storm.read(f"Item\\ObjectComponents\\{d}\\{name}.mdx")
+    variants = [(name, models[name], ob, cb) for name in names
+                for ob, cb in (model_variants(storm, name, models[name]) or [(name, name)])]
+    print(f"  {len(variants)} model files for {len(names)} names "
+          f"(helms are per race+gender, shoulders an L/R pair)")
+    for name, d, outbase, clientbase in variants:
+        out = os.path.join(OUT_DIR, "item", outbase.lower() + ".m2b")
+        raw = storm.read(rf"Item\ObjectComponents\{d}\{clientbase}.m2") or \
+            storm.read(rf"Item\ObjectComponents\{d}\{clientbase}.mdx")
         if not raw:
-            print(f"  MISS {d}/{name}"); fail += 1; continue
+            print(f"  MISS {d}/{clientbase}"); fail += 1; continue
         try:
             parsed = parse_m2(raw)
             # Collected even when the .m2b itself is up to date: a model whose glow
@@ -377,18 +451,18 @@ def main():
                 if t["name"]:
                     embedded.add(t["name"])
             if os.path.exists(out) and not args.force:
-                manifest["models"].append(name.lower()); skip += 1; continue
+                manifest["models"].append(outbase.lower()); skip += 1; continue
             blob, stats = build_m2b(parsed)
         except Exception as e:                                  # noqa: BLE001
-            print(f"  FAIL {d}/{name}: {e}"); fail += 1; continue
+            print(f"  FAIL {d}/{clientbase}: {e}"); fail += 1; continue
         if args.only or args.verbose or args.dry_run:
-            print(f"  {name}: {stats}")
+            print(f"  {outbase}: {stats}")
         if not args.dry_run:
             os.makedirs(os.path.dirname(out), exist_ok=True)
             with open(out, "wb") as f:
                 f.write(blob)
             mbytes += len(blob)
-        manifest["models"].append(name.lower())
+        manifest["models"].append(outbase.lower())
         nm += 1
 
     for name, d in sorted(textures.items()):
