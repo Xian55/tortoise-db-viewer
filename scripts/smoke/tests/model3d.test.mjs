@@ -277,3 +277,28 @@ async function testPaperdoll() {
 }
 
 smoke("dressing room paperdoll equips per slot", () => testPaperdoll());
+
+// Wearing a tier set one slot at a time is eleven searches, so the room can equip a whole
+// set at once. Two things are easy to get wrong and both look like "the button does
+// nothing": the picker's own click bubbles to the room's close-on-outside-click handler,
+// and a set that names several items for one slot (a 1H and a 2H) must fill that slot once.
+async function testSets() {
+  await nav("?dressing&race=1&sex=m&hair=1");
+  await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
+  await page.click("#dress-set");
+  await page.type("#dress-find", "Dreadnaught", { delay: 20 });
+  await page.waitForFunction(() => document.querySelector('#dress-hits .sd-row[data-i="0"]'), { timeout: T });
+  const open = await page.$eval("#dress-pop", (e) => !e.hidden);
+  await page.click('#dress-hits .sd-row[data-i="0"]');
+  await page.waitForFunction(() => document.querySelectorAll(".dress-slot.filled").length > 4, { timeout: T });
+  const filled = await page.$$eval(".dress-slot.filled", (e) => e.map((b) => b.dataset.slot));
+  const dupes = filled.length !== new Set(filled).size;
+  // and off again in one click
+  await page.click("#dress-strip");
+  await page.waitForFunction(() => !document.querySelectorAll(".dress-slot.filled").length, { timeout: T });
+  const after = await page.$$eval(".dress-slot.filled", (e) => e.length);
+  console.log(`sets: pickerOpen=${open} filled=[${filled.join(",")}] afterStrip=${after}`);
+  return open && !dupes && filled.includes("chest") && filled.includes("head") && after === 0;
+}
+
+smoke("dressing room equips a whole item set", () => testSets());

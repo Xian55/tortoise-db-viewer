@@ -1170,6 +1170,11 @@ async function showDressingRoom(params, navigate) {
   app.innerHTML = `<div class="dressing">
       <h1>Dressing room</h1>
       <div class="dress-bar" id="dress-bar"></div>
+      <div class="dress-actions">
+        <button type="button" class="btn" id="dress-set">Wear a set...</button>
+        <button type="button" class="btn-sm" id="dress-strip">Take everything off</button>
+        <span class="muted" id="dress-msg"></span>
+      </div>
       <div class="dress-room">
         <div class="dress-col dress-col-l">${slotCol(SLOTS_L)}</div>
         <div id="mv-host" class="mv-host"><p class="muted">Loading character…</p></div>
@@ -1343,11 +1348,55 @@ async function showDressingRoom(params, navigate) {
     findEl.focus();
   };
 
+  // ---- sets ---------------------------------------------------------------------
+  // Equipping a tier set one slot at a time is eleven searches. Sets are what people
+  // actually want to look at, so they get a picker of their own -- the same panel, in
+  // "set" mode, anchored under the button.
+  const msgEl = app.querySelector("#dress-msg");
+  const say = (text) => {
+    msgEl.textContent = text;
+    if (text) setTimeout(() => { if (msgEl.textContent === text) msgEl.textContent = ""; }, 4000);
+  };
+
+  const equipSet = async (setId, setName) => {
+    let pieces = [];
+    try { pieces = await query(Q.Q_SET_PIECES, [setId]); } catch { pieces = []; }
+    // One piece per slot: a set may carry several items for the same one (a 1H and a 2H,
+    // two rings), and ORDER BY item_level DESC means the first is the best of them.
+    let n = 0;
+    const taken = new Set();
+    for (const piece of pieces) {
+      const slot = SLOT_PARAM[piece.inv];
+      if (!slot || taken.has(slot)) continue;
+      taken.add(slot);
+      worn.set(slot, piece.entry);
+      n++;
+    }
+    closeSlot();
+    syncUrl();
+    await mount();
+    say(n ? `Equipped ${n} piece${n === 1 ? "" : "s"} of ${setName}.`
+      : `${setName} has nothing that shows on a character.`);
+  };
+
+  const openSets = (btn) => {
+    activeSlot = "__set";
+    hits = []; cursor = -1;
+    findEl.placeholder = "Search item sets...";
+    findEl.value = "";
+    hitsEl.innerHTML = `<div class="sd-row sd-all">Type to search item sets</div>`;
+    popEl.hidden = false;
+    place(btn);
+    renderSlots();
+    findEl.focus();
+  };
+
   const paintCursor = () => {
     hitsEl.querySelectorAll(".sd-row").forEach((el, i) => el.classList.toggle("active", i === cursor));
   };
   const equip = async (row) => {
     if (!row) return;
+    if (activeSlot === "__set") { await equipSet(row.id, row.name); return; }
     worn.set(SLOT_PARAM[row.inv], row.entry);
     closeSlot();
     syncUrl();
@@ -1359,24 +1408,31 @@ async function showDressingRoom(params, navigate) {
     clearTimeout(findTimer);
     findTimer = setTimeout(async () => {
       const term = findEl.value.trim();
-      const slot = ALL_SLOTS.find((x) => x.key === activeSlot);
-      if (!slot) return;
+      const setMode = activeSlot === "__set";
+      const slot = setMode ? null : ALL_SLOTS.find((x) => x.key === activeSlot);
+      if (!setMode && !slot) return;
+      const label = setMode ? "item sets" : slot.label;
       if (term.length < 2) {
         hits = []; cursor = -1;
-        hitsEl.innerHTML = hint(slot.label);
+        hitsEl.innerHTML = hint(label);
         return;
       }
       let rows = [];
       try {
-        rows = await query(Q.qItemSearchInv(slot.inv.join(",")),
-          [ftsQuery(term), ftsQuery(term), 40, Number(term) || 0]);
+        rows = setMode
+          ? await query(Q.Q_SET_SEARCH, [`%${term}%`, `${term}%`])
+          : await query(Q.qItemSearchInv(slot.inv.join(",")),
+            [ftsQuery(term), ftsQuery(term), 40, Number(term) || 0]);
       } catch { rows = []; }
       if (findEl.value.trim() !== term) return;             // stale, the user moved on
       hits = rows.slice(0, 20); cursor = -1;
       hitsEl.innerHTML = hits.length
-        ? hits.map((r, i) => `<div class="sd-row" data-i="${i}">${iconImg(r.icon, "icon-sm")}`
-          + `<span class="ilink q${r.quality}">${esc(r.name)}</span>`
-          + `<span class="sd-tag">${esc(INV_TYPE[r.inv] || "")}</span></div>`).join("")
+        ? hits.map((r, i) => (setMode
+          ? `<div class="sd-row" data-i="${i}"><span class="ilink">${esc(r.name)}</span>`
+            + `<span class="sd-tag">${r.pieces} piece${r.pieces === 1 ? "" : "s"}</span></div>`
+          : `<div class="sd-row" data-i="${i}">${iconImg(r.icon, "icon-sm")}`
+            + `<span class="ilink q${r.quality}">${esc(r.name)}</span>`
+            + `<span class="sd-tag">${esc(INV_TYPE[r.inv] || "")}</span></div>`)).join("")
         : `<div class="sd-row sd-all">Nothing matches that name</div>`;
     }, 150);
   });
@@ -1403,12 +1459,27 @@ async function showDressingRoom(params, navigate) {
       return;
     }
     if (e.target.closest("a")) return;         // the item link is a link, not a slot click
+    // The action buttons open the picker themselves; without this the same click bubbles
+    // here and closes it again, so "Wear a set" appeared to do nothing at all.
+    if (e.target.closest(".dress-actions")) return;
     const btn = e.target.closest(".dress-slot");
     if (btn) { if (btn.dataset.slot === activeSlot) closeSlot(); else openSlot(btn.dataset.slot, btn); }
     else if (!e.target.closest("#dress-pop")) closeSlot();
   });
   addEventListener("resize", () => {
     if (activeSlot) place(app.querySelector(`.dress-slot[data-slot="${activeSlot}"]`));
+  });
+
+  app.querySelector("#dress-set")?.addEventListener("click", (e) => {
+    if (activeSlot === "__set") closeSlot(); else openSets(e.currentTarget);
+  });
+  app.querySelector("#dress-strip")?.addEventListener("click", async () => {
+    if (!worn.size) return;
+    worn.clear();
+    closeSlot();
+    syncUrl();
+    await mount();
+    say("Everything taken off.");
   });
 
   // Race / gender / skin / face / hair. A new race has its own option counts, so the

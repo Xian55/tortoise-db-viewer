@@ -143,6 +143,26 @@ export const Q_ITEMSET_MEMBERS = `
   SELECT i.entry, i.name, i.quality, i.allowable_class AS ac, di.icon
   FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE i.set_id = ?1 AND i.hidden = 0 ORDER BY i.required_level, i.name`;
+// Dressing room: find a set by name, and take its wearable pieces in one go. Only sets
+// with a piece that actually SHOWS are worth offering -- a set of rings changes nothing
+// about how you look.
+export const Q_SET_SEARCH = `
+  SELECT s.id, s.name,
+    (SELECT COUNT(*) FROM items i WHERE i.set_id = s.id AND i.hidden = 0) AS pieces
+  FROM item_sets s
+  WHERE s.name LIKE ?1
+    AND EXISTS (SELECT 1 FROM items i WHERE i.set_id = s.id AND i.hidden = 0
+                  AND i.inventory_type IN (1,3,4,5,6,7,8,9,10,16,19,20))
+  ORDER BY (s.name LIKE ?2) DESC, pieces DESC, s.name LIMIT 20`;
+
+// The pieces themselves, best-first per slot so a set that carries both a 1H and a 2H
+// resolves to one weapon rather than fighting itself.
+export const Q_SET_PIECES = `
+  SELECT i.entry, i.name, i.quality, i.inventory_type AS inv, di.icon
+  FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE i.set_id = ?1 AND i.hidden = 0
+  ORDER BY i.item_level DESC, i.entry`;
+
 // bonuses with the bonus spell's text (s1..d3 let the viewer resolve $s tokens).
 export const Q_ITEMSET_BONUSES = `
   SELECT b.threshold, s.entry AS spell, s.name AS spell_name, s.description,
