@@ -1598,20 +1598,39 @@ td .pet-rank { margin: 1px 0; }
 .dress-pick { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
 .dress-pick select { min-width: 92px; }
 
-/* Dressing room gear: the equip search, what is worn, and the result list. */
-.dress-gear { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; margin: 8px 0; }
-.dress-gear input[type="search"] { min-width: 220px; }
-.dress-worn { display: flex; flex-wrap: wrap; gap: 6px; }
-.dress-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px;
-  border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+/* Dressing room: a paperdoll -- slots flank the character, so their POSITION says which
+   body part they are. The gap is deliberately generous (unlike Wowhead's, where the
+   columns crowd the model): the character is the thing being looked at. */
+.dress-room { display: grid; grid-template-columns: minmax(150px, 200px) minmax(0, 1fr) minmax(150px, 200px);
+  gap: 56px; align-items: start; margin: 10px 0; }
+.dress-col { display: flex; flex-direction: column; gap: 8px; }
+.dress-slot { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 6px;
+  background: none; border: 1px solid var(--border); border-radius: 8px; color: inherit;
+  cursor: pointer; text-align: left; font-size: 12px; }
+.dress-slot:hover, .dress-slot.active { border-color: var(--accent, #c8a24a); background: var(--panel); }
+.dress-slot-icon { flex: 0 0 auto; width: 36px; height: 36px; border: 1px solid var(--border);
+  border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.dress-slot-icon img, .dress-slot-icon .icon-sprite { width: 32px; height: 32px; }
+.dress-slot-label { flex: 1 1 auto; min-width: 0; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dress-slot.filled .dress-slot-label { color: inherit; }
 .dress-off { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
 .dress-off:hover { color: var(--fg); }
-.dress-hits { display: flex; flex-direction: column; max-height: 260px; overflow-y: auto;
-  border: 1px solid var(--border); border-radius: 6px; margin-bottom: 10px; }
+.dress-find-wrap[hidden] { display: none; }   /* display:flex would otherwise beat the attribute */
+.dress-find-wrap { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 8px 0; }
+.dress-find-wrap input[type="search"] { min-width: 240px; }
+.dress-hits { display: flex; flex-direction: column; flex-basis: 100%; max-height: 260px;
+  overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
 .dress-hit { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: none;
   border: 0; border-bottom: 1px solid var(--border); color: inherit; cursor: pointer; text-align: left; }
 .dress-hit:last-child { border-bottom: 0; }
 .dress-hit:hover { background: var(--panel); }
+/* Narrow screens: the columns stop flanking and sit under the model. */
+@media (max-width: 900px) {
+  .dress-room { grid-template-columns: 1fr; gap: 14px; }
+  .dress-col { flex-direction: row; flex-wrap: wrap; }
+  .dress-col .dress-slot { width: auto; flex: 1 1 150px; }
+}
 
 /* Character-sheet 3D preview: collapsed to just its bar until asked for. */
 .char-3d { margin: 14px 0; }

@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect, getMeta, caps } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
+import { qualityColor, renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, QUALITY, ITEM_CLASS, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, DMG_SCHOOL, RESISTANCES, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA, MAX_SKILL, skinningReq } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -1126,18 +1126,46 @@ async function showDressingRoom(params, navigate) {
     const v = num(key, 0);
     if (v) worn.set(key, v);
   }
+  // Paperdoll layout: the slots flank the character the way the in-game window (and
+  // Wowhead's dressing room) arranges them, so a slot's POSITION says which body part it
+  // is and no labels are needed. Weapon slots are omitted rather than shown dead: they
+  // are not attached yet, so equipping one would visibly do nothing.
+  const SLOTS_L = [
+    { key: "head", label: "Head", inv: [1] },
+    { key: "shoulder", label: "Shoulder", inv: [3] },
+    { key: "back", label: "Back", inv: [16] },
+    { key: "chest", label: "Chest", inv: [5, 20] },
+    { key: "shirt", label: "Shirt", inv: [4] },
+    { key: "tabard", label: "Tabard", inv: [19] },
+  ];
+  const SLOTS_R = [
+    { key: "wrist", label: "Wrist", inv: [9] },
+    { key: "hands", label: "Hands", inv: [10] },
+    { key: "waist", label: "Waist", inv: [6] },
+    { key: "legs", label: "Legs", inv: [7] },
+    { key: "feet", label: "Feet", inv: [8] },
+  ];
+  const ALL_SLOTS = [...SLOTS_L, ...SLOTS_R];
+  const slotCol = (list) => list.map((s) =>
+    `<button type="button" class="dress-slot" data-slot="${s.key}" title="${esc(s.label)}">
+       <span class="dress-slot-icon"></span><span class="dress-slot-label">${esc(s.label)}</span>
+     </button>`).join("");
+
   app.innerHTML = `<div class="dressing">
       <h1>Dressing room</h1>
-      <p class="muted">Pick a race and appearance. Gear comes next.</p>
       <div class="dress-bar" id="dress-bar"></div>
-      <div class="dress-gear">
-        <label class="dress-pick">Equip
-          <input id="dress-find" type="search" placeholder="Search armor by name…" autocomplete="off">
-        </label>
-        <div id="dress-worn" class="dress-worn"></div>
+      <div class="dress-room">
+        <div class="dress-col dress-col-l">${slotCol(SLOTS_L)}</div>
+        <div id="mv-host" class="mv-host"><p class="muted">Loading character…</p></div>
+        <div class="dress-col dress-col-r">${slotCol(SLOTS_R)}</div>
       </div>
-      <div id="dress-hits" class="dress-hits hidden"></div>
-      <div id="mv-host" class="mv-host"><p class="muted">Loading character…</p></div>
+      <div class="dress-find-wrap" id="dress-find-wrap" hidden>
+        <label class="dress-pick"><span id="dress-find-label">Equip</span>
+          <input id="dress-find" type="search" placeholder="Search by name…" autocomplete="off">
+        </label>
+        <button type="button" class="btn-sm" id="dress-find-close">Done</button>
+        <div id="dress-hits" class="dress-hits hidden"></div>
+      </div>
     </div>`;
   const host = app.querySelector("#mv-host");
   const bar = app.querySelector("#dress-bar");
@@ -1200,10 +1228,13 @@ async function showDressingRoom(params, navigate) {
   };
   const KEY = { hcolor: "hairColor", facial: "facialHair" };
 
-  const wornEl = app.querySelector("#dress-worn");
   const hitsEl = app.querySelector("#dress-hits");
   const findEl = app.querySelector("#dress-find");
+  const findWrap = app.querySelector("#dress-find-wrap");
+  const findLabel = app.querySelector("#dress-find-label");
+  const roomEl = app.querySelector(".dress-room");
   let wornRows = [];                          // qDressItemsIn rows for what is equipped
+  let activeSlot = null;                      // the slot being edited, if any
 
   const syncUrl = () => {
     const q = new URLSearchParams({ dressing: "", race: state.race, sex: state.sex,
@@ -1213,43 +1244,85 @@ async function showDressingRoom(params, navigate) {
     history.replaceState({}, "", `?${q}`);
   };
 
-  const renderWorn = () => {
-    wornEl.innerHTML = wornRows.length
-      ? wornRows.map((r) => `<span class="dress-chip">${iconImg(r.icon, "icon-sm")}`
-        + `<a class="nav" href="?item=${r.entry}" title="Where it drops">${esc(r.name)}</a>`
-        + `<button class="dress-off" data-slot="${SLOT_PARAM[r.inv]}" title="Take off">✕</button></span>`).join("")
-      : `<span class="muted">Nothing equipped yet.</span>`;
-  };
-
-  // Resolve everything equipped in ONE query, then hand the rows to the viewer.
-  const mount = async () => {
-    const ids = [...worn.values()];
-    if (ids.length) {
-      try {
-        wornRows = await query(Q.qDressItemsIn(ids.length), ids);
-      } catch (e) { wornRows = []; }
-    } else wornRows = [];
-    renderWorn();
-    destroyViewer();
-    host.innerHTML = "";
-    try {
-      activeViewer = await mod.mountCharacterViewer(host, { ...state, items: wornRows });
-    } catch (e) {
-      host.innerHTML = `<p class="muted">Could not load this character — ${esc(e.message)}.</p>`;
+  // Paint each slot with what is in it. The icon IS the slot, so an empty one keeps its
+  // label and a filled one shows the item (quality-coloured, with a way to take it off).
+  const renderSlots = () => {
+    const bySlot = new Map(wornRows.map((r) => [SLOT_PARAM[r.inv], r]));
+    for (const btn of app.querySelectorAll(".dress-slot")) {
+      const row = bySlot.get(btn.dataset.slot);
+      btn.classList.toggle("filled", !!row);
+      btn.classList.toggle("active", btn.dataset.slot === activeSlot);
+      const icon = btn.querySelector(".dress-slot-icon");
+      const label = btn.querySelector(".dress-slot-label");
+      if (row) {
+        icon.innerHTML = iconImg(row.icon, "icon-sm");
+        icon.style.borderColor = qualityColor(row.quality) || "";
+        label.innerHTML = `<a class="nav" href="?item=${row.entry}" title="Where it drops">${esc(row.name)}</a>`
+          + `<button type="button" class="dress-off" data-slot="${btn.dataset.slot}" title="Take off">✕</button>`;
+      } else {
+        icon.innerHTML = "";
+        icon.style.borderColor = "";
+        label.textContent = ALL_SLOTS.find((x) => x.key === btn.dataset.slot)?.label || "";
+      }
     }
   };
 
-  // Equip by name. Reuses the character sheet's own slot-search query, restricted to the
-  // slots that change how you LOOK -- searching rings in a dressing room is noise.
+  // Resolve everything equipped in ONE query, then hand the rows to the viewer.
+  //
+  // Re-entrant on purpose: every equip/unequip and every appearance change starts a new
+  // mount, and each one awaits a query plus a dozen model/texture fetches. Without the
+  // sequence guard a slow first mount finishes AFTER a later one has cleared the host,
+  // appending its canvas into an element the newer mount has already emptied -- which
+  // showed up as a dressing room with no character in it at all.
+  let mountSeq = 0;
+  const mount = async () => {
+    const my = ++mountSeq;
+    const ids = [...worn.values()];
+    if (ids.length) {
+      try { wornRows = await query(Q.qDressItemsIn(ids.length), ids); } catch { wornRows = []; }
+    } else wornRows = [];
+    if (my !== mountSeq) return;
+    renderSlots();
+    destroyViewer();
+    host.innerHTML = "";
+    try {
+      const viewer = await mod.mountCharacterViewer(host, { ...state, items: wornRows });
+      if (my !== mountSeq) { try { viewer.destroy(); } catch { /* already gone */ } return; }
+      activeViewer = viewer;
+    } catch (e) {
+      if (my === mountSeq) host.innerHTML = `<p class="muted">Could not load this character — ${esc(e.message)}.</p>`;
+    }
+  };
+
+  const openSlot = (key) => {
+    activeSlot = key;
+    const slot = ALL_SLOTS.find((x) => x.key === key);
+    findWrap.hidden = false;
+    findLabel.textContent = `Equip ${slot?.label || key}`;
+    findEl.value = "";
+    hitsEl.classList.add("hidden");
+    renderSlots();
+    findEl.focus();
+  };
+  const closeSlot = () => {
+    activeSlot = null;
+    findWrap.hidden = true;
+    hitsEl.classList.add("hidden");
+    renderSlots();
+  };
+
+  // Search WITHIN the open slot: the same query the character sheet's picker uses, but
+  // restricted to that slot's inventory types, so "Chest" never offers you boots.
   let findTimer = 0;
   findEl.addEventListener("input", () => {
     clearTimeout(findTimer);
     findTimer = setTimeout(async () => {
       const term = findEl.value.trim();
-      if (term.length < 2) { hitsEl.classList.add("hidden"); return; }
+      const slot = ALL_SLOTS.find((x) => x.key === activeSlot);
+      if (!slot || term.length < 2) { hitsEl.classList.add("hidden"); return; }
       let rows = [];
       try {
-        rows = await query(Q.qItemSearchInv(WEARABLE.join(",")),
+        rows = await query(Q.qItemSearchInv(slot.inv.join(",")),
           [ftsQuery(term), ftsQuery(term), 40, Number(term) || 0]);
       } catch { rows = []; }
       hitsEl.classList.toggle("hidden", !rows.length);
@@ -1264,30 +1337,27 @@ async function showDressingRoom(params, navigate) {
     const b = e.target.closest(".dress-hit");
     if (!b) return;
     worn.set(SLOT_PARAM[Number(b.dataset.inv)], Number(b.dataset.entry));
-    hitsEl.classList.add("hidden");
-    findEl.value = "";
+    closeSlot();
     syncUrl();
     await mount();
   });
 
-  wornEl.addEventListener("click", async (e) => {
-    const b = e.target.closest(".dress-off");
-    if (!b) return;
-    worn.delete(b.dataset.slot);
-    syncUrl();
-    await mount();
+  roomEl.addEventListener("click", async (e) => {
+    const off = e.target.closest(".dress-off");
+    if (off) {
+      e.stopPropagation();
+      worn.delete(off.dataset.slot);
+      syncUrl();
+      await mount();
+      return;
+    }
+    if (e.target.closest("a")) return;         // the item link is a link, not a slot click
+    const btn = e.target.closest(".dress-slot");
+    if (btn) openSlot(btn.dataset.slot);
   });
-  bar.addEventListener("change", async (e) => {
-    const sel = e.target.closest("select");
-    if (!sel) return;
-    const k = sel.dataset.key;
-    state[KEY[k] || k] = k === "sex" ? sel.value : Number(sel.value);
-    // A new race has its own option counts, so the picker list is rebuilt, and the URL
-    // keeps the look shareable.
-    render();
-    syncUrl();
-    await mount();
-  });
+  app.querySelector("#dress-find-close")?.addEventListener("click", closeSlot);
+  findEl.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSlot(); });
+
   render();
   await mount();
 }

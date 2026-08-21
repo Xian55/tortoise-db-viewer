@@ -339,11 +339,27 @@ function buildViewer(el, model, slotTex, opts = {}) {
 
   // Is the canvas actually on screen? Covers both the hidden tab pane (zero-size box)
   // and simply scrolling the viewer out of view.
+  // Measured, not just observed. IntersectionObserver's FIRST callback races layout: on a
+  // page whose grid settles after mount it can report "not intersecting" for an element
+  // that is plainly on screen, and since the intersection never changes afterwards no
+  // second callback arrives to correct it -- the viewer then sleeps forever on a visible
+  // canvas. So compute it directly too, and let the observer only update it.
+  const onScreen = () => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < (innerHeight || 0);
+  };
+  visible = onScreen();
   const io = typeof IntersectionObserver === "function"
-    ? new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (visible) wake(); })
+    ? new IntersectionObserver(([e]) => { visible = e.isIntersecting || onScreen(); if (visible) wake(); })
     : null;
   io?.observe(el);
+  addEventListener("scroll", onVisibilityCheck, { passive: true });
   const onVisibility = () => { if (!document.hidden) wake(); };
+  // Scrolling changes visibility without any other event firing.
+  function onVisibilityCheck() {
+    const now = onScreen();
+    if (now && !visible) { visible = true; wake(); } else if (!now) visible = false;
+  }
   document.addEventListener("visibilitychange", onVisibility);
 
   draw();                                // first frame, so the pane is never blank
@@ -354,7 +370,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       status: "ok", model: opts.label || null, texture: opts.texture || null,
       textured: !!tex, meshes: drawn, triangles: model.idx.length / 3,
       vertices: model.pos.length / 3, frames, spinning: spin,
-      running, visible,                  // false/false = costing nothing right now
+      running, visible, onScreen: onScreen(),   // false/false = costing nothing right now
       geosets: opts.geosets ? [...opts.geosets].sort((a, b) => a - b) : null,
       cape: opts.cape || null,
       attached: (opts.attached || []).map((a) => ({ attach: a.attach, model: a.label || null })),
@@ -378,6 +394,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       cancelAnimationFrame(raf);
       removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVisibility);
+      removeEventListener("scroll", onVisibilityCheck);
       io?.disconnect();
       ro?.disconnect();
       controls.dispose();

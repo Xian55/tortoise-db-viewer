@@ -207,9 +207,12 @@ async function testWornGear() {
   await page.waitForSelector("#mv-host canvas", { timeout: T });
   await page.waitForFunction(() => window.__mv && window.__mv().geosets, { timeout: T });
   const g = await page.evaluate(() => window.__mv().geosets);
-  const chips = await page.$$eval(".dress-chip a", (e) => e.map((x) => x.textContent));
-  const links = await page.$$eval(".dress-chip a", (e) => e.every((x) => x.getAttribute("href").startsWith("?item=")));
-  console.log(`worn gear: geosets=[${g}] chips=[${chips.join(", ")}] itemLinks=${links}`);
+  // The paperdoll fills the SLOT itself; each filled slot names the item and links to
+  // its page, which is where "where it drops" lives.
+  const chips = await page.$$eval(".dress-slot.filled .dress-slot-label a", (e) => e.map((x) => x.textContent));
+  const links = await page.$$eval(".dress-slot.filled .dress-slot-label a",
+    (e) => e.length > 0 && e.every((x) => x.getAttribute("href").startsWith("?item=")));
+  console.log(`worn gear: geosets=[${g}] slots=[${chips.join(", ")}] itemLinks=${links}`);
   // 402 = gloves over the bare 401; 504 = the boot variant; both must have REPLACED the
   // bare ones rather than drawing alongside them.
   return g.includes(402) && !g.includes(401) && g.includes(504) && !g.includes(501)
@@ -251,3 +254,24 @@ async function testAttachments() {
 }
 
 smoke("dressing room attaches a helm and both shoulders", () => testAttachments());
+
+// The paperdoll: slots flank the character, clicking one opens a search restricted to
+// that slot, and picking an item equips it there. Also guards the mount race that left
+// the room with no character at all -- a slow first mount finishing after a later one had
+// already cleared the host.
+async function testPaperdoll() {
+  await nav("?dressing&race=1&sex=f&hair=2&chest=60180&feet=1121");
+  await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
+  const slots = await page.$$eval(".dress-slot", (e) => e.map((b) => b.dataset.slot));
+  const filled = await page.$$eval(".dress-slot.filled", (e) => e.map((b) => b.dataset.slot));
+  const canvases = await page.$$eval("#mv-host canvas", (e) => e.length);
+  // open the Head slot: the search must appear and be scoped to that slot
+  await page.click('.dress-slot[data-slot="head"]');
+  const open = await page.$eval("#dress-find-wrap", (e) => !e.hidden);
+  const label = await page.$eval("#dress-find-label", (e) => e.textContent);
+  console.log(`paperdoll: slots=[${slots.join(",")}] filled=[${filled.join(",")}] canvases=${canvases} search="${label}" open=${open}`);
+  return slots.includes("head") && slots.includes("feet") && filled.length === 2
+    && canvases === 1 && open && /head/i.test(label);
+}
+
+smoke("dressing room paperdoll equips per slot", () => testPaperdoll());
