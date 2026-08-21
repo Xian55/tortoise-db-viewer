@@ -29,6 +29,14 @@ function register(viewer) {
   active = viewer;
   return viewer;
 }
+// A mount that has been superseded must NOT reach register(): register() destroys the
+// live viewer to make room, so a stale mount finishing last takes the CURRENT one's
+// canvas down with it and the page is left blank. The host being detached says the same
+// thing -- its page has been re-rendered underneath us -- and costs nothing to check.
+function cancelled(el, opts) {
+  return !el.isConnected || !!opts.cancelled?.();
+}
+
 export function destroyActive() {
   if (!active) return;
   try { active.destroy(); } catch { /* already gone */ }
@@ -139,6 +147,7 @@ export async function mountItemViewer(el, opts = {}) {
       ? loadTexture(embeddedUrl(t.name))
       : (opts.texture ? loadTexture(textureUrl(opts.texture)) : Promise.resolve(null))
   )));
+  if (cancelled(el, opts)) throw new Error("cancelled");
   return register(buildViewer(el, model, slotTex, { label: opts.model, texture: opts.texture || null }));
 }
 
@@ -613,6 +622,7 @@ export async function mountCharacterViewer(el, opts = {}) {
   }));
 
   const present = new Set(model.submeshes.map((sm) => sm.geoset));
+  if (cancelled(el, opts)) throw new Error("cancelled");
   return register(buildViewer(el, model, slotTex, {
     attached,
     label: `${race}-${sex}`,

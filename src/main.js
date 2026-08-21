@@ -261,6 +261,7 @@ function mountModelTab(appearance) {
   const host = app.querySelector("#mv-host");
   if (!bar || !host) return;
   let started = false;
+  const myRoute = routeSeq;
   const mount = async () => {
     if (started) return;
     started = true;
@@ -268,11 +269,15 @@ function mountModelTab(appearance) {
       const { mountItemViewer } = await import("./modelviewer.js");
       host.innerHTML = "";
       destroyViewer();
-      activeViewer = await mountItemViewer(host, {
+      const viewer = await mountItemViewer(host, {
         model: appearance.model_l,
         texture: appearance.tex_l,
+        cancelled: () => myRoute !== routeSeq,
       });
+      if (myRoute !== routeSeq) { try { viewer.destroy(); } catch { /* gone */ } return; }
+      activeViewer = viewer;
     } catch (err) {
+      if (err?.message === "cancelled" || myRoute !== routeSeq) return;
       host.innerHTML = `<p class="muted">3D preview unavailable${err?.message ? ` — ${esc(err.message)}` : ""}.</p>`;
     }
   };
@@ -1113,6 +1118,11 @@ async function showDressingRoom(params, navigate) {
       + `<p class="muted">This needs WebGL, which this browser has turned off or does not support.</p></div>`;
     return;
   }
+  // Captured BEFORE the first await: this function loads the viewer chunk and the
+  // appearance JSON on the way in, and reading routeSeq after that would read the
+  // sequence of whatever route replaced us -- so a superseded render would think it was
+  // still the current one.
+  const myRoute = routeSeq;
   const num = (k, d) => (params.get(k) !== null && params.get(k) !== "" ? Number(params.get(k)) : d);
   const state = {
     race: num("race", 1), sex: params.get("sex") === "f" ? "f" : "m",
@@ -1298,7 +1308,6 @@ async function showDressingRoom(params, navigate) {
   // appending its canvas into an element the newer mount already emptied -- which showed
   // up as a dressing room with no character in it at all.
   let mountSeq = 0;
-  const myRoute = routeSeq;
   const stale = (my) => my !== mountSeq || myRoute !== routeSeq;
   const mount = async () => {
     const my = ++mountSeq;
@@ -1311,11 +1320,15 @@ async function showDressingRoom(params, navigate) {
     destroyViewer();
     host.innerHTML = "";
     try {
-      const viewer = await mod.mountCharacterViewer(host, { ...state, items: wornRows });
+      const viewer = await mod.mountCharacterViewer(host, {
+        ...state, items: wornRows, cancelled: () => stale(my),
+      });
       if (stale(my)) { try { viewer.destroy(); } catch { /* already gone */ } return; }
       activeViewer = viewer;
     } catch (e) {
-      if (!stale(my)) host.innerHTML = `<p class="muted">Could not load this character - ${esc(e.message)}.</p>`;
+      if (!stale(my) && e.message !== "cancelled") {
+        host.innerHTML = `<p class="muted">Could not load this character - ${esc(e.message)}.</p>`;
+      }
     }
   };
 
@@ -4010,8 +4023,27 @@ async function showFooterMeta(loadMs) {
 }
 
 // ---- boot ----
+// A dev-server quirk with real consequences: Vite HMR RE-EXECUTES this module rather
+// than replacing it, and main.js is the app's entry -- so a second execution boots a
+// second router over the same DOM. Two renders then race, and because each router has
+// its own module state neither can see the other; the loser's mount finishing last tore
+// the winner's WebGL canvas out from under it, which is why the dressing room came up
+// blank on roughly half of all dev reloads (a long-running dev server pushes such an
+// update on EVERY page load, so it was not tied to editing anything). There is nothing
+// here to hot-swap, so the second execution simply stands down -- no reload, which under
+// a server that keeps re-pushing would loop. Stripped from the production bundle.
+if (import.meta.hot) {
+  if (window.__twBooted) {
+    console.info("[tortoise-db] HMR re-ran main.js; refresh the page to pick up the change.");
+  } else {
+    window.__twBooted = true;
+    boot();
+  }
+} else boot();
+
 // Resolve the asset origin first (probe R2, fall over to the Pages mirror if it's
 // blocked) so nothing below reads DATA_BASE/ASSETS_BASE before they're settled.
+function boot() {
 resolveOrigins().finally(() => {
   preconnect();
   initHovercards();
@@ -4024,3 +4056,4 @@ resolveOrigins().finally(() => {
     .then(renderRoute, renderRoute)
     .finally(() => showFooterMeta(performance.now()));
 });
+}
