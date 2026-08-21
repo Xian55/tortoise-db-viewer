@@ -320,13 +320,26 @@ def main():
     for did, row in doc["d"].items():
         mi = row[0] if row else 0
         where = doc["m"].get(str(mi)) if mi else None
-        if not where or not where[1]:
+        tex_ids = [row[2] if len(row) > 2 else 0, row[3] if len(row) > 3 else 0]
+        if where and where[1]:
+            d = where[0]
+            models[S[mi]] = d
+            for ti in tex_ids:
+                if ti and S[ti]:
+                    textures[S[ti]] = d
             continue
-        d = where[0]
-        models[S[mi]] = d
-        for ti in (row[2] if len(row) > 2 else 0, row[3] if len(row) > 3 else 0):
-            if ti and S[ti]:
-                textures[S[ti]] = d
+        # A display with NO model can still carry a texture, and one kind matters: a
+        # CLOAK is the character's own cape geoset textured from the item. Skipping these
+        # (because the worklist was keyed on models) left every cloak painted with the
+        # body atlas -- the character's own face stretched across their cape.
+        for ti in tex_ids:
+            name = S[ti] if ti else ""
+            if not name or name in textures:
+                continue
+            for d in ("Cape", "Weapon", "Shield", "Head", "Shoulder", "Quiver", "Ammo", "Pouch"):
+                if storm.has(rf"Item\ObjectComponents\{d}\{name}.blp"):
+                    textures[name] = d.lower()
+                    break
     if args.only:
         models = {k: v for k, v in models.items() if k.lower() == args.only.lower()}
         if not models:

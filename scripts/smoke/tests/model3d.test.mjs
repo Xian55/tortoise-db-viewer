@@ -217,3 +217,19 @@ async function testWornGear() {
 }
 
 smoke("dressing room wears gloves and boots", () => testWornGear());
+
+// A cloak is the character's own cape geoset textured from the ITEM, and its texture is
+// the one kind that belongs to a display with NO model -- which is exactly how it got
+// missed: the export worklist was keyed on models, so no cape texture was ever written
+// and every cloak rendered with the body atlas (the character's own face stretched down
+// their back). Assert the texture actually LOADED, not merely that it was requested: a
+// dev server answers a missing file with index.html at 200, so the request looked fine.
+async function testCloakTexture() {
+  await nav("?dressing&race=1&sex=f&hair=2&back=80505");
+  await page.waitForFunction(() => window.__mv && window.__mv().cape, { timeout: T });
+  const st = await page.evaluate(() => window.__mv());
+  console.log(`cloak: ${JSON.stringify(st.cape)} capeGeoset=${st.geosets.filter((g) => g >= 1502 && g < 1600)}`);
+  return st.cape?.loaded === true && st.geosets.some((g) => g >= 1502 && g < 1600);
+}
+
+smoke("dressing room textures a cloak from the item", () => testCloakTexture());

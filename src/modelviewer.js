@@ -341,6 +341,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       vertices: model.pos.length / 3, frames, spinning: spin,
       running, visible,                  // false/false = costing nothing right now
       geosets: opts.geosets ? [...opts.geosets].sort((a, b) => a - b) : null,
+      cape: opts.cape || null,
       // [geoset, texType, blend, hasTexture] per drawn submesh -- what actually
       // reached the GPU, which is the only way to tell "filtered out" from
       // "drawn but invisible".
@@ -558,6 +559,7 @@ export async function mountCharacterViewer(el, opts = {}) {
   const present = new Set(model.submeshes.map((sm) => sm.geoset));
   return register(buildViewer(el, model, slotTex, {
     label: `${race}-${sex}`,
+    cape: backItem ? { item: backItem.entry, texture: backItem.tex_l, loaded: !!capeTex } : null,
     geosets: applyGear(baseGeosets(model, { hairGeoset, facial: facialGeosets }), worn, present),
     skipEmbedded: true,
     // Straight on: a character model faces WoW +Y, which is -Z after the Y-up swap.
