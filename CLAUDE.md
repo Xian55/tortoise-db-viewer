@@ -786,8 +786,18 @@ what 4 looks like. Anything with a preview now shows it and everything else step
   onto the canvas as an inline width/height in pixels, and an inline style outranks the
   stylesheet that sizes the canvas to its pane -- so returning from fullscreen the canvas
   kept the screen's height, overflowed the room and pushed the page layout apart.
-- **The three columns of `CharacterFacialHairStyles` are NOT in group order: they are
-  groups 1, 3, 2.** Read in order, a troll's tusks (column 1) resolve to geoset 2xx, and no
+- **A "facial hair" variation is TWO choices on some races, and the data says which.** A
+  troll's fourteen tusk variations resolve to five tusk SHAPES (geosets) and nine war
+  PAINTS (textures), and the game picks one of each -- so one index cannot express a look.
+  A human's nine beards are nine beards: shape and texture travel together, and splitting
+  them would offer 54 combinations the game does not have. The test is the collapse: split
+  when the distinct geoset sets number two thirds of the variations or fewer AND some
+  variation carries no texture (so "no paint" is a real option). Measured, that is trolls
+  (0.36 / 0.60), undead (0.35 / 0.25) and night elf females (0.10) -- not orc males (0.91)
+  or human males (0.67), matching what those creators actually offer. Where a race has only
+  ONE shape the shape stepper hides itself and the race's word moves to the paint, which is
+  exactly what "Markings" means on a night elf female. `?paint=` carries it; absent, it
+  follows `?facial=`, so every link written before the split still renders what it said. Read in order, a troll's tusks (column 1) resolve to geoset 2xx, and no
   troll model contains a single 2xx -- so trolls had no tusks at all while the picker
   offered fourteen styles of nothing. The order was scored, not guessed: of the six
   permutations, 1/3/2 resolves 240 of 286 references against the models' actual geosets,

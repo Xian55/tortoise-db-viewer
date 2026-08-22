@@ -574,3 +574,31 @@ async function testRaceLabels() {
 }
 
 smoke("dressing room names each race's options as the game does", () => testRaceLabels());
+
+// Shape and paint are TWO choices on some races and one on others. A troll's fourteen
+// "tusk" variations are five tusk shapes and nine war paints, and the game picks one of
+// each; a human's nine beards are nine beards. Both halves are asserted, because getting
+// this wrong in either direction is invisible until you look at a face.
+async function testFacialSplit() {
+  await nav("?dressing&race=8&sex=m&hair=1&facial=0&paint=0");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const troll = await page.$$eval(".stepper .val", (e) => e.map((x) => x.textContent.trim()));
+  const g0 = await page.evaluate(() => window.__mv().geosets.join(","));
+  // paint alone: the geosets must not move
+  await nav("?dressing&race=8&sex=m&hair=1&facial=0&paint=7");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const gPaint = await page.evaluate(() => window.__mv().geosets.join(","));
+  // shape alone: they must
+  await nav("?dressing&race=8&sex=m&hair=1&facial=4&paint=7");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const gShape = await page.evaluate(() => window.__mv().geosets.join(","));
+  await nav("?dressing&race=1&sex=m&hair=1");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const human = await page.$$eval(".stepper .val", (e) => e.map((x) => x.textContent.trim()));
+  console.log(`split: troll=[${troll.join(" | ")}] human=[${human.join(" | ")}] paintOnly=${g0 === gPaint} shapeMoved=${g0 !== gShape}`);
+  return troll.length === 4 && /Tusks/.test(troll[2]) && /paint/i.test(troll[3])
+    && g0 === gPaint && g0 !== gShape
+    && human.length === 3 && /Facial Hair/i.test(human[2]);
+}
+
+smoke("dressing room separates tusk shape from war paint", () => testFacialSplit());

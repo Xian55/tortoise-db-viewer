@@ -658,7 +658,11 @@ export async function mountCharacterViewer(el, opts = {}) {
   const skinRow = section(data, race, sex, "skin", 0, skin);
   const faceRow = section(data, race, sex, "face", face, skin);
   const underRow = section(data, race, sex, "underwear", 0, skin);
-  const facialRow = section(data, race, sex, "facial", facialStyle, hairColor);
+  // The paint is chosen INDEPENDENTLY of the geoset where a race allows it (see
+  // main.js FACIAL_SPLIT): a troll picks a tusk shape and a war paint separately, and one
+  // index cannot express that. Callers that do not split pass the same value for both.
+  const paintStyle = opts.facePaint ?? facialStyle;
+  const facialRow = section(data, race, sex, "facial", paintStyle, hairColor);
   const hairRow = section(data, race, sex, "hair", hairStyle, hairColor);
 
   const layers = [];

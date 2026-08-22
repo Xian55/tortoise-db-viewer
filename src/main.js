@@ -1141,6 +1141,10 @@ async function showDressingRoom(params, navigate) {
     race: num("race", 1), sex: params.get("sex") === "f" ? "f" : "m",
     skin: num("skin", 0), face: num("face", 0),
     hair: num("hair", 0), hairColor: num("hcolor", 0), facialHair: num("facial", 0),
+    // Absent from a link, the paint FOLLOWS the facial index -- which is exactly what the
+    // single coupled stepper used to do, so every URL written before the split still
+    // renders the character it described.
+    facePaint: params.get("paint") !== null ? num("paint", 0) : num("facial", 0),
   };
   // Visual slots only -- a ring changes nothing about how you look. Head, shoulders and
   // anything held are MODELS hung off an attachment point rather than textures painted
@@ -1252,6 +1256,37 @@ async function showDressingRoom(params, navigate) {
   // it headless.
   const geosetOpts = (table) =>
     [...new Set((data[table][`${state.race}-${state.sex}`] || []).map((r) => r[0]))].sort((a, b) => a - b);
+
+  // Shape and paint are TWO CHOICES on some races and one on others, and the data says
+  // which. A troll's fourteen "tusk" variations resolve to five tusk shapes and nine war
+  // paints, and the game lets you pick one of each; a human's nine beards are nine
+  // beards -- shape and texture travel together and splitting them would offer 54
+  // combinations the game does not have.
+  //
+  // The test is the collapse: split when the distinct geoset sets number two thirds of
+  // the variations or fewer. Measured, that is trolls, undead and night elf females
+  // (ratios 0.36, 0.25, 0.10) but not orc males (0.91) or human males (0.67), which
+  // matches what those races' creators actually offer.
+  const SPLIT_RATIO = 0.65;
+  const facialAxes = () => {
+    const rows = data.facial[`${state.race}-${state.sex}`] || [];
+    const byGeoset = new Map();               // geoset signature -> its lowest variation
+    for (const r of [...rows].sort((a, b) => a[0] - b[0])) {
+      const key = r.slice(1).join(",");
+      if (!byGeoset.has(key)) byGeoset.set(key, r[0]);
+    }
+    const painted = [...new Set((data.sections[`${state.race}-${state.sex}-facial`] || [])
+      .filter((r) => r[2].length).map((r) => r[0]))].sort((a, b) => a - b);
+    const bare = rows.map((r) => r[0]).filter((v) => !painted.includes(v)).sort((a, b) => a - b);
+    const split = rows.length > 1 && byGeoset.size <= rows.length * SPLIT_RATIO
+      && painted.length > 0 && bare.length > 0;
+    return {
+      split,
+      shapes: [...byGeoset.values()].sort((a, b) => a - b),
+      // "no paint" is a real choice, and it is whichever variation carries no texture.
+      paints: [bare[0], ...painted],
+    };
+  };
   // The pickers are the character creator's, not a form's. Every option that HAS a
   // preview shows it -- a race is its portrait, a skin or hair colour is that colour --
   // and only the ones that cannot be previewed in a swatch (face, hairstyle, markings)
@@ -1286,7 +1321,16 @@ async function showDressingRoom(params, navigate) {
   const render = () => {
     const raceName = data.races.find((r) => r.id === state.race)?.name || "";
     const lab = RACE_LABELS[state.race] || {};
-    const labels = { hair: lab.hair || "Hair", facial: lab[state.sex] || "Facial hair" };
+    const axes = facialAxes();
+    // With the shape split off, the race's own word names the SHAPE (a troll's "Tusks");
+    // where a race has only one shape -- a night elf female has exactly one -- the shape
+    // stepper hides itself and the word belongs to the paint, which is what "Markings"
+    // means there.
+    const labels = {
+      hair: lab.hair || "Hair",
+      facial: lab[state.sex] || "Facial hair",
+    };
+    if (axes.split && axes.shapes.length < 2) labels.paint = labels.facial;
     // Gender leads the same row as the races, because it IS one of the choices the row
     // is making -- and because the portraits are per gender, so the two controls are
     // reading the same picture.
@@ -1316,11 +1360,14 @@ async function showDressingRoom(params, navigate) {
         // "Facial hair" sends people looking for a beard slider that does not exist -- and
         // the guess it replaces ("Face detail" when a race had no facial textures) was
         // right about goblins by accident and wrong about trolls.
-        + stepper(labels.facial, "facial", geosetOpts("facial"), state.facialHair)
+        + (axes.split
+          ? stepper(labels.facial, "facial", axes.shapes, state.facialHair)
+            + stepper(labels.paint || "Face paint", "paint", axes.paints, state.facePaint)
+          : stepper(labels.facial, "facial", geosetOpts("facial"), state.facialHair))
         + `</div>`);
   };
 
-  const KEY = { hcolor: "hairColor", facial: "facialHair" };
+  const KEY = { hcolor: "hairColor", facial: "facialHair", paint: "facePaint" };
 
   const hitsEl = app.querySelector("#dress-hits");
   const findEl = app.querySelector("#dress-find");
@@ -1335,7 +1382,7 @@ async function showDressingRoom(params, navigate) {
   const syncUrl = () => {
     const q = new URLSearchParams({ dressing: "", race: state.race, sex: state.sex,
       skin: state.skin, face: state.face, hair: state.hair, hcolor: state.hairColor,
-      facial: state.facialHair });
+      facial: state.facialHair, paint: state.facePaint });
     for (const [slot, entry] of worn) q.set(slot, entry);
     history.replaceState({}, "", `?${q}`);
   };
@@ -1653,7 +1700,9 @@ async function showDressingRoom(params, navigate) {
     state.face = any(opts("face", 0));
     state.hair = any(geosetOpts("hair"));
     state.hairColor = any(opts("hair", 1));
-    state.facialHair = any(geosetOpts("facial"));
+    const ax = facialAxes();
+    state.facialHair = any(ax.split ? ax.shapes : geosetOpts("facial"));
+    state.facePaint = any(ax.split ? ax.paints : [state.facialHair]);
     render(); syncUrl(); await mount();
   });
 
@@ -1735,7 +1784,9 @@ async function showDressingRoom(params, navigate) {
     state.face = fit(opts("face", 0), state.face);
     state.hairColor = fit(opts("hair", 1), state.hairColor);
     state.hair = fit(geosetOpts("hair"), state.hair);
-    state.facialHair = fit(geosetOpts("facial"), state.facialHair);
+    const ax = facialAxes();
+    state.facialHair = fit(ax.split ? ax.shapes : geosetOpts("facial"), state.facialHair);
+    state.facePaint = fit(ax.split ? ax.paints : geosetOpts("facial"), state.facePaint);
   };
 
   const set = async (key, value) => {
@@ -1751,8 +1802,11 @@ async function showDressingRoom(params, navigate) {
       // through all of them is the kind of thing a dropdown was at least honest about.
       const box = step.closest(".stepper");
       const key = box.dataset.key;
-      const vals = key === "hair" || key === "facial" ? geosetOpts(key)
-        : opts(key === "hcolor" ? "hair" : key, key === "face" ? 0 : 1);
+      const ax = facialAxes();
+      const vals = key === "paint" ? ax.paints
+        : key === "facial" ? (ax.split ? ax.shapes : geosetOpts("facial"))
+          : key === "hair" ? geosetOpts("hair")
+            : opts(key === "hcolor" ? "hair" : key, key === "face" ? 0 : 1);
       const at = Math.max(0, vals.indexOf(state[KEY[key] || key]));
       const next = vals[(at + Number(step.dataset.step) + vals.length) % vals.length];
       await set(key, next);
