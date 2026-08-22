@@ -41,14 +41,20 @@ export const SECTION_REGIONS = {
   hair: [null, "face_l", "face_u"],
 };
 
-function loadImage(url) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);   // a missing layer is a gap, never a thrown page
-    img.src = url;
-  });
+// fetch, not `new Image()`. A layer legitimately ASKS for a name that may not exist --
+// armor ships a male+female pair or one unisex file, so one of the two candidates is
+// always a miss -- and a failed <img> is logged by the browser as a red console error,
+// which meant a perfectly normal outfit printed a dozen 404s into a public console. A
+// fetch that 404s is an ordinary response and logs nothing. ImageBitmap draws onto a
+// canvas exactly as an Image does.
+async function loadImage(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;            // a missing layer is a gap, never a thrown page
+    return await createImageBitmap(await res.blob());
+  } catch {
+    return null;                         // offline, blocked, or an undecodable body
+  }
 }
 
 /**

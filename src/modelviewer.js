@@ -70,6 +70,17 @@ async function fetchModel(name) {
 const embeddedUrl = (name) =>
   `${MODELS_BASE}tex/${String(name).toLowerCase().replace(/\\/g, "/").replace(/\.blp$/, "")}.webp`;
 
+/** Is there a file at this url? Used where a MISS is expected, so that the browser does
+ *  not log it: a failed image request prints a console error, a 404 from fetch does not. */
+async function exists(url) {
+  try {
+    const res = await fetch(url, { method: "GET" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 function loadTexture(url) {
   return new Promise((resolve) => {
     new THREE.TextureLoader().load(
@@ -761,6 +772,10 @@ export async function mountCharacterViewer(el, opts = {}) {
     if (!m) return null;
     for (let i = Number(m[2]); i >= 0; i--) {
       const name = `${m[1]}${String(i).padStart(m[2].length, "0")}_Extra.blp`;
+      // Ask with fetch first: this walk is a probe and most of its steps miss, and a
+      // failed <img> would log each one as a console error. The hit is then loaded
+      // normally, out of the cache the probe just filled.
+      if (!(await exists(charTexUrl(name)))) continue;
       const tex = await loadTexture(charTexUrl(name));
       if (tex) return tex;
     }
