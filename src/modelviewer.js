@@ -15,7 +15,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { parseM2B, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
 import { compositeBody, SECTION_REGIONS } from "./charcomposite.js";
 import { componentLayers, applyGear, inPaintOrder, attachedModels, helmetHidden } from "./chargear.js";
-import { MODELS_BASE } from "./config.js";
+import { MODELS_BASE, MODELS_V } from "./config.js";
 
 // The ONE live viewer. A WebGL context is scarce and is not garbage-collected, so
 // mounting a second without dropping the first eventually kills the oldest canvas. The
@@ -56,8 +56,8 @@ export function webglAvailable() {
   }
 }
 
-const modelUrl = (name) => `${MODELS_BASE}item/${String(name).toLowerCase()}.m2b`;
-const textureUrl = (name) => `${MODELS_BASE}itemtex/${String(name).toLowerCase()}.webp`;
+const modelUrl = (name) => `${MODELS_BASE}item/${String(name).toLowerCase()}.m2b${MODELS_V}`;
+const textureUrl = (name) => `${MODELS_BASE}itemtex/${String(name).toLowerCase()}.webp${MODELS_V}`;
 
 async function fetchModel(name) {
   const res = await fetch(modelUrl(name));
@@ -68,7 +68,7 @@ async function fetchModel(name) {
 // A texture named INSIDE the model keeps its client path (`SPELLS\ZAP1.BLP` ->
 // `tex/spells/zap1.webp`), matching what export-models.py wrote.
 const embeddedUrl = (name) =>
-  `${MODELS_BASE}tex/${String(name).toLowerCase().replace(/\\/g, "/").replace(/\.blp$/, "")}.webp`;
+  `${MODELS_BASE}tex/${String(name).toLowerCase().replace(/\\/g, "/").replace(/\.blp$/, "")}.webp${MODELS_V}`;
 
 // fetch rather than TextureLoader, for the same reason the composite layers use it: a
 // miss here is expected (an item whose texture the client never shipped, a race variant
@@ -588,7 +588,7 @@ let charDataPromise = null;
  *  by every visitor to serve one page. Cached for the session. */
 export function charAppearance() {
   if (!charDataPromise) {
-    charDataPromise = fetch(`${MODELS_BASE}char-appearance.json`)
+    charDataPromise = fetch(`${MODELS_BASE}char-appearance.json${MODELS_V}`)
       .then((r) => { if (!r.ok) throw new Error(`char-appearance.json (${r.status})`); return r.json(); })
       .catch((e) => { charDataPromise = null; throw e; });
   }
@@ -596,7 +596,7 @@ export function charAppearance() {
 }
 
 const charTexUrl = (name) =>
-  `${MODELS_BASE}chartex/${String(name).toLowerCase().replace(/\\/g, "/").replace(/\.blp$/, "")}.webp`;
+  `${MODELS_BASE}chartex/${String(name).toLowerCase().replace(/\\/g, "/").replace(/\.blp$/, "")}.webp${MODELS_V}`;
 
 /** The CharSections row for one option, or the first row of that section as a fallback
  *  (a race may simply not offer the variation/colour a shared default asks for). */
@@ -693,7 +693,7 @@ export async function mountCharacterViewer(el, opts = {}) {
   const hairStyle = opts.hair || 0, hairColor = opts.hairColor || 0;
   const facialStyle = opts.facialHair || 0;
 
-  const res = await fetch(`${MODELS_BASE}char/${race}-${sex}.m2b`);
+  const res = await fetch(`${MODELS_BASE}char/${race}-${sex}.m2b${MODELS_V}`);
   if (!res.ok) throw new Error(`character ${race}-${sex} unavailable (${res.status})`);
   const model = parseM2B(await res.arrayBuffer());
 
@@ -713,8 +713,8 @@ export async function mountCharacterViewer(el, opts = {}) {
   // Armor textures ship as a male+female pair OR one unisex file; try this character's
   // sex first, then _u.
   const compUrls = (region, base) => [
-    `${MODELS_BASE}comp/${region}/${String(base).toLowerCase()}_${sex}.webp`,
-    `${MODELS_BASE}comp/${region}/${String(base).toLowerCase()}_u.webp`,
+    `${MODELS_BASE}comp/${region}/${String(base).toLowerCase()}_${sex}.webp${MODELS_V}`,
+    `${MODELS_BASE}comp/${region}/${String(base).toLowerCase()}_u.webp${MODELS_V}`,
   ];
   const push = (row, regions) => {
     if (!row) return;
