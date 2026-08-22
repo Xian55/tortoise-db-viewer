@@ -614,6 +614,30 @@ jQuery and a **CORS proxy server** besides. Same call, same reason, as `OWN_MODE
   12-13's all valid `HelmetGeosetVisData` ids, field 9 only ever holds 1/2/4 (bits), and
   every chest writes torso-upper+lower while every glove writes arm-lower+hand.
   `extract-item-appearance.py --probe` re-prints that evidence and writes nothing.
+- **The idle animation lives in `.m2b` v4.** A character is RIGGED -- bind-pose vertices,
+  the skeleton, per-vertex weights and ONE animation (Stand, a 2.7 s loop) -- and the
+  browser poses it per frame with a `SkinnedMesh`. Weapons, helms and shoulders stay rigid
+  v3: nothing about them moves, and a skeleton on a mace is 60 KB of nothing. The reader
+  takes v2/v3/v4 and the section table's length is implied by the version, so the thousands
+  of rigid files on R2 never had to be reshipped. The character set went 4.0 -> 5.5 MB,
+  because one animation ships out of the ~150 the client carries.
+  - **The M2 rig maps onto three's scene graph exactly.** A bone rotates about its PIVOT
+    and its animation is a delta from the bind pose -- which for a vanilla character is the
+    pose the mesh is authored in. So a bone's rest position is `pivot - parentPivot`, its
+    bind world matrix is a plain translation to the pivot, and the bind inverse is the
+    translation back: no inverse-bind matrices to bake, and the keys drop straight onto
+    `bone.position` / `.quaternion` / `.scale`.
+  - **A rigged model's attachments are BONE-LOCAL** (offset from that bone's pivot) and are
+    parented to the bone, so a helm follows the head and a weapon the hand. That also
+    supersedes the baked attachment scale -- the bone carries it now.
+  - **A track with no range for the sequence is GLOBAL**: the client applies its values
+    whatever is playing. That is where a blood elf's 0.574 shoulder scale lives -- in no
+    sequence at all. `sample_track()` already fell back that way and `track_keys()` did
+    not, so the first rigged export dropped it and the pauldrons came out human-sized.
+  - **Off by default**, because the viewer's idle discipline is that a preview nobody is
+    looking at costs nothing and a looping skeleton is the one thing that would draw
+    forever. Static is frame 0 -- exactly what the baked models always showed. The clock is
+    WALL time, not frames, for the same reason the turntable's is.
 - **`.m2b`, not glTF** (`scripts/export-models.py` → `src/m2b.js`). The semantics that must
   survive have no glTF home: geoset ids, ADDITIVE blend, and above all the texture-unit
   **type** (0 embedded / 1 char skin / 2 object skin / 6 hair), which is the whole

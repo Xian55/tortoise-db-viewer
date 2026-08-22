@@ -1228,6 +1228,7 @@ async function showDressingRoom(params, navigate) {
         <div class="mv-wrap">
           <div id="mv-host" class="mv-host"><p class="muted">Loading character&hellip;</p></div>
           <div class="mv-tools">
+            <button type="button" class="mv-tool" id="dress-anim" aria-pressed="false" title="Play the idle animation"><i>\u25B6</i><span>Animate</span></button>
             <button type="button" class="mv-tool" id="dress-spin" aria-pressed="false" title="Turn the model"><i>\u21BB</i><span>Rotate</span></button>
             <button type="button" class="mv-tool" id="dress-reset" title="Back to the straight-on view"><i>\u21BA</i><span>Reset</span></button>
             <button type="button" class="mv-tool" id="dress-full" title="Fill the screen"><i>\u26F6</i><span>Fullscreen</span></button>
@@ -1464,6 +1465,7 @@ async function showDressingRoom(params, navigate) {
   // up as a dressing room with no character in it at all.
   let mountSeq = 0;
   let spinning = false;                      // the model holds still until asked to turn
+  let animating = false;                     // ...and does not breathe until asked either
   const stale = (my) => my !== mountSeq || myRoute !== routeSeq;
   const mount = async () => {
     const my = ++mountSeq;
@@ -1493,7 +1495,7 @@ async function showDressingRoom(params, navigate) {
         ...state, items: wornRows, cancelled: () => stale(my), view,
         // Every equip and every appearance change builds a new viewer, so the turntable
         // has to be told each time; the button's state is the one that survives.
-        spin: spinning, keepSpinning: spinning,
+        spin: spinning, keepSpinning: spinning, animate: animating,
       });
       if (stale(my)) { try { viewer.destroy(); } catch { /* already gone */ } return; }
       activeViewer = viewer;
@@ -1760,6 +1762,8 @@ async function showDressingRoom(params, navigate) {
     spinning = false;
     app.querySelector("#dress-spin")?.setAttribute("aria-pressed", "false");
     try { activeViewer?.spin(false); activeViewer?.reset(); } catch { /* between mounts */ }
+    // Reset leaves the animation alone: it resets the VIEW, and stopping the character
+    // breathing is what the Animate button is for.
   });
 
   app.querySelector("#dress-full")?.addEventListener("click", async () => {
@@ -1802,6 +1806,14 @@ async function showDressingRoom(params, navigate) {
     room.dataset.pane = btn.dataset.pane;
   });
   room.dataset.pane = "gear";
+
+  // The idle animation. Off by default, and remembered across the re-mounts an equip
+  // causes -- the same reason the turntable state lives out here.
+  app.querySelector("#dress-anim")?.addEventListener("click", (e) => {
+    animating = !animating;
+    e.currentTarget.setAttribute("aria-pressed", String(animating));
+    try { activeViewer?.animate(animating); } catch { /* between mounts */ }
+  });
 
   app.querySelector("#dress-spin")?.addEventListener("click", (e) => {
     spinning = !spinning;
