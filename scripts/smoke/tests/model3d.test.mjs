@@ -878,3 +878,39 @@ async function testSpinWhileAnimating() {
 }
 
 smoke("the turntable still turns while the animation plays", () => testSpinWhileAnimating());
+
+// Switching animations. The model file holds only its idle -- the other fifteen are a
+// sidecar (.anm) fetched the first time someone opens the picker -- so this also proves
+// the two halves agree on an encoding they no longer share a file with.
+//
+// It deliberately passes in BOTH states, because a model-format bump reaches R2 and the
+// deployed code at different moments: against models that predate the sidecar the picker
+// has nothing to offer and the room must simply keep working. It asserts the strong thing
+// whenever the sidecar is actually there, and says in its log which half ran.
+async function testAnimationPicker() {
+  await nav("?dressing&race=1&sex=m&hair=3");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await page.focus("#dress-clip");                       // what pulls the sidecar down
+  await page.waitForFunction(
+    () => document.querySelectorAll("#dress-clip option").length > 1, { timeout: 8000 },
+  ).catch(() => {});
+  const names = await page.$$eval("#dress-clip option", (o) => o.map((x) => x.value));
+  if (names.length < 2) {
+    const ok = await page.evaluate(() => window.__mv().triangles > 0);
+    console.log(`clips: no sidecar on this origin (${names.join(",") || "none"}) - room still renders=${ok}`);
+    return ok;
+  }
+  const idle = await page.evaluate(() => window.__mv());
+  await page.click("#dress-anim");                       // play, so the pose is moving
+  await new Promise((r) => setTimeout(r, 600));
+  const before = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  await page.select("#dress-clip", "EmoteDance");
+  await new Promise((r) => setTimeout(r, 600));
+  const dancing = await page.evaluate(() => window.__mv());
+  const after = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  console.log(`clips: ${names.length} offered, ${idle.clip}/${idle.animMs}ms -> ${dancing.clip}/${dancing.animMs}ms moved=${before !== after}`);
+  return names.length >= 8 && names.includes("EmoteDance") && idle.clip === "Stand"
+    && dancing.clip === "EmoteDance" && dancing.animMs !== idle.animMs && before !== after;
+}
+
+smoke("a character can be asked for a different animation", () => testAnimationPicker());

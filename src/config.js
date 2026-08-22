@@ -175,7 +175,15 @@ export const MAPS_BASE_MAIN = `${R2_ASSETS}maps/`;
 export const MODEL_THUMBS_BASE = `${R2_ASSETS}model-thumbs/`;
 // Converted 3D models + their textures for the interactive viewer (src/modelviewer.js).
 // Turtle-derived and Turtle-gated (OWN_ITEM_MODELS), so R2-fixed like the thumbs above.
-export const MODELS_BASE = `${R2_ASSETS}model3d/`;
+// Models always come from R2, even in dev -- they are 60 MB and every dataset shares
+// them. The exception exists because a model FORMAT bump lands on disk before it lands on
+// R2, and there is otherwise no way to look at the new files at all: in dev,
+// `?models=local` serves them from public/model3d, which is exactly where the exporter
+// writes. Dev only, so a stale local tree can never reach a visitor.
+const LOCAL_MODELS = import.meta.env.DEV
+  && new URLSearchParams(location.search).get("models") === "local";
+export const MODELS_BASE = LOCAL_MODELS
+  ? `${import.meta.env.BASE_URL}model3d/` : `${R2_ASSETS}model3d/`;
 // Appended to every model3d url: the set is served with a seven-day max-age under names
 // that never change, so without it a re-exported model stays stale in a CDN edge and in
 // every visitor's browser. Defined by vite from the asset manifest; empty in a dev server

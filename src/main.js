@@ -1228,7 +1228,8 @@ async function showDressingRoom(params, navigate) {
         <div class="mv-wrap">
           <div id="mv-host" class="mv-host"><p class="muted">Loading character&hellip;</p></div>
           <div class="mv-tools">
-            <button type="button" class="mv-tool" id="dress-anim" aria-pressed="false" title="Play the idle animation"><i>\u25B6</i><span>Animate</span></button>
+            <button type="button" class="mv-tool" id="dress-anim" aria-pressed="false" title="Play the animation"><i>\u25B6</i><span>Animate</span></button>
+            <select class="mv-tool mv-clip" id="dress-clip" title="Which animation"><option value="0">Stand</option></select>
             <button type="button" class="mv-tool" id="dress-spin" aria-pressed="false" title="Turn the model"><i>\u21BB</i><span>Rotate</span></button>
             <button type="button" class="mv-tool" id="dress-reset" title="Back to the straight-on view"><i>\u21BA</i><span>Reset</span></button>
             <button type="button" class="mv-tool" id="dress-full" title="Fill the screen"><i>\u26F6</i><span>Fullscreen</span></button>
@@ -1499,6 +1500,7 @@ async function showDressingRoom(params, navigate) {
       });
       if (stale(my)) { try { viewer.destroy(); } catch { /* already gone */ } return; }
       activeViewer = viewer;
+      applyClips();                          // the fresh viewer knows only its own idle
     } catch (e) {
       if (!stale(my) && e.message !== "cancelled") {
         host.innerHTML = `<p class="muted">Could not load this character - ${esc(e.message)}.</p>`;
@@ -1807,11 +1809,53 @@ async function showDressingRoom(params, navigate) {
   });
   room.dataset.pane = "gear";
 
-  // The idle animation. Off by default, and remembered across the re-mounts an equip
-  // causes -- the same reason the turntable state lives out here.
-  app.querySelector("#dress-anim")?.addEventListener("click", (e) => {
+  // The animation picker. A model ships only its idle; the other fifteen live in a sidecar
+  // fetched the first time someone asks for one -- most visitors never do, and it is 335 KB.
+  // The choice is remembered by NAME rather than by index, across both the re-mount every
+  // equip causes and a race change: a race that lacks one animation shifts every index
+  // after it, so an index would silently land on a different move.
+  const clipSel = app.querySelector("#dress-clip");
+  const LABEL = (name) => name
+    .replace(/^Emote/, "")                       // the client's own prefix, not a word
+    .replace(/([a-z])([A-Z0-9])/g, "$1 $2")      // SitGround -> Sit Ground, Ready1H -> Ready 1H
+    .replace(/^Jump Start$/, "Jump");
+  let clipName = null;                           // null = whatever the model opens on
+  let clipsWanted = false;
+  const fillClips = () => {
+    let list = [];
+    try { list = activeViewer?.clips() || []; } catch { list = []; }
+    if (!list.length) return;
+    clipSel.innerHTML = list
+      .map((c) => `<option value="${esc(c.name)}">${esc(LABEL(c.name))}</option>`).join("");
+    clipSel.value = clipName || list[0].name;
+  };
+  // Hand the live viewer the whole pack. Called on every mount as well: a viewer is built
+  // fresh per equip and per appearance change, and knows only the idle it was born with.
+  const applyClips = async () => {
+    if (!clipsWanted) return;
+    try {
+      const pack = await mod.characterAnimations(state.race, state.sex);
+      activeViewer?.setClips(pack);
+      const i = clipName ? pack.findIndex((c) => c.name === clipName) : -1;
+      if (i >= 0) activeViewer?.setClip(i);
+      fillClips();
+    } catch { clipsWanted = false; say("Animations unavailable for this character."); }
+  };
+  // Fetch on hover/focus rather than on the click that opens the list: by the time the
+  // options drop down they are usually already there.
+  const wantClips = () => { clipsWanted = true; applyClips(); };
+  clipSel?.addEventListener("pointerenter", wantClips);
+  clipSel?.addEventListener("focus", wantClips);
+  clipSel?.addEventListener("change", async () => {
+    clipsWanted = true;
+    clipName = clipSel.value;
+    await applyClips();
+  });
+
+  app.querySelector("#dress-anim")?.addEventListener("click", async (e) => {
     animating = !animating;
     e.currentTarget.setAttribute("aria-pressed", String(animating));
+    if (animating) wantClips();
     try { activeViewer?.animate(animating); } catch { /* between mounts */ }
   });
 

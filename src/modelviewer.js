@@ -12,7 +12,7 @@
 // spinning in a hidden pane burns battery for nothing.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { parseM2B, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
+import { parseM2B, parseAnimPack, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
 import { compositeBody, SECTION_REGIONS } from "./charcomposite.js";
 import { componentLayers, applyGear, inPaintOrder, attachedModels, helmetHidden } from "./chargear.js";
 import { MODELS_BASE, MODELS_V } from "./config.js";
@@ -222,8 +222,7 @@ const _qa = new THREE.Quaternion();
 const _qb = new THREE.Quaternion();
 
 /** Pose one rigged model at `t` milliseconds into its animation. */
-function poseAt(model, bones, cursors, t) {
-  const tracks = model.anim.tracks;
+function poseAt(model, bones, cursors, tracks, t) {
   for (let i = 0; i < bones.length; i++) {
     const tr = tracks[i];
     const info = model.bones[i];
@@ -373,10 +372,16 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // every model did before the rig existed, and animating simply advances the clock.
   const rig = built.rig || null;
   const cursors = rig ? new Uint16Array(model.bones.length * 3) : null;
+  // Which animation is playing. The model ships only the idle; a whole pack arrives from
+  // the sidecar the first time someone opens the picker, and swapping is then just a
+  // different track list over the same skeleton.
+  let clip = model.anim || null;
+  let clips = model.anims && model.anims.length ? model.anims : (clip ? [clip] : []);
   const poseTime = (ms) => {
-    if (!rig || !model.anim) return;
-    poseAt(model, rig.skeleton.bones, cursors, model.anim.duration
-      ? ((ms % model.anim.duration) + model.anim.duration) % model.anim.duration : 0);
+    if (!rig || !clip) return;
+    cursors.fill(0);
+    poseAt(model, rig.skeleton.bones, cursors, clip.tracks, clip.duration
+      ? ((ms % clip.duration) + clip.duration) % clip.duration : 0);
   };
   poseTime(0);
   const drawnSubs = built.drawn;
@@ -603,7 +608,8 @@ function buildViewer(el, model, slotTex, opts = {}) {
       status: "ok", model: opts.label || null, texture: opts.texture || null,
       textured: !!tex, meshes: drawn, triangles: model.idx.length / 3,
       vertices: model.pos.length / 3, frames, spinning: spin,
-      rigged: !!rig, animating, animMs: model.anim ? model.anim.duration : 0,
+      rigged: !!rig, animating, animMs: clip ? clip.duration : 0,
+      clip: clip ? clip.name : null, clipCount: clips.length,
       running, visible, onScreen: onScreen(),   // false/false = costing nothing right now
       geosets: opts.geosets ? [...opts.geosets].sort((a, b) => a - b) : null,
       cape: opts.cape || null,
@@ -685,6 +691,31 @@ function buildViewer(el, model, slotTex, opts = {}) {
       wake();
     },
     resize: onResize,
+    /** Every animation this model can play, in the order the exporter picked them. */
+    clips: () => clips.map((c, i) => ({ i, id: c.id, name: c.name, ms: c.duration })),
+    /** Which one is playing. */
+    clipIndex: () => Math.max(0, clips.indexOf(clip)),
+    /** Hand the viewer the sidecar's animations (see parseAnimPack). Keeps whatever is
+     *  playing selected by NAME, so loading the pack mid-idle does not jump the pose. */
+    setClips: (list) => {
+      if (!list?.length) return;
+      const wanted = clip?.name;
+      clips = list;
+      clip = clips.find((c) => c.name === wanted) || clips[0];
+      animClock = 0;
+      poseTime(0);
+      if (!animating) draw();
+    },
+    /** Switch animation. Playing continues; paused re-poses on the new clip's frame 0. */
+    setClip: (i) => {
+      const next = clips[i];
+      if (!next) return false;
+      clip = next;
+      animClock = 0;
+      poseTime(0);
+      if (animating) wake(); else draw();
+      return true;
+    },
     /** Play or pause the idle animation. Returns the new state. */
     animate: (on) => {
       animating = !!on && !!rig;
@@ -729,6 +760,10 @@ function buildViewer(el, model, slotTex, opts = {}) {
   hook.view = viewer.view;               // so a test can read the camera, like snapshot
   hook.reset = viewer.reset;
   hook.animate = viewer.animate;
+  hook.clips = viewer.clips;
+  hook.setClip = viewer.setClip;
+  hook.setClips = viewer.setClips;
+  hook.clipIndex = viewer.clipIndex;
   window.__mv = hook;                    // smoke-test hook, same convention as __zoneDots
   return viewer;
 }
@@ -741,6 +776,22 @@ let charDataPromise = null;
 /** The race/skin/face/hair option tables (scripts/data/char-appearance.json). Fetched,
  *  not bundled: at ~1 MB it would be the largest single thing in the main JS chunk, paid
  *  by every visitor to serve one page. Cached for the session. */
+const animPacks = new Map();
+
+/** Every animation for one character model, fetched once and shared. Kept out of the
+ *  model file on purpose: sixteen animations inline more than doubled a character's
+ *  download, and most visitors never press play. */
+export function characterAnimations(race, sex) {
+  const key = `${race}-${sex}`;
+  if (!animPacks.has(key)) {
+    animPacks.set(key, fetch(`${MODELS_BASE}char/${key}.anm${MODELS_V}`)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`no animations (${r.status})`))))
+      .then(parseAnimPack)
+      .catch((e) => { animPacks.delete(key); throw e; }));
+  }
+  return animPacks.get(key);
+}
+
 export function charAppearance() {
   if (!charDataPromise) {
     charDataPromise = fetch(`${MODELS_BASE}char-appearance.json${MODELS_V}`)

@@ -1660,6 +1660,8 @@ td .pet-rank { margin: 1px 0; }
   font: inherit; font-size: 12px; white-space: nowrap; }
 .mv-tool:hover { color: var(--text); background: var(--panel2); }
 .mv-tool[aria-pressed="true"] { color: var(--gold, #ffd100); background: var(--panel2); }
+.mv-clip { padding: 3px 6px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--panel2); color: var(--text); font: inherit; font-size: 12px; }
 .mv-chk { cursor: pointer; }
 .mv-chk input { accent-color: var(--gold, #ffd100); margin: 0; }
 /* Fullscreen: the wrapper becomes the screen, so the fixed pane height must not follow. */

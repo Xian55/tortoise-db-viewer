@@ -763,6 +763,38 @@ looking rather than by recalling:
   trusting the table renders a Troll at skin colour 9 nude and leaves bald patches where a
   scalp is missing. An appearance the client cannot paint is not offered in the picker.
 
+### Animations
+
+A character is a **rigged** model (`.m2b` v4 added bind-pose vertices + bones + weights,
+v5 made the animation a list) posed per frame in the browser; a rigid model -- every item
+-- keeps its baked Stand pose and cannot be animated at all.
+
+- **Sixteen animations, in a sidecar.** `WANT_ANIMS` in `export-models.py` picks them by
+  the client's OWN name from `AnimationData.dbc` (the id alone says nothing, and "69 is
+  Dance" is exactly the recall this codebase avoids). All sixteen inline took a character
+  from 245 KB to 560 KB, paid by every visitor who only wanted to look at a tabard -- so
+  the model keeps its idle and the rest go to `char/<race>-<sex>.anm` (`M2A1`), fetched by
+  `characterAnimations()` the first time someone hovers the picker. Same encoding both
+  sides, one `readTracks()`, so they cannot drift apart.
+- **Only PRIMARY sequences** (`sub == 0`): a sub-variant is the same move at another tempo.
+- **The reader accepts v4 and v5**, because a format bump reaches R2 and the deployed code
+  at different moments and both are live during any rollout. v4 wrote one animation with no
+  count; read as v5 its duration IS the count, and the result is garbage rather than an
+  error. Ship the reader FIRST, publish the models second -- the reverse breaks the live
+  room for the length of the deploy.
+- **The selection is remembered by NAME, not by index.** A viewer is rebuilt on every equip
+  and every appearance change, and a race that lacks one animation shifts every index after
+  it, so an index silently lands on a different move after a race change.
+- **Wall-clock, one clock.** The animation and the turntable both step from the same frame
+  delta; each taking it for itself left the spin's dt at zero every frame (Rotate lit up,
+  nothing turned). A per-frame step would also run the loop at different speeds on a 30 and
+  a 60 fps machine.
+- **`?models=local` (dev only)** points `MODELS_BASE` at `public/model3d`, which is where
+  the exporter writes -- otherwise a format bump cannot be looked at before it is published.
+- **Global tracks are real.** A track with no range for the played sequence still applies
+  (the client reads it whole); dropping those cost every pauldron its bone scale, and a
+  blood elf's shoulders came out human-sized.
+
 **The pickers are the character creator's, not a form's** (`?dressing`). Seven `<select>`s
 in a row is a form: every change costs open-scroll-pick, and "Skin 4" says nothing about
 what 4 looks like. Anything with a preview now shows it and everything else steps:

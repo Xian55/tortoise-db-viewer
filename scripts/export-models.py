@@ -32,7 +32,7 @@ import struct
 import argparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
-from m2 import Storm, parse_m2, skin, bone_matrices, blp_to_rgba, track_keys, VANILLA_ARCHIVES  # noqa: E402
+from m2 import Storm, parse_m2, skin, bone_matrices, blp_to_rgba, track_keys, load_dbc, VANILLA_ARCHIVES  # noqa: E402
 from clientprofile import archives  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -44,7 +44,18 @@ OUT_DIR = os.path.join(ROOT, "public", "model3d")
 
 MAGIC = b"M2B1"
 VERSION = 3   # rigid models: v3 attachments carry the bone's SCALE as well as pos+rot
-RIG_VERSION = 4   # a rigged model: bind-pose vertices, skin weights, bones, one animation
+RIG_VERSION = 5   # a rigged model: bind-pose vertices, skin weights, bones, ANIMATIONS
+
+# Which animations a rigged model carries. The client has ~142 primary sequences per
+# character and shipping them all would be ~1 MB a model; these are the ones worth having
+# in a dressing room, and they cost 10-35 KB each. Names are the client's own, from
+# AnimationData.dbc -- the id alone says nothing, and guessing "69 is Dance" is exactly the
+# kind of recall this codebase avoids.
+WANT_ANIMS = [
+    "Stand", "Walk", "Run", "ReadyUnarmed", "Ready1H", "Ready2H", "Attack1H",
+    "EmoteDance", "EmoteCheer", "EmoteSalute", "EmoteBow", "EmoteTalk", "EmoteRoar",
+    "SitGround", "Loot", "JumpStart",
+]
 FLAG_POSED = 1
 
 # A section table keeps the loader honest: it reads by offset, so adding a section later
@@ -68,6 +79,40 @@ def mat_to_quat(R):
         return ((R[0, 1] + R[1, 0]) / sq, 0.25 * sq, (R[1, 2] + R[2, 1]) / sq, (R[0, 2] - R[2, 0]) / sq)
     sq = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2
     return ((R[0, 2] + R[2, 0]) / sq, (R[1, 2] + R[2, 1]) / sq, 0.25 * sq, (R[1, 0] - R[0, 1]) / sq)
+
+
+def _anim_blob(m2, picked, strings, sid):
+    """Every picked animation, in the same encoding the model's own section uses, with a
+    self-contained string block so the file can be read on its own."""
+    if not picked:
+        return b""
+    names = [name for _, name, _ in picked]
+    stroff, blob = {}, bytearray()
+    for n in names:
+        stroff[n] = len(blob)
+        blob += n.encode("latin1") + b"\0"
+    parts = [b"M2A1", struct.pack("<2H", len(picked), len(m2["bones"])),
+             struct.pack("<I", len(blob)), bytes(blob)]
+    for seq_i, name, a in picked:
+        dur = max(1, a["end"] - a["start"])
+        parts.append(struct.pack("<HHI", a["id"], stroff[name], dur))
+        for b in m2["bones"]:
+            tr = track_keys(m2["data"], b["ttrans"], 3, seq_i, a["start"])
+            ro = track_keys(m2["data"], b["trot"], 4, seq_i, a["start"])
+            sc = track_keys(m2["data"], b["tscale"], 3, seq_i, a["start"])
+            parts.append(struct.pack("<3H2x", len(tr), len(ro), len(sc)))
+            for ms, v in tr:
+                parts.append(struct.pack("<I3f", ms, *v))
+            for ms, v in ro:
+                parts.append(struct.pack("<I4f", ms, *v))
+            for ms, v in sc:
+                parts.append(struct.pack("<I3f", ms, *v))
+    return b"".join(parts)
+
+
+# id -> the client's own name for that animation (AnimationData.dbc), filled once at
+# startup. Empty when the DBC is missing, which simply means no animation is wanted.
+anim_names = {}
 
 
 def build_m2b(m2, rig=False):
@@ -176,7 +221,7 @@ def build_m2b(m2, rig=False):
                         float(wp[0]), float(wp[1]), float(wp[2]), *mat_to_quat(R), scale))
 
     # ---- rig: skeleton, weights and one animation ---------------------------------
-    bonblob = skinblob = animblob = b""
+    bonblob = skinblob = animblob = anim_sidecar = b""
     if rig and m2["bones"]:
         # parent index and pivot per bone. The pivot is where the bone's rotation happens,
         # which in three is simply the bone's rest position relative to its parent.
@@ -184,21 +229,37 @@ def build_m2b(m2, rig=False):
         # four bone indices and four weights per vertex, as the M2 stores them
         skinblob = b"".join(struct.pack("<4B4B", *m2["boneidx"][i], *m2["weights"][i])
                             for i in range(len(m2["verts"])))
-        st = m2["stand_idx"]
-        seq = m2["anims"][st] if st < len(m2["anims"]) else {"start": 0, "end": 0}
-        dur = max(1, seq["end"] - seq["start"])
-        parts = [struct.pack("<IH2x", dur, len(m2["bones"]))]
-        for b in m2["bones"]:
-            tr = track_keys(m2["data"], b["ttrans"], 3, st, seq["start"])
-            ro = track_keys(m2["data"], b["trot"], 4, st, seq["start"])
-            sc = track_keys(m2["data"], b["tscale"], 3, st, seq["start"])
-            parts.append(struct.pack("<3H2x", len(tr), len(ro), len(sc)))
-            for ms, v in tr:
-                parts.append(struct.pack("<I3f", ms, *v))
-            for ms, v in ro:
-                parts.append(struct.pack("<I4f", ms, *v))
-            for ms, v in sc:
-                parts.append(struct.pack("<I3f", ms, *v))
+        # One entry per wanted animation this model actually has. Sub-variants (sub != 0)
+        # are the same move at another tempo, so only the primary is taken -- and Stand
+        # leads, because it is what the room opens on.
+        picked = []
+        for i, a in enumerate(m2["anims"]):
+            if a["sub"] != 0:
+                continue
+            name = anim_names.get(a["id"], "")
+            if name in WANT_ANIMS and not any(q[1] == name for q in picked):
+                picked.append((i, name, a))
+        picked.sort(key=lambda q: WANT_ANIMS.index(q[1]))
+        # The MODEL carries the idle only. Everything else is a sidecar the viewer fetches
+        # when someone actually picks an animation: all sixteen inline took a character
+        # from 245 KB to 560 KB, paid by every visitor to look at a tabard. The sidecar is
+        # the same encoding, so one parser reads both.
+        anim_sidecar = _anim_blob(m2, picked, strings, sid)
+        parts = [struct.pack("<H2x", min(1, len(picked)))]
+        for seq_i, name, a in picked[:1]:        # NOT `idx` -- that is the index buffer
+            dur = max(1, a["end"] - a["start"])
+            parts.append(struct.pack("<HHI", a["id"], sid(name), dur))
+            for b in m2["bones"]:
+                tr = track_keys(m2["data"], b["ttrans"], 3, seq_i, a["start"])
+                ro = track_keys(m2["data"], b["trot"], 4, seq_i, a["start"])
+                sc = track_keys(m2["data"], b["tscale"], 3, seq_i, a["start"])
+                parts.append(struct.pack("<3H2x", len(tr), len(ro), len(sc)))
+                for ms, v in tr:
+                    parts.append(struct.pack("<I3f", ms, *v))
+                for ms, v in ro:
+                    parts.append(struct.pack("<I4f", ms, *v))
+                for ms, v in sc:
+                    parts.append(struct.pack("<I3f", ms, *v))
         animblob = b"".join(parts)
 
     strblob = b"".join(s.encode("latin1") + b"\0" for s in strings)
@@ -250,9 +311,11 @@ def build_m2b(m2, rig=False):
     head += b"\0" * ((-len(head)) % 4)
     assert len(head) == head_size, (len(head), head_size)
 
-    stats = dict(verts=nvert, tris=len(idx) // 3, subs=len(subrows),
+    stats = dict(anim=len(anim_sidecar) if rig else 0,
+                 verts=nvert, tris=len(idx) // 3, subs=len(subrows),
                  tex=len(texrows), att=len(attrows))
-    return bytes(head) + b"".join(chunks), stats
+    # (model bytes, stats, sidecar) -- the sidecar is empty for a rigid model.
+    return bytes(head) + b"".join(chunks), stats, anim_sidecar
 
 
 # A head model is modelled PER RACE AND GENDER, so one ItemDisplayInfo name is up to 20
@@ -333,6 +396,17 @@ def export_components(storm, args):
     return n
 
 
+def load_anim_names(storm):
+    """id -> the client's name for it. Without AnimationData.dbc a rigged model simply
+    carries no animations, which is better than shipping ids nobody can read."""
+    blob = storm.read(r"DBFilesClient\AnimationData.dbc")
+    if not blob:
+        print("  (no AnimationData.dbc; characters will export without animations)")
+        return {}
+    rows, sget = load_dbc(blob)
+    return {r[0]: sget(r[1]) for r in rows}
+
+
 def export_characters(storm, args):
     """The 22 playable character models (10 races x 2 genders) plus every skin/face/hair
     /underwear texture the client offers for them, and a copy of the appearance JSON the
@@ -358,11 +432,13 @@ def export_characters(storm, args):
             out = os.path.join(OUT_DIR, "char", f"{race['id']}-{sex}.m2b")
             if os.path.exists(out) and not args.force:
                 continue
+            if not anim_names:
+                anim_names.update(load_anim_names(storm))
             raw = storm.read(path.rsplit(".", 1)[0] + ".m2") or storm.read(path)
             if not raw:
                 print(f"  MISS char {path}"); fail += 1; continue
             try:
-                blob, stats = build_m2b(parse_m2(raw), rig=True)
+                blob, stats, anims = build_m2b(parse_m2(raw), rig=True)
             except Exception as e:                              # noqa: BLE001
                 print(f"  FAIL char {path}: {e}"); fail += 1; continue
             if not args.dry_run:
@@ -370,6 +446,11 @@ def export_characters(storm, args):
                 with open(out, "wb") as f:
                     f.write(blob)
                 mbytes += len(blob)
+                # the animations the viewer fetches only when someone asks for one
+                if anims:
+                    with open(out.replace(".m2b", ".anm"), "wb") as f:
+                        f.write(anims)
+                    mbytes += len(anims)
             nm += 1
             if args.verbose:
                 print(f"  char {race['name']} {sex}: {stats}")
@@ -522,7 +603,7 @@ def main():
                     embedded.add(t["name"])
             if os.path.exists(out) and not args.force:
                 manifest["models"].append(outbase.lower()); skip += 1; continue
-            blob, stats = build_m2b(parsed)
+            blob, stats, _ = build_m2b(parsed)
         except Exception as e:                                  # noqa: BLE001
             print(f"  FAIL {d}/{clientbase}: {e}"); fail += 1; continue
         if args.only or args.verbose or args.dry_run:
