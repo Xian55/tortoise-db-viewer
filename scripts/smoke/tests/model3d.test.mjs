@@ -856,3 +856,25 @@ async function testIdleAnimation() {
 }
 
 smoke("a character stands still until asked to breathe", () => testIdleAnimation());
+
+// The turntable and the animation are two movers on ONE clock. Each used to take the
+// frame's elapsed time for itself, so with the animation running the spin's dt came out
+// zero every frame: Rotate lit up and the model did not turn. Measured in radians, because
+// the button's state was never the thing that was broken.
+async function testSpinWhileAnimating() {
+  await nav("?dressing&race=1&sex=m&hair=3");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const turn = async () => {
+    const a = await page.evaluate(() => window.__mv.view().spin);
+    await new Promise((r) => setTimeout(r, 1200));
+    return (await page.evaluate(() => window.__mv.view().spin)) - a;
+  };
+  await page.click("#dress-spin");
+  const alone = await turn();
+  await page.click("#dress-anim");                       // now both at once
+  const together = await turn();
+  console.log(`spin: alone=${alone.toFixed(3)} rad, while animating=${together.toFixed(3)} rad`);
+  return alone > 0.2 && together > 0.2;
+}
+
+smoke("the turntable still turns while the animation plays", () => testSpinWhileAnimating());

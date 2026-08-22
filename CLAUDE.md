@@ -637,7 +637,10 @@ jQuery and a **CORS proxy server** besides. Same call, same reason, as `OWN_MODE
   - **Off by default**, because the viewer's idle discipline is that a preview nobody is
     looking at costs nothing and a looping skeleton is the one thing that would draw
     forever. Static is frame 0 -- exactly what the baked models always showed. The clock is
-    WALL time, not frames, for the same reason the turntable's is.
+    WALL time, not frames, for the same reason the turntable's is -- and it is the SAME
+    clock: each mover used to take the frame's elapsed time for itself, so with the
+    animation running the turntable's dt came out zero every frame and Rotate lit up while
+    the model stood still.
 - **`.m2b`, not glTF** (`scripts/export-models.py` → `src/m2b.js`). The semantics that must
   survive have no glTF home: geoset ids, ADDITIVE blend, and above all the texture-unit
   **type** (0 embedded / 1 char skin / 2 object skin / 6 hair), which is the whole
