@@ -516,6 +516,8 @@ async function testCameraSurvives() {
   await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
   await new Promise((r) => setTimeout(r, 1200));
   const after = await page.evaluate(() => window.__mv.view());
+  // Tight on purpose: view() settles the camera before handing it over, so "roughly the
+  // same place" is not the bar -- a drift here means the handover read a coasting camera.
   const dist = (a, b) => Math.hypot(...a.off.map((n, i) => n - b.off[i]));
   console.log(`camera: home=${home.off.map((n) => n.toFixed(2))} dragged=${dragged.off.map((n) => n.toFixed(2))} after=${after.off.map((n) => n.toFixed(2))}`);
   // moved away from the default, and stayed there across the re-mount

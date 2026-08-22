@@ -487,11 +487,22 @@ function buildViewer(el, model, slotTex, opts = {}) {
      *  target offset from the model's centre, both in units of this model's radius, plus
      *  how far the model has been turned. Sizes and centres differ between models, so
      *  nothing here may be an absolute world coordinate. */
-    view: () => ({
-      off: camera.position.clone().sub(controls.target).divideScalar(radius).toArray(),
-      tgt: controls.target.clone().sub(homeTarget).divideScalar(radius).toArray(),
-      spin: root.rotation.z,
-    }),
+    view: () => {
+      // SETTLE FIRST. Damping means the camera is still coasting for about a second after
+      // a drag, so reading it mid-decay hands the next viewer a position the old one was
+      // never going to rest at -- the model shifted a little on every equip, and CI (a
+      // slower machine, sampled sooner) saw ~0.4 radii of it. With damping off, update()
+      // applies what is left and zeroes it; this viewer is being replaced anyway.
+      const damped = controls.enableDamping;
+      controls.enableDamping = false;
+      controls.update();
+      controls.enableDamping = damped;
+      return {
+        off: camera.position.clone().sub(controls.target).divideScalar(radius).toArray(),
+        tgt: controls.target.clone().sub(homeTarget).divideScalar(radius).toArray(),
+        spin: root.rotation.z,
+      };
+    },
     /** Put the camera and the model back where they started -- the straight-on view the
      *  room opens with. Cheaper and less surprising than re-mounting the whole viewer,
      *  which would refetch every texture to achieve the same thing. */
