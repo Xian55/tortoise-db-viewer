@@ -60,12 +60,15 @@ const ISOLATE = process.env.SMOKE_ISOLATE === "1";
 // NB the `(\?|$)` on the comp rule: model urls carry a `?v=` cache stamp, and an anchored
 // `\.webp$` stopped matching the moment that shipped -- twelve dressing-room tests went red
 // on 404s the suite had already been told to ignore.
+// `*_extra.webp` likewise: only every third tauren skin ships the second atlas its horns
+// read, so the viewer walks DOWN from the chosen index until one answers, and every step
+// before the hit is a miss by design.
 // `model3d/comp/**` misses are DELIBERATE, not breakage: an armor component texture ships
 // as a male+female PAIR or as one unisex file, never both, so every layer asks for its
 // sexed name first and falls back to `_u`. One of the two is always a 404 by design. It
 // only shows up in CI: a local run serves those files off disk, while CI reads them from
 // R2 where the miss is real.
-export const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|zamimg\.com|minimap\/.+\.webp$|changelog\.json|raw\.githubusercontent\.com|cdn\.jsdelivr\.net|model3d\/comp\/.+\.webp(\?|$)/;
+export const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|zamimg\.com|minimap\/.+\.webp$|changelog\.json|raw\.githubusercontent\.com|cdn\.jsdelivr\.net|model3d\/comp\/.+\.webp(\?|$)|_extra\.webp(\?|$)/;
 // Benign *pageerror* messages. SPA nav (pushState) swaps #app out from under a
 // Leaflet/Pixi map whose queued animation callbacks then fire once against removed
 // DOM -> a spurious async "_leaflet_pos"/getPosition error. The legacy suite never
