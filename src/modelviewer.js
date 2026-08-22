@@ -603,6 +603,8 @@ function section(data, race, sex, kind, variation, color) {
 // picker looked broken -- a troll wore tusk variant 1 whatever you chose, and a human male
 // could not shave.
 const NOT_BODY_GROUPS = new Set([1, 2, 3]);
+// CharacterFacialHairStyles' three geoset columns, in the groups they actually address.
+const FACIAL_GROUP_ORDER = [1, 3, 2];
 const EAR_GROUP = 7;
 const BALD_SCALP = 1;   // geoset 1: the scalp cap worn when no hairstyle is drawn
 
@@ -615,6 +617,20 @@ const BALD_SCALP = 1;   // geoset 1: the scalp cap worn when no hairstyle is dra
  *  bare legs live in geoset 1301). Taking each group's LOWEST variant instead dresses the
  *  mannequin in whatever garment happens to be numbered first -- on Human male that is a
  *  sleeve (802) and a kilt (1302), because the group has no variant 1 at all. */
+/** Which group 1-3 geosets on this race are actual facial HAIR: the ones whose variation
+ *  paints a texture. Everything else in those groups is head geometry that a helm's beard
+ *  mask must leave alone -- goblin head shapes, troll tusks. */
+function beardedGeosets(data, race, sex) {
+  const painted = new Set((data.sections[`${race}-${sex}-facial`] || [])
+    .filter((r) => r[2].length).map((r) => r[0]));
+  const out = new Set();
+  for (const row of data.facial[`${race}-${sex}`] || []) {
+    if (!painted.has(row[0])) continue;
+    row.slice(1).forEach((v, i) => { if (v) out.add(FACIAL_GROUP_ORDER[i] * 100 + v); });
+  }
+  return out;
+}
+
 export function baseGeosets(model, { hairGeoset = 0, facial = [] } = {}) {
   const present = new Set(model.submeshes.map((s) => s.geoset));
   const groups = new Set(model.submeshes.map((s) => Math.floor(s.geoset / 100)));
@@ -643,8 +659,9 @@ export function baseGeosets(model, { hairGeoset = 0, facial = [] } = {}) {
   // references, the next best 165, and in-order only 146. The remainder are styles naming
   // art their model does not ship (dwarf males reference 2xx and carry none); the client
   // skips those too, and so does `out` -- only geosets the mesh has are ever drawn.
-  const FACIAL_GROUP = [1, 3, 2];
-  facial.forEach((v, i) => { if (v && FACIAL_GROUP[i]) out.add(FACIAL_GROUP[i] * 100 + v); });
+  facial.forEach((v, i) => {
+    if (v && FACIAL_GROUP_ORDER[i]) out.add(FACIAL_GROUP_ORDER[i] * 100 + v);
+  });
   return out;
 }
 
@@ -819,7 +836,8 @@ export async function mountCharacterViewer(el, opts = {}) {
     label: `${race}-${sex}`,
     cape: backItem ? { item: backItem.entry, texture: backItem.tex_l, loaded: !!capeTex } : null,
     geosets: helmetHidden(worn.find((it) => it.inv === 1), sex, data.helmVis,
-      applyGear(baseGeosets(model, { hairGeoset, facial: facialGeosets }), worn, present)),
+      applyGear(baseGeosets(model, { hairGeoset, facial: facialGeosets }), worn, present),
+      beardedGeosets(data, race, sex)),
     skipEmbedded: true,
     // Straight on, and the axis was MEASURED rather than recalled: a character model is
     // symmetric across Y (the human male spans y -0.54..0.54 but x -0.49..0.33), so Y is
