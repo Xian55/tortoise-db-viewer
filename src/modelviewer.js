@@ -185,12 +185,113 @@ export async function mountItemViewer(el, opts = {}) {
 /** Geometry + materials for one model, ready to add to a scene. Shared by the character
  *  body and by everything hung off it, so an attached helm is drawn by exactly the same
  *  material rules (blend modes, alpha cutoff) as the item tab uses. */
+// ---------------------------------------------------------------------------
+// The rig (v4 models only)
+//
+// An M2 bone rotates about its PIVOT, and its animation is stored as a delta from the
+// bind pose -- which in a vanilla character is the pose the mesh itself is authored in.
+// That maps onto three's scene graph exactly: give each bone a rest position of
+// `pivot - parentPivot` and its world matrix at rest is a translation to its pivot, so
+// the bind inverse is simply a translation back. No inverse-bind matrices to bake, and
+// the animation keys drop straight onto bone.position / .quaternion / .scale.
+function buildSkeleton(model) {
+  const bones = model.bones.map(() => new THREE.Bone());
+  const roots = [];
+  model.bones.forEach((info, i) => {
+    const parent = info.parent;
+    const pp = parent >= 0 && parent < model.bones.length ? model.bones[parent].pivot : [0, 0, 0];
+    bones[i].position.set(info.pivot[0] - pp[0], info.pivot[1] - pp[1], info.pivot[2] - pp[2]);
+    if (parent >= 0 && parent < bones.length) bones[parent].add(bones[i]);
+    else roots.push(bones[i]);
+  });
+  const inverses = model.bones.map((info) =>
+    new THREE.Matrix4().makeTranslation(-info.pivot[0], -info.pivot[1], -info.pivot[2]));
+  return { skeleton: new THREE.Skeleton(bones, inverses), bones, roots };
+}
+
+/** Index of the last key at or before `t`. Linear from a remembered cursor: playback
+ *  walks forward, so this is O(1) per bone per frame in practice and needs no search. */
+function keyAt(track, t, from) {
+  const times = track.times;
+  let i = from < times.length && times[from] <= t ? from : 0;
+  while (i + 1 < times.length && times[i + 1] <= t) i++;
+  return i;
+}
+
+const _qa = new THREE.Quaternion();
+const _qb = new THREE.Quaternion();
+
+/** Pose one rigged model at `t` milliseconds into its animation. */
+function poseAt(model, bones, cursors, t) {
+  const tracks = model.anim.tracks;
+  for (let i = 0; i < bones.length; i++) {
+    const tr = tracks[i];
+    const info = model.bones[i];
+    const parent = info.parent;
+    const pp = parent >= 0 && parent < model.bones.length ? model.bones[parent].pivot : [0, 0, 0];
+    const bone = bones[i];
+    // translation: the rest offset plus whatever the track adds
+    let tx = info.pivot[0] - pp[0], ty = info.pivot[1] - pp[1], tz = info.pivot[2] - pp[2];
+    if (tr.trans) {
+      const k = keyAt(tr.trans, t, cursors[i * 3]);
+      cursors[i * 3] = k;
+      const v = tr.trans.vals;
+      const a = k * 3;
+      if (k + 1 < tr.trans.times.length) {
+        const t0 = tr.trans.times[k], t1 = tr.trans.times[k + 1];
+        const f = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+        tx += v[a] + (v[a + 3] - v[a]) * f;
+        ty += v[a + 1] + (v[a + 4] - v[a + 1]) * f;
+        tz += v[a + 2] + (v[a + 5] - v[a + 2]) * f;
+      } else { tx += v[a]; ty += v[a + 1]; tz += v[a + 2]; }
+    }
+    bone.position.set(tx, ty, tz);
+    if (tr.rot) {
+      const k = keyAt(tr.rot, t, cursors[i * 3 + 1]);
+      cursors[i * 3 + 1] = k;
+      const v = tr.rot.vals;
+      const a = k * 4;
+      _qa.set(v[a], v[a + 1], v[a + 2], v[a + 3]);
+      if (k + 1 < tr.rot.times.length) {
+        const t0 = tr.rot.times[k], t1 = tr.rot.times[k + 1];
+        const f = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+        _qb.set(v[a + 4], v[a + 5], v[a + 6], v[a + 7]);
+        _qa.slerp(_qb, f);
+      }
+      bone.quaternion.copy(_qa);
+    } else {
+      bone.quaternion.identity();
+    }
+    if (tr.scale) {
+      const k = keyAt(tr.scale, t, cursors[i * 3 + 2]);
+      cursors[i * 3 + 2] = k;
+      const v = tr.scale.vals;
+      const a = k * 3;
+      bone.scale.set(v[a] || 1, v[a + 1] || 1, v[a + 2] || 1);
+    } else {
+      bone.scale.set(1, 1, 1);
+    }
+  }
+}
+
 function meshFor(model, slotTex, { geosets = null, skipEmbedded = false } = {}) {
   const geom = new THREE.BufferGeometry();
   geom.setAttribute("position", new THREE.BufferAttribute(model.pos, 3));
   geom.setAttribute("normal", new THREE.BufferAttribute(model.nrm, 3));
   geom.setAttribute("uv", new THREE.BufferAttribute(model.uv, 2));
   geom.setIndex(new THREE.BufferAttribute(model.idx, 1));
+  if (model.skin) {
+    // The M2 stores weights as bytes; three wants them normalised, and they must SUM to
+    // one or the mesh inflates where the rounding lands.
+    const w = new Float32Array(model.skin.weight.length);
+    for (let i = 0; i < w.length; i += 4) {
+      const sum = (model.skin.weight[i] + model.skin.weight[i + 1]
+        + model.skin.weight[i + 2] + model.skin.weight[i + 3]) || 255;
+      for (let k = 0; k < 4; k++) w[i + k] = model.skin.weight[i + k] / sum;
+    }
+    geom.setAttribute("skinIndex", new THREE.BufferAttribute(new Uint16Array(model.skin.index), 4));
+    geom.setAttribute("skinWeight", new THREE.BufferAttribute(w, 4));
+  }
   const fallback = slotTex.find((t, i) => t && model.textures[i].type !== 0)
     || slotTex.find(Boolean) || null;
   const materials = [];
@@ -204,6 +305,14 @@ function meshFor(model, slotTex, { geosets = null, skipEmbedded = false } = {}) 
     materials.push(materialFor(sub, map));
     drawn.push([sub.geoset, sub.texType, sub.blend, map ? 1 : 0]);
   });
+  if (model.skin && model.bones) {
+    const rig = buildSkeleton(model);
+    const mesh = new THREE.SkinnedMesh(geom, materials);
+    mesh.add(rig.roots[0] || new THREE.Bone());
+    for (const r of rig.roots.slice(1)) mesh.add(r);
+    mesh.bind(rig.skeleton);
+    return { mesh, geom, materials, drawn, rig };
+  }
   return { mesh: new THREE.Mesh(geom, materials), geom, materials, drawn };
 }
 
@@ -259,6 +368,17 @@ function buildViewer(el, model, slotTex, opts = {}) {
 
   const built = meshFor(model, slotTex, { geosets: opts.geosets, skipEmbedded: opts.skipEmbedded });
   const { mesh, geom, materials } = built;
+  // A rigged model arrives in its BIND pose and is posed here: frame 0 of Stand, which is
+  // what a rigid model has baked into its vertices. So "not animating" looks exactly like
+  // every model did before the rig existed, and animating simply advances the clock.
+  const rig = built.rig || null;
+  const cursors = rig ? new Uint16Array(model.bones.length * 3) : null;
+  const poseTime = (ms) => {
+    if (!rig || !model.anim) return;
+    poseAt(model, rig.skeleton.bones, cursors, model.anim.duration
+      ? ((ms % model.anim.duration) + model.anim.duration) % model.anim.duration : 0);
+  };
+  poseTime(0);
   const drawnSubs = built.drawn;
   const drawn = drawnSubs.length;
   root.add(mesh);
@@ -280,7 +400,12 @@ function buildViewer(el, model, slotTex, opts = {}) {
     // Without it a blood elf wore human-sized shoulders -- reported as "two shoulders",
     // the huge one being ours and the right-sized one the character's own silhouette.
     if (point.scale && point.scale !== 1) sub.mesh.scale.setScalar(point.scale);
-    root.add(sub.mesh);
+    // On a rigged model the item hangs off the BONE, so it follows the animation: the
+    // exported position is the offset from that bone's pivot and the bone supplies the
+    // rotation and the scale. A rigid model has no skeleton to hang from, so its
+    // attachments keep the world placement baked at export time.
+    const bone = built.rig?.skeleton.bones[point.bone];
+    if (bone) bone.add(sub.mesh); else root.add(sub.mesh);
     attached.push(sub);
     drawnSubs.push(...sub.drawn.map((d) => [`att${a.attach}`, d[1], d[2], d[3]]));
   }
@@ -344,6 +469,11 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // page is about what the outfit looks like from the front, and a model that turns away
   // on its own has to be caught and dragged back.
   let spin = opts.spin !== false;
+  // Animation is OFF unless asked for. The viewer's whole idle discipline is that a
+  // preview nobody is looking at costs nothing, and a looping skeleton is the one thing
+  // that would draw forever; a toggle earns that cost only when someone wants it.
+  let animating = !!opts.animate;
+  let animClock = 0;
   controls.addEventListener("start", () => { spin = false; });
 
   // ---- render scheduling -------------------------------------------------------
@@ -394,6 +524,15 @@ function buildViewer(el, model, slotTex, opts = {}) {
     // revolution instead of turning forever: a preview nobody is looking at should end
     // up costing exactly nothing, and any interaction wakes it again anyway.
     let step = false;
+    if (animating && rig && (!last || now - last >= MIN_MS)) {
+      const prev = last;
+      last = now;
+      // Wall-clock, not a frame counter: the draw rate is throttled, and a per-frame step
+      // would run the loop at a different speed on a 30 and a 60 fps machine.
+      animClock += prev ? Math.min(now - prev, 250) : 0;
+      poseTime(animClock);
+      step = true;
+    }
     if (spin && (!last || now - last >= MIN_MS)) {
       const dt = last ? Math.min((now - last) / 1000, 0.25) : 0;  // clamp: a backgrounded
       last = now;                                                 // tab returns a huge dt
@@ -405,7 +544,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       step = true;
     }
     const changed = draw();
-    if (spin || changed || step) raf = requestAnimationFrame(tick);
+    if (spin || animating || changed || step) raf = requestAnimationFrame(tick);
     else running = false;
   };
   const wake = () => {
@@ -462,14 +601,18 @@ function buildViewer(el, model, slotTex, opts = {}) {
       status: "ok", model: opts.label || null, texture: opts.texture || null,
       textured: !!tex, meshes: drawn, triangles: model.idx.length / 3,
       vertices: model.pos.length / 3, frames, spinning: spin,
+      rigged: !!rig, animating, animMs: model.anim ? model.anim.duration : 0,
       running, visible, onScreen: onScreen(),   // false/false = costing nothing right now
       geosets: opts.geosets ? [...opts.geosets].sort((a, b) => a - b) : null,
       cape: opts.cape || null,
-      attached: (opts.attached || []).map((a) => ({
-        attach: a.attach, model: a.label || null,
-        // the bone scale the client applies -- per race, and the reason a tauren's
-        // pauldrons dwarf a gnome's
-        scale: +(model.attachments.find((at) => at.id === a.attach)?.scale ?? 1).toFixed(3),
+      attached: attached.map((sub, i) => ({
+        attach: (opts.attached || [])[i]?.attach,
+        model: (opts.attached || [])[i]?.label || null,
+        // The scale actually APPLIED, not the one in the file: on a rigid model that is
+        // the baked attachment scale, on a rigged one it comes from the bone the item
+        // hangs off. Either way it is what decides whether a tauren's pauldrons dwarf a
+        // gnome's, so that is what the state reports.
+        scale: +sub.mesh.getWorldScale(new THREE.Vector3()).x.toFixed(3),
       })),
       // [geoset, texType, blend, hasTexture] per drawn submesh -- what actually
       // reached the GPU, which is the only way to tell "filtered out" from
@@ -540,6 +683,15 @@ function buildViewer(el, model, slotTex, opts = {}) {
       wake();
     },
     resize: onResize,
+    /** Play or pause the idle animation. Returns the new state. */
+    animate: (on) => {
+      animating = !!on && !!rig;
+      if (!animating) { animClock = 0; poseTime(0); draw(); }
+      else wake();
+      return animating;
+    },
+    /** Whether this model can be animated at all -- a weapon cannot. */
+    get rigged() { return !!rig; },
     /** Turn the turntable on or off. Returns the new state, so a caller can drive a
      *  toggle button from it without keeping its own copy. */
     spin: (on) => {
@@ -574,6 +726,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
   hook.snapshot = viewer.snapshot;
   hook.view = viewer.view;               // so a test can read the camera, like snapshot
   hook.reset = viewer.reset;
+  hook.animate = viewer.animate;
   window.__mv = hook;                    // smoke-test hook, same convention as __zoneDots
   return viewer;
 }
@@ -849,7 +1002,7 @@ export async function mountCharacterViewer(el, opts = {}) {
     // Forwarded, not dropped: buildViewer gets a fresh options object, so anything the
     // CALLER set for the viewer has to be carried across by name. The turntable state
     // silently fell in this gap -- a room that asked for a still model still span.
-    spin: opts.spin, keepSpinning: opts.keepSpinning, view: opts.view,
+    spin: opts.spin, keepSpinning: opts.keepSpinning, view: opts.view, animate: opts.animate,
     attached,
     label: `${race}-${sex}`,
     cape: backItem ? { item: backItem.entry, texture: backItem.tex_l, loaded: !!capeTex } : null,

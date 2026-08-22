@@ -32,7 +32,7 @@ import struct
 import argparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
-from m2 import Storm, parse_m2, skin, bone_matrices, blp_to_rgba, VANILLA_ARCHIVES  # noqa: E402
+from m2 import Storm, parse_m2, skin, bone_matrices, blp_to_rgba, track_keys, VANILLA_ARCHIVES  # noqa: E402
 from clientprofile import archives  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,12 +43,13 @@ APPEARANCE = os.path.join(ROOT, "scripts", "data", "item-appearance.json")
 OUT_DIR = os.path.join(ROOT, "public", "model3d")
 
 MAGIC = b"M2B1"
-VERSION = 3   # v3: attachments also carry the bone's SCALE (v2 had position + rotation)
+VERSION = 3   # rigid models: v3 attachments carry the bone's SCALE as well as pos+rot
+RIG_VERSION = 4   # a rigged model: bind-pose vertices, skin weights, bones, one animation
 FLAG_POSED = 1
 
 # A section table keeps the loader honest: it reads by offset, so adding a section later
 # cannot silently shift the ones a shipped client already knows.
-SECTIONS = ["pos", "nrm", "uv", "idx", "sub", "tex", "att", "str"]
+SECTIONS = ["pos", "nrm", "uv", "idx", "sub", "tex", "att", "str", "bon", "skn", "anm"]
 
 
 def mat_to_quat(R):
@@ -69,10 +70,20 @@ def mat_to_quat(R):
     return ((R[0, 2] + R[2, 0]) / sq, (R[1, 2] + R[2, 1]) / sq, 0.25 * sq, (R[1, 0] - R[0, 1]) / sq)
 
 
-def build_m2b(m2):
-    """Serialize one parsed model. Returns (bytes, stats)."""
+def build_m2b(m2, rig=False):
+    """Serialize one parsed model. Returns (bytes, stats).
+
+    `rig` writes a v4 model: the vertices stay in the BIND pose and the skeleton, the
+    per-vertex weights and one animation (Stand) ride along, so the browser can pose it
+    per frame. Rigid models -- every weapon, helm and shoulder -- stay v3 and keep their
+    vertices baked into Stand frame 0, because nothing about them moves and a skeleton
+    would be 60 KB of nothing.
+    """
     import numpy as np
-    pos, nrm = skin(m2)                       # Stand frame 0, exactly like the thumbs
+    # A rigged model ships the BIND pose: the viewer applies frame 0 itself, and posing a
+    # pre-posed mesh would apply the animation twice.
+    pos, nrm = (np.array(m2["verts"], dtype="f8")[:, 0:3], np.array(m2["verts"], dtype="f8")[:, 3:6]) \
+        if rig else skin(m2)
     verts = np.array(m2["verts"], dtype="f4")
     uv = verts[:, 6:8]
     nvert = len(verts)
@@ -139,6 +150,16 @@ def build_m2b(m2):
         if G is None:
             attrows.append((a["id"] & 0xFFFF, a["bone"] & 0xFFFF, *a["pos"], 0.0, 0.0, 0.0, 1.0, 1.0))
             continue
+        # A RIGGED model parents its attachments to the bone itself, so what it needs is
+        # the offset from that bone's pivot -- the bone supplies the rotation and scale,
+        # and a helm then follows the head through the animation instead of hanging in the
+        # air where the head was at frame 0.
+        if rig:
+            piv = m2["bones"][a["bone"]]["pivot"]
+            attrows.append((a["id"] & 0xFFFF, a["bone"] & 0xFFFF,
+                            float(a["pos"][0] - piv[0]), float(a["pos"][1] - piv[1]),
+                            float(a["pos"][2] - piv[2]), 0.0, 0.0, 0.0, 1.0, 1.0))
+            continue
         M = G[a["bone"]]
         wp = M @ np.array([*a["pos"], 1.0])
         R = M[:3, :3].copy()
@@ -154,6 +175,32 @@ def build_m2b(m2):
         attrows.append((a["id"] & 0xFFFF, a["bone"] & 0xFFFF,
                         float(wp[0]), float(wp[1]), float(wp[2]), *mat_to_quat(R), scale))
 
+    # ---- rig: skeleton, weights and one animation ---------------------------------
+    bonblob = skinblob = animblob = b""
+    if rig and m2["bones"]:
+        # parent index and pivot per bone. The pivot is where the bone's rotation happens,
+        # which in three is simply the bone's rest position relative to its parent.
+        bonblob = b"".join(struct.pack("<hxx3f", b["parent"], *b["pivot"]) for b in m2["bones"])
+        # four bone indices and four weights per vertex, as the M2 stores them
+        skinblob = b"".join(struct.pack("<4B4B", *m2["boneidx"][i], *m2["weights"][i])
+                            for i in range(len(m2["verts"])))
+        st = m2["stand_idx"]
+        seq = m2["anims"][st] if st < len(m2["anims"]) else {"start": 0, "end": 0}
+        dur = max(1, seq["end"] - seq["start"])
+        parts = [struct.pack("<IH2x", dur, len(m2["bones"]))]
+        for b in m2["bones"]:
+            tr = track_keys(m2["data"], b["ttrans"], 3, st, seq["start"])
+            ro = track_keys(m2["data"], b["trot"], 4, st, seq["start"])
+            sc = track_keys(m2["data"], b["tscale"], 3, st, seq["start"])
+            parts.append(struct.pack("<3H2x", len(tr), len(ro), len(sc)))
+            for ms, v in tr:
+                parts.append(struct.pack("<I3f", ms, *v))
+            for ms, v in ro:
+                parts.append(struct.pack("<I4f", ms, *v))
+            for ms, v in sc:
+                parts.append(struct.pack("<I3f", ms, *v))
+        animblob = b"".join(parts)
+
     strblob = b"".join(s.encode("latin1") + b"\0" for s in strings)
 
     body = {
@@ -165,12 +212,20 @@ def build_m2b(m2):
         "tex": b"".join(struct.pack("<2BH", *r) for r in texrows),
         "att": b"".join(struct.pack("<2H8f", *r) for r in attrows),
         "str": strblob,
+        "bon": bonblob,
+        "skn": skinblob,
+        "anm": animblob,
     }
 
-    head_size = 4 + 2 + 2 + 4 + 4 + 2 + 2 + 2 + 2 + 24 + 4 * len(SECTIONS)
+    # A rigid model keeps the EIGHT-section header it has always had; only a rigged one
+    # carries the three extra offsets. The count is implied by the version, so a reader
+    # never has to guess how long the table is -- and the thousands of v2/v3 files already
+    # on R2 stay byte-compatible.
+    sections = SECTIONS if rig else SECTIONS[:8]
+    head_size = 4 + 2 + 2 + 4 + 4 + 2 + 2 + 2 + 2 + 24 + 4 * len(sections)
     head_size += (-head_size) % 4
     offs, cur, chunks = [], head_size, []
-    for name in SECTIONS:
+    for name in sections:
         b = body[name]
         offs.append(cur)
         chunks.append(b)
@@ -184,11 +239,14 @@ def build_m2b(m2):
     hi = pos.max(axis=0) if nvert else np.zeros(3, "f4")
     head = bytearray()
     head += MAGIC
-    head += struct.pack("<2H", VERSION, FLAG_POSED)
+    # A rigged model is v4 and its vertices are NOT posed -- the viewer poses them. The
+    # flag is what tells a reader whether to expect a skeleton to do that with.
+    head += struct.pack("<2H", RIG_VERSION if rig else VERSION, 0 if rig else FLAG_POSED)
     head += struct.pack("<2I", nvert, len(idx))
-    head += struct.pack("<4H", len(subrows), len(texrows), len(attrows), len(m2["bones"]))
+    head += struct.pack("<4H", len(subrows), len(texrows), len(attrows),
+                        len(m2["bones"]) if rig else 0)
     head += struct.pack("<6f", *lo, *hi)
-    head += struct.pack("<%dI" % len(SECTIONS), *offs)
+    head += struct.pack("<%dI" % len(sections), *offs)
     head += b"\0" * ((-len(head)) % 4)
     assert len(head) == head_size, (len(head), head_size)
 
@@ -280,8 +338,11 @@ def export_characters(storm, args):
     /underwear texture the client offers for them, and a copy of the appearance JSON the
     viewer fetches at runtime.
 
-    The models are ~3.5 MB each in the client and come out ~40x smaller here: almost all
-    of that is animation keyframes, and v1 bakes the Stand pose instead of shipping them."""
+    The models are ~3.5 MB each in the client and come out far smaller here: most of that
+    is animation keyframes for 150-odd sequences, and only ONE of them ships -- Stand, the
+    idle loop, at 2.7 seconds. A character is exported RIGGED (v4): bind-pose vertices, the
+    skeleton, per-vertex weights and that one animation's keys, which is what lets the
+    browser pose it per frame instead of showing a statue."""
     src = os.path.join(ROOT, "scripts", "data", "char-appearance.json")
     if not os.path.exists(src):
         print(f"  (skip characters: {src} not found -- run extract-char-appearance.py)")
@@ -301,7 +362,7 @@ def export_characters(storm, args):
             if not raw:
                 print(f"  MISS char {path}"); fail += 1; continue
             try:
-                blob, stats = build_m2b(parse_m2(raw))
+                blob, stats = build_m2b(parse_m2(raw), rig=True)
             except Exception as e:                              # noqa: BLE001
                 print(f"  FAIL char {path}: {e}"); fail += 1; continue
             if not args.dry_run:

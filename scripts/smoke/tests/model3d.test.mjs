@@ -832,3 +832,27 @@ async function testAttachmentScale() {
 }
 
 smoke("an attached shoulder wears its bone's scale", () => testAttachmentScale());
+
+// The idle animation. A character is a RIGGED model (v4): bind-pose vertices plus a
+// skeleton, weights and Stand's keys, posed per frame. Three things are pinned here --
+// that a character is rigged at all, that the model HOLDS STILL until asked (the viewer's
+// whole idle discipline), and that asking actually moves the mesh.
+async function testIdleAnimation() {
+  await nav("?dressing&race=1&sex=m&hair=3&chest=60180");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await new Promise((r) => setTimeout(r, 900));
+  const still = await page.evaluate(() => window.__mv());
+  const before = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  await page.click("#dress-anim");
+  await new Promise((r) => setTimeout(r, 900));
+  const moving = await page.evaluate(() => window.__mv());
+  const after = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  await page.click("#dress-anim");                       // and back to the still pose
+  await new Promise((r) => setTimeout(r, 500));
+  const stopped = await page.evaluate(() => window.__mv().animating);
+  console.log(`anim: rigged=${still.rigged} loop=${still.animMs}ms idle(running=${still.running}) -> playing(running=${moving.running}) moved=${before !== after} stopped=${!stopped}`);
+  return still.rigged && still.animMs > 500 && still.animating === false && still.running === false
+    && moving.animating === true && before !== after && stopped === false;
+}
+
+smoke("a character stands still until asked to breathe", () => testIdleAnimation());

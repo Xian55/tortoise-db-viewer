@@ -182,6 +182,32 @@ def _track(data, toff):
     return dict(ranges=ranges, n_t=n_t, o_t=o_t, n_v=n_v, o_v=o_v)
 
 
+def track_keys(data, tr, comps, anim, t0=0):
+    """The raw keys of one track for one animation: [(ms, (v...)), ...], with the
+    sequence's own start subtracted so a player can work in 0..duration. Returns []
+    when the track says nothing for this animation, which most bones do."""
+    if tr["n_v"] == 0:
+        return []
+    if anim >= len(tr["ranges"]):
+        # A track with no range for this animation is a GLOBAL one -- the client applies
+        # its values whatever is playing, which is how a blood elf's shoulder carries a
+        # 0.574 scale that appears in no sequence. sample_track() already falls back this
+        # way; returning nothing here silently dropped it from the exported rig, and the
+        # pauldrons came back out at human size.
+        s0, e0 = 0, tr["n_v"] - 1
+    else:
+        s0, e0 = tr["ranges"][anim]
+    e0 = min(e0, tr["n_v"] - 1)
+    if e0 < s0:
+        return []
+    out = []
+    for i in range(s0, e0 + 1):
+        ts = struct.unpack_from("<I", data, tr["o_t"] + i * 4)[0] if tr["n_t"] else 0
+        val = struct.unpack_from("<%df" % comps, data, tr["o_v"] + i * comps * 4)
+        out.append((max(0, ts - t0), val))
+    return out
+
+
 def sample_track(data, tr, comps, anim, tfrac, default):
     """Value of a track for animation index `anim` at normalized time `tfrac`
     (0..1). Uses the per-animation key range; linear-interpolates between keys.
@@ -232,9 +258,12 @@ def parse_m2(data):
     # (0 = Stand/idle), [1] uint16 subId. Find the first Stand sequence index so
     # we can pose on the idle animation regardless of its position in the list.
     stand_idx = 0
+    anims = []
     for i in range(nAnim):
-        aid = struct.unpack_from("<H", data, oAnim + i * 68)[0]
-        if aid == 0:
+        aid, sub, a_start, a_end = struct.unpack_from("<2H2I", data, oAnim + i * 68)
+        anims.append(dict(id=aid, sub=sub, start=a_start, end=a_end))
+    for i, a in enumerate(anims):
+        if a["id"] == 0:
             stand_idx = i
             break
 
@@ -327,7 +356,7 @@ def parse_m2(data):
         attach.append(dict(id=aid, bone=bone, pos=pos))
 
     return dict(ver=ver, verts=verts, weights=weights, boneidx=boneidx, bones=bones,
-                stand_idx=stand_idx, data=data,
+                stand_idx=stand_idx, anims=anims, data=data,
                 indices=indices, tris=tris, subs=subs, attach=attach,
                 texunits=texunits, texlook=texlook, textures=textures, materials=materials)
 

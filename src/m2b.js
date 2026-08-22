@@ -34,8 +34,12 @@ export function parseM2B(buffer) {
   // v2 and v3 differ only in the attachment stride (v3 carries the bone's scale), so both
   // are readable -- which is what lets the character models be re-exported without
   // reshipping every weapon.
-  if (version !== 2 && version !== 3) {
-    throw new Error(`m2b version ${version} is not readable (want 2 or 3)`);
+  // v2/v3 are RIGID models: vertices baked into Stand frame 0, eight sections. v4 is a
+  // RIGGED one -- bind-pose vertices plus a skeleton, per-vertex weights and the Stand
+  // animation's keys -- and carries three more sections. The count is implied by the
+  // version, so the table is never guessed at.
+  if (version < 2 || version > 4) {
+    throw new Error(`m2b version ${version} is not readable (want 2-4)`);
   }
   const flags = dv.getUint16(6, true);
   const nVert = dv.getUint32(8, true);
@@ -47,7 +51,8 @@ export function parseM2B(buffer) {
   const bbox = [];
   for (let i = 0; i < 6; i++) bbox.push(dv.getFloat32(24 + i * 4, true));
   const off = {};
-  SECTIONS.forEach((name, i) => { off[name] = dv.getUint32(48 + i * 4, true); });
+  const sections = version >= 4 ? [...SECTIONS, "bon", "skn", "anm"] : SECTIONS;
+  sections.forEach((name, i) => { off[name] = dv.getUint32(48 + i * 4, true); });
 
   const str = (o) => {
     let end = off.str + o;
@@ -93,8 +98,53 @@ export function parseM2B(buffer) {
     });
   }
 
+  // A rigged model (v4) carries what the browser needs to pose it: the skeleton, the
+  // per-vertex weights, and one animation's keys. Everything is optional -- a rigid model
+  // simply has none of it, and the viewer renders it exactly as before.
+  let bones = null;
+  let skin = null;
+  let anim = null;
+  if (version >= 4 && nBone) {
+    bones = [];
+    for (let i = 0; i < nBone; i++) {
+      const b = off.bon + i * 16;
+      bones.push({
+        parent: dv.getInt16(b, true),
+        // The pivot is where this bone rotates, which is also its rest position.
+        pivot: [dv.getFloat32(b + 4, true), dv.getFloat32(b + 8, true), dv.getFloat32(b + 12, true)],
+      });
+    }
+    skin = {
+      index: new Uint8Array(buffer, off.skn, nVert * 4 * 2).filter((_, i) => i % 8 < 4),
+      weight: new Uint8Array(buffer, off.skn, nVert * 4 * 2).filter((_, i) => i % 8 >= 4),
+    };
+    // duration, then per bone: three key counts followed by the keys themselves.
+    const dur = dv.getUint32(off.anm, true);
+    let b = off.anm + 8;
+    const tracks = [];
+    for (let i = 0; i < nBone; i++) {
+      const nT = dv.getUint16(b, true);
+      const nR = dv.getUint16(b + 2, true);
+      const nS = dv.getUint16(b + 4, true);
+      b += 8;
+      const read = (n, comps) => {
+        if (!n) return null;
+        const times = new Uint32Array(n);
+        const vals = new Float32Array(n * comps);
+        for (let k = 0; k < n; k++) {
+          times[k] = dv.getUint32(b, true);
+          for (let c = 0; c < comps; c++) vals[k * comps + c] = dv.getFloat32(b + 4 + c * 4, true);
+          b += 4 + comps * 4;
+        }
+        return { times, vals, comps };
+      };
+      tracks.push({ trans: read(nT, 3), rot: read(nR, 4), scale: read(nS, 3) });
+    }
+    anim = { duration: dur, tracks };
+  }
+
   return {
-    version, posed: !!(flags & 1), nBone, bbox,
+    version, posed: !!(flags & 1), nBone, bbox, bones, skin, anim,
     pos: new Float32Array(buffer, off.pos, nVert * 3),
     nrm: new Float32Array(buffer, off.nrm, nVert * 3),
     uv: new Float32Array(buffer, off.uv, nVert * 2),
