@@ -1189,6 +1189,10 @@ async function showDressingRoom(params, navigate) {
 
   app.innerHTML = `<div class="dressing">
       <h1>Dressing room</h1>
+      <div class="dress-tabs" role="tablist">
+        <button type="button" class="dress-tab" data-pane="gear" aria-selected="true">Gear</button>
+        <button type="button" class="dress-tab" data-pane="look" aria-selected="false">Appearance</button>
+      </div>
       <div class="dress-room">
         <div class="dress-col dress-col-l">
           <button type="button" class="btn dress-set-btn" id="dress-set">Wear a set&hellip;</button>
@@ -1197,11 +1201,11 @@ async function showDressingRoom(params, navigate) {
         <div class="mv-wrap">
           <div id="mv-host" class="mv-host"><p class="muted">Loading character&hellip;</p></div>
           <div class="mv-tools">
-            <button type="button" class="mv-tool" id="dress-spin" aria-pressed="false" title="Turn the model">\u21BB Rotate</button>
-            <button type="button" class="mv-tool" id="dress-reset" title="Back to the straight-on view">\u21BA Reset</button>
-            <button type="button" class="mv-tool" id="dress-full" title="Fill the screen">\u26F6 Fullscreen</button>
-            <button type="button" class="mv-tool" id="dress-shot" title="Save a PNG of this view">\u{1F4F7} Screenshot</button>
-            <label class="mv-tool mv-chk" title="Save with no background at all"><input type="checkbox" id="dress-alpha"> transparent</label>
+            <button type="button" class="mv-tool" id="dress-spin" aria-pressed="false" title="Turn the model"><i>\u21BB</i><span>Rotate</span></button>
+            <button type="button" class="mv-tool" id="dress-reset" title="Back to the straight-on view"><i>\u21BA</i><span>Reset</span></button>
+            <button type="button" class="mv-tool" id="dress-full" title="Fill the screen"><i>\u26F6</i><span>Fullscreen</span></button>
+            <button type="button" class="mv-tool" id="dress-shot" title="Save a PNG of this view"><i>\u{1F4F7}</i><span>Screenshot</span></button>
+            <label class="mv-tool mv-chk" title="Save with no background at all"><input type="checkbox" id="dress-alpha"><span>transparent</span></label>
           </div>
         </div>
         <div class="dress-bar" id="dress-bar"></div>
@@ -1755,6 +1759,22 @@ async function showDressingRoom(params, navigate) {
     a.click();
     say(alpha ? "Saved with a transparent background." : "Screenshot saved.");
   });
+
+  // On a phone the two rails cannot both stand beside the model, and stacking them buried
+  // it under thirteen slot rows -- you scrolled past the character to change it, then back
+  // up to see what you had done. So the model stays put at the top and these tabs swap
+  // which rail is under it. The buttons are hidden above the breakpoint, where both rails
+  // are visible at once and there is nothing to choose between.
+  const room = app.querySelector(".dressing");
+  app.querySelector(".dress-tabs")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".dress-tab");
+    if (!btn) return;
+    for (const b of app.querySelectorAll(".dress-tab")) {
+      b.setAttribute("aria-selected", String(b === btn));
+    }
+    room.dataset.pane = btn.dataset.pane;
+  });
+  room.dataset.pane = "gear";
 
   app.querySelector("#dress-spin")?.addEventListener("click", (e) => {
     spinning = !spinning;

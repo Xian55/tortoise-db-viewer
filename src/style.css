@@ -1654,6 +1654,7 @@ td .pet-rank { margin: 1px 0; }
 .mv-tools { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
   display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 999px;
   border: 1px solid var(--border); background: rgba(13, 14, 18, 0.78); }
+.mv-tool i { font-style: normal; line-height: 1; }
 .mv-tool { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border: 0;
   border-radius: 999px; background: none; color: var(--muted); cursor: pointer;
   font: inherit; font-size: 12px; white-space: nowrap; }
@@ -1751,6 +1752,9 @@ td .pet-rank { margin: 1px 0; }
   background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: inherit; }
 .dress-pop .sd-row .icon-sprite, .dress-pop .sd-row img { width: 20px; height: 20px; flex: none; }
 /* Narrow screens: the columns stop flanking and sit under the model. */
+/* The tabs exist only where the rails cannot both fit beside the model. */
+.dress-tabs { display: none; }
+
 @media (max-width: 900px) {
   /* Stacked on a narrow screen the rails become rows again, and the height cap goes:
      scrolling is fine when there is no room to avoid it. */
@@ -1759,6 +1763,64 @@ td .pet-rank { margin: 1px 0; }
   .mv-host { height: 60vh; }
   .dress-col { flex-direction: row; flex-wrap: wrap; }
   .dress-col .dress-slot { width: auto; flex: 1 1 150px; }
+}
+
+/* ---- phones ---------------------------------------------------------------------
+   The model comes FIRST and stays put while you work: stacked in source order it sat
+   below thirteen slot rows, so changing an outfit meant scrolling down to the controls
+   and back up to see the result. Sticky keeps it on screen, and the two rails become
+   tabs under it -- only one of them is ever the thing you are using. */
+@media (max-width: 720px) {
+  .dress-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+    margin: 8px 0; position: sticky; top: 0; z-index: 3; background: var(--bg); }
+  .dress-tab { padding: 8px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel); color: var(--muted); font: inherit; cursor: pointer; }
+  .dress-tab[aria-selected="true"] { border-color: var(--gold, #ffd100); color: var(--text); }
+
+  /* FLEX column, not block: source order is items, model, appearance, and the model has
+     to come first on a phone -- `order` is ignored on a block container, which left the
+     character below fourteen slot rows exactly as before. */
+  .dress-room { display: flex; flex-direction: column; }
+  .dress-room > .mv-wrap { order: -1; }
+  .dressing .mv-wrap { position: sticky; top: 44px; z-index: 2; height: 46vh;
+    min-height: 260px; background: var(--bg); padding-bottom: 6px; }
+  .dressing .mv-wrap > .mv-host { height: 100%; }
+  .dress-room > .dress-col-l, .dress-room > .dress-bar { order: 1; }
+  .dressing[data-pane="gear"] .dress-bar { display: none; }
+  .dressing[data-pane="look"] .dress-col-l { display: none; }
+  /* A COLUMN that sizes to its content. Left as the desktop's wrapping row, the bar was
+     stretched to the room's height and its lines shared out the slack, so every field box
+     carried ~40px of dead space under a single row of swatches. */
+  .dress-bar { display: flex; flex-direction: column; flex-wrap: nowrap;
+    margin-top: 10px; max-width: none; }
+  .dfield { flex: 0 0 auto; }
+
+  /* Two slots per row: a plate is an icon and a name, and one per row wasted half the
+     screen and doubled the scrolling. */
+  .dress-col { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .dress-col .dress-slot { width: auto; }
+  .dress-set-btn { grid-column: 1 / -1; }
+  .dress-slot-label { font-size: 11px; }
+
+  /* The view controls have to fit the pane, not the desktop's row of words. */
+  .mv-tools { bottom: 8px; gap: 2px; padding: 3px 4px; max-width: calc(100% - 12px); }
+  .mv-tool { padding: 4px 6px; font-size: 11px; }
+  .race-row { grid-template-columns: repeat(4, 1fr); }
+  /* Swatches fill the width without spilling: an aspect-ratio circle in a fixed track
+     overflowed the field box and got clipped at the bottom. */
+  .swatches { grid-template-columns: repeat(auto-fill, minmax(26px, 1fr)); justify-items: center; }
+  .sw { width: 26px; height: 26px; }
+  .dress-actions { padding: 8px 6px; }
+}
+
+/* Very narrow: the tool labels give way to their glyphs, which is what the pill is for.
+   The glyph and the word are separate elements so the word can simply be dropped -- a
+   font-size:0 trick blanks the button instead, which is what the first attempt did. */
+@media (max-width: 480px) {
+  .mv-tool span { display: none; }
+  .mv-tool { padding: 6px 8px; gap: 0; }
+  .mv-chk::after { content: "PNG"; font-size: 10px; color: var(--muted); margin-left: 3px; }
+  .dress-col { grid-template-columns: 1fr; }
 }
 
 /* Character-sheet 3D preview: collapsed to just its bar until asked for. */

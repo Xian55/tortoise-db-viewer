@@ -725,3 +725,34 @@ async function testRobeOverLegs() {
 }
 
 smoke("a robe covers the trousers under it", () => testRobeOverLegs());
+
+// On a phone the two rails cannot stand beside the model, and stacking them in source
+// order buried it under fourteen slot rows: you scrolled PAST the character to change it,
+// then back up to see the result. The model leads and stays put, and tabs swap which rail
+// is under it. (beforeEach resets the viewport, so the phone size does not leak.)
+async function testPhoneLayout() {
+  await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
+  await nav("?dressing&race=9&sex=f&hair=3&head=81007&chest=10399&legs=10400");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const m = await page.evaluate(() => {
+    const stage = document.querySelector(".mv-wrap").getBoundingClientRect();
+    const slot = document.querySelector(".dress-slot").getBoundingClientRect();
+    return { stageTop: Math.round(stage.top), slotTop: Math.round(slot.top),
+      tabs: getComputedStyle(document.querySelector(".dress-tabs")).display,
+      sticky: getComputedStyle(document.querySelector(".mv-wrap")).position,
+      xOverflow: document.documentElement.scrollWidth > innerWidth + 1,
+      doc: document.documentElement.scrollHeight };
+  });
+  // switching to Appearance must hide the gear rail rather than stack it
+  await page.click('.dress-tab[data-pane="look"]');
+  await new Promise((r) => setTimeout(r, 250));
+  const swapped = await page.evaluate(() => ({
+    gear: getComputedStyle(document.querySelector(".dress-col-l")).display,
+    look: getComputedStyle(document.querySelector(".dress-bar")).display,
+  }));
+  console.log(`phone: ${JSON.stringify(m)} swapped=${JSON.stringify(swapped)}`);
+  return m.stageTop < m.slotTop && m.tabs !== "none" && m.sticky === "sticky"
+    && !m.xOverflow && swapped.gear === "none" && swapped.look !== "none";
+}
+
+smoke("dressing room puts the model first on a phone", () => testPhoneLayout());

@@ -753,6 +753,16 @@ what 4 looks like. Anything with a preview now shows it and everything else step
   about trolls.
 - **Changing race CLAMPS every other option.** A gnome has fewer skins than a tauren, and
   carrying an out-of-range index across the change renders a character with no head.
+- **On a phone the model leads and stays put.** The rails cannot stand beside it, and
+  stacked in source order it sat below fourteen slot rows -- you scrolled PAST the
+  character to change it and back up to see the result. Under 720px the room becomes a
+  flex COLUMN (not `display:block` -- `order` is ignored there, which leaves the model
+  where it was), the stage is `position: sticky` under the header, and a Gear / Appearance
+  tab pair swaps which rail is beneath it. Two traps met on the way: the appearance bar
+  inherits `flex-wrap: wrap` from the desktop rule, and a wrapped column stretched to the
+  room's height hands every field box ~40px of dead space; and the view-control pill needs
+  its glyph and its word as SEPARATE elements so the word can be dropped -- a `font-size: 0`
+  trick blanks the button instead.
 - **The room is two rails and nothing underneath**: everything you WEAR down the left
   (weapons included -- they get no row of their own), everything about the CHARACTER down
   the right, model between them. That is a fit requirement rather than taste: with a
@@ -1189,6 +1199,12 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
 - `scripts/lib/scriptdev.mjs` — the shared ScriptDev2 walk (comment strip, constants, brace
   ranges, `newscript->Name` → `GetAI_*` → AI struct). `extract-script-abilities.mjs` and
   `extract-script-sounds.mjs` each supply only a `collect()` for the calls they care about.
+- **A probe that expects to miss uses `fetch`, not `<img>`.** An armor layer asks for its
+  sexed name and falls back to `_u`, so one of the two is always a 404 -- and a failed
+  image request is logged by the browser as a console error, which meant a perfectly normal
+  outfit printed a dozen red 404s into a public console. `fetch` answers a miss with an
+  ordinary response and logs nothing; `createImageBitmap` draws onto the composite canvas
+  exactly as an `Image` does. Same for the tauren `_Extra` walk.
 - `src/audio.js` — the one `<audio>` for the whole app plus `soundPlayer()` / `wireAudio()`
   / `stopAudio()`. Single element on purpose (two clips at once is never intended), and
   `route()` stops it so a zone track can't outlive its page. The progress bar is a real
