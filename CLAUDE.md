@@ -777,12 +777,20 @@ what 4 looks like. Anything with a preview now shows it and everything else step
   onto the canvas as an inline width/height in pixels, and an inline style outranks the
   stylesheet that sizes the canvas to its pane -- so returning from fullscreen the canvas
   kept the screen's height, overflowed the room and pushed the page layout apart.
+- **The three columns of `CharacterFacialHairStyles` are NOT in group order: they are
+  groups 1, 3, 2.** Read in order, a troll's tusks (column 1) resolve to geoset 2xx, and no
+  troll model contains a single 2xx -- so trolls had no tusks at all while the picker
+  offered fourteen styles of nothing. The order was scored, not guessed: of the six
+  permutations, 1/3/2 resolves 240 of 286 references against the models' actual geosets,
+  the next best 165, and in-order only 146. What is left over is styles naming art their
+  model does not ship (dwarf males reference 2xx and carry none); the client skips those
+  and so do we, since only geosets the mesh actually has are ever drawn. A corollary worth
+  remembering: several styles can share one geoset -- troll males have 14 styles over 5
+  tusk shapes, differing by texture -- so "the geoset did not change" is not by itself
+  evidence of a bug.
 - **Groups 1-3 belong to the FACIAL selection, not to the naked body** (`NOT_BODY_GROUPS`).
   Left in the "variant 1" default pass they got a piece of their own on top of the chosen
-  style, so two were drawn at once: a troll wore tusk variant 1 whatever the picker said,
-  and a human male could not shave. Note several styles can share one geoset -- troll males
-  have 14 styles over 5 tusk shapes, differing by texture -- so "the geoset did not change"
-  is not by itself evidence that the picker is broken.
+  style, so two were drawn at once and a human male could not shave.
 - **Empty slots wear the game's own silhouette** (`extract-slot-icons.py`). These are UI
   textures, not item icons: Blizzard's icon CDN 403s on them (`inventoryslot_head.jpg`
   redirects to render.worldofwarcraft.com and is refused), so the only public copies are

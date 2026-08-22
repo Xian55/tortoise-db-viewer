@@ -624,8 +624,16 @@ export function baseGeosets(model, { hairGeoset = 0, facial = [] } = {}) {
   // scalpless and a troll looked headless, because their bodies end at z 1.93 and 2.12
   // while the head reaches 1.99 and 2.20.
   else if (present.has(BALD_SCALP)) out.add(BALD_SCALP);
-  // Facial hair lives in groups 1/2/3 (beard, moustache, sideburns); a 0 means "none".
-  facial.forEach((v, i) => { if (v) out.add((i + 1) * 100 + v); });
+  // Facial hair lives in groups 1/2/3, but the THREE COLUMNS OF CharacterFacialHairStyles
+  // ARE NOT IN GROUP ORDER: they are groups 1, 3, 2. Read in order, a troll's tusks
+  // (column 1) became geoset 2xx -- which no troll model contains, so trolls had no tusks
+  // at all while the picker cheerfully offered fourteen styles of nothing. Scored the six
+  // possible orders against every model's actual geosets: this one resolves 240 of 286
+  // references, the next best 165, and in-order only 146. The remainder are styles naming
+  // art their model does not ship (dwarf males reference 2xx and carry none); the client
+  // skips those too, and so does `out` -- only geosets the mesh has are ever drawn.
+  const FACIAL_GROUP = [1, 3, 2];
+  facial.forEach((v, i) => { if (v && FACIAL_GROUP[i]) out.add(FACIAL_GROUP[i] * 100 + v); });
   return out;
 }
 
