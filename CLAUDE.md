@@ -129,6 +129,7 @@ python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc
 python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
 python scripts/extract-race-icons.py  # LOCAL: crops the client race-portrait sheet -> public/icons/race/<chrRacesId>-<m|f>.webp (dressing-room race picker)
+python scripts/extract-slot-icons.py  # LOCAL: the paperdoll empty-slot silhouettes (Interface\PaperDoll\UI-PaperDoll-Slot-*) -> public/icons/slot/<slot>.webp
 python scripts/build-char-palette.py  # LOCAL: averages each skin/hair texture -> scripts/data/char-palette.json (the swatch colours; reads the EXPORTED char textures, so no client needed)
 python scripts/transcribe-sounds.py   # LOCAL+GPU: Whisper over public/sounds -> scripts/data/voice-transcripts-auto.json (machine transcripts for the ~1.6k clips no text table records). `--model`/`--compute`/`--only`/`--limit`. Needs faster-whisper. See "Transcribing the clips nothing writes down"
 bun scripts/extract-script-sounds.mjs # LOCAL: server ScriptDev2 src + the SQL dumps -> scripts/data/script-sounds.json (script_name -> the script_texts entries it speaks + sounds it plays, plus the sound-id worklist extract-sounds.py needs). Run BEFORE extract-sounds.py
@@ -745,7 +746,54 @@ what 4 looks like. Anything with a preview now shows it and everything else step
   `localStorage` -- the URL already IS the outfit, which is what makes a look shareable.
 - **Camera panning is on** (`screenSpacePanning`): orbit alone can only circle the model's
   centre, so without it there is no way to put the trim of a pauldron in the middle of the
-  screen.
+  screen. **Reset** restores the opening view -- through `controls.reset()` against a
+  `saveState()` taken at mount, never by writing `camera.position`, since OrbitControls
+  keeps its own spherical state and moving the camera behind its back leaves that state
+  holding the old rotation. Damping has to be switched OFF and `update()` called BEFORE
+  the reset: it hoards the leftover delta from the drag and applies a decaying fraction of
+  it for about a second (the view landed home, then slid 0.4 radii off), and running
+  update() *after* the restore applies that delta in full instead (6 degrees off).
+- **The model faces +X, and that was measured rather than recalled.** A character model is
+  symmetric across Y (human male spans y -0.54..0.54 against x -0.49..0.33), so Y is
+  left-right and the figure faces along X -- feet and face both on +X. The camera therefore
+  opens at `front: [3.6, 0.2, 0]`. The old vector put it on -Z, i.e. beside the character:
+  everyone got a profile on load, which only ever looked right because the idle spin
+  happened to carry the model past the front while screenshots were taken.
+- **The room opens STILL.** `opts.spin` defaults to on for an item preview but the room
+  passes false, and a Rotate toggle turns the turntable on. Note `mountCharacterViewer`
+  builds a FRESH options object for `buildViewer`, so anything meant for the viewer has to
+  be forwarded by name -- the turntable state fell in that gap once and a room that asked
+  for a still model still span.
+- **The camera survives a re-mount.** Every equip and every appearance change builds a new
+  viewer, so `view()` hands the next one an offset from the target and a target offset from
+  the model's centre, both in units of the model's OWN radius -- never world coordinates,
+  since the next model is a different size (a gnome after a tauren) and absolute numbers
+  put the camera inside its head.
+- **Framing may only ever WIDEN for attachments.** `attachedRadius` measures what is
+  attached, so a shield or a helm -- small, near the centre -- reported a fraction of the
+  body radius and, taken as a `min`, pulled the camera into the character's chest. It is
+  clamped to `[body.radius, body.radius * 1.1]`.
+- **`renderer.setSize(w, h, false)`.** With `updateStyle` left on, three writes the size
+  onto the canvas as an inline width/height in pixels, and an inline style outranks the
+  stylesheet that sizes the canvas to its pane -- so returning from fullscreen the canvas
+  kept the screen's height, overflowed the room and pushed the page layout apart.
+- **Groups 1-3 belong to the FACIAL selection, not to the naked body** (`NOT_BODY_GROUPS`).
+  Left in the "variant 1" default pass they got a piece of their own on top of the chosen
+  style, so two were drawn at once: a troll wore tusk variant 1 whatever the picker said,
+  and a human male could not shave. Note several styles can share one geoset -- troll males
+  have 14 styles over 5 tusk shapes, differing by texture -- so "the geoset did not change"
+  is not by itself evidence that the picker is broken.
+- **Empty slots wear the game's own silhouette** (`extract-slot-icons.py`). These are UI
+  textures, not item icons: Blizzard's icon CDN 403s on them (`inventoryslot_head.jpg`
+  redirects to render.worldofwarcraft.com and is refused), so the only public copies are
+  Wowhead rehosts and we extract our own. Two client names are not guessable -- the wrist
+  texture is `Wrists`, and Back has none at all in 1.12 (the paperdoll draws the cloak over
+  the chest slot), so it borrows Chest.
+- **"Wear a set" heads the item rail rather than the action bar.** The picker opens
+  DOWNWARD from whatever it is anchored to, so from the bottom of the page its results fell
+  off the screen. Anything that opens the picker must also be excluded from the room's
+  close-on-outside-click handler, or the same click shuts the panel it just opened -- that
+  bug happened twice, once per new button.
 
 ### Wearing armor (`src/chargear.js`)
 
@@ -1406,7 +1454,8 @@ Client-derived **image** trees are no longer committed. CI still can't regenerat
   sync) and the dressing room's race portraits (`public/icons/race/<chrRacesId>-<m|f>.webp`
   via `extract-race-icons.py`, the same sheet family and the same sync) plus the skin/hair
   swatch colours (`scripts/data/char-palette.json` via `build-char-palette.py`, bundled by
-  Vite rather than served -- the picker needs them on first paint). See "Custom
+  Vite rather than served -- the picker needs them on first paint) and the empty-slot
+  paperdoll silhouettes (`public/icons/slot/<slot>.webp` via `extract-slot-icons.py`). See "Custom
   icons" / `scripts/extract-maps.py` / "Seamless world map". Plus scripted-transform
   spawn links (`scripts/data/scripted-spawn-links.json`): creatures with no static
   `creature` row that a server **C++** script swaps in at another NPC's location (the

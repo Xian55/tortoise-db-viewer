@@ -223,7 +223,12 @@ function buildViewer(el, model, slotTex, opts = {}) {
   });
   // Beyond 2x the extra pixels are invisible and quadratic in cost.
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
-  renderer.setSize(width(), height());
+  // updateStyle: FALSE. Left on, three writes the size onto the canvas as an inline
+  // width/height in pixels, and an inline style outranks the stylesheet that sizes the
+  // canvas to its pane -- so coming back from fullscreen the canvas kept the screen's
+  // height, overflowed the room and pushed the page layout apart. The drawing buffer is
+  // JS's business; the box on screen is CSS's.
+  renderer.setSize(width(), height(), false);
   renderer.setClearColor(0x000000, 0);
   el.appendChild(renderer.domElement);
 
@@ -279,14 +284,37 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // worse: a weapon reaches ~1.5 body radii, so the CHARACTER then renders at two thirds
   // the size in the same pane, and the character is what the page is about. The widening
   // is capped hard at a tenth, which recovers the helm and lets the weapon overflow.
-  const radius = Math.min(attachedRadius(center, attached) || body.radius, body.radius * 1.1);
+  // NEVER below the body's own radius: attachedRadius measures only what is ATTACHED, so
+  // a shield or a helm -- small, and close to the centre -- reported a fraction of the
+  // body and pulled the camera right into the character's chest. It can only ever WIDEN
+  // the frame, and only by a tenth, past which a weapon overflows instead of the
+  // character shrinking.
+  const radius = Math.max(body.radius,
+    Math.min(attachedRadius(center, attached), body.radius * 1.1));
   const camera = new THREE.PerspectiveCamera(35, width() / height(), radius / 100, radius * 100);
   const target = new THREE.Vector3(center[0], center[2], -center[1]);  // same swap as root
+  const homeTarget = target.clone();          // the model's centre, before any restore
+  let homeOffset = null;                     // and the camera's opening offset from it
   // A weapon reads best from a three-quarter angle; a character has a front, and showing
   // it in profile makes the face -- the thing the pickers change -- invisible.
   const dir = opts.front || [2.2, 1.1, 2.6];
   camera.position.set(target.x + radius * dir[0], target.y + radius * dir[1], target.z + radius * dir[2]);
 
+  // A saved view from the PREVIOUS viewer, if the caller kept one. Every equip and every
+  // appearance change builds a new viewer, and without this the model snapped back to
+  // three-quarters-front each time -- so comparing two hair colours from behind meant
+  // dragging the character round again after every click.
+  //
+  // Stored in units of the model's own radius and relative to its centre, never as raw
+  // world coordinates: the next model is a different size (a gnome after a tauren), and
+  // absolute numbers would put the camera inside its head.
+  if (opts.view) {
+    const v = opts.view;
+    target.add(new THREE.Vector3(...v.tgt).multiplyScalar(radius));
+    camera.position.copy(target).add(new THREE.Vector3(...v.off).multiplyScalar(radius));
+    root.rotation.z = v.spin;
+  }
+  homeOffset = camera.position.clone().sub(homeTarget);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.copy(target);
   controls.enableDamping = true;
@@ -298,8 +326,13 @@ function buildViewer(el, model, slotTex, opts = {}) {
   controls.minDistance = radius * 1.2;
   controls.maxDistance = radius * 8;
   controls.update();
+  controls.saveState();                  // the opening view, for reset()
 
-  let spin = true;                       // idles gently until the visitor takes over
+  // Idles gently until the visitor takes over -- EXCEPT where the caller says not to.
+  // A dressing room opens on a character facing the visitor and holding still: the whole
+  // page is about what the outfit looks like from the front, and a model that turns away
+  // on its own has to be caught and dragged back.
+  let spin = opts.spin !== false;
   controls.addEventListener("start", () => { spin = false; });
 
   // ---- render scheduling -------------------------------------------------------
@@ -355,7 +388,9 @@ function buildViewer(el, model, slotTex, opts = {}) {
       last = now;                                                 // tab returns a huge dt
       root.rotation.z += SPIN_RATE * dt;
       spun += SPIN_RATE * dt;
-      if (spun >= Math.PI * 2) spin = false;
+      // One revolution and stop -- unless the caller asked for a turntable, in which
+      // case it keeps going until it is switched off.
+      if (spun >= Math.PI * 2 && !opts.keepSpinning) spin = false;
       step = true;
     }
     const changed = draw();
@@ -375,7 +410,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
     if (!alive) return;
     camera.aspect = width() / height();
     camera.updateProjectionMatrix();
-    renderer.setSize(width(), height());
+    renderer.setSize(width(), height(), false);
     if (running) return;
     draw();                              // a resize while asleep still needs one frame
   };
@@ -428,11 +463,65 @@ function buildViewer(el, model, slotTex, opts = {}) {
     /** Render and read back in ONE tick. A WebGL canvas is blank to toDataURL() unless
      *  it is read in the same frame as the draw, and paying preserveDrawingBuffer
      *  forever to avoid that would cost every visitor for one smoke test. */
-    snapshot: () => {
+    /** A PNG of the current frame. The canvas itself is ALWAYS transparent (the clear
+     *  alpha is 0 and the pane's backdrop is CSS), so a transparent shot is the raw
+     *  canvas and an opaque one has to be composited -- not the other way round. */
+    snapshot: (opts2 = {}) => {
       renderer.render(scene, camera);
-      return renderer.domElement.toDataURL("image/png");
+      const src = renderer.domElement;
+      if (!opts2.background) return src.toDataURL("image/png");
+      const out = document.createElement("canvas");
+      out.width = src.width; out.height = src.height;
+      const ctx = out.getContext("2d");
+      // The same vertical gradient the pane paints, so a saved shot looks like what was
+      // on screen rather than like a different page.
+      const g = ctx.createLinearGradient(0, 0, 0, out.height);
+      g.addColorStop(0, "#181b23");
+      g.addColorStop(1, "#0b0c10");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.drawImage(src, 0, 0);
+      return out.toDataURL("image/png");
+    },
+    /** The camera as the NEXT viewer can restore it: an offset from the target and a
+     *  target offset from the model's centre, both in units of this model's radius, plus
+     *  how far the model has been turned. Sizes and centres differ between models, so
+     *  nothing here may be an absolute world coordinate. */
+    view: () => ({
+      off: camera.position.clone().sub(controls.target).divideScalar(radius).toArray(),
+      tgt: controls.target.clone().sub(homeTarget).divideScalar(radius).toArray(),
+      spin: root.rotation.z,
+    }),
+    /** Put the camera and the model back where they started -- the straight-on view the
+     *  room opens with. Cheaper and less surprising than re-mounting the whole viewer,
+     *  which would refetch every texture to achieve the same thing. */
+    reset: () => {
+      // controls.reset() rather than writing camera.position: OrbitControls keeps its own
+      // spherical state, and moving the camera behind its back leaves that state holding
+      // the old rotation. And damping OFF across the call, because it also keeps the
+      // leftover delta from the drag and applies a decaying fraction of it for about a
+      // second -- measured: the view landed home and then slid 0.4 radii off it. Order
+      // matters: update() must run BEFORE reset(), because with damping off it applies
+      // the leftover delta in full and then zeroes it, and applying it AFTER the restore
+      // just moves the camera off the view it had restored (measured 6 degrees off).
+      const damped = controls.enableDamping;
+      controls.enableDamping = false;
+      controls.update();          // consume the leftover delta -- with damping off,
+      controls.reset();           // update() zeroes it instead of decaying it
+      controls.enableDamping = damped;
+      root.rotation.z = 0;
+      wake();
     },
     resize: onResize,
+    /** Turn the turntable on or off. Returns the new state, so a caller can drive a
+     *  toggle button from it without keeping its own copy. */
+    spin: (on) => {
+      spin = !!on;
+      spun = 0;
+      opts.keepSpinning = !!on;
+      if (on) wake();
+      return spin;
+    },
     destroy: () => {
       if (!alive) return;
       alive = false;
@@ -456,6 +545,8 @@ function buildViewer(el, model, slotTex, opts = {}) {
   };
   const hook = () => viewer.state();
   hook.snapshot = viewer.snapshot;
+  hook.view = viewer.view;               // so a test can read the camera, like snapshot
+  hook.reset = viewer.reset;
   window.__mv = hook;                    // smoke-test hook, same convention as __zoneDots
   return viewer;
 }
@@ -495,7 +586,12 @@ function section(data, race, sex, kind, variation, color) {
 // from the body atlas (texType 1), that closes the back where a cloak attaches, while
 // 1502-1506 are the cloak sheets themselves (texType 2). Dropping the group punched a
 // hole between the shoulders of every character on the site.
-const NOT_BODY_GROUPS = new Set();
+// Groups 1-3 belong to the FACIAL selection, not to the naked body: whatever the chosen
+// style names is what shows, and a style that names nothing means nothing. Left in the
+// default pass they got a variant-1 piece as well, so two were drawn at once and the
+// picker looked broken -- a troll wore tusk variant 1 whatever you chose, and a human male
+// could not shave.
+const NOT_BODY_GROUPS = new Set([1, 2, 3]);
 const EAR_GROUP = 7;
 const BALD_SCALP = 1;   // geoset 1: the scalp cap worn when no hairstyle is drawn
 
@@ -655,15 +751,24 @@ export async function mountCharacterViewer(el, opts = {}) {
   const present = new Set(model.submeshes.map((sm) => sm.geoset));
   if (cancelled(el, opts)) throw new Error("cancelled");
   return register(buildViewer(el, model, slotTex, {
+    // Forwarded, not dropped: buildViewer gets a fresh options object, so anything the
+    // CALLER set for the viewer has to be carried across by name. The turntable state
+    // silently fell in this gap -- a room that asked for a still model still span.
+    spin: opts.spin, keepSpinning: opts.keepSpinning, view: opts.view,
     attached,
     label: `${race}-${sex}`,
     cape: backItem ? { item: backItem.entry, texture: backItem.tex_l, loaded: !!capeTex } : null,
     geosets: applyGear(baseGeosets(model, { hairGeoset, facial: facialGeosets }), worn, present),
     skipEmbedded: true,
-    // Straight on: a character model faces WoW +Y, which is -Z after the Y-up swap.
+    // Straight on, and the axis was MEASURED rather than recalled: a character model is
+    // symmetric across Y (the human male spans y -0.54..0.54 but x -0.49..0.33), so Y is
+    // left-right and the figure faces along X -- toes and face both lie on +X. The camera
+    // therefore sits on +X, which the Y-up swap leaves as +x. The old vector put it on
+    // -Z, i.e. beside the character: every visitor got a profile view on load, which only
+    // looked right while the idle spin happened to be carrying the model past the front.
     // The distance is not a taste choice -- `radius` is half the LARGEST dimension, and
     // for an upright figure that is its height, so at a 35 degree FOV anything closer
     // than ~3.2 radii crops the head.
-    front: [0, 0.2, -3.6],
+    front: [3.6, 0.2, 0],
   }));
 }

@@ -268,7 +268,7 @@ smoke("dressing room attaches a helm and both shoulders", () => testAttachments(
 // already cleared the host.
 async function testPaperdoll() {
   await nav("?dressing&race=1&sex=f&hair=2&chest=60180&feet=1121");
-  await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
   const slots = await page.$$eval(".dress-slot", (e) => e.map((b) => b.dataset.slot));
   const filled = await page.$$eval(".dress-slot.filled", (e) => e.map((b) => b.dataset.slot));
   const canvases = await page.$$eval("#mv-host canvas", (e) => e.length);
@@ -291,7 +291,7 @@ smoke("dressing room paperdoll equips per slot", () => testPaperdoll());
 // and a set that names several items for one slot (a 1H and a 2H) must fill that slot once.
 async function testSets() {
   await nav("?dressing&race=1&sex=m&hair=1");
-  await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
   await page.click("#dress-set");
   await page.type("#dress-find", "Dreadnaught", { delay: 20 });
   await page.waitForFunction(() => document.querySelector('#dress-hits .sd-row[data-i="0"]'), { timeout: T });
@@ -357,8 +357,17 @@ smoke("dressing room is reachable without typing a URL", () => testEntryPoints()
 // they are committed art served from the asset origin, so a wrong path is a silent
 // blank tile rather than an error.
 async function testPickers() {
+  // Wait on TRIANGLES, never on `running`: the character is stationary by default, so the
+  // render loop stops the moment it has drawn, and a test that waits for a running loop
+  // is racing the frame it is waiting for (it lost about one full run in three).
   await nav("?dressing&race=1&sex=f&hair=1");
-  await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  // The portraits are real network images; under a loaded shard they are occasionally
+  // still decoding when the model is ready, which failed the icon check rather than the
+  // thing it is testing. Wait for them.
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('.race-tile[data-key="race"] img')]
+      .every((i) => i.complete && i.naturalWidth > 0), { timeout: T });
   const before = await page.evaluate(() => ({
     selects: document.querySelectorAll("#dress-bar select").length,
     tiles: document.querySelectorAll('.race-tile[data-key="race"]').length,
@@ -369,7 +378,7 @@ async function testPickers() {
   // switching race must re-clamp: a tauren has option counts a human does not
   await page.click('.race-tile[data-val="6"]');
   await page.waitForFunction(() => location.search.includes("race=6"), { timeout: T });
-  await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
   const after = await page.evaluate(() => ({
     pressed: document.querySelector('.race-tile[data-key="race"][aria-pressed="true"]')?.dataset.val,
     tris: window.__mv().triangles,
@@ -385,7 +394,7 @@ smoke("dressing room picks by portrait and swatch, not dropdown", () => testPick
 // saving keeps the outfit as its URL (the URL already is the outfit).
 async function testActions() {
   await nav("?dressing&race=1&sex=m&hair=1&chest=17581");
-  await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
   const first = await page.evaluate(() => location.search);
   await page.click("#dress-save");
   await page.waitForFunction(() => document.querySelectorAll(".outfit-chip").length === 1, { timeout: T });
@@ -402,3 +411,148 @@ async function testActions() {
 }
 
 smoke("dressing room saves an outfit and rolls a random look", () => testActions());
+
+// The room opens on a character facing the visitor and HOLDING STILL -- the page is about
+// what an outfit looks like from the front, and a model that turns away on its own has to
+// be caught and dragged back. Rotating is a control, not a default.
+async function testViewControls() {
+  await nav("?dressing&race=1&sex=f&hair=1&chest=17581");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await new Promise((r) => setTimeout(r, 2500));
+  const still = await page.evaluate(() => window.__mv());
+  await page.click("#dress-spin");
+  await new Promise((r) => setTimeout(r, 800));
+  const turning = await page.evaluate(() => ({
+    spinning: window.__mv().spinning,
+    pressed: document.querySelector("#dress-spin").getAttribute("aria-pressed"),
+  }));
+  await page.click("#dress-spin");
+  await new Promise((r) => setTimeout(r, 400));
+  const stopped = await page.evaluate(() => window.__mv().spinning);
+  // A screenshot with a background and one without must not be the same image: the canvas
+  // itself is always transparent, so the opaque one is the composited version.
+  const shots = await page.evaluate(() => {
+    const a = window.__mv.snapshot({ background: false });
+    const b = window.__mv.snapshot({ background: true });
+    return { alpha: a.length, opaque: b.length, differ: a !== b, png: a.startsWith("data:image/png") };
+  });
+  console.log(`view: idle spinning=${still.spinning} running=${still.running}; toggle ${JSON.stringify(turning)} -> ${stopped}; shots ${JSON.stringify(shots)}`);
+  return still.spinning === false && still.running === false
+    && turning.spinning === true && turning.pressed === "true" && stopped === false
+    && shots.differ && shots.png && shots.opaque > shots.alpha;
+}
+
+smoke("dressing room opens still, rotates on demand, screenshots both ways", () => testViewControls());
+
+// A locked slot is one the dice must leave alone. Rolling several times is the test that
+// matters: exclusion is by INVENTORY TYPE (a one-hander is inv 13 or 21), so missing one
+// of a slot's types lets the dice through anyway.
+async function testLocks() {
+  await nav("?dressing&race=1&sex=f&hair=1&chest=17581");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await page.click('.dress-slot[data-slot="chest"] .dress-lock');
+  const pressed = await page.$eval('.dress-slot[data-slot="chest"] .dress-lock', (e) => e.getAttribute("aria-pressed"));
+  for (let i = 0; i < 6; i++) {
+    await page.click("#dress-item");
+    await new Promise((r) => setTimeout(r, 700));
+  }
+  const after = await page.evaluate(() => {
+    const q = new URLSearchParams(location.search);
+    const skip = ["dressing", "race", "sex", "skin", "face", "hair", "hcolor", "facial"];
+    return { chest: q.get("chest"), rolled: [...q.keys()].filter((k) => !skip.includes(k)) };
+  });
+  console.log(`locks: pressed=${pressed} chest=${after.chest} rolled=[${after.rolled}]`);
+  return pressed === "true" && after.chest === "17581" && after.rolled.length > 2;
+}
+
+smoke("dressing room dice skips a locked slot", () => testLocks());
+
+// Fullscreen must give the pane back exactly as it found it. three.js writes the size
+// onto the canvas as an INLINE style unless told not to, and an inline style outranks the
+// stylesheet that sizes the canvas to its pane -- so coming back the canvas kept the
+// screen's height, overflowed the room and pushed the page apart.
+async function testFullscreen() {
+  await nav("?dressing&race=1&sex=f&hair=1&chest=17581");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const box = () => page.evaluate(() => {
+    const w = document.querySelector(".mv-wrap").getBoundingClientRect();
+    const c = document.querySelector("#mv-host canvas");
+    return { w: Math.round(w.width), h: Math.round(w.height), buf: `${c.width}x${c.height}`,
+      doc: document.documentElement.scrollHeight, fs: !!document.fullscreenElement };
+  });
+  const before = await box();
+  await page.click("#dress-full");
+  await new Promise((r) => setTimeout(r, 900));
+  const during = await box();
+  await page.evaluate(() => document.exitFullscreen()).catch(() => {});
+  await new Promise((r) => setTimeout(r, 900));
+  const after = await box();
+  console.log(`fullscreen: ${JSON.stringify(before)} -> ${JSON.stringify(during)} -> ${JSON.stringify(after)}`);
+  if (!during.fs) { console.log("  (this browser refused fullscreen; treating as n/a)"); return true; }
+  return during.h > before.h && after.h === before.h && after.w === before.w
+    && after.buf === before.buf && after.doc === before.doc;
+}
+
+smoke("dressing room fullscreen gives the pane back unchanged", () => testFullscreen());
+
+// Every equip and every appearance change builds a NEW viewer, and the camera used to go
+// back to three-quarters-front each time -- so comparing two hair colours from behind
+// meant dragging the character round again after every click. The view is handed over.
+async function testCameraSurvives() {
+  await nav("?dressing&race=1&sex=f&hair=1&chest=17581");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const home = await page.evaluate(() => window.__mv.view());
+  const box = await page.$eval("#mv-host", (e) => {
+    const r = e.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.move(box.x, box.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 260, box.y + 40, { steps: 12 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 900));
+  const dragged = await page.evaluate(() => window.__mv.view());
+  await page.click('.sw[data-key="hcolor"][data-val="4"]');
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await new Promise((r) => setTimeout(r, 1200));
+  const after = await page.evaluate(() => window.__mv.view());
+  const dist = (a, b) => Math.hypot(...a.off.map((n, i) => n - b.off[i]));
+  console.log(`camera: home=${home.off.map((n) => n.toFixed(2))} dragged=${dragged.off.map((n) => n.toFixed(2))} after=${after.off.map((n) => n.toFixed(2))}`);
+  // moved away from the default, and stayed there across the re-mount
+  return dist(home, dragged) > 1 && dist(dragged, after) < 0.15;
+}
+
+smoke("dressing room keeps the camera across a re-mount", () => testCameraSurvives());
+
+// Reset puts the camera and the model back where the room opened, and stops the
+// turntable while it is at it -- a "reset" that leaves the model turning is not one.
+// Empty slots wear the game's own paperdoll silhouette, which is a UI texture Blizzard's
+// icon CDN refuses, so a wrong path here is a blank square rather than an error.
+async function testResetAndSlotArt() {
+  await nav("?dressing&race=1&sex=f&hair=1&chest=17581");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await page.waitForFunction(
+    () => [...document.querySelectorAll(".slot-art")].every((i) => i.complete && i.naturalWidth > 0),
+    { timeout: T });
+  const art = await page.$$eval(".slot-art", (e) => e.length);
+  const home = await page.evaluate(() => window.__mv.view());
+  const box = await page.$eval("#mv-host", (e) => {
+    const r = e.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await page.mouse.move(box.x, box.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 200, box.y + 60, { steps: 10 });
+  await page.mouse.up();
+  await page.click("#dress-spin");                    // and leave it turning
+  await new Promise((r) => setTimeout(r, 700));
+  const moved = await page.evaluate(() => window.__mv.view());
+  await page.click("#dress-reset");
+  await new Promise((r) => setTimeout(r, 1400));      // damping has to settle
+  const back = await page.evaluate(() => ({ view: window.__mv.view(), spinning: window.__mv().spinning }));
+  const dist = (a, b) => Math.hypot(...a.off.map((n, i) => n - b.off[i]));
+  console.log(`reset: art=${art} home=${home.off.map((n) => n.toFixed(2))} moved=${moved.off.map((n) => n.toFixed(2))} back=${back.view.off.map((n) => n.toFixed(2))} spinning=${back.spinning}`);
+  return art > 10 && dist(home, moved) > 1 && dist(home, back.view) < 0.2 && back.spinning === false;
+}
+
+smoke("dressing room resets the view and shows empty-slot art", () => testResetAndSlotArt());

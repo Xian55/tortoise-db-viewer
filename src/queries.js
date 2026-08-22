@@ -157,6 +157,17 @@ export const Q_SET_SEARCH = `
 
 // The pieces themselves, best-first per slot so a set that carries both a 1H and a 2H
 // resolves to one weapon rather than fighting itself.
+// One random wearable item, for the dressing room's dice. Restricted to items that
+// actually CHANGE the picture -- an entry with no appearance row shows nothing, which
+// reads as a broken button -- and to uncommon and better, since the grey pool is mostly
+// vendor trash and test rows.
+export const Q_DRESS_RANDOM = `
+  SELECT i.entry, i.name, i.inventory_type AS inv
+  FROM items i
+  JOIN item_appearance a ON a.display_id = i.display_id
+  WHERE i.hidden = 0 AND i.quality >= 2 AND i.inventory_type IN (SLOTS)
+  ORDER BY RANDOM() LIMIT 1`;
+
 export const Q_SET_PIECES = `
   SELECT i.entry, i.name, i.quality, i.inventory_type AS inv, di.icon
   FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id

@@ -1612,6 +1612,10 @@ td .pet-rank { margin: 1px 0; }
    left the bottom third of both flanks empty; spreading (space-between) pushed the plates
    so far apart they stopped reading as one list. */
 .dress-col { display: flex; flex-direction: column; justify-content: space-between; gap: 5px; }
+/* "Wear a set" heads the item rail rather than sitting in the bar below the model. Its
+   picker opens DOWNWARD from whatever it is anchored to, so from the bottom of the page
+   the results fell off the screen -- you typed and could not see what you had found. */
+.dress-set-btn { width: 100%; margin-bottom: 3px; flex: 0 0 auto; }
 /* Everything worn is one list, so the weapons need no row of their own -- which is what
    used to push them below the fold. */
 .dress-weapons { display: none; }
@@ -1626,12 +1630,40 @@ td .pet-rank { margin: 1px 0; }
 .dress-slot-icon { flex: 0 0 auto; width: 30px; height: 30px; border: 1px solid var(--border);
   border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .dress-slot-icon img, .dress-slot-icon .icon-sprite { width: 26px; height: 26px; }
+/* The empty-slot silhouette is a UI texture, not an item icon: dimmer than a real item so
+   an equipped slot still reads as the filled one at a glance. */
+.slot-art { opacity: 0.42; }
+.dress-slot:hover .slot-art { opacity: 0.7; }
 /* The name truncates while the take-off button keeps its own space, so a long item name
    cannot squeeze the X out of the slot. */
 .dress-slot-label { flex: 1 1 auto; min-width: 0; color: var(--muted); display: flex;
   align-items: center; gap: 6px; overflow: hidden; }
 .dress-item { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dress-off { flex: 0 0 auto; }
+.dress-lock { flex: 0 0 auto; background: none; border: 0; cursor: pointer; padding: 0 1px;
+  font-size: 11px; line-height: 1; opacity: 0.35; filter: grayscale(1); }
+.dress-lock:hover { opacity: 0.8; }
+.dress-lock[aria-pressed="true"] { opacity: 1; filter: none; }
+.dress-slot.locked { border-color: #4a4326; }
+/* The view's own controls sit ON the view, along its bottom edge: they act on the model
+   rather than on the outfit, and putting them in the action bar below pushed that bar to
+   two rows -- which broke the one rule this layout has, that nothing falls below the
+   fold. */
+.mv-wrap { position: relative; display: flex; min-width: 0; min-height: 0; }
+.mv-wrap > .mv-host { flex: 1 1 auto; }
+.mv-tools { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 999px;
+  border: 1px solid var(--border); background: rgba(13, 14, 18, 0.78); }
+.mv-tool { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border: 0;
+  border-radius: 999px; background: none; color: var(--muted); cursor: pointer;
+  font: inherit; font-size: 12px; white-space: nowrap; }
+.mv-tool:hover { color: var(--text); background: var(--panel2); }
+.mv-tool[aria-pressed="true"] { color: var(--gold, #ffd100); background: var(--panel2); }
+.mv-chk { cursor: pointer; }
+.mv-chk input { accent-color: var(--gold, #ffd100); margin: 0; }
+/* Fullscreen: the wrapper becomes the screen, so the fixed pane height must not follow. */
+.mv-wrap:fullscreen { background: var(--bg); }
+.mv-wrap:fullscreen > .mv-host { height: 100%; width: 100%; border-radius: 0; }
 .dress-slot.filled .dress-slot-label { color: inherit; }
 .dress-off { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
 .dress-off:hover { color: var(--fg); }

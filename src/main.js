@@ -1185,13 +1185,26 @@ async function showDressingRoom(params, navigate) {
   app.innerHTML = `<div class="dressing">
       <h1>Dressing room</h1>
       <div class="dress-room">
-        <div class="dress-col dress-col-l">${slotCol([...SLOTS_L, ...SLOTS_R, ...SLOTS_W])}</div>
-        <div id="mv-host" class="mv-host"><p class="muted">Loading character&hellip;</p></div>
+        <div class="dress-col dress-col-l">
+          <button type="button" class="btn dress-set-btn" id="dress-set">Wear a set&hellip;</button>
+          ${slotCol([...SLOTS_L, ...SLOTS_R, ...SLOTS_W])}
+        </div>
+        <div class="mv-wrap">
+          <div id="mv-host" class="mv-host"><p class="muted">Loading character&hellip;</p></div>
+          <div class="mv-tools">
+            <button type="button" class="mv-tool" id="dress-spin" aria-pressed="false" title="Turn the model">\u21BB Rotate</button>
+            <button type="button" class="mv-tool" id="dress-reset" title="Back to the straight-on view">\u21BA Reset</button>
+            <button type="button" class="mv-tool" id="dress-full" title="Fill the screen">\u26F6 Fullscreen</button>
+            <button type="button" class="mv-tool" id="dress-shot" title="Save a PNG of this view">\u{1F4F7} Screenshot</button>
+            <label class="mv-tool mv-chk" title="Save with no background at all"><input type="checkbox" id="dress-alpha"> transparent</label>
+          </div>
+        </div>
         <div class="dress-bar" id="dress-bar"></div>
       </div>
       <div class="dress-actions">
-        <button type="button" class="btn" id="dress-set">Wear a set\u2026</button>
+        <button type="button" class="btn" id="dress-item">\u{1F3B2} Random item</button>
         <button type="button" class="btn" id="dress-random">\u{1F3B2} Random look</button>
+
         <button type="button" class="btn" id="dress-strip">Undress</button>
         <button type="button" class="btn" id="dress-save">Save outfit</button>
         <button type="button" class="btn" id="dress-share">\u{1F517} Share</button>
@@ -1313,6 +1326,7 @@ async function showDressingRoom(params, navigate) {
   const popEl = app.querySelector("#dress-pop");
   const roomEl = app.querySelector(".dressing");
   let wornRows = [];                          // qDressItemsIn rows for what is equipped
+  const locked = new Set();                   // slots the dice must leave alone
   let activeSlot = null;                      // the slot being edited, if any
   let hits = [];                              // current result rows
   let cursor = -1;                            // keyboard selection within them
@@ -1335,15 +1349,29 @@ async function showDressingRoom(params, navigate) {
       btn.classList.toggle("active", btn.dataset.slot === activeSlot);
       const icon = btn.querySelector(".dress-slot-icon");
       const label = btn.querySelector(".dress-slot-label");
+      const slot = btn.dataset.slot;
+      // The padlock is what the dice reads. It sits on every slot, filled or not: locking
+      // an empty one means "leave it empty", which is as much a decision as keeping a
+      // piece you like.
+      const lock = `<button type="button" class="dress-lock" data-slot="${slot}"`
+        + ` aria-pressed="${locked.has(slot)}"`
+        + ` title="${locked.has(slot) ? "Locked \u2014 the dice will skip this slot" : "Lock this slot against the dice"}">`
+        + `${locked.has(slot) ? "\u{1F512}" : "\u{1F513}"}</button>`;
+      btn.classList.toggle("locked", locked.has(slot));
       if (row) {
         icon.innerHTML = iconImg(row.icon, "icon-sm");
         icon.style.borderColor = qualityColor(row.quality) || "";
         label.innerHTML = `<a class="nav dress-item" href="?item=${row.entry}" title="${esc(row.name)}">${esc(row.name)}</a>`
-          + `<button type="button" class="dress-off" data-slot="${btn.dataset.slot}" title="Take off">\u2715</button>`;
+          + lock
+          + `<button type="button" class="dress-off" data-slot="${slot}" title="Take off">\u2715</button>`;
       } else {
-        icon.innerHTML = "";
+        // The game draws the silhouette of what belongs in an empty slot rather than an
+        // empty square, and it reads far faster than the word does. Extracted from the
+        // client (extract-slot-icons.py) because Blizzard's icon CDN refuses these --
+        // they are UI textures, not item icons.
+        icon.innerHTML = `<img class="slot-art" src="${ASSETS_BASE}icons/slot/${slot}.webp" alt="" loading="lazy">`;
         icon.style.borderColor = "";
-        label.textContent = ALL_SLOTS.find((x) => x.key === btn.dataset.slot)?.label || "";
+        label.innerHTML = `<span class="dress-item">${esc(ALL_SLOTS.find((x) => x.key === slot)?.label || "")}</span>${lock}`;
       }
     }
   };
@@ -1356,6 +1384,7 @@ async function showDressingRoom(params, navigate) {
   // appending its canvas into an element the newer mount already emptied -- which showed
   // up as a dressing room with no character in it at all.
   let mountSeq = 0;
+  let spinning = false;                      // the model holds still until asked to turn
   const stale = (my) => my !== mountSeq || myRoute !== routeSeq;
   const mount = async () => {
     const my = ++mountSeq;
@@ -1375,11 +1404,17 @@ async function showDressingRoom(params, navigate) {
     } else wornRows = [];
     if (stale(my)) return;
     renderSlots();
+    // Where the visitor had put the camera, before the old viewer is thrown away.
+    let view = null;
+    try { view = activeViewer?.view?.() ?? null; } catch { view = null; }
     destroyViewer();
     host.innerHTML = "";
     try {
       const viewer = await mod.mountCharacterViewer(host, {
-        ...state, items: wornRows, cancelled: () => stale(my),
+        ...state, items: wornRows, cancelled: () => stale(my), view,
+        // Every equip and every appearance change builds a new viewer, so the turntable
+        // has to be told each time; the button's state is the one that survives.
+        spin: spinning, keepSpinning: spinning,
       });
       if (stale(my)) { try { viewer.destroy(); } catch { /* already gone */ } return; }
       activeViewer = viewer;
@@ -1521,6 +1556,14 @@ async function showDressingRoom(params, navigate) {
   });
 
   roomEl.addEventListener("click", async (e) => {
+    const lk = e.target.closest(".dress-lock");
+    if (lk) {
+      e.stopPropagation();                     // a lock is not a request to edit the slot
+      const slot = lk.dataset.slot;
+      if (locked.has(slot)) locked.delete(slot); else locked.add(slot);
+      renderSlots();
+      return;
+    }
     const off = e.target.closest(".dress-off");
     if (off) {
       e.stopPropagation();
@@ -1530,9 +1573,11 @@ async function showDressingRoom(params, navigate) {
       return;
     }
     if (e.target.closest("a")) return;         // the item link is a link, not a slot click
-    // The action buttons open the picker themselves; without this the same click bubbles
-    // here and closes it again, so "Wear a set" appeared to do nothing at all.
-    if (e.target.closest(".dress-actions")) return;
+    // Anything that opens the picker ITSELF must be ignored here: the same click bubbles
+    // up and the close-on-outside-click below would shut the panel in the gesture that
+    // opened it, so the button appears to do nothing at all. (It did, twice -- once for
+    // the action bar, and again when "Wear a set" moved into the rail.)
+    if (e.target.closest(".dress-actions, .dress-set-btn")) return;
     const btn = e.target.closest(".dress-slot");
     if (btn) { if (btn.dataset.slot === activeSlot) closeSlot(); else openSlot(btn.dataset.slot, btn); }
     else if (!e.target.closest("#dress-pop")) closeSlot();
@@ -1609,6 +1654,63 @@ async function showDressingRoom(params, navigate) {
     state.hairColor = any(opts("hair", 1));
     state.facialHair = any(geosetOpts("facial"));
     render(); syncUrl(); await mount();
+  });
+
+  app.querySelector("#dress-reset")?.addEventListener("click", () => {
+    // Also stops the turntable: "reset" that leaves the model turning is not a reset.
+    spinning = false;
+    app.querySelector("#dress-spin")?.setAttribute("aria-pressed", "false");
+    try { activeViewer?.spin(false); activeViewer?.reset(); } catch { /* between mounts */ }
+  });
+
+  app.querySelector("#dress-full")?.addEventListener("click", async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await app.querySelector(".mv-wrap").requestFullscreen();
+    } catch (err) { say(`Fullscreen refused \u2014 ${err.message}.`); }
+  });
+  // The renderer sizes itself from the host, and going fullscreen changes that without
+  // firing a window resize, so tell it explicitly.
+  document.addEventListener("fullscreenchange", () => {
+    try { activeViewer?.resize(); } catch { /* between mounts */ }
+  });
+
+  app.querySelector("#dress-shot")?.addEventListener("click", () => {
+    const alpha = app.querySelector("#dress-alpha")?.checked;
+    let url;
+    try { url = activeViewer?.snapshot({ background: !alpha }); } catch { url = null; }
+    if (!url) { say("Nothing to capture yet."); return; }
+    const race = data.races.find((r) => r.id === state.race)?.name || "character";
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${race.toLowerCase().replace(/\s+/g, "-")}-${state.sex}${alpha ? "-transparent" : ""}.png`;
+    a.click();
+    say(alpha ? "Saved with a transparent background." : "Screenshot saved.");
+  });
+
+  app.querySelector("#dress-spin")?.addEventListener("click", (e) => {
+    spinning = !spinning;
+    e.currentTarget.setAttribute("aria-pressed", String(spinning));
+    try { activeViewer?.spin(spinning); } catch { /* the viewer is between mounts */ }
+  });
+
+  app.querySelector("#dress-item")?.addEventListener("click", async () => {
+    // Locked slots are excluded by INVENTORY TYPE, which is what the query filters on:
+    // one slot can be reached by several types (a one-hander is inv 13 or 21), and
+    // leaving any of them in would let the dice fill a slot the visitor pinned.
+    const pool = WEARABLE.filter((inv) => !locked.has(SLOT_PARAM[inv]));
+    if (!pool.length) { say("Every slot is locked."); return; }
+    let row;
+    try {
+      row = await queryOne(Q.Q_DRESS_RANDOM.replace("SLOTS", pool.join(",")));
+    } catch { row = null; }
+    if (!row) { say("Nothing to roll."); return; }
+    const slot = SLOT_PARAM[row.inv];
+    worn.set(slot, row.entry);
+    syncUrl();
+    await mount();
+    const label = ALL_SLOTS.find((x) => x.key === slot)?.label || slot;
+    say(`${row.name} \u2014 ${label.toLowerCase()}.`);
   });
 
   app.querySelector("#dress-strip")?.addEventListener("click", async () => {
