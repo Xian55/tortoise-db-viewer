@@ -46,9 +46,23 @@ export const layerRank = (inv) => {
   return i === -1 ? LAYER_ORDER.length : i;
 };
 
-/** Equipped items sorted into paint order. `items` are rows from qDressItemsIn. */
-export const inPaintOrder = (items) =>
-  [...items].sort((a, b) => layerRank(a.inv) - layerRank(b.inv));
+/** A chest piece that is really a ROBE: it addresses the robe geoset group (13), which is
+ *  what turns the legs into a skirt. Inventory type does not say so -- most robes are
+ *  filed as plain chest (inv 5), and it is the geoset that gives them away. */
+export const isRobe = (it) =>
+  (it.inv === 20 || it.inv === 5 || it.inv === 4)
+  && (SLOT_GEOSET_GROUPS[it.inv] || []).some((g, i) => g === 13 && [it.geo1, it.geo2, it.geo3][i]);
+
+/** Equipped items sorted into paint order. `items` are rows from qDressItemsIn.
+ *
+ *  A robe paints AFTER the legs. Its skirt covers them -- that is the whole point of the
+ *  robe geoset -- so leaving it in the chest's usual slot let a pair of trousers paint
+ *  over the skirt the robe had just drawn, and the legs won. It still goes UNDER the belt
+ *  and the boots, which is where those sit on a robe in game. */
+export const inPaintOrder = (items) => {
+  const rank = (it) => (isRobe(it) ? layerRank(7) + 0.5 : layerRank(it.inv));
+  return [...items].sort((a, b) => rank(a) - rank(b));
+};
 
 /**
  * The geosets an outfit turns on, applied over the naked set.

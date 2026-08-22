@@ -857,7 +857,12 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
   variants every model carries.
 - **Paint order is the order the pieces overlap in life**: shirt, chest, bracer, legs,
   boots, belt, glove, tabard, cloak. A glove covers its bracer; a boot covers the trouser
-  leg; a belt sits over both.
+  leg; a belt sits over both. **A ROBE is the exception and paints after the legs** -- its
+  skirt covers them, which is the whole point of the robe geoset, and in the chest's usual
+  slot a pair of trousers painted over the skirt the robe had just drawn. Inventory type
+  does not identify a robe (most are filed as plain chest, inv 5); the GEOSET does, by
+  addressing group 13. It still goes under the belt and boots, where those sit on a robe in
+  game.
 - **A cloak is neither texture nor model.** It is the character's own cape geoset textured
   from the ITEM -- that is what texture-unit type 2 means on a character, so binding the
   body atlas there painted the cape with skin and belt.
