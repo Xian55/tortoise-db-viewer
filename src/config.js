@@ -176,6 +176,12 @@ export const MODEL_THUMBS_BASE = `${R2_ASSETS}model-thumbs/`;
 // Converted 3D models + their textures for the interactive viewer (src/modelviewer.js).
 // Turtle-derived and Turtle-gated (OWN_ITEM_MODELS), so R2-fixed like the thumbs above.
 export const MODELS_BASE = `${R2_ASSETS}model3d/`;
+// Appended to every model3d url: the set is served with a seven-day max-age under names
+// that never change, so without it a re-exported model stays stale in a CDN edge and in
+// every visitor's browser. Defined by vite from the asset manifest; empty in a dev server
+// or a checkout without one, where files come off disk anyway.
+export const MODELS_V = typeof __MODEL3D_V__ === "string" && __MODEL3D_V__
+  ? `?v=${__MODEL3D_V__}` : "";
 // Extracted game audio (NPC voice/combat sounds, zone music+ambience). Dataset-suffixed
 // like maps: a SoundEntries id is no more a shared namespace across games than a
 // display_id is, and the TBC client's audio is a different set entirely.
