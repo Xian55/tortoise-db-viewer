@@ -602,3 +602,25 @@ async function testFacialSplit() {
 }
 
 smoke("dressing room separates tusk shape from war paint", () => testFacialSplit());
+
+// A tauren has no texType 6 unit at all: its horns, tail and hoof soles hang off an
+// UNNAMED type 8, which is the only such unit on any race (everyone else's type 8 names
+// its own file, for an eye glow). Falling through to the body atlas painted those meshes
+// from the atlas's FACE rectangle, so a tauren wore a smeared second copy of its own face
+// above the horns. The check is that every drawn submesh resolved a texture and that the
+// horn slider still moves geometry.
+async function testTaurenMane() {
+  await nav("?dressing&race=6&sex=m&hair=3");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const st = await page.evaluate(() => window.__mv());
+  // drawn rows are [geoset, texType, blend, hasTexture]
+  const untextured = st.drawn.filter((d) => !d[3]).map((d) => d[0]);
+  const type8 = st.drawn.filter((d) => d[1] === 8).length;
+  await nav("?dressing&race=6&sex=m&hair=8");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const moved = await page.evaluate(() => window.__mv().geosets.join(",")) !== st.geosets.join(",");
+  console.log(`tauren: type8 submeshes=${type8} untextured=[${untextured}] hornsMove=${moved}`);
+  return type8 > 0 && untextured.length === 0 && moved;
+}
+
+smoke("tauren horns take the mane texture, not the face", () => testTaurenMane());

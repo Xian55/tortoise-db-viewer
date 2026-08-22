@@ -709,7 +709,12 @@ export async function mountCharacterViewer(el, opts = {}) {
 
   // The hairstyle's own texture is a separate slot (texType 6) -- it is not part of the
   // body atlas, which is why a hairless mannequin is what you get if it is skipped.
-  const hairTex = hairRow?.[2]?.[0] ? await loadTexture(charTexUrl(hairRow[2][0])) : null;
+  // A tauren names the SAME mane texture for every hairstyle and leaves the slot empty on
+  // some of them, so fall back to whatever the race does name rather than dropping the
+  // mane's texture on those variations. For a human the chosen row always carries its own.
+  const maneName = hairRow?.[2]?.[0]
+    || (data.sections[`${race}-${sex}-hair`] || []).map((r) => r[2]?.[0]).find(Boolean);
+  const hairTex = maneName ? await loadTexture(charTexUrl(maneName)) : null;
 
   // Slot resolution: the two SUBSTITUTED types get what we composited, anything that
   // names a file gets that file. Type is not enough on its own -- a Blood Elf's eye glow
@@ -722,14 +727,20 @@ export async function mountCharacterViewer(el, opts = {}) {
   const backItem = worn.find((it) => it.inv === 16 && it.tex_l);
   const capeTex = backItem ? await loadTexture(textureUrl(backItem.tex_l)) : null;
 
+  // A tauren has NO texType 6 unit at all: its mane and beards hang off an UNNAMED type 8
+  // (measured -- it is the only race that does, everyone else's type 8 names its own file
+  // for an eye glow). Falling through to the body atlas painted those meshes from the
+  // atlas's face rectangle, so a tauren wore a second, smeared copy of its own face above
+  // the horns. An unnamed 7/8 on a character is the hair texture.
+  const isManeSlot = (t) => t.type === TEX_HAIR || (!t.name && (t.type === 7 || t.type === 8));
   const slotTex = model.textures.map((t) => {
-    if (t.type === TEX_HAIR) return hairTex || body;
+    if (isManeSlot(t)) return hairTex || body;
     if (t.type === TEX_OBJECT_SKIN) return capeTex || body;
     if (t.name) return null;                       // named; loaded below
     return body;                                   // 1 = character skin
   });
   await Promise.all(model.textures.map(async (t, i) => {
-    if (t.type !== TEX_HAIR && t.name) slotTex[i] = await loadTexture(embeddedUrl(t.name));
+    if (!isManeSlot(t) && t.name) slotTex[i] = await loadTexture(embeddedUrl(t.name));
   }));
 
   // Fall back to variation 0 when the requested one does not exist for this race. That
