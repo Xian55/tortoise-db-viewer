@@ -55,7 +55,19 @@ VANILLA_DBC = {
     "map_name": 4, "map_type": 2,
     "faction_name": 19, "faction_rep_index": 1,
     "ft_faction": 1, "ft_group": 3,
+    # ItemDisplayInfo.dbc, 23 fields in 1.12: ID, ModelName[2], ModelTexture[2],
+    # InventoryIcon, GeosetGroup[3], Flags, SpellVisualID, GroupSoundIndex,
+    # HelmetGeosetVis[2], Texture[8], ItemVisual. Derived from the client, not from a
+    # wiki: the WotLK layout everyone quotes has a SECOND icon field and would shift
+    # every texture by one. What pins it here is that field 11's values are all valid
+    # ItemGroupSounds ids (22/22), 12-13's are all valid HelmetGeosetVisData ids
+    # (34/34), field 9 only ever holds 1/2/4 (bits), and the Texture[8] block lands
+    # where a glove writes arm-lower + hand and a chest writes sleeve + torso-upper +
+    # torso-lower. Texture order: arm_u arm_l hand torso_u torso_l leg_u leg_l foot.
     "idi_icon": 5,
+    "idi_model": 1, "idi_model_tex": 3, "idi_geoset": 6, "idi_flags": 9,
+    "idi_spell_visual": 10, "idi_group_sound": 11, "idi_helm_vis": 12,
+    "idi_texture": 14, "idi_item_visual": 22,
     "sla_req_train_points": 12,
     "spell_description": 138, "spell_aura_description": 147,
     "talenttab_class_mask": 12, "talenttab_order": 13,

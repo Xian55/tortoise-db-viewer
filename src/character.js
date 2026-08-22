@@ -5,7 +5,7 @@
 // backend -- so loadouts survive reloads on this browser.
 import { query, queryOne } from "./db.js";
 import { EXPANSION } from "./config.js";
-import { qItemsIn, qItemStatsIn, qEnchantsIn, qRandomSuffixIn, qItemSocketsIn, qEnchantTextIn, qItemSearchInv, qInstanceDropsIn, Q_ITEM_SET, Q_ITEMSET_BONUSES, Q_ITEMSET_MEMBERS } from "./queries.js";
+import { qItemsIn, qItemStatsIn, qEnchantsIn, qRandomSuffixIn, qItemSocketsIn, qEnchantTextIn, qItemSearchInv, qInstanceDropsIn, qDressItemsIn, Q_ITEM_SET, Q_ITEMSET_BONUSES, Q_ITEMSET_MEMBERS } from "./queries.js";
 import { itemLink, questLink, spellLink, sourceTags, dungeonLink, npcLink, pct, iconImg, qualityColor, resolveSpellText, esc } from "./render.js";
 import { ftsQuery, trigramQuery } from "./search.js";
 import { loadSets, resolveWeights } from "./weightsets.js";
@@ -36,6 +36,42 @@ const SLOTS = [
   { k: "Ranged", label: "Ranged", col: "w" },
 ];
 const SLOT_KEYS = new Set(SLOTS.map((s) => s.k));
+
+// The slots that change how a character LOOKS. Head and Shoulder are per-race MODELS
+// rather than textures and wait for the attachment phase; rings and trinkets never show.
+// Shirt and Tabard are listed even though GearExport does not send them today: if a
+// loadout ever carries one it should just appear, and an absent slot costs nothing.
+const VISUAL_SLOTS = ["Shirt", "Chest", "Legs", "Feet", "Hands", "Wrist", "Waist",
+  "Back", "Tabard", "Head", "Shoulder", "MainHand", "OffHand", "Ranged"];
+// The three slots whose item lands in a HAND, where the slot decides which one.
+const HELD_SLOT = { MainHand: "mainhand", OffHand: "offhand", Ranged: "ranged" };
+
+// The loadout stores race as its BITMASK (GearExport's shape); ChrRaces -- and so the
+// character models -- are numbered 1..10, and bit = 1 << (id - 1) throughout, including
+// Turtle's additions (256 = Goblin 9, 512 = High Elf 10).
+const raceIdOf = (bit) => {
+  const n = Number(bit) || 1;
+  const id = Math.round(Math.log2(n)) + 1;
+  return id >= 1 && id <= 10 ? id : 1;
+};
+
+function char3dHtml(ch) {
+  const open = (() => { try { return localStorage.getItem("tw_char3d") === "1"; } catch { return false; } })();
+  const sex = (() => { try { return localStorage.getItem("tw_char3d_sex") === "f" ? "f" : "m"; } catch { return "m"; } })();
+  return `<section class="char-3d${open ? " open" : ""}" id="char3d">
+      <div class="char-3d-bar">
+        <button type="button" class="btn" id="char3dToggle">${open ? "Hide 3D" : "Show in 3D"}</button>
+        <label class="dress-pick">Gender
+          <select id="char3dSex">
+            <option value="m"${sex === "m" ? " selected" : ""}>Male</option>
+            <option value="f"${sex === "f" ? " selected" : ""}>Female</option>
+          </select>
+        </label>
+        <span class="muted">Drag to turn, scroll to zoom.</span>
+      </div>
+      <div class="mv-host" id="char3dHost"></div>
+    </section>`;
+}
 
 // Which inventory_types can fill each slot (for the upgrade finder): chest covers
 // robes (20) too; weapons span 1H/main-hand/2H etc. Empty slots use these to
@@ -944,6 +980,7 @@ export async function showCharacter(idOrChar, navigate) {
       </div>
     </div>
     <div class="char-sheet sheet-${gearView}">${gearHtml}</div>
+    ${char3dHtml(ch)}
     <div class="char-upgrades">
       <h2>Suggested upgrades</h2>
       <div class="up-controls">
@@ -965,6 +1002,61 @@ export async function showCharacter(idOrChar, navigate) {
       <div id="charUpList"></div>
     </div>
   </div>`;
+
+  // ---- 3D preview -------------------------------------------------------------
+  // Opt-in and lazily mounted: three.js is the second-biggest chunk on the site and a
+  // character sheet is mostly read for its numbers, so nobody pays for the viewer until
+  // they ask for it. The choice is remembered, because someone who wants to SEE their
+  // gear wants that on every character.
+  {
+    const wrap = app.querySelector("#char3d");
+    const btn = app.querySelector("#char3dToggle");
+    const hostEl = app.querySelector("#char3dHost");
+    let mounted = false;
+    const sexOf = () => (localStorage.getItem("tw_char3d_sex") === "f" ? "f" : "m");
+    const mount = async () => {
+      if (!hostEl) return;
+      // Same rule as the dressing room: the sheet may be gone by the time the model
+      // finishes loading, and mounting into a detached host leaves the router holding a
+      // viewer nobody can see.
+      if (!hostEl.isConnected) return;
+      hostEl.innerHTML = `<p class="muted">Loading model…</p>`;
+      try {
+        const mod = await import("./modelviewer.js");
+        // Only the slots that change how a character LOOKS; a ring is not one of them.
+        const ids = VISUAL_SLOTS.map((k) => ch.slots?.[k]?.itemId).filter(Boolean);
+        const found = ids.length ? await query(qDressItemsIn(ids.length), ids).catch(() => []) : [];
+        // Which hand a weapon ends up in follows from the SLOT it is worn in, and a
+        // one-hander says nothing about that by itself, so keep the loadout's own slot
+        // alongside each row (see chargear.js HAND_BY_SLOT).
+        const byEntry = new Map(found.map((r) => [r.entry, r]));
+        const rows = VISUAL_SLOTS.map((k) => {
+          const r = byEntry.get(ch.slots?.[k]?.itemId);
+          return r ? { ...r, slot: HELD_SLOT[k] } : null;
+        }).filter(Boolean);
+        if (!hostEl.isConnected) return;
+        hostEl.innerHTML = "";
+        await mod.mountCharacterViewer(hostEl, {
+          race: raceIdOf(ch.race), sex: sexOf(), items: rows,
+        });
+        mounted = true;
+      } catch (e) {
+        hostEl.innerHTML = `<p class="muted">3D preview unavailable — ${esc(e.message)}.</p>`;
+      }
+    };
+    btn?.addEventListener("click", async () => {
+      const open = wrap.classList.toggle("open");
+      btn.textContent = open ? "Hide 3D" : "Show in 3D";
+      try { localStorage.setItem("tw_char3d", open ? "1" : "0"); } catch { /* private mode */ }
+      if (open && !mounted) await mount();
+      else if (!open) { try { window.__mvDestroy?.(); } catch { /* gone */ } mounted = false; }
+    });
+    app.querySelector("#char3dSex")?.addEventListener("change", async (e) => {
+      try { localStorage.setItem("tw_char3d_sex", e.target.value); } catch { /* private mode */ }
+      if (wrap.classList.contains("open")) await mount();
+    });
+    if (wrap?.classList.contains("open")) mount();
+  }
 
   const reload = () => showCharacter(shared ? ch : id, navigate);
   // gear layout toggle (icons grid <-> detailed list), remembered across characters

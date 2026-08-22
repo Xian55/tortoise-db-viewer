@@ -44,3 +44,4 @@ scratch_cmp/
 
 # Lighthouse audit reports (scripts/audit.mjs; regenerated on demand)
 .lighthouse/
+public/model3d/

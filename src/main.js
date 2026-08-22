@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect, getMeta, caps } from "./db.js";
 import * as Q from "./queries.js";
-import { renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
+import { qualityColor, renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, QUALITY, ITEM_CLASS, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, DMG_SCHOOL, RESISTANCES, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA, MAX_SKILL, skinningReq } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -11,7 +11,10 @@ import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { externalMenuHtml, wireExternalMenu, chatMacro, chatButtonHtml, wireChatButton } from "./external.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown, ftsQuery } from "./search.js";
-import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
+import { DRESS_SLOT } from "./chargear.js";
+import CHAR_PALETTE from "../scripts/data/char-palette.json";
+import RACE_LABELS from "../scripts/data/race-labels.json";
+import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, OWN_ITEM_MODELS, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
 import { showLeveling, showGuide } from "./guide.js";
@@ -152,6 +155,10 @@ function wireTabs() {
     if (!btn) return;
     app.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
     app.querySelectorAll(".tabpane").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== btn.dataset.tab));
+    // A pane whose content is expensive (the 3D viewer's chunk is ~600 KB of three.js)
+    // mounts on first show rather than on page render, so opening an item page costs
+    // nothing extra for the visitors who never touch the tab.
+    bar.dispatchEvent(new CustomEvent("tabshow", { detail: { id: btn.dataset.tab }, bubbles: true }));
   });
 }
 
@@ -214,10 +221,92 @@ document.getElementById("searchForm").addEventListener("submit", (e) => {
   if (term) navigate(`?search=${encodeURIComponent(term)}`);
 });
 
+// The live 3D viewer, if any. A WebGL context is a scarce, non-GC'd resource: leave one
+// behind per navigation and the browser silently kills the oldest canvas after a handful
+// of pages, so the route owns its teardown exactly like it owns stopAudio().
+let activeViewer = null;
+// Bumped on every route render. A page that mounts a viewer captures this and checks it
+// after each await: mounting is asynchronous (a query plus a dozen model/texture
+// fetches), and without the check a mount left over from the PREVIOUS page finishes late,
+// calls destroyViewer() -- which is module-level, so it kills the CURRENT page's viewer --
+// and empties the host. Switching between two dressing-room links did exactly that, and
+// left a room with no character and nothing in the console.
+let routeSeq = 0;
+function destroyViewer() {
+  try { activeViewer?.destroy(); } catch { /* already torn down */ }
+  activeViewer = null;
+  // The character sheet mounts its own viewer, and this module must not import the
+  // three.js chunk just to be able to tear one down. modelviewer.js publishes this hook
+  // when (and only when) it has actually been loaded.
+  try { window.__mvDestroy?.(); } catch { /* already torn down */ }
+}
+
+// Is WebGL available at all? Asked BEFORE the 3D tab is offered, and answered without
+// importing the viewer chunk -- on a machine that cannot render, downloading ~600 KB of
+// three.js to discover that would be the whole cost of the feature for no benefit.
+let webglCached = null;
+function webglOk() {
+  if (webglCached === null) {
+    try {
+      const c = document.createElement("canvas");
+      webglCached = !!(c.getContext("webgl2") || c.getContext("webgl"));
+    } catch { webglCached = false; }
+  }
+  return webglCached;
+}
+
+// Mount the 3D pane the first time its tab is opened. Deferred on purpose: the chunk is
+// the largest on the site after the zone map, and most visitors to an item page never
+// open it. Any failure -- chunk, model file, WebGL context -- degrades to a line of text
+// inside the pane; the rest of the page has already rendered and must not be disturbed.
+function mountModelTab(appearance) {
+  const bar = app.querySelector(".tabbar");
+  const host = app.querySelector("#mv-host");
+  if (!bar || !host) return;
+  let started = false;
+  const myRoute = routeSeq;
+  const mount = async () => {
+    if (started) return;
+    started = true;
+    try {
+      const { mountItemViewer } = await import("./modelviewer.js");
+      host.innerHTML = "";
+      destroyViewer();
+      const viewer = await mountItemViewer(host, {
+        model: appearance.model_l,
+        texture: appearance.tex_l,
+        cancelled: () => myRoute !== routeSeq,
+      });
+      if (myRoute !== routeSeq) { try { viewer.destroy(); } catch { /* gone */ } return; }
+      activeViewer = viewer;
+    } catch (err) {
+      if (err?.message === "cancelled" || myRoute !== routeSeq) return;
+      host.innerHTML = `<p class="muted">3D preview unavailable${err?.message ? ` — ${esc(err.message)}` : ""}.</p>`;
+    }
+  };
+  // Mount when the pane BECOMES VISIBLE, not when its tab is clicked. The click is only
+  // one way to get there, and relying on it leaves the pane stuck on "Loading model…"
+  // whenever the listener is missing -- which is exactly what a Vite HMR update does, by
+  // re-running this module while leaving the already-rendered DOM in place. Visibility is
+  // the actual condition we care about, so observe that instead.
+  if (typeof IntersectionObserver === "function") {
+    const io = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      io.disconnect();
+      mount();
+    });
+    io.observe(host);
+  } else {
+    bar.addEventListener("tabshow", (e) => { if (e.detail?.id === "model3d") mount(); });
+  }
+}
+
 function route() {
   // Audio must not outlive the page that started it -- a zone track would keep playing
   // over whatever you navigated to.
   stopAudio();
+  routeSeq++;
+  destroyViewer();
   const params = new URLSearchParams(location.search);
   const item = params.get("item");
   const npc = params.get("npc");
@@ -265,6 +354,7 @@ function route() {
   else if (params.get("pets") !== null) return showPets();
   else if (params.get("profplan") !== null) return showProfPlan(params.get("profplan"));
   else if (params.get("talents") !== null) return showTalents(params.get("talents"));
+  else if (params.get("dressing") !== null) return showDressingRoom(params, navigate);
   else if (params.get("loadout")) return showSharedLoadout(params.get("loadout"), navigate);
   else if (params.get("character")) return showCharacter(params.get("character"), navigate);
   else if (params.get("characters") !== null) return showCharacters(navigate);
@@ -459,6 +549,8 @@ function showHome() {
       card("?characters", "inv_shield_06", "Character Planner", "Import your gear (GearExport), see set bonuses, and get slot-by-slot upgrades ranked for your spec. Share builds by link.", "feature"),
       card("?weights", "ability_marksmanship", "Gear-Score Presets", "Build, share, and reuse stat-weight sets — 22 class/spec starters, or make your own.", "feature"),
       card("?talents", "inv_misc_book_11", "Talent Calculator", "Plan any class's 51-point build; the link saves it.", "feature"),
+      ...(OWN_ITEM_MODELS ? [card("?dressing", "inv_shirt_white_01", "Dressing Room",
+        "Try armor and weapons on a 3D character \u2014 any race, any look. Share the outfit by link.", "feature")] : []),
       card("?profplan=164", "trade_blacksmithing", "Profession Leveling", "Efficient 1→300 routes with a deduped materials shopping list, for every crafting profession.", "feature"),
     ])}
 
@@ -784,6 +876,18 @@ async function showItem(id) {
   const sockets = (it.socketColor_1 || it.GemProperties)
     ? await queryOne(Q.Q_ITEM_SOCKETS, [it.socketBonus || 0, it.GemProperties || 0]).catch(() => null)
     : null;
+  // What this item looks like in 3D. OPTIONAL SCHEMA (caps().appearance): a dev/cMaNGOS
+  // DB built before the feature simply has no table, and the tab disappears rather than
+  // the page breaking.
+  const appearance = (OWN_ITEM_MODELS && it.display_id && (await caps()).appearance)
+    ? await queryOne(Q.Q_ITEM_APPEARANCE, [it.display_id]).catch((e) => {
+      // Losing the row silently means the 3D tab just is not there, with nothing
+      // anywhere saying why -- which is exactly how this went unexplained for three
+      // smoke runs.
+      console.warn("item appearance lookup failed:", e?.message || e);
+      return null;
+    })
+    : null;
   // random suffixes this item can roll ("of the Bear", …)
   const suffixes = it.rolls_suffix ? await query(Q.Q_ITEM_SUFFIXES, [id]) : [];
   const srcCsv = srcRows.map((r) => r.source).join(",");
@@ -943,6 +1047,35 @@ async function showItem(id) {
     { id: "samemodel", label: "Same model", ...regTable(sameModelCols, sameModel) },
   ];
 
+  // A 3D tab, but only when there is something to show. `per_race` items (every helm,
+  // most shoulders) are modelled once PER RACE AND GENDER, so they need a character to
+  // sit on -- until that exists, offering an empty tab would be worse than none. Armor
+  // with no model of its own is texture-only for the same reason.
+  const model3d = appearance && appearance.model_l && appearance.per_race === 0 && webglOk();
+  // Why the tab is absent, on the element itself. Four independent gates can hide it and
+  // three of them are invisible from the outside, which turned one flaky smoke failure
+  // into a long hunt; it also answers "why do I not have the 3D tab" for a visitor.
+  app.dataset.model3d = model3d ? "on"
+    : !OWN_ITEM_MODELS ? "dataset"
+      : !it.display_id ? "no-display"
+        : !appearance ? "no-appearance-row"
+          : !appearance.model_l ? "texture-only"
+            : appearance.per_race !== 0 ? "per-race-model"
+              : "no-webgl";
+  if (model3d) {
+    tabDefs.push({
+      id: "model3d", label: "3D", count: 1, noCount: true,
+      html: `<div id="mv-host" class="mv-host"><p class="muted">Loading model…</p></div>`,
+    });
+  }
+
+  // The way in to the dressing room from an item. Deliberately NOT tied to the 3D tab:
+  // most armor is texture-only and has no tab, and seeing a chestpiece ON a character is
+  // exactly what it needs. Turtle-only, like every other use of these models.
+  const dressLink = (row) => (OWN_ITEM_MODELS && DRESS_SLOT[row.inventory_type] && webglOk()
+    ? `<div class="item-dress"><a class="nav" href="?dressing&${DRESS_SLOT[row.inventory_type]}=${row.entry}">Try it on a character \u203a</a></div>`
+    : "");
+
   // quality + item-class subtitle, each a link into the item browser filtered by it
   // (e.g. "Common · Trade Goods"). Mirrors what the embed tooltip surfaces.
   const qual = QUALITY[it.quality];
@@ -955,6 +1088,7 @@ async function showItem(id) {
     `<div class="item-view">
       <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true, set: setOpt, mount: mountOpt, sockets })}
         ${classLine ? `<div class="item-classline">${classLine}</div>` : ""}
+        ${dressLink(it)}
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}${it.world_drop ? ' · <span class="tagx">World Drop</span>' : ""}${it.rolls_suffix ? ' · <span class="tagx" title="Can drop with a random suffix">🎲 Random suffix</span>' : ""}</div>
         ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}
         ${itemPeerCard(peer)}
@@ -965,6 +1099,7 @@ async function showItem(id) {
     </div>`;
   mountTables();
   wireTabs();
+  if (model3d) mountModelTab(appearance);
   // Per-suffix chat link. Delegated, so it survives nothing in particular here but keeps
   // the macro building where `it` (name + quality) already is, instead of stamping ~30
   // fully-built macros into data- attributes.
@@ -979,6 +1114,733 @@ async function showItem(id) {
     catch { b.textContent = "✗"; }
     setTimeout(() => { b.textContent = was; }, 1400);
   });
+}
+
+// ---- dressing room (?dressing) ----
+// The character mannequin. Phase one of the transmog builder: race/gender/appearance
+// only, no gear yet -- the rig everything else hangs off. State rides in the URL so a
+// look is shareable, the same way ?talents= and ?compare= work.
+async function showDressingRoom(params, navigate) {
+  if (!OWN_ITEM_MODELS) {
+    app.innerHTML = errorBox(new Error("The 3D dressing room is only available on the Turtle dataset — "
+      + "a display id means a different model on each game."));
+    return;
+  }
+  if (!webglOk()) {
+    app.innerHTML = `<div class="panel"><h2>Dressing room</h2>`
+      + `<p class="muted">This needs WebGL, which this browser has turned off or does not support.</p></div>`;
+    return;
+  }
+  // Captured BEFORE the first await: this function loads the viewer chunk and the
+  // appearance JSON on the way in, and reading routeSeq after that would read the
+  // sequence of whatever route replaced us -- so a superseded render would think it was
+  // still the current one.
+  const myRoute = routeSeq;
+  const num = (k, d) => (params.get(k) !== null && params.get(k) !== "" ? Number(params.get(k)) : d);
+  const state = {
+    race: num("race", 1), sex: params.get("sex") === "f" ? "f" : "m",
+    skin: num("skin", 0), face: num("face", 0),
+    hair: num("hair", 0), hairColor: num("hcolor", 0), facialHair: num("facial", 0),
+    // Absent from a link, the paint FOLLOWS the facial index -- which is exactly what the
+    // single coupled stepper used to do, so every URL written before the split still
+    // renders the character it described.
+    facePaint: params.get("paint") !== null ? num("paint", 0) : num("facial", 0),
+  };
+  // Visual slots only -- a ring changes nothing about how you look. Head, shoulders and
+  // anything held are MODELS hung off an attachment point rather than textures painted
+  // on the body, but from here they are just another slot.
+  const SLOT_PARAM = DRESS_SLOT;
+  const WEARABLE = [...new Set(Object.keys(SLOT_PARAM).map(Number))];
+  const worn = new Map();                    // slot param -> item entry
+  for (const [inv, key] of Object.entries(SLOT_PARAM)) {
+    const v = num(key, 0);
+    if (v) worn.set(key, v);
+  }
+  // Paperdoll layout: the slots flank the character the way the in-game window (and
+  // Wowhead's dressing room) arranges them, so a slot's POSITION says which body part it
+  // is and no labels are needed. Weapon slots are omitted rather than shown dead: they
+  // are not attached yet, so equipping one would visibly do nothing.
+  const SLOTS_L = [
+    { key: "head", label: "Head", inv: [1] },
+    { key: "shoulder", label: "Shoulder", inv: [3] },
+    { key: "back", label: "Back", inv: [16] },
+    { key: "chest", label: "Chest", inv: [5, 20] },
+    { key: "shirt", label: "Shirt", inv: [4] },
+    { key: "tabard", label: "Tabard", inv: [19] },
+  ];
+  const SLOTS_R = [
+    { key: "wrist", label: "Wrist", inv: [9] },
+    { key: "hands", label: "Hands", inv: [10] },
+    { key: "waist", label: "Waist", inv: [6] },
+    { key: "legs", label: "Legs", inv: [7] },
+    { key: "feet", label: "Feet", inv: [8] },
+  ];
+  // Weapons hang under the model, the way the in-game window arranges them.
+  const SLOTS_W = [
+    { key: "mainhand", label: "Main hand", inv: [13, 17, 21] },
+    { key: "offhand", label: "Off hand", inv: [13, 14, 22, 23] },
+    { key: "ranged", label: "Ranged", inv: [15, 25, 26, 28] },
+  ];
+  const ALL_SLOTS = [...SLOTS_L, ...SLOTS_R, ...SLOTS_W];
+  const slotCol = (list) => list.map((s) =>
+    `<button type="button" class="dress-slot" data-slot="${s.key}" title="${esc(s.label)}">
+       <span class="dress-slot-icon"></span><span class="dress-slot-label">${esc(s.label)}</span>
+     </button>`).join("");
+
+  app.innerHTML = `<div class="dressing">
+      <h1>Dressing room</h1>
+      <div class="dress-room">
+        <div class="dress-col dress-col-l">
+          <button type="button" class="btn dress-set-btn" id="dress-set">Wear a set&hellip;</button>
+          ${slotCol([...SLOTS_L, ...SLOTS_R, ...SLOTS_W])}
+        </div>
+        <div class="mv-wrap">
+          <div id="mv-host" class="mv-host"><p class="muted">Loading character&hellip;</p></div>
+          <div class="mv-tools">
+            <button type="button" class="mv-tool" id="dress-spin" aria-pressed="false" title="Turn the model">\u21BB Rotate</button>
+            <button type="button" class="mv-tool" id="dress-reset" title="Back to the straight-on view">\u21BA Reset</button>
+            <button type="button" class="mv-tool" id="dress-full" title="Fill the screen">\u26F6 Fullscreen</button>
+            <button type="button" class="mv-tool" id="dress-shot" title="Save a PNG of this view">\u{1F4F7} Screenshot</button>
+            <label class="mv-tool mv-chk" title="Save with no background at all"><input type="checkbox" id="dress-alpha"> transparent</label>
+          </div>
+        </div>
+        <div class="dress-bar" id="dress-bar"></div>
+      </div>
+      <div class="dress-actions">
+        <button type="button" class="btn" id="dress-item">\u{1F3B2} Random item</button>
+        <button type="button" class="btn" id="dress-random">\u{1F3B2} Random look</button>
+
+        <button type="button" class="btn" id="dress-strip">Undress</button>
+        <button type="button" class="btn" id="dress-save">Save outfit</button>
+        <button type="button" class="btn" id="dress-share">\u{1F517} Share</button>
+        <span class="muted" id="dress-msg"></span>
+      </div>
+      <div class="dress-saved" id="dress-saved"></div>
+      <div class="search-dropdown dress-pop" id="dress-pop" hidden>
+        <input id="dress-find" type="search" placeholder="Search by name…" autocomplete="off">
+        <div id="dress-hits"></div>
+      </div>
+    </div>`;
+  const host = app.querySelector("#mv-host");
+  const bar = app.querySelector("#dress-bar");
+
+  let mod;
+  try {
+    mod = await import("./modelviewer.js");
+  } catch (e) {
+    host.innerHTML = errorBox(e); return;
+  }
+  let data;
+  try {
+    data = await mod.charAppearance();
+  } catch (e) {
+    host.innerHTML = `<p class="muted">Character data unavailable — ${esc(e.message)}.</p>`;
+    return;
+  }
+
+  // Sampled colours for the skin/hair swatches (scripts/build-char-palette.py). Bundled
+  // rather than fetched with the rest of the appearance data: it is 4 KB and the picker
+  // needs it on first paint.
+  const palette = (key) => CHAR_PALETTE[key] || null;
+
+  // How many variations/colours this race+gender actually offers. Asked of the data
+  // rather than assumed: Turtle's own races do not carry the same counts as Blizzard's.
+  const opts = (kind, idx) => {
+    const rows = data.sections[`${state.race}-${state.sex}-${kind}`] || [];
+    return [...new Set(rows.map((r) => r[idx]))].sort((a, b) => a - b);
+  };
+  // Hair and facial-hair VARIATIONS come from the geoset tables, not from the texture
+  // sections: a variation can exist as geometry while painting no texture at all (every
+  // race's bald, and all five of the goblin's facial options), and offering only the
+  // textured ones hides real choices -- while offering ones the race lacks used to leave
+  // it headless.
+  const geosetOpts = (table) =>
+    [...new Set((data[table][`${state.race}-${state.sex}`] || []).map((r) => r[0]))].sort((a, b) => a - b);
+
+  // Shape and paint are TWO CHOICES on some races and one on others, and the data says
+  // which. A troll's fourteen "tusk" variations resolve to five tusk shapes and nine war
+  // paints, and the game lets you pick one of each; a human's nine beards are nine
+  // beards -- shape and texture travel together and splitting them would offer 54
+  // combinations the game does not have.
+  //
+  // The test is the collapse: split when the distinct geoset sets number two thirds of
+  // the variations or fewer. Measured, that is trolls, undead and night elf females
+  // (ratios 0.36, 0.25, 0.10) but not orc males (0.91) or human males (0.67), which
+  // matches what those races' creators actually offer.
+  const SPLIT_RATIO = 0.65;
+  const facialAxes = () => {
+    const rows = data.facial[`${state.race}-${state.sex}`] || [];
+    const byGeoset = new Map();               // geoset signature -> its lowest variation
+    for (const r of [...rows].sort((a, b) => a[0] - b[0])) {
+      const key = r.slice(1).join(",");
+      if (!byGeoset.has(key)) byGeoset.set(key, r[0]);
+    }
+    const painted = [...new Set((data.sections[`${state.race}-${state.sex}-facial`] || [])
+      .filter((r) => r[2].length).map((r) => r[0]))].sort((a, b) => a - b);
+    const bare = rows.map((r) => r[0]).filter((v) => !painted.includes(v)).sort((a, b) => a - b);
+    const split = rows.length > 1 && byGeoset.size <= rows.length * SPLIT_RATIO
+      && painted.length > 0 && bare.length > 0;
+    return {
+      split,
+      shapes: [...byGeoset.values()].sort((a, b) => a - b),
+      // "no paint" is a real choice, and it is whichever variation carries no texture.
+      paints: [bare[0], ...painted],
+    };
+  };
+  // The pickers are the character creator's, not a form's. Every option that HAS a
+  // preview shows it -- a race is its portrait, a skin or hair colour is that colour --
+  // and only the ones that cannot be previewed in a swatch (face, hairstyle, markings)
+  // stay as a stepper, which is still one click per change rather than three.
+  const RACE_ICON = (id, sex) => `${ASSETS_BASE}icons/race/${id}-${sex}.webp`;
+  const swatch = (label, key, values, cur, colours) => {
+    if (values.length < 2) return "";
+    const cells = values.map((v) => {
+      const c = colours && colours[v];
+      // No sampled colour (a race whose art the client does not ship) degrades to the
+      // number rather than to an empty circle that looks broken. One class attribute,
+      // not two -- a second is silently dropped, which left the fallback unstyled.
+      const face = c ? ` style="background:${c}"` : "";
+      return `<button type="button" class="sw${c ? "" : " sw-num"}" data-key="${key}" data-val="${v}"${face}`
+        + ` aria-pressed="${v === cur}" title="${esc(label)} ${v}">${c ? "" : v}</button>`;
+    }).join("");
+    return field(label, `${values.indexOf(cur) + 1} / ${values.length}`,
+      `<div class="swatches">${cells}</div>`);
+  };
+  const stepper = (label, key, values, cur) => {
+    if (values.length < 2) return "";
+    const at = Math.max(0, values.indexOf(cur));
+    return `<div class="stepper" data-key="${key}">`
+      + `<button type="button" data-step="-1" aria-label="Previous ${esc(label)}">\u2039</button>`
+      + `<span class="val">${esc(label)} ${at + 1} / ${values.length}</span>`
+      + `<button type="button" data-step="1" aria-label="Next ${esc(label)}">\u203a</button></div>`;
+  };
+  const field = (label, note, body) =>
+    `<div class="dfield"><div class="dfield-lbl"><span>${esc(label)}</span>`
+    + `<span class="dim">${esc(note)}</span></div>${body}</div>`;
+
+  const render = () => {
+    const raceName = data.races.find((r) => r.id === state.race)?.name || "";
+    const lab = RACE_LABELS[state.race] || {};
+    const axes = facialAxes();
+    // With the shape split off, the race's own word names the SHAPE (a troll's "Tusks");
+    // where a race has only one shape -- a night elf female has exactly one -- the shape
+    // stepper hides itself and the word belongs to the paint, which is what "Markings"
+    // means there.
+    const labels = {
+      hair: lab.hair || "Hair",
+      facial: lab[state.sex] || "Facial hair",
+    };
+    if (axes.split && axes.shapes.length < 2) labels.paint = labels.facial;
+    // Gender leads the same row as the races, because it IS one of the choices the row
+    // is making -- and because the portraits are per gender, so the two controls are
+    // reading the same picture.
+    const sexTile = (val, label, glyph) =>
+      `<button type="button" class="race-tile sex-tile" data-key="sex" data-val="${val}"`
+      + ` aria-pressed="${state.sex === val}" title="${label}">`
+      + `<i>${glyph}</i><span>${label}</span></button>`;
+    const tiles = data.races.map((r) =>
+      `<button type="button" class="race-tile" data-key="race" data-val="${r.id}"`
+      + ` aria-pressed="${r.id === state.race}" title="${esc(r.name)}">`
+      + `<img src="${RACE_ICON(r.id, state.sex)}" alt="" loading="lazy" width="38" height="38">`
+      + `<span>${esc(r.name)}</span></button>`).join("");
+    bar.innerHTML =
+      field("Race", raceName,
+        `<div class="race-row">${sexTile("m", "Male", "\u2642")}${sexTile("f", "Female", "\u2640")}`
+        + `<span class="race-sep"></span>${tiles}</div>`)
+      + swatch("Skin", "skin", opts("skin", 1), state.skin, palette(`${state.race}-${state.sex}-skin`))
+      + swatch("Hair colour", "hcolor", opts("hair", 1), state.hairColor,
+        palette(`${state.race}-${state.sex}-hair`))
+      + field("Face & hair", "",
+        `<div class="steps">`
+        + stepper("Face", "face", opts("face", 0), state.face)
+        + stepper(labels.hair, "hair", geosetOpts("hair"), state.hair)
+        // What this option is CALLED is per race, and the client says so: ChrRaces names a
+        // token per race and gender and the glue strings give it text. A troll's option is
+        // Tusks, an undead's is Features, a tauren's hair slider is Horns. Calling them all
+        // "Facial hair" sends people looking for a beard slider that does not exist -- and
+        // the guess it replaces ("Face detail" when a race had no facial textures) was
+        // right about goblins by accident and wrong about trolls.
+        + (axes.split
+          ? stepper(labels.facial, "facial", axes.shapes, state.facialHair)
+            + stepper(labels.paint || "Face paint", "paint", axes.paints, state.facePaint)
+          : stepper(labels.facial, "facial", geosetOpts("facial"), state.facialHair))
+        + `</div>`);
+  };
+
+  const KEY = { hcolor: "hairColor", facial: "facialHair", paint: "facePaint" };
+
+  const hitsEl = app.querySelector("#dress-hits");
+  const findEl = app.querySelector("#dress-find");
+  const popEl = app.querySelector("#dress-pop");
+  const roomEl = app.querySelector(".dressing");
+  let wornRows = [];                          // qDressItemsIn rows for what is equipped
+  const locked = new Set();                   // slots the dice must leave alone
+  let activeSlot = null;                      // the slot being edited, if any
+  let hits = [];                              // current result rows
+  let cursor = -1;                            // keyboard selection within them
+
+  const syncUrl = () => {
+    const q = new URLSearchParams({ dressing: "", race: state.race, sex: state.sex,
+      skin: state.skin, face: state.face, hair: state.hair, hcolor: state.hairColor,
+      facial: state.facialHair, paint: state.facePaint });
+    for (const [slot, entry] of worn) q.set(slot, entry);
+    history.replaceState({}, "", `?${q}`);
+  };
+
+  // Paint each slot with what is in it. The icon IS the slot, so an empty one keeps its
+  // label and a filled one shows the item, quality-coloured, with a way to take it off.
+  const renderSlots = () => {
+    const bySlot = new Map(wornRows.map((r) => [r.slot || SLOT_PARAM[r.inv], r]));
+    for (const btn of app.querySelectorAll(".dress-slot")) {
+      const row = bySlot.get(btn.dataset.slot);
+      btn.classList.toggle("filled", !!row);
+      btn.classList.toggle("active", btn.dataset.slot === activeSlot);
+      const icon = btn.querySelector(".dress-slot-icon");
+      const label = btn.querySelector(".dress-slot-label");
+      const slot = btn.dataset.slot;
+      // The padlock is what the dice reads. It sits on every slot, filled or not: locking
+      // an empty one means "leave it empty", which is as much a decision as keeping a
+      // piece you like.
+      const lock = `<button type="button" class="dress-lock" data-slot="${slot}"`
+        + ` aria-pressed="${locked.has(slot)}"`
+        + ` title="${locked.has(slot) ? "Locked \u2014 the dice will skip this slot" : "Lock this slot against the dice"}">`
+        + `${locked.has(slot) ? "\u{1F512}" : "\u{1F513}"}</button>`;
+      btn.classList.toggle("locked", locked.has(slot));
+      if (row) {
+        icon.innerHTML = iconImg(row.icon, "icon-sm");
+        icon.style.borderColor = qualityColor(row.quality) || "";
+        label.innerHTML = `<a class="nav dress-item" href="?item=${row.entry}" title="${esc(row.name)}">${esc(row.name)}</a>`
+          + lock
+          + `<button type="button" class="dress-off" data-slot="${slot}" title="Take off">\u2715</button>`;
+      } else {
+        // The game draws the silhouette of what belongs in an empty slot rather than an
+        // empty square, and it reads far faster than the word does. Extracted from the
+        // client (extract-slot-icons.py) because Blizzard's icon CDN refuses these --
+        // they are UI textures, not item icons.
+        icon.innerHTML = `<img class="slot-art" src="${ASSETS_BASE}icons/slot/${slot}.webp" alt="" loading="lazy">`;
+        icon.style.borderColor = "";
+        label.innerHTML = `<span class="dress-item">${esc(ALL_SLOTS.find((x) => x.key === slot)?.label || "")}</span>${lock}`;
+      }
+    }
+  };
+
+  // Resolve everything equipped in ONE query, then hand the rows to the viewer.
+  //
+  // Re-entrant on purpose: every equip/unequip and every appearance change starts a new
+  // mount, and each awaits a query plus a dozen model/texture fetches. Without the
+  // sequence guard a slow first mount finishes AFTER a later one has cleared the host,
+  // appending its canvas into an element the newer mount already emptied -- which showed
+  // up as a dressing room with no character in it at all.
+  let mountSeq = 0;
+  let spinning = false;                      // the model holds still until asked to turn
+  const stale = (my) => my !== mountSeq || myRoute !== routeSeq;
+  const mount = async () => {
+    const my = ++mountSeq;
+    const ids = [...worn.values()];
+    if (ids.length) {
+      try {
+        const rows = await query(Q.qDressItemsIn(ids.length), ids);
+        // One row per SLOT, not per item: which hand a one-hander goes in follows from
+        // where it was equipped, and the same entry can legitimately fill two slots
+        // (dual-wielding a pair of the same sword).
+        const byEntry = new Map(rows.map((r) => [r.entry, r]));
+        wornRows = [...worn].map(([slot, entry]) => {
+          const r = byEntry.get(entry);
+          return r ? { ...r, slot } : null;
+        }).filter(Boolean);
+      } catch { wornRows = []; }
+    } else wornRows = [];
+    if (stale(my)) return;
+    renderSlots();
+    // Where the visitor had put the camera, before the old viewer is thrown away.
+    let view = null;
+    try { view = activeViewer?.view?.() ?? null; } catch { view = null; }
+    destroyViewer();
+    host.innerHTML = "";
+    try {
+      const viewer = await mod.mountCharacterViewer(host, {
+        ...state, items: wornRows, cancelled: () => stale(my), view,
+        // Every equip and every appearance change builds a new viewer, so the turntable
+        // has to be told each time; the button's state is the one that survives.
+        spin: spinning, keepSpinning: spinning,
+      });
+      if (stale(my)) { try { viewer.destroy(); } catch { /* already gone */ } return; }
+      activeViewer = viewer;
+    } catch (e) {
+      if (!stale(my) && e.message !== "cancelled") {
+        host.innerHTML = `<p class="muted">Could not load this character - ${esc(e.message)}.</p>`;
+      }
+    }
+  };
+
+  // The slot picker is the SAME panel the top-bar search uses -- `.search-dropdown` with
+  // `.sd-row` rows -- anchored under the slot instead of under the search box, so both
+  // searches on the site look and behave alike (hover, arrow keys, Enter, Escape).
+  // The panel opens DOWNWARD from whatever it is anchored to, which falls off the screen
+  // for the slots near the bottom of the rail -- you type a weapon's name and the results
+  // are below the fold. So it opens upward when there is more room up there, and either
+  // way it is capped to the space it actually has, with the list scrolling inside it.
+  const GAP = 4, EDGE = 8, WANT = 260;      // WANT: enough for ~6 results before flipping
+  const place = (btn) => {
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    popEl.style.left = `${Math.max(EDGE, Math.min(r.left, innerWidth - 340))}px`;
+    popEl.style.minWidth = `${Math.max(r.width, 300)}px`;
+    const below = innerHeight - r.bottom - GAP - EDGE;
+    const above = r.top - GAP - EDGE;
+    const up = below < Math.min(WANT, above);
+    popEl.classList.toggle("up", up);
+    popEl.style.maxHeight = `${Math.max(140, up ? above : below)}px`;
+    popEl.style.top = up ? "auto" : `${r.bottom + GAP}px`;
+    popEl.style.bottom = up ? `${innerHeight - r.top + GAP}px` : "auto";
+  };
+  // Where the panel is anchored, so a result list that arrives after the search can be
+  // re-measured against it -- the panel's height changes with the results.
+  let anchor = null;
+  const replace = () => place(anchor);
+  const hint = (label) => `<div class="sd-row sd-all">Type to search ${esc(label)}</div>`;
+  const closeSlot = () => {
+    activeSlot = null; hits = []; cursor = -1;
+    anchor = null;
+    popEl.hidden = true;
+    renderSlots();
+  };
+  const openSlot = (key, btn) => {
+    activeSlot = key;
+    hits = []; cursor = -1;
+    const slot = ALL_SLOTS.find((x) => x.key === key);
+    findEl.placeholder = `Search ${slot?.label || key}...`;
+    findEl.value = "";
+    hitsEl.innerHTML = hint(slot?.label || key);
+    popEl.hidden = false;
+    anchor = btn;
+    place(btn);
+    renderSlots();
+    findEl.focus();
+  };
+
+  // ---- sets ---------------------------------------------------------------------
+  // Equipping a tier set one slot at a time is eleven searches. Sets are what people
+  // actually want to look at, so they get a picker of their own -- the same panel, in
+  // "set" mode, anchored under the button.
+  const msgEl = app.querySelector("#dress-msg");
+  const say = (text) => {
+    msgEl.textContent = text;
+    if (text) setTimeout(() => { if (msgEl.textContent === text) msgEl.textContent = ""; }, 4000);
+  };
+
+  const equipSet = async (setId, setName) => {
+    let pieces = [];
+    try { pieces = await query(Q.Q_SET_PIECES, [setId]); } catch { pieces = []; }
+    // One piece per slot: a set may carry several items for the same one (a 1H and a 2H,
+    // two rings), and ORDER BY item_level DESC means the first is the best of them.
+    let n = 0;
+    const taken = new Set();
+    for (const piece of pieces) {
+      const slot = SLOT_PARAM[piece.inv];
+      if (!slot || taken.has(slot)) continue;
+      taken.add(slot);
+      worn.set(slot, piece.entry);
+      n++;
+    }
+    closeSlot();
+    syncUrl();
+    await mount();
+    say(n ? `Equipped ${n} piece${n === 1 ? "" : "s"} of ${setName}.`
+      : `${setName} has nothing that shows on a character.`);
+  };
+
+  const openSets = (btn) => {
+    activeSlot = "__set";
+    hits = []; cursor = -1;
+    findEl.placeholder = "Search item sets...";
+    findEl.value = "";
+    hitsEl.innerHTML = `<div class="sd-row sd-all">Type to search item sets</div>`;
+    popEl.hidden = false;
+    anchor = btn;
+    place(btn);
+    renderSlots();
+    findEl.focus();
+  };
+
+  const paintCursor = () => {
+    hitsEl.querySelectorAll(".sd-row").forEach((el, i) => el.classList.toggle("active", i === cursor));
+  };
+  const equip = async (row) => {
+    if (!row) return;
+    if (activeSlot === "__set") { await equipSet(row.id, row.name); return; }
+    worn.set(SLOT_PARAM[row.inv], row.entry);
+    closeSlot();
+    syncUrl();
+    await mount();
+  };
+
+  let findTimer = 0;
+  findEl.addEventListener("input", () => {
+    clearTimeout(findTimer);
+    findTimer = setTimeout(async () => {
+      const term = findEl.value.trim();
+      const setMode = activeSlot === "__set";
+      const slot = setMode ? null : ALL_SLOTS.find((x) => x.key === activeSlot);
+      if (!setMode && !slot) return;
+      const label = setMode ? "item sets" : slot.label;
+      if (term.length < 2) {
+        hits = []; cursor = -1;
+        hitsEl.innerHTML = hint(label);
+        replace();
+        return;
+      }
+      let rows = [];
+      try {
+        rows = setMode
+          ? await query(Q.Q_SET_SEARCH, [`%${term}%`, `${term}%`])
+          : await query(Q.qItemSearchInv(slot.inv.join(",")),
+            [ftsQuery(term), ftsQuery(term), 40, Number(term) || 0]);
+      } catch { rows = []; }
+      if (findEl.value.trim() !== term) return;             // stale, the user moved on
+      hits = rows.slice(0, 20); cursor = -1;
+      hitsEl.innerHTML = hits.length
+        ? hits.map((r, i) => (setMode
+          ? `<div class="sd-row" data-i="${i}"><span class="ilink">${esc(r.name)}</span>`
+            + `<span class="sd-tag">${r.pieces} piece${r.pieces === 1 ? "" : "s"}</span></div>`
+          : `<div class="sd-row" data-i="${i}">${iconImg(r.icon, "icon-sm")}`
+            + `<span class="ilink q${r.quality}">${esc(r.name)}</span>`
+            + `<span class="sd-tag">${esc(INV_TYPE[r.inv] || "")}</span></div>`)).join("")
+        : `<div class="sd-row sd-all">Nothing matches that name</div>`;
+      replace();                                  // the panel just changed height
+    }, 150);
+  });
+
+  findEl.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closeSlot(); return; }
+    if (!hits.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); cursor = (cursor + 1) % hits.length; paintCursor(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); cursor = (cursor - 1 + hits.length) % hits.length; paintCursor(); }
+    else if (e.key === "Enter" && cursor >= 0) { e.preventDefault(); equip(hits[cursor]); }
+  });
+  hitsEl.addEventListener("click", (e) => {
+    const row = e.target.closest(".sd-row[data-i]");
+    if (row) equip(hits[Number(row.dataset.i)]);
+  });
+
+  roomEl.addEventListener("click", async (e) => {
+    const lk = e.target.closest(".dress-lock");
+    if (lk) {
+      e.stopPropagation();                     // a lock is not a request to edit the slot
+      const slot = lk.dataset.slot;
+      if (locked.has(slot)) locked.delete(slot); else locked.add(slot);
+      renderSlots();
+      return;
+    }
+    const off = e.target.closest(".dress-off");
+    if (off) {
+      e.stopPropagation();
+      worn.delete(off.dataset.slot);
+      syncUrl();
+      await mount();
+      return;
+    }
+    if (e.target.closest("a")) return;         // the item link is a link, not a slot click
+    // Anything that opens the picker ITSELF must be ignored here: the same click bubbles
+    // up and the close-on-outside-click below would shut the panel in the gesture that
+    // opened it, so the button appears to do nothing at all. (It did, twice -- once for
+    // the action bar, and again when "Wear a set" moved into the rail.)
+    if (e.target.closest(".dress-actions, .dress-set-btn")) return;
+    const btn = e.target.closest(".dress-slot");
+    if (btn) { if (btn.dataset.slot === activeSlot) closeSlot(); else openSlot(btn.dataset.slot, btn); }
+    else if (!e.target.closest("#dress-pop")) closeSlot();
+  });
+  addEventListener("resize", replace);
+
+  app.querySelector("#dress-set")?.addEventListener("click", (e) => {
+    if (activeSlot === "__set") closeSlot(); else openSets(e.currentTarget);
+  });
+  // Saved outfits live in this browser, not in the URL: the URL already IS the outfit
+  // (that is what makes a look shareable), so saving one is just keeping the query
+  // string under a name. Kept per browser, like the compare tray.
+  const STORE = "tw-outfits";
+  const readSaved = () => {
+    try { return JSON.parse(localStorage.getItem(STORE) || "[]"); } catch { return []; }
+  };
+  const writeSaved = (list) => {
+    try { localStorage.setItem(STORE, JSON.stringify(list.slice(0, 24))); } catch { /* full or private */ }
+  };
+  const savedEl = app.querySelector("#dress-saved");
+  const renderSaved = () => {
+    const list = readSaved();
+    savedEl.innerHTML = list.length
+      ? `<span class="dim">Saved</span>` + list.map((o, i) =>
+        `<span class="outfit-chip"><a class="nav" href="?${esc(o.q)}">${esc(o.n)}</a>`
+        + `<button type="button" class="outfit-x" data-i="${i}" title="Forget this outfit">\u2715</button></span>`).join("")
+      : "";
+  };
+  savedEl.addEventListener("click", (e) => {
+    const x = e.target.closest(".outfit-x");
+    if (!x) return;
+    const list = readSaved();
+    list.splice(Number(x.dataset.i), 1);
+    writeSaved(list);
+    renderSaved();
+  });
+  renderSaved();
+
+  app.querySelector("#dress-save")?.addEventListener("click", () => {
+    const list = readSaved();
+    const q = new URLSearchParams(location.search).toString();
+    if (list.some((o) => o.q === q)) { say("That outfit is already saved."); return; }
+    const worn0 = wornRows.find((r) => r.slot === "chest") || wornRows[0];
+    // Name it after something recognisable rather than "Outfit 4": the chest piece if
+    // there is one, else the race, which is at least what the picture shows.
+    const name = worn0?.name || `${data.races.find((r) => r.id === state.race)?.name || "Look"}`;
+    list.unshift({ n: name.slice(0, 28), q });
+    writeSaved(list);
+    renderSaved();
+    say(`Saved as "${name.slice(0, 28)}".`);
+  });
+
+  app.querySelector("#dress-share")?.addEventListener("click", async () => {
+    // The plain page URL, not the OG share link: ?dressing has no unfurl endpoint, and
+    // an outfit is the whole query string rather than one entity id.
+    try {
+      await navigator.clipboard.writeText(location.href);
+      say("Link copied \u2014 it carries the whole outfit.");
+    } catch { say("Could not reach the clipboard."); }
+  });
+
+  app.querySelector("#dress-random")?.addEventListener("click", async () => {
+    const any = (vals) => vals[Math.floor(Math.random() * vals.length)] ?? 0;
+    state.race = any(data.races.map((r) => r.id));
+    state.sex = Math.random() < 0.5 ? "m" : "f";
+    // Clamp first: the options below belong to the NEW race, and asking for the old
+    // race's counts would roll a hairstyle this one does not have.
+    clamp();
+    state.skin = any(opts("skin", 1));
+    state.face = any(opts("face", 0));
+    state.hair = any(geosetOpts("hair"));
+    state.hairColor = any(opts("hair", 1));
+    const ax = facialAxes();
+    state.facialHair = any(ax.split ? ax.shapes : geosetOpts("facial"));
+    state.facePaint = any(ax.split ? ax.paints : [state.facialHair]);
+    render(); syncUrl(); await mount();
+  });
+
+  app.querySelector("#dress-reset")?.addEventListener("click", () => {
+    // Also stops the turntable: "reset" that leaves the model turning is not a reset.
+    spinning = false;
+    app.querySelector("#dress-spin")?.setAttribute("aria-pressed", "false");
+    try { activeViewer?.spin(false); activeViewer?.reset(); } catch { /* between mounts */ }
+  });
+
+  app.querySelector("#dress-full")?.addEventListener("click", async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await app.querySelector(".mv-wrap").requestFullscreen();
+    } catch (err) { say(`Fullscreen refused \u2014 ${err.message}.`); }
+  });
+  // The renderer sizes itself from the host, and going fullscreen changes that without
+  // firing a window resize, so tell it explicitly.
+  document.addEventListener("fullscreenchange", () => {
+    try { activeViewer?.resize(); } catch { /* between mounts */ }
+  });
+
+  app.querySelector("#dress-shot")?.addEventListener("click", () => {
+    const alpha = app.querySelector("#dress-alpha")?.checked;
+    let url;
+    try { url = activeViewer?.snapshot({ background: !alpha }); } catch { url = null; }
+    if (!url) { say("Nothing to capture yet."); return; }
+    const race = data.races.find((r) => r.id === state.race)?.name || "character";
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${race.toLowerCase().replace(/\s+/g, "-")}-${state.sex}${alpha ? "-transparent" : ""}.png`;
+    a.click();
+    say(alpha ? "Saved with a transparent background." : "Screenshot saved.");
+  });
+
+  app.querySelector("#dress-spin")?.addEventListener("click", (e) => {
+    spinning = !spinning;
+    e.currentTarget.setAttribute("aria-pressed", String(spinning));
+    try { activeViewer?.spin(spinning); } catch { /* the viewer is between mounts */ }
+  });
+
+  app.querySelector("#dress-item")?.addEventListener("click", async () => {
+    // Locked slots are excluded by INVENTORY TYPE, which is what the query filters on:
+    // one slot can be reached by several types (a one-hander is inv 13 or 21), and
+    // leaving any of them in would let the dice fill a slot the visitor pinned.
+    const pool = WEARABLE.filter((inv) => !locked.has(SLOT_PARAM[inv]));
+    if (!pool.length) { say("Every slot is locked."); return; }
+    let row;
+    try {
+      row = await queryOne(Q.Q_DRESS_RANDOM.replace("SLOTS", pool.join(",")));
+    } catch { row = null; }
+    if (!row) { say("Nothing to roll."); return; }
+    const slot = SLOT_PARAM[row.inv];
+    worn.set(slot, row.entry);
+    syncUrl();
+    await mount();
+    const label = ALL_SLOTS.find((x) => x.key === slot)?.label || slot;
+    say(`${row.name} \u2014 ${label.toLowerCase()}.`);
+  });
+
+  app.querySelector("#dress-strip")?.addEventListener("click", async () => {
+    if (!worn.size) return;
+    worn.clear();
+    closeSlot();
+    syncUrl();
+    await mount();
+    say("Everything taken off.");
+  });
+
+
+  // Race / gender / skin / face / hair. A new race has its own option counts, so the
+  // picker list is rebuilt, and the URL keeps the look shareable.
+  // A race change can leave a look pointing at an option the new race does not have (a
+  // gnome has fewer skins than a tauren), which used to render a character with no head.
+  // Clamp everything that is out of range to the nearest option that exists.
+  const clamp = () => {
+    const fit = (vals, cur) => (vals.includes(cur) ? cur : (vals[0] ?? 0));
+    state.skin = fit(opts("skin", 1), state.skin);
+    state.face = fit(opts("face", 0), state.face);
+    state.hairColor = fit(opts("hair", 1), state.hairColor);
+    state.hair = fit(geosetOpts("hair"), state.hair);
+    const ax = facialAxes();
+    state.facialHair = fit(ax.split ? ax.shapes : geosetOpts("facial"), state.facialHair);
+    state.facePaint = fit(ax.split ? ax.paints : geosetOpts("facial"), state.facePaint);
+  };
+
+  const set = async (key, value) => {
+    state[KEY[key] || key] = value;
+    if (key === "race" || key === "sex") clamp();
+    render(); syncUrl(); await mount();
+  };
+
+  const onPick = async (e) => {
+    const step = e.target.closest(".stepper button");
+    if (step) {
+      // Steppers wrap. Reaching the end of eleven hairstyles and having to click back
+      // through all of them is the kind of thing a dropdown was at least honest about.
+      const box = step.closest(".stepper");
+      const key = box.dataset.key;
+      const ax = facialAxes();
+      const vals = key === "paint" ? ax.paints
+        : key === "facial" ? (ax.split ? ax.shapes : geosetOpts("facial"))
+          : key === "hair" ? geosetOpts("hair")
+            : opts(key === "hcolor" ? "hair" : key, key === "face" ? 0 : 1);
+      const at = Math.max(0, vals.indexOf(state[KEY[key] || key]));
+      const next = vals[(at + Number(step.dataset.step) + vals.length) % vals.length];
+      await set(key, next);
+      return;
+    }
+    const btn = e.target.closest("[data-key][data-val]");
+    if (!btn) return;
+    const key = btn.dataset.key;
+    await set(key, key === "sex" ? btn.dataset.val : Number(btn.dataset.val));
+  };
+  // Three hosts, one handler: the strips are part of the same picker, they just sit
+  // beside the model instead of above it.
+  bar.addEventListener("click", onPick);
+
+  render();
+  await mount();
 }
 
 // ---- random page (surprise-me) ----
@@ -3493,8 +4355,27 @@ async function showFooterMeta(loadMs) {
 }
 
 // ---- boot ----
+// A dev-server quirk with real consequences: Vite HMR RE-EXECUTES this module rather
+// than replacing it, and main.js is the app's entry -- so a second execution boots a
+// second router over the same DOM. Two renders then race, and because each router has
+// its own module state neither can see the other; the loser's mount finishing last tore
+// the winner's WebGL canvas out from under it, which is why the dressing room came up
+// blank on roughly half of all dev reloads (a long-running dev server pushes such an
+// update on EVERY page load, so it was not tied to editing anything). There is nothing
+// here to hot-swap, so the second execution simply stands down -- no reload, which under
+// a server that keeps re-pushing would loop. Stripped from the production bundle.
+if (import.meta.hot) {
+  if (window.__twBooted) {
+    console.info("[tortoise-db] HMR re-ran main.js; refresh the page to pick up the change.");
+  } else {
+    window.__twBooted = true;
+    boot();
+  }
+} else boot();
+
 // Resolve the asset origin first (probe R2, fall over to the Pages mirror if it's
 // blocked) so nothing below reads DATA_BASE/ASSETS_BASE before they're settled.
+function boot() {
 resolveOrigins().finally(() => {
   preconnect();
   initHovercards();
@@ -3507,3 +4388,4 @@ resolveOrigins().finally(() => {
     .then(renderRoute, renderRoute)
     .finally(() => showFooterMeta(performance.now()));
 });
+}

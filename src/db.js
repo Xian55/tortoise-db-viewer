@@ -98,12 +98,25 @@ export function caps() {
         (SELECT COUNT(*) FROM pragma_table_info('spawn_points') WHERE name = 'sub') AS spawn_sub,
         (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sounds') AS sounds,
         (SELECT COUNT(*) FROM pragma_table_info('sound_text') WHERE name = 'take') AS sound_take,
-        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'npc_gossip') AS gossip`)
+        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'npc_gossip') AS gossip,
+        (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'item_appearance') AS appearance`)
       .then((r) => ({
         subzones: !!r[0]?.subzones, spawnSub: !!r[0]?.spawn_sub, sounds: !!r[0]?.sounds,
-        soundTake: !!r[0]?.sound_take, gossip: !!r[0]?.gossip,
+        soundTake: !!r[0]?.sound_take, gossip: !!r[0]?.gossip, appearance: !!r[0]?.appearance,
       }))
-      .catch(() => ({ subzones: false, spawnSub: false, sounds: false, soundTake: false, gossip: false }));
+      // A FAILED probe must not be memoized. Caching the all-false fallback turns one
+      // transient error -- a query that lost a race with DB warm-up, say -- into "this
+      // dataset has none of the optional features" for the entire life of the page, and
+      // every gated feature silently disappears with no error anywhere. Dropping the memo
+      // lets the next caller retry; this call still degrades gracefully.
+      .catch((e) => {
+        // Say so. An all-false degrade is indistinguishable from "this dataset has no
+        // optional features", so a probe that fails for any other reason disables half
+        // the site with nothing in the console to explain it.
+        console.warn("caps() probe failed; optional features hidden for this call:", e?.message || e);
+        capsPromise = null;
+        return { subzones: false, spawnSub: false, sounds: false, soundTake: false, gossip: false, appearance: false };
+      });
   }
   return capsPromise;
 }

@@ -37,6 +37,29 @@ export const Q_SAME_MODEL = `
   WHERE i.display_id = ?1 AND i.entry <> ?2 AND i.hidden = 0
   ORDER BY i.quality DESC, i.item_level DESC, i.name LIMIT 250`;
 
+// What this item looks like in 3D: the model (weapons/shields/helms/shoulders) or, for
+// armor that has no model of its own, the component textures painted onto the character.
+// ?1 = display_id. One PK lookup on a WITHOUT ROWID table. OPTIONAL SCHEMA: guard every
+// call with caps().appearance -- a DB built before the feature has no such table.
+export const Q_ITEM_APPEARANCE = `SELECT * FROM item_appearance WHERE display_id = ?1`;
+
+// Same, batched for the dressing room / character sheet (n distinct display_ids).
+export const qItemAppearanceIn = (n) =>
+  `SELECT * FROM item_appearance WHERE display_id IN (${Array.from({ length: n }, (_, i) => `?${i + 1}`).join(",")})`;
+
+// Everything the dressing room needs to WEAR a set of items: the item (for its name,
+// slot and icon) joined to how it looks. One round trip for the whole outfit rather than
+// one per slot -- the room re-resolves on every change.
+export const qDressItemsIn = (n) => `
+  SELECT i.entry, i.name, i.quality, i.inventory_type AS inv, i.display_id, di.icon,
+         a.model_l, a.model_r, a.model_dir, a.per_race, a.tex_l, a.tex_r,
+         a.geo1, a.geo2, a.geo3,
+         a.t_arm_u, a.t_arm_l, a.t_hand, a.t_torso_u, a.t_torso_l, a.t_leg_u, a.t_leg_l, a.t_foot
+  FROM items i
+  LEFT JOIN item_display_info di ON di.ID = i.display_id
+  LEFT JOIN item_appearance a ON a.display_id = i.display_id
+  WHERE i.entry IN (${Array.from({ length: n }, (_, i) => `?${i + 1}`).join(",")})`;
+
 // all derived gear stats for one item (compare view stat-delta table).
 export const Q_ITEM_STATS = `SELECT stat, value FROM item_stats WHERE item = ?1`;
 
@@ -120,6 +143,37 @@ export const Q_ITEMSET_MEMBERS = `
   SELECT i.entry, i.name, i.quality, i.allowable_class AS ac, di.icon
   FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
   WHERE i.set_id = ?1 AND i.hidden = 0 ORDER BY i.required_level, i.name`;
+// Dressing room: find a set by name, and take its wearable pieces in one go. Only sets
+// with a piece that actually SHOWS are worth offering -- a set of rings changes nothing
+// about how you look.
+export const Q_SET_SEARCH = `
+  SELECT s.id, s.name,
+    (SELECT COUNT(*) FROM items i WHERE i.set_id = s.id AND i.hidden = 0) AS pieces
+  FROM item_sets s
+  WHERE s.name LIKE ?1
+    AND EXISTS (SELECT 1 FROM items i WHERE i.set_id = s.id AND i.hidden = 0
+                  AND i.inventory_type IN (1,3,4,5,6,7,8,9,10,16,19,20))
+  ORDER BY (s.name LIKE ?2) DESC, pieces DESC, s.name LIMIT 20`;
+
+// The pieces themselves, best-first per slot so a set that carries both a 1H and a 2H
+// resolves to one weapon rather than fighting itself.
+// One random wearable item, for the dressing room's dice. Restricted to items that
+// actually CHANGE the picture -- an entry with no appearance row shows nothing, which
+// reads as a broken button -- and to uncommon and better, since the grey pool is mostly
+// vendor trash and test rows.
+export const Q_DRESS_RANDOM = `
+  SELECT i.entry, i.name, i.inventory_type AS inv
+  FROM items i
+  JOIN item_appearance a ON a.display_id = i.display_id
+  WHERE i.hidden = 0 AND i.quality >= 2 AND i.inventory_type IN (SLOTS)
+  ORDER BY RANDOM() LIMIT 1`;
+
+export const Q_SET_PIECES = `
+  SELECT i.entry, i.name, i.quality, i.inventory_type AS inv, di.icon
+  FROM items i LEFT JOIN item_display_info di ON di.ID = i.display_id
+  WHERE i.set_id = ?1 AND i.hidden = 0
+  ORDER BY i.item_level DESC, i.entry`;
+
 // bonuses with the bonus spell's text (s1..d3 let the viewer resolve $s tokens).
 export const Q_ITEMSET_BONUSES = `
   SELECT b.threshold, s.entry AS spell, s.name AS spell_name, s.description,

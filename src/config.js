@@ -98,6 +98,13 @@ export const WEBTHUMB_BRANCH = EXPANSION === "tbc" ? "tbc" : "classic";
 // Blackforge" but TBC's "Garek") -- worse than the missing thumbnail that surfaced this.
 export const OWN_MODEL_THUMBS = CORE === "turtle";
 
+// The interactive 3D viewer runs on models we converted out of the TURTLE client, and an
+// ITEM display_id is no more a shared namespace than a creature one -- serving these on a
+// cmangos row would dress the model in confidently wrong gear. Gated the same way, for
+// the same reason. (The DB half is gated separately by caps().appearance, since a Turtle
+// DB built before this feature has no item_appearance table either.)
+export const OWN_ITEM_MODELS = CORE === "turtle";
+
 const IS_DEV = DATASET === "dev";
 
 const REPO = import.meta.env.VITE_GH_REPO || "Xian55/tortoise-db-viewer";
@@ -166,6 +173,9 @@ export const MAPS_BASE_MAIN = `${R2_ASSETS}maps/`;
 // Locally-rendered creature model thumbnails (Turtle-custom models Wowhead lacks).
 // Client-derived + branch-independent, so R2-fixed like maps (not dataset-suffixed).
 export const MODEL_THUMBS_BASE = `${R2_ASSETS}model-thumbs/`;
+// Converted 3D models + their textures for the interactive viewer (src/modelviewer.js).
+// Turtle-derived and Turtle-gated (OWN_ITEM_MODELS), so R2-fixed like the thumbs above.
+export const MODELS_BASE = `${R2_ASSETS}model3d/`;
 // Extracted game audio (NPC voice/combat sounds, zone music+ambience). Dataset-suffixed
 // like maps: a SoundEntries id is no more a shared namespace across games than a
 // display_id is, and the TBC client's audio is a different set entirely.

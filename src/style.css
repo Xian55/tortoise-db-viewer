@@ -590,6 +590,17 @@ a.ilink.zone { color: #8fd18f; }
   border: 1px solid var(--border); border-radius: 8px; background: #06060a; }
 /* native fullscreen: fill the screen, drop the framing so no gaps show */
 #zonemap:fullscreen { border: 0; border-radius: 0; }
+/* 3D item preview (src/modelviewer.js). Needs an explicit height: the canvas is sized
+   from the host element, and a host that sizes itself from its content collapses to 0. */
+.mv-host { height: 100%; min-height: 380px; position: relative; display: flex;
+  align-items: center; justify-content: center; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 8px;
+  /* A dark item on a near-black pane disappears; the soft radial lifts the middle
+     just enough to read a silhouette without looking like a lit stage. */
+  background: radial-gradient(circle at 50% 45%, #1c1c26 0%, #0b0b11 70%);
+  cursor: grab; touch-action: none; }
+.mv-host:active { cursor: grabbing; }
+.mv-host canvas { display: block; width: 100%; height: 100%; }
 #zonemap .wm-fs a { display: flex; align-items: center; justify-content: center; }
 .zone-page .npc-head { margin-bottom: 12px; }
 /* Dark theme for Leaflet controls. leaflet.css ships in the lazy zonemap chunk
@@ -1580,3 +1591,178 @@ td .pet-rank { margin: 1px 0; }
 .sound-files li, .sound-lines li { padding: 3px 0; }
 .snd-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); word-break: break-all; }
 .sound-player { margin: 10px 0 6px; }
+
+/* Dressing room (?dressing): the mannequin plus its appearance pickers. */
+.dressing h1 { margin-bottom: 4px; }
+.dress-bar { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 12px 0; }
+.dress-pick { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.dress-pick select { min-width: 92px; }
+
+/* Dressing room: a paperdoll -- slots flank the character, so their POSITION says which
+   body part they are. The gap is deliberately generous (unlike Wowhead's, where the
+   columns crowd the model): the character is the thing being looked at. */
+/* The slots flank the model the way the in-game window arranges them, so position is
+   what says which slot a plate is. They were 200px wide with a 56px moat on either side
+   -- 512px of the page spent on eleven mostly-empty rectangles -- while the model sat in
+   what was left. Narrower plates and a tighter gutter hand that width back to the stage,
+   which is the thing anyone came here to look at. */
+.dress-room { display: grid; grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) 236px;
+  gap: 14px; align-items: stretch; margin: 8px auto; max-width: 1120px; }
+/* Centred in the column, not stacked at the top and not spread to the corners. Stacking
+   left the bottom third of both flanks empty; spreading (space-between) pushed the plates
+   so far apart they stopped reading as one list. */
+.dress-col { display: flex; flex-direction: column; justify-content: space-between; gap: 5px; }
+/* "Wear a set" heads the item rail rather than sitting in the bar below the model. Its
+   picker opens DOWNWARD from whatever it is anchored to, so from the bottom of the page
+   the results fell off the screen -- you typed and could not see what you had found. */
+.dress-set-btn { width: 100%; margin-bottom: 3px; flex: 0 0 auto; }
+/* Everything worn is one list, so the weapons need no row of their own -- which is what
+   used to push them below the fold. */
+.dress-weapons { display: none; }
+/* The room sizes itself to the viewport: the model takes whatever height is left once
+   the header, the pickers and the action bar have had theirs, so a visitor never has to
+   scroll the character out of view to reach a slot. */
+.dressing .dress-room { height: calc(100vh - 210px); min-height: 420px; max-height: 860px; }
+.dress-slot { display: flex; align-items: center; gap: 7px; width: 100%; padding: 3px 5px;
+  background: none; border: 1px solid var(--border); border-radius: 8px; color: inherit;
+  cursor: pointer; text-align: left; font-size: 12px; }
+.dress-slot:hover, .dress-slot.active { border-color: var(--accent, #c8a24a); background: var(--panel); }
+.dress-slot-icon { flex: 0 0 auto; width: 30px; height: 30px; border: 1px solid var(--border);
+  border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.dress-slot-icon img, .dress-slot-icon .icon-sprite { width: 26px; height: 26px; }
+/* The empty-slot silhouette is a UI texture, not an item icon: dimmer than a real item so
+   an equipped slot still reads as the filled one at a glance. */
+.slot-art { opacity: 0.42; }
+.dress-slot:hover .slot-art { opacity: 0.7; }
+/* The name truncates while the take-off button keeps its own space, so a long item name
+   cannot squeeze the X out of the slot. */
+.dress-slot-label { flex: 1 1 auto; min-width: 0; color: var(--muted); display: flex;
+  align-items: center; gap: 6px; overflow: hidden; }
+.dress-item { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dress-off { flex: 0 0 auto; }
+.dress-lock { flex: 0 0 auto; background: none; border: 0; cursor: pointer; padding: 0 1px;
+  font-size: 11px; line-height: 1; opacity: 0.35; filter: grayscale(1); }
+.dress-lock:hover { opacity: 0.8; }
+.dress-lock[aria-pressed="true"] { opacity: 1; filter: none; }
+.dress-slot.locked { border-color: #4a4326; }
+/* The view's own controls sit ON the view, along its bottom edge: they act on the model
+   rather than on the outfit, and putting them in the action bar below pushed that bar to
+   two rows -- which broke the one rule this layout has, that nothing falls below the
+   fold. */
+.mv-wrap { position: relative; display: flex; min-width: 0; min-height: 0; }
+.mv-wrap > .mv-host { flex: 1 1 auto; }
+.mv-tools { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 999px;
+  border: 1px solid var(--border); background: rgba(13, 14, 18, 0.78); }
+.mv-tool { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border: 0;
+  border-radius: 999px; background: none; color: var(--muted); cursor: pointer;
+  font: inherit; font-size: 12px; white-space: nowrap; }
+.mv-tool:hover { color: var(--text); background: var(--panel2); }
+.mv-tool[aria-pressed="true"] { color: var(--gold, #ffd100); background: var(--panel2); }
+.mv-chk { cursor: pointer; }
+.mv-chk input { accent-color: var(--gold, #ffd100); margin: 0; }
+/* Fullscreen: the wrapper becomes the screen, so the fixed pane height must not follow. */
+.mv-wrap:fullscreen { background: var(--bg); }
+.mv-wrap:fullscreen > .mv-host { height: 100%; width: 100%; border-radius: 0; }
+.dress-slot.filled .dress-slot-label { color: inherit; }
+.dress-off { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
+.dress-off:hover { color: var(--fg); }
+.item-dress { margin: 6px 0 2px; font-size: 13px; }
+
+/* The dressing room's appearance pickers: the character creator's, not a form's. Each
+   field is a labelled box; what can be previewed (race portraits, skin and hair colours)
+   is shown rather than numbered, and only the rest keeps a stepper. */
+/* The room is two rails around the model: everything you WEAR down the left, everything
+   about the CHARACTER down the right, and nothing underneath. That last part is the
+   point -- with a row of weapon slots and an action bar stacked below the stage, the
+   weapons sat under the fold and changing one meant scrolling the model out of view. */
+.dress-bar { display: flex; flex-direction: column; gap: 8px; }
+.dfield { border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  padding: 8px 10px; display: flex; flex-direction: column; }
+.dfield-lbl { display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  margin-bottom: 7px; }
+.dfield-lbl .dim { letter-spacing: 0; text-transform: none; font-size: 11px; }
+.race-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.race-sep { display: none; }                 /* the grid does the separating */
+.race-tile { display: grid; justify-items: center; gap: 2px; padding: 3px 2px 2px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--muted);
+  cursor: pointer; font: inherit; font-size: 9px; line-height: 1.1; }
+.race-tile img { width: 38px; height: 38px; border-radius: 4px; display: block; }
+.sex-tile i { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 4px;
+  background: var(--panel2); font-style: normal; font-size: 19px; color: var(--muted); }
+.sex-tile[aria-pressed="true"] i { color: var(--gold, #ffd100); }
+.race-tile:hover { border-color: #3b414f; color: var(--text); }
+.race-tile[aria-pressed="true"] { border-color: var(--gold, #ffd100); color: var(--text); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
+.seg button { padding: 4px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel2);
+  color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; }
+.seg button:hover { border-color: #3b414f; color: var(--text); }
+.seg button[aria-pressed="true"] { border-color: var(--gold); color: var(--text); }
+.swatches { display: grid; grid-template-columns: repeat(6, 24px); gap: 5px; align-content: start; }
+.sw { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; padding: 0;
+  cursor: pointer; font: inherit; font-size: 10px; color: var(--text); box-shadow: 0 0 0 1px var(--border); }
+.sw:hover { box-shadow: 0 0 0 1px #545b6b; }
+.sw[aria-pressed="true"] { border-color: var(--gold); }
+.sw-num { background: var(--panel2); }
+.steps { display: flex; flex-direction: column; justify-content: center; gap: 7px;
+  min-width: 190px; height: 100%; }
+.stepper { display: flex; align-items: center; gap: 5px; }
+.stepper button { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--panel2); color: var(--text); cursor: pointer; font: inherit; padding: 0; line-height: 1; }
+.stepper button:hover { border-color: #3b414f; }
+.stepper .val { flex: 1; text-align: center; font-size: 12px; color: var(--muted);
+  font-variant-numeric: tabular-nums; }
+.dress-saved { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px auto 0;
+  max-width: 1120px; font-size: 12px; }
+.dress-saved .dim { color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px; }
+.outfit-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px 2px 8px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--panel); }
+.outfit-x { background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit;
+  padding: 0 3px; line-height: 1; }
+.outfit-x:hover { color: var(--text); }
+.dress-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+  gap: 8px; margin: 0 auto 4px; max-width: 1120px; padding: 9px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--panel); }
+.dress-actions #dress-msg { flex-basis: 100%; text-align: center; font-size: 12px; }
+.dress-actions #dress-msg:empty { display: none; }
+.dress-saved { justify-content: center; }
+/* Weapons sit under the model, as they do in the in-game window. */
+/* Weapons sit UNDER the model, centred on it, rather than trailing along the bottom of
+   the page: they are worn on the character like everything else, and lining them up with
+   the left-hand column read as a fourth, unrelated group. */
+.dress-weapons { display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+  gap: 8px; margin: 0 auto 10px; max-width: 1040px; }
+.dress-weapons .dress-slot { width: auto; flex: 0 1 176px; }
+.dress-note { font-size: 12px; }
+/* The slot picker reuses the top-bar search panel (.search-dropdown / .sd-row), so both
+   searches on the site look and behave the same. */
+.dress-pop[hidden] { display: none; }
+/* The panel is capped to the room it has (see place()), so the RESULTS scroll inside it
+   rather than the panel growing off the screen. The search box stays put while they do. */
+.dress-pop { padding: 6px; display: flex; flex-direction: column; overflow: hidden; }
+.dress-pop[hidden] { display: none; }
+.dress-pop #dress-hits { overflow-y: auto; min-height: 0; }
+/* Opening upward, the search box belongs at the BOTTOM -- next to the slot it belongs to
+   and under the thumb that is about to type in it. */
+.dress-pop.up { flex-direction: column-reverse; }
+.dress-pop.up input[type="search"] { margin: 4px 0 0; }
+.dress-pop input[type="search"] { width: 100%; margin-bottom: 4px; padding: 5px 8px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: inherit; }
+.dress-pop .sd-row .icon-sprite, .dress-pop .sd-row img { width: 20px; height: 20px; flex: none; }
+/* Narrow screens: the columns stop flanking and sit under the model. */
+@media (max-width: 900px) {
+  /* Stacked on a narrow screen the rails become rows again, and the height cap goes:
+     scrolling is fine when there is no room to avoid it. */
+  .dress-room { grid-template-columns: 1fr; gap: 12px; }
+  .dressing .dress-room { height: auto; max-height: none; }
+  .mv-host { height: 60vh; }
+  .dress-col { flex-direction: row; flex-wrap: wrap; }
+  .dress-col .dress-slot { width: auto; flex: 1 1 150px; }
+}
+
+/* Character-sheet 3D preview: collapsed to just its bar until asked for. */
+.char-3d { margin: 14px 0; }
+.char-3d-bar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.char-3d .mv-host { display: none; }
+.char-3d.open .mv-host { display: flex; }

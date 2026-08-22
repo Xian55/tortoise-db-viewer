@@ -128,6 +128,9 @@ python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/min
 python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc -> scripts/data/talents.json (talent-tree structure)
 python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
+python scripts/extract-race-icons.py  # LOCAL: crops the client race-portrait sheet -> public/icons/race/<chrRacesId>-<m|f>.webp (dressing-room race picker)
+python scripts/extract-slot-icons.py  # LOCAL: the paperdoll empty-slot silhouettes (Interface\PaperDoll\UI-PaperDoll-Slot-*) -> public/icons/slot/<slot>.webp
+python scripts/build-char-palette.py  # LOCAL: averages each skin/hair texture -> scripts/data/char-palette.json (the swatch colours; reads the EXPORTED char textures, so no client needed)
 python scripts/transcribe-sounds.py   # LOCAL+GPU: Whisper over public/sounds -> scripts/data/voice-transcripts-auto.json (machine transcripts for the ~1.6k clips no text table records). `--model`/`--compute`/`--only`/`--limit`. Needs faster-whisper. See "Transcribing the clips nothing writes down"
 bun scripts/extract-script-sounds.mjs # LOCAL: server ScriptDev2 src + the SQL dumps -> scripts/data/script-sounds.json (script_name -> the script_texts entries it speaks + sounds it plays, plus the sound-id worklist extract-sounds.py needs). Run BEFORE extract-sounds.py
 python scripts/extract-sounds.py      # LOCAL: client MPQ audio -> public/sounds/**.ogg (Opus, R2-only) + scripts/data/sound-map.json (committed mapping). `--only creature,npc,zone,va,cdir,text`, `--limit N`, `--jobs N`, `--dry-run`. Needs ffmpeg. See "Sounds"
@@ -138,6 +141,9 @@ python scripts/extract-cmangos-dbc.py # LOCAL: vanilla 1.12 client DBCs -> scrip
 SQL_SOURCE=cmangos DATA_SUBDIR=data-vanilla-cmangos bun scripts/build-db.mjs # build the vanilla/cmangos dataset from cmangos's SQLite DB (+ cmangos-dbc.json) instead of Turtle dumps
 bun scripts/probe-wowhead-thumbs.mjs  # LOCAL: classify every creature display_id by whether Wowhead's Classic webthumb exists -> scripts/data/model-thumb-missing.json (the 404 set = Turtle-custom models to render ourselves). Needs built DB. --fresh ignores the cache
 python scripts/render-model-thumbs.py # LOCAL: render the missing-worklist creature models (client MPQ -> M2 v256 parse -> headless-GL) -> public/model-thumbs/<displayId>.webp (300x300 transparent) + manifest.json. Skips CHARACTER models (need char-texture compositing). --only ID / --size N / --characters / --force. Needs moderngl+numpy+Pillow+StormLib+GPU
+python scripts/extract-item-appearance.py # LOCAL: client ItemDisplayInfo.dbc + the built DB -> scripts/data/item-appearance.json (display_id -> model/texture/geosets/component textures; powers the 3D tab). --probe prints the field-layout evidence and writes nothing. Run build-db FIRST
+python scripts/extract-char-appearance.py # LOCAL: client ChrRaces/CharSections/CharHairGeosets/CharacterFacialHairStyles/HelmetGeosetVisData -> scripts/data/char-appearance.json (the mannequin's model paths + appearance options). --probe prints the layout evidence
+python scripts/export-models.py       # LOCAL: client M2 v256 -> public/model3d/**.m2b + .webp textures (R2-only) for the in-browser viewer. --sets item,char / --only NAME / --limit N / --force
 bun scripts/build-tooltips.mjs        # compact per-entity JSON for the embeddable tooltip widget -> dist/tt/<prefix>/<id>.json (run AFTER vite build)
 bun scripts/build-api.mjs             # public JSON API: rich per-entity JSON + tooltipHtml -> dist/api/<i|n|q|s>/<id>.json (served from R2 at api.tortoiseclothing.org); API_LIMIT=N for a fast subset
 ```
@@ -586,6 +592,322 @@ What an NPC says when you *talk* to it, and the only place a quoted phrase is se
 - Rendered through `questText()`, since gossip carries the same `$B`/`$N` tokens quest text
   does. **Optional schema** — `caps().gossip` gates the tab and the search query.
 
+### 3D model viewer (item page "3D" tab)
+
+An interactive preview of the item's real model, rendered in the browser with three.js
+from models we convert ourselves. **44% of this site's 15,534 equippable items are
+Turtle-custom**, so every Wowhead-backed viewer is structurally blind to the half of the
+wardrobe people actually come here for — and `Miorey/wow-model-viewer`, the obvious
+dependency, is a thin wrapper over Wowhead's proprietary `ZamModelViewer` that needs
+jQuery and a **CORS proxy server** besides. Same call, same reason, as `OWN_MODEL_THUMBS`.
+
+- **`item_appearance`** (`scripts/data/item-appearance.json` via
+  `extract-item-appearance.py`, committed; build-db loads it) is display_id → the model
+  (`model_l`/`model_dir`), its texture (`tex_l`), the geoset groups, the helmet-visibility
+  ids, and the 8 armor component textures. **Turtle-only** and gated by `caps().appearance`
+  — a display id is not a shared namespace.
+- **`ItemDisplayInfo.dbc` is 23 fields in 1.12 and the layout everyone quotes is WotLK's**,
+  which has a second icon field and shifts the whole `Texture[8]` block by one. The real
+  order is `ID, ModelName[2], ModelTexture[2], InventoryIcon, GeosetGroup[3], Flags,
+  SpellVisualID, GroupSoundIndex, HelmetGeosetVis[2], Texture[8], ItemVisual`, and it is
+  pinned by evidence, not memory: field 11's values are all valid `ItemGroupSounds` ids,
+  12-13's all valid `HelmetGeosetVisData` ids, field 9 only ever holds 1/2/4 (bits), and
+  every chest writes torso-upper+lower while every glove writes arm-lower+hand.
+  `extract-item-appearance.py --probe` re-prints that evidence and writes nothing.
+- **`.m2b`, not glTF** (`scripts/export-models.py` → `src/m2b.js`). The semantics that must
+  survive have no glTF home: geoset ids, ADDITIVE blend, and above all the texture-unit
+  **type** (0 embedded / 1 char skin / 2 object skin / 6 hair), which is the whole
+  mechanism by which one mesh is re-textured per item. In glTF each would be an `extras`
+  bag we parse ourselves — a custom format wearing a costume, plus a ~150 KB loader.
+  The pose is **baked** (Stand frame 0, the same `skin()` the thumbs use), so v1 needs no
+  runtime skinning; bones and attachments still ship for the character work.
+- **A texture is bound per SLOT, never per model.** An effect weapon is its own mesh plus
+  glow/lightning planes that name their own textures inside the file (Thunderfury:
+  `SPELLS\ZAP1.BLP`, `LIGHTNINGBALL.BLP`, and only slot 4 is the blade). Binding the item
+  texture to everything painted the blade onto its own glow and rendered as a lit square.
+  Embedded textures export by client path to `model3d/tex/<path>.webp`.
+- **Framing uses the opaque submeshes only** — effect planes reach well past the mesh, so
+  including them shrinks the item and pushes it off-centre. Lighting copies the thumb
+  renderer's (amb+key+fill); these textures are pre-shaded and a "normal" 3-point rig
+  blows them out.
+- **It must cost nothing when idle**, which is not free: the loop renders only while
+  something moves, sleeps when the pane is hidden (IntersectionObserver) or the browser
+  tab is, and the idle spin stops after one full revolution. Measured under software
+  rendering: 3.3% of a core while spinning, **0.0% at rest or hidden**. The spin is
+  per-SECOND, not per-frame — a frame-based step silently doubled the revolution once the
+  draw rate was throttled to 30fps.
+- **The pane mounts on VISIBILITY, not on the tab click.** Relying on the click leaves it
+  stuck on "Loading model…" whenever the listener is missing — which is exactly what a
+  Vite HMR update does, by re-running `main.js` while leaving the rendered DOM in place.
+- Offered only for models that stand alone: `per_race` items (every helm, most shoulders,
+  modelled once per race+gender) and texture-only armor need a character to sit on, so
+  they get no tab rather than an empty one. ~2.5k of 10.2k displays qualify today.
+- Assets are the R2 set `model3d/` (817 models 7.7 MB + 1,559 item textures 6.9 MB + 274
+  embedded 1.8 MB), `optional` like `sounds`. The DB cost is **+0.11 MB brotli**.
+
+### The mannequin (`?dressing`)
+
+The playable character model, rendered from the same pipeline, with race / gender / skin /
+face / hair / facial-hair pickers whose state rides in the URL. Phase one of the transmog
+builder: the rig everything else hangs off. `scripts/extract-char-appearance.py` writes the
+committed `scripts/data/char-appearance.json` (10 races x 2 genders, 6,617 CharSections
+rows, 5,552 textures); `export-models.py --sets char` writes the 20 models (4.0 MB -- 40x
+smaller than the client's 3.5 MB each, since the animation tracks are not shipped) plus
+their textures, and copies the JSON into the R2 set. The viewer FETCHES that JSON rather
+than bundling it: at ~1 MB it would otherwise be the largest single thing in the main JS
+chunk, paid by every visitor to serve one page.
+
+Four things here are counter-intuitive enough to be worth stating, all of them found by
+looking rather than by recalling:
+
+- **The body texture is composited, and the client never ships the result.** It paints
+  skin, face, underwear (and later every armor piece) into fixed rectangles of one 256x256
+  atlas. `src/charcomposite.js` `REGIONS` holds those rectangles; they were recovered by
+  matching real component textures into the client's own `Textures\BakedNpcTextures\`
+  composites and taking the modal offset over hundreds of bakes. Eight of ten agreed
+  unanimously; `torso_u` matched nothing confidently and is pinned by exhaustion instead --
+  the two columns tile the atlas exactly, and it is the only slot left.
+- **Geoset selection is "variant 1, or nothing if the model has no variant 1"** -- not
+  "lowest variant", and not "body groups only". Both alternatives were tried and both are
+  wrong in a way that looks like a different bug: dropping the clothing groups leaves a
+  torso, hands and feet floating with no legs (Human male's bare legs ARE geoset 1301),
+  while taking each group's lowest variant dresses a naked character in a sleeve (802) and
+  a kilt (1302), because that group has no variant 1 at all. The cape group (15) is the one
+  explicit exclusion: with no cloak equipped its geoset still draws an untextured sheet.
+- **Pillow decodes palettized BLP2 with alpha 0 everywhere**, because it takes alpha from
+  the palette entry instead of from the separate alpha section that follows the indices.
+  Those are exactly the CUTOUT textures -- hair, capes, fur -- so the mesh does not look
+  wrong, it vanishes at the alpha test, and every hairstyle on every race was invisible.
+  `m2.py` `_decode_blp2_raw` handles encoding 1 with alpha depth 0/1/4/8; DXT and BLP1
+  still go through Pillow, which gets those right.
+- **A hairstyle is two halves.** Its `CharSections` row carries three textures: [0] is the
+  hair MESH texture, bound to the model's own texType 6 slot, while [1]/[2] are the scalp,
+  composited into the face rectangles so the hairline meets the head. Using only the first
+  gives a floating wig; using only the others gives a bald character with a painted-on
+  hairline.
+- **The cape group is not all cape.** Geoset 1501 is a 20-triangle patch of BODY textured
+  from the body atlas, closing the back where a cloak attaches; 1502-1506 are the cloak
+  sheets, textured from the item (texType 2). Excluding group 15 wholesale -- which looks
+  obviously right -- punched a hole between the shoulders of every character. The
+  variant-1 rule already separates the two, so nothing is excluded by group at all.
+- **A tauren has no texType 6 unit at all.** Its mane, horns, tail and hoof soles hang off
+  an UNNAMED texType 8 -- measured across all 20 character models, the only unnamed 7/8
+  unit any race has (everyone else's type 8 names its own file, for an eye glow). That unit
+  is a SECOND FULL ATLAS: those meshes carry atlas UVs spanning the whole sheet (the mane
+  samples the torso/leg columns), which the client fills from `<skin>_Extra.blp` -- 17
+  files, and tauren are the only race that ships any. Only every third skin index has one
+  (male 0,3,6..., female 0,2,4...), so a colour without its own takes the nearest BELOW it.
+  Two wrong answers on the way, both of which look like a texture bug rather than a
+  binding one: falling through to the body atlas painted the mane out of the atlas's FACE
+  rectangle, so a tauren wore a smeared copy of its own face above the horns; and binding
+  the mane sheet the CharSections hair row names stretched one 128x64 piece flat across the
+  crest. The probe for which `_Extra` exists is a load ATTEMPT, not a HEAD request -- the
+  dev server answers a missing file with index.html at 200, so only a decode failure tells
+  the truth.
+- **A named texture wins over its type.** A Blood Elf's eye glow is texType 8 AND names
+  its own BLP, so a slot rule keyed on `type === 0` handed it the body atlas and painted
+  skin over the eyes. Substitute only the types we composite (1/2 body, 6 hair); anything
+  that names a file gets that file.
+- **Props the client animates are skipped on characters.** Turtle's goblin models carry a
+  cloth rag as an embedded-texture plane; with the pose baked at Stand frame 0 and no
+  cloth simulation it hangs straight out from the waist like a flag.
+- **CharSections references art the client does not ship** -- 100 distinct files, 1,262
+  references, mostly high colour indices on Turtle's added races. The extractor verifies
+  every texture and drops the dead ones (419 rows lost all three and are removed), because
+  trusting the table renders a Troll at skin colour 9 nude and leaves bald patches where a
+  scalp is missing. An appearance the client cannot paint is not offered in the picker.
+
+**The pickers are the character creator's, not a form's** (`?dressing`). Seven `<select>`s
+in a row is a form: every change costs open-scroll-pick, and "Skin 4" says nothing about
+what 4 looks like. Anything with a preview now shows it and everything else steps:
+
+- **Race is its portrait**, cropped from the client's own
+  `UI-CharacterCreate-Races.blp` by `extract-race-icons.py` -- the twin of the class-emblem
+  script, and committed for the same reason. **The grid is not Blizzard's**: vanilla ships
+  4 columns addressed by `RACE_ICON_TCOORDS`, Turtle widened it to 5 for the races it added,
+  and the cells are SQUARE 64px while the texture is 512x256 -- only 322px of it is content,
+  the rest being power-of-two padding. Dividing the texture width by the column count gives
+  102px cells that straddle their neighbours and slice every portrait; take the cell size
+  from the row height instead. Icons are per race AND gender, so the grid repaints when the
+  gender flips.
+- **Skin and hair colour are the colour**, sampled offline by `build-char-palette.py`:
+  it averages each option's texture into one hex (~4 KB for all 38 palettes) and is
+  BUNDLED rather than fetched -- `char-appearance.json` is ~1 MB and lives on R2, and the
+  picker needs its colours on first paint. Two things it must do: mask the sample (a skin
+  texture is a body ATLAS, so averaging the whole thing drags the tone toward the dead
+  space between the rectangles -- the upper-left quadrant is torso skin on every race) and
+  ignore anything the alpha test would drop, since a hair texture is mostly transparent.
+  **A palette that samples one colour for every index is dropped**, not shown: tauren hair
+  is exactly that (the option changes geometry the texture does not follow), and nine
+  identical circles claim a choice that does not exist -- those fall back to numbers.
+- **Face, hairstyle and markings keep a stepper** because nothing can preview them, but it
+  wraps and counts ("Hair 12 / 26"). **What each stepper is CALLED is per race, and the
+  client says so**: `ChrRaces.dbc` fields 26/27/28 name a token per race (male facial,
+  female facial, hair) and `Interface\GlueXML\GlueStrings.lua` gives each token its text,
+  both pulled by `extract-race-icons.py` into the committed `scripts/data/race-labels.json`.
+  A troll's option is **Tusks**, an undead's and a goblin's **Features**, a night elf
+  female's **Markings**, a human female's **Piercings**, and a tauren's HAIR slider is
+  **Horns** while their facial one is "Hair". Calling them all "Facial hair" sends people
+  looking for a beard slider that does not exist -- and the heuristic this replaced ("Face
+  detail" when a race had no facial textures) was right about goblins by accident and wrong
+  about trolls.
+- **Changing race CLAMPS every other option.** A gnome has fewer skins than a tauren, and
+  carrying an out-of-range index across the change renders a character with no head.
+- **The room is two rails and nothing underneath**: everything you WEAR down the left
+  (weapons included -- they get no row of their own), everything about the CHARACTER down
+  the right, model between them. That is a fit requirement rather than taste: with a
+  weapons row and an action bar stacked below the stage, the weapon slots sat under the
+  fold, so changing one scrolled the character out of view. The room is sized from the
+  VIEWPORT (`calc(100vh - 210px)`) so the model takes whatever height is left; measured
+  fitting at 1366x768, 1320x900 and 1920x1080. Below the breakpoint the rails stack and
+  the cap is dropped -- scrolling is fine when there is no room to avoid it.
+- **Gender leads the race row** and shares its tile class, so a selector like
+  "first pressed .race-tile" reads the GENDER as the race (it cost three smoke failures).
+  Scope on `data-key`.
+- The action bar under the model is one row: wear a set, roll a random look, undress, save
+  the outfit, share it. **A saved outfit is just its query string** under a name in
+  `localStorage` -- the URL already IS the outfit, which is what makes a look shareable.
+- **Camera panning is on** (`screenSpacePanning`): orbit alone can only circle the model's
+  centre, so without it there is no way to put the trim of a pauldron in the middle of the
+  screen. **Reset** restores the opening view -- through `controls.reset()` against a
+  `saveState()` taken at mount, never by writing `camera.position`, since OrbitControls
+  keeps its own spherical state and moving the camera behind its back leaves that state
+  holding the old rotation. Damping has to be switched OFF and `update()` called BEFORE
+  the reset: it hoards the leftover delta from the drag and applies a decaying fraction of
+  it for about a second (the view landed home, then slid 0.4 radii off), and running
+  update() *after* the restore applies that delta in full instead (6 degrees off).
+- **The model faces +X, and that was measured rather than recalled.** A character model is
+  symmetric across Y (human male spans y -0.54..0.54 against x -0.49..0.33), so Y is
+  left-right and the figure faces along X -- feet and face both on +X. The camera therefore
+  opens at `front: [3.6, 0.2, 0]`. The old vector put it on -Z, i.e. beside the character:
+  everyone got a profile on load, which only ever looked right because the idle spin
+  happened to carry the model past the front while screenshots were taken.
+- **The room opens STILL.** `opts.spin` defaults to on for an item preview but the room
+  passes false, and a Rotate toggle turns the turntable on. Note `mountCharacterViewer`
+  builds a FRESH options object for `buildViewer`, so anything meant for the viewer has to
+  be forwarded by name -- the turntable state fell in that gap once and a room that asked
+  for a still model still span.
+- **The camera survives a re-mount.** Every equip and every appearance change builds a new
+  viewer, so `view()` hands the next one an offset from the target and a target offset from
+  the model's centre, both in units of the model's OWN radius -- never world coordinates,
+  since the next model is a different size (a gnome after a tauren) and absolute numbers
+  put the camera inside its head.
+- **Framing may only ever WIDEN for attachments.** `attachedRadius` measures what is
+  attached, so a shield or a helm -- small, near the centre -- reported a fraction of the
+  body radius and, taken as a `min`, pulled the camera into the character's chest. It is
+  clamped to `[body.radius, body.radius * 1.1]`.
+- **`renderer.setSize(w, h, false)`.** With `updateStyle` left on, three writes the size
+  onto the canvas as an inline width/height in pixels, and an inline style outranks the
+  stylesheet that sizes the canvas to its pane -- so returning from fullscreen the canvas
+  kept the screen's height, overflowed the room and pushed the page layout apart.
+- **A "facial hair" variation is TWO choices on some races, and the data says which.** A
+  troll's fourteen tusk variations resolve to five tusk SHAPES (geosets) and nine war
+  PAINTS (textures), and the game picks one of each -- so one index cannot express a look.
+  A human's nine beards are nine beards: shape and texture travel together, and splitting
+  them would offer 54 combinations the game does not have. The test is the collapse: split
+  when the distinct geoset sets number two thirds of the variations or fewer AND some
+  variation carries no texture (so "no paint" is a real option). Measured, that is trolls
+  (0.36 / 0.60), undead (0.35 / 0.25) and night elf females (0.10) -- not orc males (0.91)
+  or human males (0.67), matching what those creators actually offer. Where a race has only
+  ONE shape the shape stepper hides itself and the race's word moves to the paint, which is
+  exactly what "Markings" means on a night elf female. `?paint=` carries it; absent, it
+  follows `?facial=`, so every link written before the split still renders what it said. Read in order, a troll's tusks (column 1) resolve to geoset 2xx, and no
+  troll model contains a single 2xx -- so trolls had no tusks at all while the picker
+  offered fourteen styles of nothing. The order was scored, not guessed: of the six
+  permutations, 1/3/2 resolves 240 of 286 references against the models' actual geosets,
+  the next best 165, and in-order only 146. What is left over is styles naming art their
+  model does not ship (dwarf males reference 2xx and carry none); the client skips those
+  and so do we, since only geosets the mesh actually has are ever drawn. A corollary worth
+  remembering: several styles can share one geoset -- troll males have 14 styles over 5
+  tusk shapes, differing by texture -- so "the geoset did not change" is not by itself
+  evidence of a bug.
+- **Groups 1-3 belong to the FACIAL selection, not to the naked body** (`NOT_BODY_GROUPS`).
+  Left in the "variant 1" default pass they got a piece of their own on top of the chosen
+  style, so two were drawn at once and a human male could not shave.
+- **Empty slots wear the game's own silhouette** (`extract-slot-icons.py`). These are UI
+  textures, not item icons: Blizzard's icon CDN 403s on them (`inventoryslot_head.jpg`
+  redirects to render.worldofwarcraft.com and is refused), so the only public copies are
+  Wowhead rehosts and we extract our own. Two client names are not guessable -- the wrist
+  texture is `Wrists`, and Back has none at all in 1.12 (the paperdoll draws the cloak over
+  the chest slot), so it borrows Chest.
+- **"Wear a set" heads the item rail rather than the action bar.** The picker opens
+  DOWNWARD from whatever it is anchored to, so from the bottom of the page its results fell
+  off the screen. The panel itself now flips UP when there is more room above than below
+  (the slots at the foot of the rail -- ranged, off hand -- always take that path) and is
+  capped to the space it has, with the results scrolling inside it; opened upward the
+  search box sits at the BOTTOM, next to the slot it belongs to. Anything that opens the picker must also be excluded from the room's
+  close-on-outside-click handler, or the same click shuts the panel it just opened -- that
+  bug happened twice, once per new button.
+
+### Wearing armor (`src/chargear.js`)
+
+Most gear is not a model: 5,362 of 10,204 item displays carry nothing but the eight
+component textures painted into the body atlas, plus a geoset swap. `export-models.py
+--sets comp` writes them (10,072 files / 18.8 MB), `chargear.js` holds the rules, and the
+character sheet's **Show in 3D** panel wears a real `?loadout=`.
+
+- **A geoset value is an OFFSET FROM THE BARE VARIANT, not a variant number.** Robe of the
+  Archmage settles it: its third value is 1 and a robe must show geoset 1302, because 1301
+  is the bare leg. Same for a glove's 1 -> 402, since 401 is the bare hand. So
+  `geoset = group*100 + value + 1`, and 0 means "leave the body alone".
+- **Which group each of the three values addresses depends on the slot**, derived by
+  cross-tabbing `item_appearance` against the groups the models contain: chest/shirt/robe
+  write sleeves/chest/robe (8/10/13), legs write kneepads/pants/robe (9/11/13), gloves 4,
+  boots 5, tabard 12, cloak 15 -- whose values 1..5 land exactly on the 1502..1506 cape
+  variants every model carries.
+- **Paint order is the order the pieces overlap in life**: shirt, chest, bracer, legs,
+  boots, belt, glove, tabard, cloak. A glove covers its bracer; a boot covers the trouser
+  leg; a belt sits over both.
+- **A cloak is neither texture nor model.** It is the character's own cape geoset textured
+  from the ITEM -- that is what texture-unit type 2 means on a character, so binding the
+  body atlas there painted the cape with skin and belt.
+- Armor ships as a male+female PAIR or a single unisex file, never both, so each layer
+  carries candidate urls and takes the first that loads.
+- **The key light rides the camera.** Fixed in world space it lit one side only, so
+  turning a character around to look at the back of a cloak showed it in shadow -- the
+  exact thing you rotated to see.
+- **Helms and shoulders attach as MODELS** (`SLOT_ATTACH` in `chargear.js`): the .m2b
+  carries the character's 39 attachment points, and the exporter bakes each one through
+  the bone matrices, so it is a position AND a rotation in the same posed space as the
+  vertices -- hang a helm at the BIND-pose head and it is not on the head. Ids were read
+  off a posed body, not recited: 11 is centre at 94% of height, 5/6 a mirrored pair at
+  80%, 1/2 another at 42%.
+- **A shoulder is two models and the DBC already names both** -- ModelName[0] is the left
+  piece, [1] the right (748 displays carry a second model). Guessing an `L`/`R` prefix
+  instead is wrong twice: those names already start with L/R, so it built `LLShoulder_…`
+  and attached nothing.
+- **A helm is 20 files**, one per race+gender (`Helm_Mail_D_01_HuM` … `_BeF`); the bare
+  name does not exist. `export-models.py` expands them, which is most of the 4,015 item
+  models.
+- **Which hand a weapon lands in is a property of the SLOT, not of the item.** A
+  one-hander (inv 13) is a main hand or an off hand depending on where it was equipped, so
+  reading the item alone puts a dual-wielder's second sword in the hand that already holds
+  the first. Both the dressing room and the character sheet therefore carry the slot on
+  each row (`HAND_BY_SLOT`), with the inventory type as the fallback. A shield goes to the
+  forearm point (attachment 0), not into a fist. Attachment ids were measured off a posed
+  body: 1 and 2 are a mirrored pair at 42% of height, 0 sits further out at 47%, 12 is
+  behind the spine at 76%. Inv 28 (relic) is excluded -- the game does not draw it either.
+- **A held weapon takes the hand bone's rotation and nothing else.** The `.m2b` bakes
+  Stand frame 0, and a vanilla character's bind pose is already arms-down, so the hand bone
+  sits only ~14 degrees off bind -- the weapon ends up held out from the fist rather than
+  hanging at the side. That is not a bug to correct: the client applies no rotation on top
+  of the bone either, and the alternatives were tried and rejected on screen. Pointing the
+  model's mass down (the obvious fix) hangs a claymore convincingly and tilts a bow, since
+  the models share no authored axis; rolling it a further quarter turn only changes which
+  face you see. `items.sheath` is likewise unused -- a standing character wears its weapons,
+  but a dressing room exists to show them.
+- **Framing counts what is held, up to a point.** A claymore reaches ~1.5 body radii from
+  centre and a helm's spikes reach above the head, so framing the body alone crops them;
+  framing the union lets one polearm shrink the character to nothing. The widening is
+  capped at half again, past which the weapon overflows instead.
+
+DBC layouts, likewise derived: `ChrRaces` keeps the internal name at 15 and the localized
+block at 17 (deDE at 20, zhCN 21, ruRU 22 -- which is how the block was located), and the
+male/female display ids at 4/5, where field 3 ALSO resolves to a valid character model but
+points at the wrong race. `CharacterFacialHairStyles` has three junk fields holding
+`0xCCCCCCCC` -- uninitialised memory shipped in the DBC -- before its real geoset ids at
+6-8. Turtle relabels race 10 as "High Elf" and 5 as "Undead" in the enUS block.
+
 ### Custom icons
 
 Turtle adds items whose icons are **not on Blizzard's CDN**; they live only in
@@ -726,6 +1048,19 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
   all-class data, 9 classes / 476 talents, extracted from the Turtle client). DBC
   offsets are verified in the script header; re-run + commit on client changes. See
   the talent calculator route `?talents=<class>`.
+- `scripts/extract-item-appearance.py` — LOCAL: the client half of "what does this item
+  look like" (`ItemDisplayInfo.dbc` + the built DB for which display ids are used) ->
+  committed `scripts/data/item-appearance.json`. `--probe` prints the field-layout
+  evidence rather than trusting the WotLK layout everyone quotes. See "3D model viewer".
+- `scripts/export-models.py` — LOCAL: client M2 v256 -> `public/model3d/**` (R2-only):
+  `.m2b` meshes (pose baked, submesh/blend/texture-slot metadata kept) plus the item and
+  embedded effect textures as WebP, and a `manifest.json`. Reads `scripts/lib/m2.py`.
+- `scripts/lib/m2.py` — the shared client-3D reader (MPQ, WDBC, M2 v256 parse, bone
+  posing, BLP decode), factored out of `render-model-thumbs.py`, which still imports it
+  and is the regression oracle: its thumbs must stay byte-identical across changes here.
+- `src/m2b.js` — pure `.m2b` -> plain-object decode (typed-array views, no three import,
+  so it is testable without WebGL). `src/modelviewer.js` — the lazy three.js chunk that
+  turns that into a rendered, orbitable preview.
 - `scripts/build-tooltips.mjs` — dumps compact per-entity JSON
   (`dist/tt/<prefix>/<id>.json`, prefixes i/n/q/s) for the embeddable powered-tooltip
   widget `public/embed/tw-power.js`. Content-hashed like the OG stubs (HASH_ONLY=1);
@@ -1077,6 +1412,7 @@ Client-derived **image** trees are no longer committed. CI still can't regenerat
 | zone parchments | `maps/`, `maps-<dataset>/` |
 | minimap pyramids | `minimap/`, `minimap-<dataset>/` |
 | creature model thumbs | `model-thumbs/` |
+| converted 3D models + textures | `model3d/` |
 | extracted game audio | `sounds/`, `sounds-<dataset>/` |
 
 - `scripts/lib/assets.mjs` defines the sets; `scripts/data/assets-manifest.json`
@@ -1159,7 +1495,11 @@ Client-derived **image** trees are no longer committed. CI still can't regenerat
   class-picker emblems (`public/icons/class/<slug>.webp` via
   `extract-class-icons.py`, cropped from the client character-create sheet; served
   from `${ASSETS_BASE}icons/class/`, synced to R2 by deploy.yml's `public/icons`
-  sync). See "Custom
+  sync) and the dressing room's race portraits (`public/icons/race/<chrRacesId>-<m|f>.webp`
+  via `extract-race-icons.py`, the same sheet family and the same sync) plus the skin/hair
+  swatch colours (`scripts/data/char-palette.json` via `build-char-palette.py`, bundled by
+  Vite rather than served -- the picker needs them on first paint) and the empty-slot
+  paperdoll silhouettes (`public/icons/slot/<slot>.webp` via `extract-slot-icons.py`). See "Custom
   icons" / `scripts/extract-maps.py` / "Seamless world map". Plus scripted-transform
   spawn links (`scripts/data/scripted-spawn-links.json`): creatures with no static
   `creature` row that a server **C++** script swaps in at another NPC's location (the
