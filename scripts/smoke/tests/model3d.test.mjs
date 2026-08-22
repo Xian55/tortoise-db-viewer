@@ -624,3 +624,32 @@ async function testTaurenMane() {
 }
 
 smoke("tauren horns take the mane texture, not the face", () => testTaurenMane());
+
+// The slot picker opens DOWNWARD from the slot it is anchored to, which puts the results
+// below the fold for the slots at the bottom of the rail -- you type a weapon's name and
+// cannot see what you found. It flips up when there is more room above, and is capped to
+// the space it has either way.
+async function testPickerPlacement() {
+  await nav("?dressing&race=1&sex=m&hair=1");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const open = async (slot, term) => {
+    await page.click(`.dress-slot[data-slot="${slot}"]`);
+    await page.type("#dress-find", term, { delay: 12 });
+    await page.waitForFunction(() => document.querySelectorAll("#dress-hits .sd-row").length > 0, { timeout: T });
+    await new Promise((r) => setTimeout(r, 350));
+    const m = await page.evaluate(() => {
+      const el = document.querySelector("#dress-pop");
+      const r = el.getBoundingClientRect();
+      return { up: el.classList.contains("up"), top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight };
+    });
+    await page.keyboard.press("Escape");
+    await new Promise((r) => setTimeout(r, 150));
+    return { ...m, onScreen: m.top >= 0 && m.bottom <= m.vh };
+  };
+  const head = await open("head", "helm");
+  const ranged = await open("ranged", "bow");
+  console.log(`picker: head=${JSON.stringify(head)} ranged=${JSON.stringify(ranged)}`);
+  return head.onScreen && ranged.onScreen && head.up === false && ranged.up === true;
+}
+
+smoke("dressing room picker stays on screen for the bottom slots", () => testPickerPlacement());

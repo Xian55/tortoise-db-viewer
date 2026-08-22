@@ -826,7 +826,10 @@ what 4 looks like. Anything with a preview now shows it and everything else step
   the chest slot), so it borrows Chest.
 - **"Wear a set" heads the item rail rather than the action bar.** The picker opens
   DOWNWARD from whatever it is anchored to, so from the bottom of the page its results fell
-  off the screen. Anything that opens the picker must also be excluded from the room's
+  off the screen. The panel itself now flips UP when there is more room above than below
+  (the slots at the foot of the rail -- ranged, off hand -- always take that path) and is
+  capped to the space it has, with the results scrolling inside it; opened upward the
+  search box sits at the BOTTOM, next to the slot it belongs to. Anything that opens the picker must also be excluded from the room's
   close-on-outside-click handler, or the same click shuts the panel it just opened -- that
   bug happened twice, once per new button.
 

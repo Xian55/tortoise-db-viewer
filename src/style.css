@@ -1738,7 +1738,15 @@ td .pet-rank { margin: 1px 0; }
 /* The slot picker reuses the top-bar search panel (.search-dropdown / .sd-row), so both
    searches on the site look and behave the same. */
 .dress-pop[hidden] { display: none; }
-.dress-pop { padding: 6px; }
+/* The panel is capped to the room it has (see place()), so the RESULTS scroll inside it
+   rather than the panel growing off the screen. The search box stays put while they do. */
+.dress-pop { padding: 6px; display: flex; flex-direction: column; overflow: hidden; }
+.dress-pop[hidden] { display: none; }
+.dress-pop #dress-hits { overflow-y: auto; min-height: 0; }
+/* Opening upward, the search box belongs at the BOTTOM -- next to the slot it belongs to
+   and under the thumb that is about to type in it. */
+.dress-pop.up { flex-direction: column-reverse; }
+.dress-pop.up input[type="search"] { margin: 4px 0 0; }
 .dress-pop input[type="search"] { width: 100%; margin-bottom: 4px; padding: 5px 8px;
   background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: inherit; }
 .dress-pop .sd-row .icon-sprite, .dress-pop .sd-row img { width: 20px; height: 20px; flex: none; }

@@ -1476,16 +1476,32 @@ async function showDressingRoom(params, navigate) {
   // The slot picker is the SAME panel the top-bar search uses -- `.search-dropdown` with
   // `.sd-row` rows -- anchored under the slot instead of under the search box, so both
   // searches on the site look and behave alike (hover, arrow keys, Enter, Escape).
+  // The panel opens DOWNWARD from whatever it is anchored to, which falls off the screen
+  // for the slots near the bottom of the rail -- you type a weapon's name and the results
+  // are below the fold. So it opens upward when there is more room up there, and either
+  // way it is capped to the space it actually has, with the list scrolling inside it.
+  const GAP = 4, EDGE = 8, WANT = 260;      // WANT: enough for ~6 results before flipping
   const place = (btn) => {
     if (!btn) return;
     const r = btn.getBoundingClientRect();
-    popEl.style.left = `${Math.max(8, Math.min(r.left, innerWidth - 340))}px`;
-    popEl.style.top = `${r.bottom + 4}px`;
+    popEl.style.left = `${Math.max(EDGE, Math.min(r.left, innerWidth - 340))}px`;
     popEl.style.minWidth = `${Math.max(r.width, 300)}px`;
+    const below = innerHeight - r.bottom - GAP - EDGE;
+    const above = r.top - GAP - EDGE;
+    const up = below < Math.min(WANT, above);
+    popEl.classList.toggle("up", up);
+    popEl.style.maxHeight = `${Math.max(140, up ? above : below)}px`;
+    popEl.style.top = up ? "auto" : `${r.bottom + GAP}px`;
+    popEl.style.bottom = up ? `${innerHeight - r.top + GAP}px` : "auto";
   };
+  // Where the panel is anchored, so a result list that arrives after the search can be
+  // re-measured against it -- the panel's height changes with the results.
+  let anchor = null;
+  const replace = () => place(anchor);
   const hint = (label) => `<div class="sd-row sd-all">Type to search ${esc(label)}</div>`;
   const closeSlot = () => {
     activeSlot = null; hits = []; cursor = -1;
+    anchor = null;
     popEl.hidden = true;
     renderSlots();
   };
@@ -1497,6 +1513,7 @@ async function showDressingRoom(params, navigate) {
     findEl.value = "";
     hitsEl.innerHTML = hint(slot?.label || key);
     popEl.hidden = false;
+    anchor = btn;
     place(btn);
     renderSlots();
     findEl.focus();
@@ -1540,6 +1557,7 @@ async function showDressingRoom(params, navigate) {
     findEl.value = "";
     hitsEl.innerHTML = `<div class="sd-row sd-all">Type to search item sets</div>`;
     popEl.hidden = false;
+    anchor = btn;
     place(btn);
     renderSlots();
     findEl.focus();
@@ -1569,6 +1587,7 @@ async function showDressingRoom(params, navigate) {
       if (term.length < 2) {
         hits = []; cursor = -1;
         hitsEl.innerHTML = hint(label);
+        replace();
         return;
       }
       let rows = [];
@@ -1588,6 +1607,7 @@ async function showDressingRoom(params, navigate) {
             + `<span class="ilink q${r.quality}">${esc(r.name)}</span>`
             + `<span class="sd-tag">${esc(INV_TYPE[r.inv] || "")}</span></div>`)).join("")
         : `<div class="sd-row sd-all">Nothing matches that name</div>`;
+      replace();                                  // the panel just changed height
     }, 150);
   });
 
@@ -1630,9 +1650,7 @@ async function showDressingRoom(params, navigate) {
     if (btn) { if (btn.dataset.slot === activeSlot) closeSlot(); else openSlot(btn.dataset.slot, btn); }
     else if (!e.target.closest("#dress-pop")) closeSlot();
   });
-  addEventListener("resize", () => {
-    if (activeSlot) place(app.querySelector(`.dress-slot[data-slot="${activeSlot}"]`));
-  });
+  addEventListener("resize", replace);
 
   app.querySelector("#dress-set")?.addEventListener("click", (e) => {
     if (activeSlot === "__set") closeSlot(); else openSets(e.currentTarget);
