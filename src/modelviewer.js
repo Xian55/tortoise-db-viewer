@@ -377,11 +377,16 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // different track list over the same skeleton.
   let clip = model.anim || null;
   let clips = model.anims && model.anims.length ? model.anims : (clip ? [clip] : []);
+  // The cursors remember where in each track the last frame landed, so a frame costs a
+  // step rather than a search. They are only wrong when time goes BACKWARDS -- the loop
+  // wrapping, or a different animation being picked -- so that, and only that, resets them.
+  let poseAtMs = -1;
   const poseTime = (ms) => {
     if (!rig || !clip) return;
-    cursors.fill(0);
-    poseAt(model, rig.skeleton.bones, cursors, clip.tracks, clip.duration
-      ? ((ms % clip.duration) + clip.duration) % clip.duration : 0);
+    const t = clip.duration ? ((ms % clip.duration) + clip.duration) % clip.duration : 0;
+    if (t < poseAtMs) cursors.fill(0);
+    poseAtMs = t;
+    poseAt(model, rig.skeleton.bones, cursors, clip.tracks, t);
   };
   poseTime(0);
   const drawnSubs = built.drawn;
@@ -502,8 +507,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // controls.update() reports whether the camera actually moved -- that, not
   // `enableDamping` (which is simply always on), is what says damping has settled and
   // the loop may stop.
-  const draw = () => {
-    const changed = controls.update();
+  const render = () => {
     // The key light RIDES THE CAMERA. With it fixed in world space the model is lit from
     // one side only, so turning a character around to look at the back of a cloak showed
     // it in shadow -- the exact thing you rotated to see. Offset up-and-left of the eye
@@ -513,14 +517,38 @@ function buildViewer(el, model, slotTex, opts = {}) {
     key.position.x -= radius * 0.8;
     renderer.render(scene, camera);
     frames++;
-    return changed;
   };
+  const draw = () => { const changed = controls.update(); render(); return changed; };
 
   // Rotation is per SECOND, not per frame: the draw rate is throttled below, and a
   // frame-based step silently turns "one revolution" into two different durations on a
   // 30 fps and a 60 fps machine (measured: a 17s turn became 35s once throttled).
   const SPIN_RATE = (Math.PI * 2) / 17;  // rad/s -> one full turn in 17 seconds
-  const MIN_MS = 1000 / 30;              // the idle spin looks the same at 30fps
+  // A frame that shows the same pose as the last one is pure cost, and a mover that
+  // advances on some frames and not others is what judder IS. So the frame budget is the
+  // step: every frame drawn advances the movers, and every step is drawn.
+  //
+  // The two movers want different budgets. A turntable at 17s per revolution is 0.37 deg
+  // per 30fps frame -- no eye can see the difference at 60 -- so it halves its own cost.
+  // A dance is motion the eye tracks, where 30fps reads as a stutter, so it takes the
+  // display's own rate and pays for it with the pose maths, which is the cheap half.
+  const SPIN_MS = 1000 / 30;
+  const ANIM_MS = 1000 / 60;
+  // Vsync does not land on exact multiples, so a frame arriving a hair early must count as
+  // due -- without the slack a 60Hz display alternates 2 and 3 vsyncs per step, which is
+  // the very judder this is here to remove.
+  const SLACK = 3;
+  // What the machine can actually HOLD, measured as the gap between frames that were
+  // drawn -- not as the cost of the render call, which on any real driver returns long
+  // before the GPU has finished and so reports a fast machine on a slow one. A machine
+  // that misses the 60fps budget produces random frame times, which reads as worse stutter
+  // than an honest steady 30, so it is stepped down to 30 and the pacing stays even.
+  // Recovery is a periodic retry rather than a second threshold: at 30fps nothing can be
+  // observed about whether 60 would hold now, and the thing that made it slow (another
+  // tab, a thermal dip) does go away.
+  let gapEma = 0;
+  let retryAt = 0;
+  let animMs = ANIM_MS;
 
   const tick = (now) => {
     if (!alive) { running = false; return; }
@@ -532,12 +560,23 @@ function buildViewer(el, model, slotTex, opts = {}) {
     // animation running it claimed the elapsed time first and the turntable's dt came out
     // as zero on every frame -- Rotate lit up and the model did not turn.
     let step = false;
-    const due = !last || now - last >= MIN_MS;
+    // Damping and a live drag must stay responsive whatever the movers are doing, so the
+    // camera is updated first and a frame it changed is always drawn.
+    const moved = controls.update();
+    const due = !last || now - last >= (animating ? animMs : SPIN_MS) - SLACK;
+    if (!due && !moved) { raf = requestAnimationFrame(tick); return; }   // nothing new
     const dt = due && last ? Math.min((now - last) / 1000, 0.25) : 0;  // clamp: a
-    if (due) last = now;                            // backgrounded tab returns a huge dt
+    if (due && last && animating) {                 // backgrounded tab returns a huge dt
+      const gap = Math.min(now - last, 250);
+      gapEma = gapEma ? gapEma * 0.9 + gap * 0.1 : gap;
+      if (animMs === ANIM_MS && gapEma > 24) { animMs = SPIN_MS; gapEma = 0; retryAt = now + 5000; }
+      else if (animMs === SPIN_MS && now >= retryAt) { animMs = ANIM_MS; gapEma = 0; }
+    }
+    if (due) last = now;
     if (animating && rig && due) {
-      // Wall-clock, not a frame counter: the draw rate is throttled, and a per-frame step
-      // would run the loop at a different speed on a 30 and a 60 fps machine.
+      // Wall-clock, not a frame counter: the draw rate depends on the display and the
+      // budget above, and a per-frame step would run the loop at a different speed on a
+      // 30 and a 60 fps machine.
       animClock += dt * 1000;
       poseTime(animClock);
       step = true;
@@ -550,8 +589,8 @@ function buildViewer(el, model, slotTex, opts = {}) {
       if (spun >= Math.PI * 2 && !opts.keepSpinning) spin = false;
       step = true;
     }
-    const changed = draw();
-    if (spin || animating || changed || step) raf = requestAnimationFrame(tick);
+    render();
+    if (spin || animating || moved || step) raf = requestAnimationFrame(tick);
     else running = false;
   };
   const wake = () => {
@@ -609,6 +648,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       textured: !!tex, meshes: drawn, triangles: model.idx.length / 3,
       vertices: model.pos.length / 3, frames, spinning: spin,
       rigged: !!rig, animating, animMs: clip ? clip.duration : 0,
+      frameGap: Math.round(gapEma * 10) / 10, fpsTarget: Math.round(1000 / animMs),
       clip: clip ? clip.name : null, clipCount: clips.length,
       running, visible, onScreen: onScreen(),   // false/false = costing nothing right now
       geosets: opts.geosets ? [...opts.geosets].sort((a, b) => a - b) : null,
@@ -702,6 +742,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       const wanted = clip?.name;
       clips = list;
       clip = clips.find((c) => c.name === wanted) || clips[0];
+      cursors?.fill(0); poseAtMs = -1;
       animClock = 0;
       poseTime(0);
       if (!animating) draw();
@@ -711,6 +752,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       const next = clips[i];
       if (!next) return false;
       clip = next;
+      cursors?.fill(0); poseAtMs = -1;
       animClock = 0;
       poseTime(0);
       if (animating) wake(); else draw();
@@ -719,6 +761,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
     /** Play or pause the idle animation. Returns the new state. */
     animate: (on) => {
       animating = !!on && !!rig;
+      gapEma = 0; animMs = ANIM_MS; retryAt = 0;
       if (!animating) { animClock = 0; poseTime(0); draw(); }
       else wake();
       return animating;

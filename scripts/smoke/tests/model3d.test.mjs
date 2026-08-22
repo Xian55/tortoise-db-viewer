@@ -914,3 +914,32 @@ async function testAnimationPicker() {
 }
 
 smoke("a character can be asked for a different animation", () => testAnimationPicker());
+
+// One step per frame, one frame per step. The loop used to render on every rAF while
+// advancing the movers on a 33ms gate: half the frames redrew an identical pose, which is
+// full GPU cost for the judder it produced. The turntable turns 0.37 degrees per 30fps
+// frame and keeps that budget; the animation takes the display's rate. Measured as a
+// RATIO so the assertion means the same thing on any machine.
+async function testFramePacing() {
+  await nav("?dressing&race=1&sex=m&hair=3");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const rate = async (ms) => page.evaluate((ms) => new Promise((done) => {
+    const a = window.__mv().frames;
+    setTimeout(() => done((window.__mv().frames - a) / (ms / 1000)), ms);
+  }), ms);
+  await page.click("#dress-spin");
+  const spinning = await rate(1500);
+  await page.click("#dress-spin");
+  await page.click("#dress-anim");
+  const playing = await rate(1500);
+  const target = await page.evaluate(() => window.__mv().fpsTarget);
+  console.log(`pacing: turntable ${spinning.toFixed(0)}fps, animation ${playing.toFixed(0)}fps (target ${target})`);
+  // The turntable is the regression guard: it must stay near its own 30fps budget however
+  // fast the display is, and the bug being pinned drew every rAF for it (60). The
+  // animation is only checked against the budget it actually chose -- a loaded CI box
+  // legitimately steps down to 30, which is the adaptive rule doing its job.
+  return spinning > 20 && spinning < 40 && playing > 20
+    && (target === 60 ? playing > spinning * 1.5 : playing < spinning * 1.5);
+}
+
+smoke("the turntable draws half the frames the animation does", () => testFramePacing());

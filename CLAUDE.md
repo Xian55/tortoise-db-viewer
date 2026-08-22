@@ -789,6 +789,25 @@ v5 made the animation a list) posed per frame in the browser; a rigid model -- e
   delta; each taking it for itself left the spin's dt at zero every frame (Rotate lit up,
   nothing turned). A per-frame step would also run the loop at different speeds on a 30 and
   a 60 fps machine.
+- **One step per frame, one frame per step** -- the whole of why animation looked jittery.
+  The loop rendered on every rAF (60fps) while advancing the movers on a 33ms gate, so half
+  the frames redrew a pose identical to the last one and motion arrived in 33ms jumps
+  against a 60Hz display: full GPU cost, visible judder. Now a tick that is not due draws
+  nothing, and every frame drawn carries a fresh pose. The turntable keeps the 30fps budget
+  (0.37 degrees per frame at 17s a revolution -- no eye sees 60) and so **halved** its
+  draws; the animation takes the display's rate, which the pose maths pays for. Measured:
+  spin 60 -> 30 fps for the same motion, animation 5.1% -> 3.9% of a core while now moving
+  twice as often.
+- **The frame budget adapts on the achieved GAP, not on render cost.** `renderer.render()`
+  returns long before the GPU is done, so timing the call reports a fast machine on a slow
+  one (measured 1.97ms under an 8x CPU throttle). The gap between drawn frames is the real
+  signal: over 24ms means 60 is not being held, and an honest steady 30 reads better than a
+  random 45. Recovery is a 5s retry, because at 30fps nothing can be observed about whether
+  60 would hold again.
+- **Track cursors are only reset when time goes BACKWARDS.** They exist so a frame costs a
+  step rather than a search through every key; resetting them per frame (as the first cut
+  did) turns each frame into a full scan of ~75 bones' tracks. Backwards means the loop
+  wrapping or a different animation being picked -- both of which do reset them.
 - **`?models=local` (dev only)** points `MODELS_BASE` at `public/model3d`, which is where
   the exporter writes -- otherwise a format bump cannot be looked at before it is published.
 - **Global tracks are real.** A track with no range for the played sequence still applies
