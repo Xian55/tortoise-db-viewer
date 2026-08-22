@@ -222,6 +222,38 @@ const _qa = new THREE.Quaternion();
 const _qb = new THREE.Quaternion();
 
 /** Pose one rigged model at `t` milliseconds into its animation. */
+/** The tracks that answer to no animation, at wall-clock time `ms`. Applied AFTER the
+ *  clip, because poseAt resets a bone with no key of its own to identity -- and these are
+ *  exactly the bones the clip says nothing about: the eye-blink scale, and the fixed
+ *  rotations a few models express as a degenerate 33ms loop. */
+function poseGlobals(model, bones, ms) {
+  const g = model.globals;
+  for (let i = 0; i < g.length; i++) {
+    const { bone, kind, duration, track } = g[i];
+    const b = bones[bone];
+    if (!b || !track.times.length) continue;
+    const t = duration > 0 ? ms % duration : 0;
+    const k = keyAt(track, t, 0);
+    const v = track.vals;
+    const a = k * track.comps;
+    if (kind === 1) {
+      _qa.set(v[a], v[a + 1], v[a + 2], v[a + 3]);
+      if (k + 1 < track.times.length) {
+        const t0 = track.times[k], t1 = track.times[k + 1];
+        _qb.set(v[a + 4], v[a + 5], v[a + 6], v[a + 7]);
+        _qa.slerp(_qb, t1 > t0 ? (t - t0) / (t1 - t0) : 0);
+      }
+      b.quaternion.copy(_qa);
+    } else if (kind === 2) {
+      b.scale.set(v[a], v[a + 1], v[a + 2]);
+    } else {
+      b.position.x += v[a]; b.position.y += v[a + 1]; b.position.z += v[a + 2];
+    }
+  }
+}
+
+const fin = (v) => (Number.isFinite(v) ? v : 1);   // a missing value, not a zero one
+
 function poseAt(model, bones, cursors, tracks, t) {
   for (let i = 0; i < bones.length; i++) {
     const tr = tracks[i];
@@ -266,7 +298,12 @@ function poseAt(model, bones, cursors, tracks, t) {
       cursors[i * 3 + 2] = k;
       const v = tr.scale.vals;
       const a = k * 3;
-      bone.scale.set(v[a] || 1, v[a + 1] || 1, v[a + 2] || 1);
+      // NOT `v[a] || 1`. A scale of exactly ZERO is how the client hides a mesh it is
+      // not using -- a character carries two eyelids, one for blinking and one for
+      // sleeping, and holds the spare at scale 0 for the whole animation -- and 0 is
+      // falsy, so that guard turned every hidden mesh back to full size. A blood elf
+      // male wore a flat quad over his eyes for exactly this reason.
+      bone.scale.set(fin(v[a]), fin(v[a + 1]), fin(v[a + 2]));
     } else {
       bone.scale.set(1, 1, 1);
     }
@@ -381,12 +418,18 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // step rather than a search. They are only wrong when time goes BACKWARDS -- the loop
   // wrapping, or a different animation being picked -- so that, and only that, resets them.
   let poseAtMs = -1;
+  // Global tracks keep their OWN clock: blinking is 6633ms of eye whatever is playing,
+  // which is the whole point of the client binding it to a global sequence rather than to
+  // an animation. It only advances while something is being drawn, so a still model does
+  // not blink -- the same bargain as the rest of the viewer's idle discipline.
+  let globalClock = 0;
   const poseTime = (ms) => {
     if (!rig || !clip) return;
     const t = clip.duration ? ((ms % clip.duration) + clip.duration) % clip.duration : 0;
     if (t < poseAtMs) cursors.fill(0);
     poseAtMs = t;
     poseAt(model, rig.skeleton.bones, cursors, clip.tracks, t);
+    if (model.globals?.length) poseGlobals(model, rig.skeleton.bones, globalClock);
   };
   poseTime(0);
   const drawnSubs = built.drawn;
@@ -578,6 +621,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       // budget above, and a per-frame step would run the loop at a different speed on a
       // 30 and a 60 fps machine.
       animClock += dt * 1000;
+      globalClock += dt * 1000;
       poseTime(animClock);
       step = true;
     }
@@ -758,6 +802,9 @@ function buildViewer(el, model, slotTex, opts = {}) {
       if (animating) wake(); else draw();
       return true;
     },
+    /** Debug: drive the global-sequence clock by hand (blinking is one of these), so a
+     *  test can look at a phase instead of waiting 6.6s to catch a 100ms event. */
+    globalClock: (ms) => { globalClock = ms; poseTime(animClock); draw(); },
     /** Play or pause the idle animation. Returns the new state. */
     animate: (on) => {
       animating = !!on && !!rig;
@@ -806,6 +853,8 @@ function buildViewer(el, model, slotTex, opts = {}) {
   hook.clips = viewer.clips;
   hook.setClip = viewer.setClip;
   hook.setClips = viewer.setClips;
+  hook.globalClock = viewer.globalClock;
+  hook.bodyAtlas = () => (lastBodyAtlas ? lastBodyAtlas.toDataURL("image/png") : null);
   hook.clipIndex = viewer.clipIndex;
   window.__mv = hook;                    // smoke-test hook, same convention as __zoneDots
   return viewer;
@@ -819,6 +868,11 @@ let charDataPromise = null;
 /** The race/skin/face/hair option tables (scripts/data/char-appearance.json). Fetched,
  *  not bundled: at ~1 MB it would be the largest single thing in the main JS chunk, paid
  *  by every visitor to serve one page. Cached for the session. */
+// The last body atlas composited, for debugging what a mesh is actually sampling. A
+// character's skin is painted from ten rectangles and the client ships none of the result,
+// so "is that a closed eyelid or the face texture" is otherwise unanswerable from outside.
+let lastBodyAtlas = null;
+
 const animPacks = new Map();
 
 /** Every animation for one character model, fetched once and shared. Kept out of the
@@ -998,6 +1052,7 @@ export async function mountCharacterViewer(el, opts = {}) {
     base: skinRow?.[2]?.[0] ? charTexUrl(skinRow[2][0]) : null,
     layers,
   });
+  lastBodyAtlas = canvas;                // debug: __mv.bodyAtlas() dumps what was painted
   const body = new THREE.CanvasTexture(canvas);
   body.colorSpace = THREE.SRGBColorSpace;
   body.flipY = false;

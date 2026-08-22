@@ -22,6 +22,33 @@ export const TEX_HAIR = 6;
  *  the model's height, 5/6 are a mirrored pair at 80%, 1/2 another at 42%. */
 export const ATTACH = { shield: 0, handRight: 1, handLeft: 2, shoulderRight: 5, shoulderLeft: 6, head: 11 };
 
+/** Tracks bound to a GLOBAL SEQUENCE: they belong to no animation, loop on a clock of
+ *  their own, and apply whatever is playing. Blinking is one of these -- a track scaling
+ *  the closed-eye mesh up for ~100ms, three times in 6633ms -- so reading them as part of
+ *  the played clip blinks at the clip's rate and jumps at its loop. */
+function readGlobals(dv, start) {
+  const count = dv.getUint16(start, true);
+  let b = start + 4;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const bone = dv.getUint16(b, true);
+    const kind = dv.getUint8(b + 2);                 // 0 trans, 1 rot, 2 scale
+    const duration = dv.getUint32(b + 4, true);
+    const n = dv.getUint16(b + 8, true);
+    b += 12;
+    const comps = kind === 1 ? 4 : 3;
+    const times = new Uint32Array(n);
+    const vals = new Float32Array(n * comps);
+    for (let k = 0; k < n; k++) {
+      times[k] = dv.getUint32(b, true);
+      for (let c = 0; c < comps; c++) vals[k * comps + c] = dv.getFloat32(b + 4 + c * 4, true);
+      b += 4 + comps * 4;
+    }
+    out.push({ bone, kind, duration, track: { times, vals, comps } });
+  }
+  return out;
+}
+
 /** One animation's per-bone tracks. Shared by the model's own section and the sidecar,
  *  which is why the encoding is identical in both. */
 function readTracks(dv, start, nBone) {
@@ -53,7 +80,10 @@ function readTracks(dv, start, nBone) {
  *  every visitor who only wanted to look at a tabard. */
 export function parseAnimPack(buffer) {
   const dv = new DataView(buffer);
-  if (dv.getUint32(0, true) !== 0x3141324d) throw new Error("not an m2b animation pack");
+  // M2A1 and M2A2 differ in what they LEAVE OUT (global tracks moved into the model),
+   // not in layout, and both are on the CDN during a rollout.
+  const magic = dv.getUint32(0, true);
+  if (magic !== 0x3141324d && magic !== 0x3241324d) throw new Error("not an m2b animation pack");
   const count = dv.getUint16(4, true);
   const nBone = dv.getUint16(6, true);
   const strLen = dv.getUint32(8, true);
@@ -94,9 +124,10 @@ export function parseM2B(buffer) {
   // animation's keys -- and carries three more sections. The count is implied by the
   // version, so the table is never guessed at.
   // v5 replaced the single inline animation with a LIST -- in the model that list holds
-  // only the idle, the rest arriving from the sidecar (parseAnimPack).
-  if (version < 2 || version > 5) {
-    throw new Error(`m2b version ${version} is not readable (want 2-5)`);
+  // only the idle, the rest arriving from the sidecar (parseAnimPack). v6 adds `glb`, the
+  // tracks that belong to no animation and run on their own clock (blinking).
+  if (version < 2 || version > 6) {
+    throw new Error(`m2b version ${version} is not readable (want 2-6)`);
   }
   const flags = dv.getUint16(6, true);
   const nVert = dv.getUint32(8, true);
@@ -108,7 +139,8 @@ export function parseM2B(buffer) {
   const bbox = [];
   for (let i = 0; i < 6; i++) bbox.push(dv.getFloat32(24 + i * 4, true));
   const off = {};
-  const sections = version >= 4 ? [...SECTIONS, "bon", "skn", "anm"] : SECTIONS;
+  const sections = version >= 6 ? [...SECTIONS, "bon", "skn", "anm", "glb"]
+    : version >= 4 ? [...SECTIONS, "bon", "skn", "anm"] : SECTIONS;
   sections.forEach((name, i) => { off[name] = dv.getUint32(48 + i * 4, true); });
 
   const str = (o) => {
@@ -162,6 +194,7 @@ export function parseM2B(buffer) {
   let skin = null;
   let anim = null;
   let anims = [];
+  let globals = [];
   if (version >= 4 && nBone) {
     bones = [];
     for (let i = 0; i < nBone; i++) {
@@ -200,10 +233,11 @@ export function parseM2B(buffer) {
     }
     anim = list[0] || null;
     anims = list;
+    if (version >= 6 && off.glb) globals = readGlobals(dv, off.glb, buffer);
   }
 
   return {
-    version, posed: !!(flags & 1), nBone, bbox, bones, skin, anim, anims,
+    version, posed: !!(flags & 1), nBone, bbox, bones, skin, anim, anims, globals,
     pos: new Float32Array(buffer, off.pos, nVert * 3),
     nrm: new Float32Array(buffer, off.nrm, nVert * 3),
     uv: new Float32Array(buffer, off.uv, nVert * 2),

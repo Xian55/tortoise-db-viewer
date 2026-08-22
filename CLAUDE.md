@@ -813,6 +813,45 @@ v5 made the animation a list) posed per frame in the browser; a rigid model -- e
 - **Global tracks are real.** A track with no range for the played sequence still applies
   (the client reads it whole); dropping those cost every pauldron its bone scale, and a
   blood elf's shoulders came out human-sized.
+- **Blinking runs on a GLOBAL SEQUENCE, not on the animation.** A track can be bound to a
+  global sequence (`M2Track.global_seq >= 0`), which loops on a clock of its own whatever
+  is playing -- a human's blink is one track scaling the closed-eye mesh up for ~100ms,
+  three times in 6633ms. Filing those keys under the played clip (as the first cut did)
+  blinks at the CLIP's rate and jumps at its loop: Stand is 2667ms, so the character
+  blinked twice in 2.7s instead of three times in 6.6s, and Dance blinked at a third rate
+  again. They live in `.m2b` v6's own `glb` section now, applied after the clip and stepped
+  by a separate clock -- which also means a still model does not blink, the same bargain
+  the rest of the viewer's idle discipline makes.
+
+**Two eyelids, and both ways of hiding one.** A character model carries the eyelid twice --
+one lid animated for blinking, one for sleeping and dying -- and the client shows exactly
+one. It hides the spare in whichever of two ways the artist chose, and BOTH were broken
+here, each on different races, which is why this looked like several unrelated bugs:
+
+- **Alpha zero on the M2Color the texture unit points at.** The alpha is not on the mesh
+  and not on the material -- it is a `fixed16` track on `M2Color`, indexed by the texture
+  unit's field 4 -- so a submesh can be valid geometry with valid textures and still be
+  something the game never draws. Goblins of both genders hide their spare this way, and we
+  drew it: a closed eyelid painted over a wide-awake face. `export-models.py` now drops any
+  submesh whose alpha is zero across **every animation we ship** -- judged over that set,
+  not over the whole file, because in animation 145 the spare IS shown, which is how a
+  corpse closes its eyes.
+- **Scale exactly zero on the bone.** `bone.scale.set(v || 1, ...)` -- and zero is falsy,
+  so every mesh the client had collapsed came back at full size. Blood elf males hide their
+  spare with a per-clip `(0,0,0)`, and wore a flat quad over their eyes for it. Human males
+  escaped only because their lid is hidden by a GLOBAL track, which goes through a
+  different code path.
+
+The lesson generalises past eyelids: **visibility in an M2 is not a property of the mesh.**
+It is spread across the geoset selection, the bone's scale, and an alpha track reached
+through a colour index -- and a mesh is drawn only if all three agree.
+
+**Two debug hooks, because neither question is answerable from outside.** `__mv.bodyAtlas()`
+returns the composited 256x256 body texture as a PNG -- the client ships none of the result,
+so "is that a closed eyelid or the face texture" is otherwise a guess; comparing it against
+the source BLPs is what proved the composite exact (mean diff 0.0) and moved the search to
+geometry. `__mv.globalClock(ms)` drives the global-sequence clock by hand, so a 100ms blink
+in a 6633ms cycle can be looked at instead of waited for.
 
 **The pickers are the character creator's, not a form's** (`?dressing`). Seven `<select>`s
 in a row is a form: every change costs open-scroll-pick, and "Skin 4" says nothing about

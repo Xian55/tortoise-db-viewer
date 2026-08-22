@@ -943,3 +943,41 @@ async function testFramePacing() {
 }
 
 smoke("the turntable draws half the frames the animation does", () => testFramePacing());
+
+// A mesh the client hides is hidden by a SCALE OF EXACTLY ZERO, and zero is falsy: the
+// old `v || 1` guard turned every hidden mesh back to full size. Characters carry two
+// eyelids -- one animated, one for sleeping -- so a blood elf male wore a flat quad over
+// his eyes, and only races whose spare lid is hidden this way showed it. Checked on the
+// eye glow, which is unmistakable in pixels: bright blue where a covered eye is skin.
+async function testHiddenMeshStaysHidden() {
+  await nav("?dressing&race=10&sex=m&hair=0&face=0");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await new Promise((r) => setTimeout(r, 400));
+  const found = await page.evaluate(async () => {
+    const url = window.__mv.snapshot({ background: false });
+    const img = new Image();
+    await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = url; });
+    const c = document.createElement("canvas");
+    c.width = img.width; c.height = img.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
+    // the head is the top of the figure; the glow is the only strongly blue thing on it
+    let top = c.height, glow = 0;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] > 8) { top = Math.floor((i >> 2) / c.width); break; }
+    }
+    const until = top + Math.floor(c.height * 0.12);
+    for (let y = top; y < until; y++) {
+      for (let x = 0; x < c.width; x++) {
+        const o = (y * c.width + x) * 4;
+        if (data[o + 3] > 100 && data[o + 2] - data[o] > 30) glow++;
+      }
+    }
+    return glow;
+  });
+  console.log(`hidden mesh: blood elf male glowing-eye pixels = ${found} (0 means a lid is covering them)`);
+  return found > 20;
+}
+
+smoke("a mesh the client hides at scale zero stays hidden", () => testHiddenMeshStaysHidden());

@@ -161,10 +161,12 @@ def arr(data, off):
 
 
 # header M2Array offsets (verified against the Turtle 1.12 client; see --inspect)
+H_GLOBALS   = 0x14   # global-sequence durations; name@0x08, global flags@0x10
 H_ANIMS     = 0x1C
 H_BONES     = 0x34
 H_VERTICES  = 0x44
 H_VIEWS     = 0x4C
+H_COLORS    = 0x54   # M2Color[]: {M2Track color (vec3), M2Track alpha (fixed16)} = 56 B
 H_TEXTURES  = 0x5C
 H_MATERIALS = 0x84   # materials/render-flags: {uint16 flags, uint16 blendingMode}
 H_TEXLOOK   = 0x94   # texture_combos (uint16 -> textures[])
@@ -174,12 +176,16 @@ H_ATTACH    = 0x104  # attachments: {u32 id, u32 bone, vec3 pos, M2Track(28)} = 
 def _track(data, toff):
     """Parse a vanilla M2Track header: interpolation type, per-animation key
     ranges, and the timestamps/values M2Arrays (offsets kept for lazy sampling)."""
-    interp = struct.unpack_from("<H", data, toff)[0]
+    interp, gseq = struct.unpack_from("<hh", data, toff)
     n_r, o_r = arr(data, toff + 4)      # interpolation ranges (one M2Range per anim)
     n_t, o_t = arr(data, toff + 12)     # timestamps (uint32)
     n_v, o_v = arr(data, toff + 20)     # values
     ranges = [struct.unpack_from("<II", data, o_r + i * 8) for i in range(n_r)]
-    return dict(ranges=ranges, n_t=n_t, o_t=o_t, n_v=n_v, o_v=o_v)
+    # `gseq` >= 0 binds the track to a GLOBAL SEQUENCE: it runs on its own looping clock
+    # and applies whatever animation is playing. That is how a character blinks -- one
+    # track scaling the closed-eye mesh up for ~100ms three times in 6633ms -- so a reader
+    # that files those keys under the played animation blinks at the animation's rate.
+    return dict(ranges=ranges, n_t=n_t, o_t=o_t, n_v=n_v, o_v=o_v, interp=interp, gseq=gseq)
 
 
 def track_keys(data, tr, comps, anim, t0=0):
@@ -206,6 +212,26 @@ def track_keys(data, tr, comps, anim, t0=0):
         val = struct.unpack_from("<%df" % comps, data, tr["o_v"] + i * comps * 4)
         out.append((max(0, ts - t0), val))
     return out
+
+
+def alpha_max(data, tr, anim):
+    """The largest value an ALPHA track reaches during one animation. Alpha is stored as
+    fixed16 (int16 / 32767), not float, so it needs its own reader -- and it is how the
+    client hides a mesh it is not using: a character carries two eyelids, one shown while
+    blinking and one for sleeping, and the spare is held at alpha 0 for the whole
+    animation rather than being scaled away. Drawing it puts a closed eyelid on a face
+    that is wide awake."""
+    if tr["n_v"] == 0:
+        return 1.0
+    if anim < len(tr["ranges"]):
+        s0, e0 = tr["ranges"][anim]
+    else:
+        s0, e0 = 0, tr["n_v"] - 1          # a global track applies whatever is playing
+    e0 = min(e0, tr["n_v"] - 1)
+    if e0 < s0:
+        return 1.0
+    return max(struct.unpack_from("<h", data, tr["o_v"] + k * 2)[0]
+               for k in range(s0, e0 + 1)) / 32767.0
 
 
 def sample_track(data, tr, comps, anim, tfrac, default):
@@ -247,8 +273,13 @@ def parse_m2(data):
     if data[:4] != b"MD20":
         raise ValueError("not MD20")
     ver = struct.unpack_from("<I", data, 4)[0]
+    nGlobal, oGlobal = arr(data, H_GLOBALS)
+    gseq_dur = [struct.unpack_from("<I", data, oGlobal + i * 4)[0] for i in range(nGlobal)]
     nAnim, oAnim = arr(data, H_ANIMS)
     nBone, oBone = arr(data, H_BONES)
+    nColor, oColor = arr(data, H_COLORS)
+    colors = [dict(color=_track(data, oColor + i * 56), alpha=_track(data, oColor + i * 56 + 28))
+              for i in range(nColor)]
     nVert, oVert = arr(data, H_VERTICES)
     nView, oView = arr(data, H_VIEWS)
     nTex, oTex = arr(data, H_TEXTURES)
@@ -319,7 +350,7 @@ def parse_m2(data):
     for i in range(nTU):
         o = oTU + i * 24
         f = struct.unpack_from("<12H", data, o)
-        texunits.append(dict(submesh=f[2], material=f[5], layer=f[6],
+        texunits.append(dict(submesh=f[2], color=f[4], material=f[5], layer=f[6],
                              texCount=f[7], texCombo=f[8]))
 
     # materials (render flags): {uint16 flags, uint16 blendingMode}. blend 0/1 =
@@ -356,7 +387,7 @@ def parse_m2(data):
         attach.append(dict(id=aid, bone=bone, pos=pos))
 
     return dict(ver=ver, verts=verts, weights=weights, boneidx=boneidx, bones=bones,
-                stand_idx=stand_idx, anims=anims, data=data,
+                stand_idx=stand_idx, anims=anims, data=data, gseq_dur=gseq_dur, colors=colors,
                 indices=indices, tris=tris, subs=subs, attach=attach,
                 texunits=texunits, texlook=texlook, textures=textures, materials=materials)
 
