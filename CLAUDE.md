@@ -690,14 +690,20 @@ looking rather than by recalling:
   sheets, textured from the item (texType 2). Excluding group 15 wholesale -- which looks
   obviously right -- punched a hole between the shoulders of every character. The
   variant-1 rule already separates the two, so nothing is excluded by group at all.
-- **A tauren has no texType 6 unit at all.** Its horns, tail and hoof soles hang off an
-  UNNAMED texType 8 -- measured across all 20 character models, the only unnamed 7/8 unit
-  any race has (everyone else's type 8 names its own file, for an eye glow). Unnamed types
-  fall through to the body atlas, so those meshes were painted out of the atlas's FACE
-  rectangle and a tauren wore a smeared second copy of its own face above the horns. An
-  unnamed 7/8 on a character IS the hair texture, and the tauren's is the mane sheet its
-  CharSections hair rows name -- the same file for every hairstyle, left empty on some, so
-  the lookup falls back to whatever the race names anywhere rather than dropping it.
+- **A tauren has no texType 6 unit at all.** Its mane, horns, tail and hoof soles hang off
+  an UNNAMED texType 8 -- measured across all 20 character models, the only unnamed 7/8
+  unit any race has (everyone else's type 8 names its own file, for an eye glow). That unit
+  is a SECOND FULL ATLAS: those meshes carry atlas UVs spanning the whole sheet (the mane
+  samples the torso/leg columns), which the client fills from `<skin>_Extra.blp` -- 17
+  files, and tauren are the only race that ships any. Only every third skin index has one
+  (male 0,3,6..., female 0,2,4...), so a colour without its own takes the nearest BELOW it.
+  Two wrong answers on the way, both of which look like a texture bug rather than a
+  binding one: falling through to the body atlas painted the mane out of the atlas's FACE
+  rectangle, so a tauren wore a smeared copy of its own face above the horns; and binding
+  the mane sheet the CharSections hair row names stretched one 128x64 piece flat across the
+  crest. The probe for which `_Extra` exists is a load ATTEMPT, not a HEAD request -- the
+  dev server answers a missing file with index.html at 200, so only a decode failure tells
+  the truth.
 - **A named texture wins over its type.** A Blood Elf's eye glow is texType 8 AND names
   its own BLP, so a slot rule keyed on `type === 0` handed it the body atlas and painted
   skin over the eyes. Substitute only the types we composite (1/2 body, 6 hair); anything

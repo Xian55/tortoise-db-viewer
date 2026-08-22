@@ -716,6 +716,31 @@ export async function mountCharacterViewer(el, opts = {}) {
     || (data.sections[`${race}-${sex}-hair`] || []).map((r) => r[2]?.[0]).find(Boolean);
   const hairTex = maneName ? await loadTexture(charTexUrl(maneName)) : null;
 
+  // A tauren's unnamed type-8 unit is a SECOND FULL ATLAS: its meshes carry atlas UVs
+  // spanning the whole sheet (the mane samples the torso/leg columns), which is why the
+  // body atlas painted a face onto them and why handing them the mane sheet stretched one
+  // 128x64 piece flat across the horns. The client ships that atlas per skin colour as
+  // `<skin>_Extra.blp` -- 17 files, and tauren are the only race that has any, exactly the
+  // race that has the unnamed unit.
+  //
+  // Only every third skin index carries one (male 0,3,6..., female 0,2,4...), so a colour
+  // without its own takes the nearest one BELOW it, which is the group it belongs to. The
+  // probe is a load attempt rather than a HEAD request: the dev server answers a missing
+  // file with index.html at 200, so only an actual decode failure tells the truth.
+  const extraFor = async (skinPath) => {
+    if (!skinPath) return null;
+    const m = /^(.*?)(\d+)(\.blp)$/i.exec(skinPath);
+    if (!m) return null;
+    for (let i = Number(m[2]); i >= 0; i--) {
+      const name = `${m[1]}${String(i).padStart(m[2].length, "0")}_Extra.blp`;
+      const tex = await loadTexture(charTexUrl(name));
+      if (tex) return tex;
+    }
+    return null;
+  };
+  const wantsExtra = model.textures.some((t) => !t.name && (t.type === 7 || t.type === 8));
+  const maneTex = wantsExtra ? await extraFor(skinRow?.[2]?.[0]) : null;
+
   // Slot resolution: the two SUBSTITUTED types get what we composited, anything that
   // names a file gets that file. Type is not enough on its own -- a Blood Elf's eye glow
   // is type 8 AND names its own BLP, so a rule keyed only on `type === 0` handed it the
@@ -734,7 +759,8 @@ export async function mountCharacterViewer(el, opts = {}) {
   // the horns. An unnamed 7/8 on a character is the hair texture.
   const isManeSlot = (t) => t.type === TEX_HAIR || (!t.name && (t.type === 7 || t.type === 8));
   const slotTex = model.textures.map((t) => {
-    if (isManeSlot(t)) return hairTex || body;
+    if (t.type === TEX_HAIR) return hairTex || body;
+    if (isManeSlot(t)) return maneTex || body;     // the second atlas, or plain skin
     if (t.type === TEX_OBJECT_SKIN) return capeTex || body;
     if (t.name) return null;                       // named; loaded below
     return body;                                   // 1 = character skin
