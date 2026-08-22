@@ -100,6 +100,18 @@ export const SLOT_ATTACH = {
 // sits further out at 47% on the +Y arm (a shield is strapped to the forearm, not
 // gripped), and 12 is 0.19 behind the spine at 76% (the back).
 export const HAND_BY_SLOT = { mainhand: 1, offhand: 2, ranged: 2 };
+
+// Inventory type -> the dressing room's URL parameter for it. Lives here rather than in
+// the room itself because the item page needs the same answer to link INTO the room, and
+// two copies would drift the first time a slot moved. Anything absent (rings, trinkets,
+// relics, non-equippable) changes nothing about how a character looks.
+export const DRESS_SLOT = {
+  1: "head", 3: "shoulder", 4: "shirt", 5: "chest", 6: "waist", 7: "legs", 8: "feet",
+  9: "wrist", 10: "hands", 16: "back", 19: "tabard", 20: "chest",
+  13: "mainhand", 17: "mainhand", 21: "mainhand",
+  14: "offhand", 22: "offhand", 23: "offhand",
+  15: "ranged", 25: "ranged", 26: "ranged", 28: "ranged",
+};
 export const HAND_BY_INV = {
   13: 1, 17: 1, 21: 1, 25: 1,       // one-hand, two-hand, main hand, thrown -> right hand
   22: 2, 23: 2, 15: 2, 26: 2,       // off hand, held in off hand, bow, gun -> left hand

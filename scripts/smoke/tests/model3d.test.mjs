@@ -324,3 +324,22 @@ async function testWeapons() {
 }
 
 smoke("dressing room puts weapons in the right hands", () => testWeapons());
+
+// The room was reachable only by typing its URL. Three ways in now, and the item link is
+// deliberately NOT tied to the 3D tab: most armor is texture-only and has no tab, which
+// is exactly the gear you want to see on a character.
+async function testEntryPoints() {
+  await nav("");
+  const home = await page.$$eval('.home a[href="?dressing"]', (a) => a.length);
+  const menu = await page.$$eval('.nav-menu a[href="?dressing"], nav a[href="?dressing"]', (a) => a.length);
+  await nav("?item=17581");                        // a plate chest: texture-only, no 3D tab
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
+  const chest = await page.$$eval(".item-dress a", (a) => a.map((x) => x.getAttribute("href")));
+  await nav("?item=19382");                        // a ring changes nothing about the look
+  await page.waitForSelector(".item-rel .tab", { timeout: T });
+  const ring = await page.$$eval(".item-dress a", (a) => a.length);
+  console.log(`entry points: home=${home} menu=${menu} chest=${JSON.stringify(chest)} ring=${ring}`);
+  return home >= 1 && menu >= 1 && chest[0] === "?dressing&chest=17581" && ring === 0;
+}
+
+smoke("dressing room is reachable without typing a URL", () => testEntryPoints());

@@ -1620,6 +1620,7 @@ td .pet-rank { margin: 1px 0; }
 .dress-slot.filled .dress-slot-label { color: inherit; }
 .dress-off { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
 .dress-off:hover { color: var(--fg); }
+.item-dress { margin: 6px 0 2px; font-size: 13px; }
 .dress-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0 4px; }
 /* Weapons sit under the model, as they do in the in-game window. */
 .dress-weapons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 10px; }

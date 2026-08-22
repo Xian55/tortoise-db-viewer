@@ -11,6 +11,7 @@ import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { externalMenuHtml, wireExternalMenu, chatMacro, chatButtonHtml, wireChatButton } from "./external.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown, ftsQuery } from "./search.js";
+import { DRESS_SLOT } from "./chargear.js";
 import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, OWN_ITEM_MODELS, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
@@ -546,6 +547,8 @@ function showHome() {
       card("?characters", "inv_shield_06", "Character Planner", "Import your gear (GearExport), see set bonuses, and get slot-by-slot upgrades ranked for your spec. Share builds by link.", "feature"),
       card("?weights", "ability_marksmanship", "Gear-Score Presets", "Build, share, and reuse stat-weight sets — 22 class/spec starters, or make your own.", "feature"),
       card("?talents", "inv_misc_book_11", "Talent Calculator", "Plan any class's 51-point build; the link saves it.", "feature"),
+      ...(OWN_ITEM_MODELS ? [card("?dressing", "inv_shirt_white_01", "Dressing Room",
+        "Try armor and weapons on a 3D character \u2014 any race, any look. Share the outfit by link.", "feature")] : []),
       card("?profplan=164", "trade_blacksmithing", "Profession Leveling", "Efficient 1→300 routes with a deduped materials shopping list, for every crafting profession.", "feature"),
     ])}
 
@@ -1064,6 +1067,13 @@ async function showItem(id) {
     });
   }
 
+  // The way in to the dressing room from an item. Deliberately NOT tied to the 3D tab:
+  // most armor is texture-only and has no tab, and seeing a chestpiece ON a character is
+  // exactly what it needs. Turtle-only, like every other use of these models.
+  const dressLink = (row) => (OWN_ITEM_MODELS && DRESS_SLOT[row.inventory_type] && webglOk()
+    ? `<div class="item-dress"><a class="nav" href="?dressing&${DRESS_SLOT[row.inventory_type]}=${row.entry}">Try it on a character \u203a</a></div>`
+    : "");
+
   // quality + item-class subtitle, each a link into the item browser filtered by it
   // (e.g. "Common · Trade Goods"). Mirrors what the embed tooltip surfaces.
   const qual = QUALITY[it.quality];
@@ -1076,6 +1086,7 @@ async function showItem(id) {
     `<div class="item-view">
       <div class="item-main">${renderTooltip(it, { spellMap, linkSpells: true, set: setOpt, mount: mountOpt, sockets })}
         ${classLine ? `<div class="item-classline">${classLine}</div>` : ""}
+        ${dressLink(it)}
         <div class="item-meta muted">Item #${it.entry} · iLvl ${it.item_level || "—"}${it.world_drop ? ' · <span class="tagx">World Drop</span>' : ""}${it.rolls_suffix ? ' · <span class="tagx" title="Can drop with a random suffix">🎲 Random suffix</span>' : ""}</div>
         ${srcCsv ? `<div class="item-sources">${sourceTags(srcCsv)}</div>` : ""}
         ${itemPeerCard(peer)}
@@ -1132,12 +1143,7 @@ async function showDressingRoom(params, navigate) {
   // Visual slots only -- a ring changes nothing about how you look. Head, shoulders and
   // anything held are MODELS hung off an attachment point rather than textures painted
   // on the body, but from here they are just another slot.
-  const SLOT_PARAM = { 4: "shirt", 5: "chest", 6: "waist", 7: "legs", 8: "feet",
-    9: "wrist", 10: "hands", 16: "back", 19: "tabard", 20: "chest",
-    1: "head", 3: "shoulder",
-    13: "mainhand", 17: "mainhand", 21: "mainhand",
-    14: "offhand", 22: "offhand", 23: "offhand",
-    15: "ranged", 25: "ranged", 26: "ranged", 28: "ranged" };
+  const SLOT_PARAM = DRESS_SLOT;
   const WEARABLE = [...new Set(Object.keys(SLOT_PARAM).map(Number))];
   const worn = new Map();                    // slot param -> item entry
   for (const [inv, key] of Object.entries(SLOT_PARAM)) {

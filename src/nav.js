@@ -5,6 +5,7 @@
 // global SPA-nav handler in main.js.
 import { CREATURE_TYPE, PROFESSION, CONTINENT, CLASS_MASK, SPELL_SCHOOL, SPELL_CATEGORIES } from "./constants.js";
 import { esc } from "./render.js";
+import { OWN_ITEM_MODELS } from "./config.js";
 
 const item = (qs) => `?browse=items&${qs}`;
 
@@ -151,6 +152,10 @@ const MORE = {
   label: "More",
   children: [
     { label: "Characters", href: "?characters" },
+    // The models are Turtle-client extractions and a display id is not a shared
+    // namespace, so on any other dataset the room can only refuse -- a menu entry that
+    // always errors is worse than none.
+    ...(OWN_ITEM_MODELS ? [{ label: "Dressing Room", href: "?dressing" }] : []),
     { label: "Gear-score presets", href: "?weights" },
     { label: "Objects", href: "?browse=objects" },
     { label: "Icons", href: "?icons" },
