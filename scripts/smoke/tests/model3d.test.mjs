@@ -703,3 +703,25 @@ async function testHelmetKeepsHeads() {
 }
 
 smoke("a helm covers a goblin's moustache but not her head", () => testHelmetKeepsHeads());
+
+// A robe paints AFTER the legs: its skirt covers them, which is what the robe geoset is
+// for. Filed under the chest's usual paint slot, a pair of trousers painted over the skirt
+// the robe had just drawn and the legs won. Asserted by pixels rather than by order --
+// wearing trousers under a robe must render exactly the same as wearing none.
+async function testRobeOverLegs() {
+  const shot = async (url) => {
+    await nav(url);
+    await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+    await new Promise((r) => setTimeout(r, 400));
+    return page.evaluate(() => window.__mv.snapshot({ background: false }));
+  };
+  const robeOnly = await shot("?dressing&race=1&sex=m&hair=3&chest=51848");
+  const withLegs = await shot("?dressing&race=1&sex=m&hair=3&chest=51848&legs=6568");
+  const legsOnly = await shot("?dressing&race=1&sex=m&hair=3&legs=6568");
+  console.log(`robe: covered=${robeOnly === withLegs} legsDiffer=${robeOnly !== legsOnly}`);
+  // the second half of the check guards the first: if the viewer rendered nothing at all,
+  // every snapshot would match and "covered" would pass for the wrong reason.
+  return robeOnly === withLegs && robeOnly !== legsOnly;
+}
+
+smoke("a robe covers the trousers under it", () => testRobeOverLegs());
