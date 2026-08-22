@@ -556,3 +556,21 @@ async function testResetAndSlotArt() {
 }
 
 smoke("dressing room resets the view and shows empty-slot art", () => testResetAndSlotArt());
+
+// What the appearance options are CALLED is per race, and the client says so (ChrRaces
+// names a token, the glue strings give it text). A troll's option is Tusks, a night elf
+// female's is Markings, a tauren's hair slider is Horns. Calling them all "Facial hair"
+// sends people looking for a beard slider that does not exist.
+async function testRaceLabels() {
+  const seen = {};
+  for (const [race, sex] of [[8, "m"], [6, "f"], [4, "f"], [1, "m"]]) {
+    await nav(`?dressing&race=${race}&sex=${sex}&hair=1`);
+    await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+    seen[`${race}${sex}`] = await page.$$eval(".stepper .val", (e) => e.map((x) => x.textContent.trim()));
+  }
+  console.log(`labels: ${JSON.stringify(seen)}`);
+  return /Tusks/.test(seen["8m"].join()) && /Horns/.test(seen["6f"].join())
+    && /Markings/.test(seen["4f"].join()) && /Facial Hair/i.test(seen["1m"].join());
+}
+
+smoke("dressing room names each race's options as the game does", () => testRaceLabels());

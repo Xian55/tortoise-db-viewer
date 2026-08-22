@@ -13,6 +13,7 @@ import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown, ftsQuery } from "./search.js";
 import { DRESS_SLOT } from "./chargear.js";
 import CHAR_PALETTE from "../scripts/data/char-palette.json";
+import RACE_LABELS from "../scripts/data/race-labels.json";
 import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, OWN_ITEM_MODELS, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
@@ -1249,8 +1250,6 @@ async function showDressingRoom(params, navigate) {
   // race's bald, and all five of the goblin's facial options), and offering only the
   // textured ones hides real choices -- while offering ones the race lacks used to leave
   // it headless.
-  const hasFacialArt = () =>
-    (data.sections[`${state.race}-${state.sex}-facial`] || []).some((r) => r[2].length);
   const geosetOpts = (table) =>
     [...new Set((data[table][`${state.race}-${state.sex}`] || []).map((r) => r[0]))].sort((a, b) => a - b);
   // The pickers are the character creator's, not a form's. Every option that HAS a
@@ -1286,6 +1285,8 @@ async function showDressingRoom(params, navigate) {
 
   const render = () => {
     const raceName = data.races.find((r) => r.id === state.race)?.name || "";
+    const lab = RACE_LABELS[state.race] || {};
+    const labels = { hair: lab.hair || "Hair", facial: lab[state.sex] || "Facial hair" };
     // Gender leads the same row as the races, because it IS one of the choices the row
     // is making -- and because the portraits are per gender, so the two controls are
     // reading the same picture.
@@ -1308,14 +1309,14 @@ async function showDressingRoom(params, navigate) {
       + field("Face & hair", "",
         `<div class="steps">`
         + stepper("Face", "face", opts("face", 0), state.face)
-        + stepper("Hair", "hair", geosetOpts("hair"), state.hair)
-        // The groups 1-3 mechanism is "facial hair" only where the race HAS facial-hair
-        // art. Turtle reuses it on goblin females for the eyes -- variation 0 is a
-        // heavy-lidded look, 2 is open eyes with pupils -- and calling that "Facial hair"
-        // sends people hunting for a bug in the eye textures. Detect it from the data:
-        // no facial texture rows means the geosets are something else on this race.
-        + stepper(hasFacialArt() ? "Facial hair" : "Face detail", "facial",
-          geosetOpts("facial"), state.facialHair)
+        + stepper(labels.hair, "hair", geosetOpts("hair"), state.hair)
+        // What this option is CALLED is per race, and the client says so: ChrRaces names a
+        // token per race and gender and the glue strings give it text. A troll's option is
+        // Tusks, an undead's is Features, a tauren's hair slider is Horns. Calling them all
+        // "Facial hair" sends people looking for a beard slider that does not exist -- and
+        // the guess it replaces ("Face detail" when a race had no facial textures) was
+        // right about goblins by accident and wrong about trolls.
+        + stepper(labels.facial, "facial", geosetOpts("facial"), state.facialHair)
         + `</div>`);
   };
 

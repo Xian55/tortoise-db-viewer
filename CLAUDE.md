@@ -727,7 +727,16 @@ what 4 looks like. Anything with a preview now shows it and everything else step
   is exactly that (the option changes geometry the texture does not follow), and nine
   identical circles claim a choice that does not exist -- those fall back to numbers.
 - **Face, hairstyle and markings keep a stepper** because nothing can preview them, but it
-  wraps and counts ("Hair 12 / 26").
+  wraps and counts ("Hair 12 / 26"). **What each stepper is CALLED is per race, and the
+  client says so**: `ChrRaces.dbc` fields 26/27/28 name a token per race (male facial,
+  female facial, hair) and `Interface\GlueXML\GlueStrings.lua` gives each token its text,
+  both pulled by `extract-race-icons.py` into the committed `scripts/data/race-labels.json`.
+  A troll's option is **Tusks**, an undead's and a goblin's **Features**, a night elf
+  female's **Markings**, a human female's **Piercings**, and a tauren's HAIR slider is
+  **Horns** while their facial one is "Hair". Calling them all "Facial hair" sends people
+  looking for a beard slider that does not exist -- and the heuristic this replaced ("Face
+  detail" when a race had no facial textures) was right about goblins by accident and wrong
+  about trolls.
 - **Changing race CLAMPS every other option.** A gnome has fewer skins than a tauren, and
   carrying an out-of-range index across the change renders a character with no head.
 - **The room is two rails and nothing underneath**: everything you WEAR down the left
