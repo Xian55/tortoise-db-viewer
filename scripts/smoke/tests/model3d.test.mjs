@@ -810,3 +810,25 @@ async function testSlotPaintsItsOwnRegions() {
 }
 
 smoke("a slot paints only its own regions of the body", () => testSlotPaintsItsOwnRegions());
+
+// An attachment wears its BONE'S SCALE, which the client applies and which is per race:
+// measured 1.000 on a human male, 0.574 on a blood elf female, 0.650 on a gnome and 1.600
+// on a tauren -- the reason one pair of pauldrons looks tiny on a gnome and enormous on a
+// tauren. Dropping it dressed a blood elf in human-sized shoulders, reported as "two
+// shoulders", the oversized pair being ours.
+async function testAttachmentScale() {
+  const scaleOf = async (race, sex) => {
+    await nav(`?dressing&race=${race}&sex=${sex}&hair=3&shoulder=70783`);
+    await page.waitForFunction(() => window.__mv && window.__mv().attached?.length === 2, { timeout: T });
+    return page.evaluate(() => window.__mv().attached[0].scale);
+  };
+  const human = await scaleOf(1, "m");
+  const belf = await scaleOf(10, "f");
+  const tauren = await scaleOf(6, "m");
+  console.log(`attach scale: human=${human} bloodElf=${belf} tauren=${tauren}`);
+  // A v2 model (not yet re-exported) reports 1 for everything, which is the old bug --
+  // so the test also proves the character models on this origin are v3.
+  return human === 1 && belf < 0.7 && tauren > 1.4;
+}
+
+smoke("an attached shoulder wears its bone's scale", () => testAttachmentScale());

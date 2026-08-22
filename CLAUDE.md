@@ -907,6 +907,14 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
   obeying the mask's bit 0 -- set on most full helms -- deleted the entire character and
   left a helmet floating over an empty stage. Hidden hair falls back to the bald cap and
   hidden ears to the earless head (701), which is what those geosets exist for.
+- **An attachment wears its BONE'S SCALE, and the client applies it.** Measured on the
+  shoulder bone: human male 1.000, blood elf female 0.574, gnome 0.650, tauren 1.600 --
+  which is exactly why one pair of pauldrons looks tiny on a gnome and enormous on a
+  tauren in game. The exporter divided the scale out of the rotation and then threw it
+  away, so a blood elf wore human-sized shoulders; reported as "the shoulders render
+  twice", the oversized pair being ours. `.m2b` v3 keeps it as one number (every character
+  attachment measured is uniform to three decimals). The reader accepts v2 AND v3, which is
+  what let the 20 character models be re-exported without reshipping 4,000 weapons.
 - **Helms and shoulders attach as MODELS** (`SLOT_ATTACH` in `chargear.js`): the .m2b
   carries the character's 39 attachment points, and the exporter bakes each one through
   the bone matrices, so it is a position AND a rotation in the same posed space as the
@@ -1099,7 +1107,8 @@ changes, then `bun scripts/publish-assets.mjs` to push the new tiles.
 - `scripts/lib/m2.py` — the shared client-3D reader (MPQ, WDBC, M2 v256 parse, bone
   posing, BLP decode), factored out of `render-model-thumbs.py`, which still imports it
   and is the regression oracle: its thumbs must stay byte-identical across changes here.
-- `src/m2b.js` — pure `.m2b` -> plain-object decode (typed-array views, no three import,
+- `src/m2b.js` — pure `.m2b` -> plain-object decode (v2 and v3; v3 attachments are 36
+  bytes rather than 32, carrying the bone scale) (typed-array views, no three import,
   so it is testable without WebGL). `src/modelviewer.js` — the lazy three.js chunk that
   turns that into a rendered, orbitable preview.
 - `scripts/build-tooltips.mjs` — dumps compact per-entity JSON
