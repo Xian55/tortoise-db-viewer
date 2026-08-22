@@ -866,6 +866,17 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
 - **The key light rides the camera.** Fixed in world space it lit one side only, so
   turning a character around to look at the back of a cloak showed it in shadow -- the
   exact thing you rotated to see.
+- **A helm HIDES what it covers**, and the client says exactly what: `HelmetGeosetVisData`
+  holds five bitmasks per helm style -- hair, the three facial groups, ears -- reached
+  through `ItemDisplayInfo`'s `HelmetGeosetVis[2]` (our `helm_m`/`helm_f`), and a set bit
+  means "covered, do not draw". Without it a hood renders with the character's hair through
+  the cloth. Two traps: the bit index is the GEOSET NUMBER within its group, not the
+  picker's variation index (a human female's hairstyle 0 is geoset 2, and the female row
+  for that hood sets bit 2 while bit 0 is clear -- indexing by variation leaves exactly the
+  wrong hair on); and **geoset 0 is the BODY**, which only shares group 0 with the hair, so
+  obeying the mask's bit 0 -- set on most full helms -- deleted the entire character and
+  left a helmet floating over an empty stage. Hidden hair falls back to the bald cap and
+  hidden ears to the earless head (701), which is what those geosets exist for.
 - **Helms and shoulders attach as MODELS** (`SLOT_ATTACH` in `chargear.js`): the .m2b
   carries the character's 39 attachment points, and the exporter bakes each one through
   the bone matrices, so it is a position AND a rotation in the same posed space as the
