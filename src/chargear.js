@@ -153,8 +153,15 @@ export const RACE_CODE = {
 const HELM_VIS_GROUPS = [0, 1, 2, 3, 7];      // hair, facial 1-3, ears
 const EAR_BARE = 701;                          // the earless head, drawn when ears are hidden
 
-/** Geosets to drop for the worn helm, plus any that replace them. */
-export function helmetHidden(head, sex, helmVis, geosets) {
+/** Geosets to drop for the worn helm, plus any that replace them.
+ *
+ *  `bearded` is the set of group 1-3 geosets that are really FACIAL HAIR -- the ones whose
+ *  variation paints a texture. The groups are not facial hair everywhere: Turtle reuses
+ *  them for head SHAPES on goblins (a goblin female's head is geoset 103) and for a troll's
+ *  tusks, so obeying a helm's beard mask deleted her face and left the hair and the mask
+ *  floating over nothing. A geoset with no art behind it is part of the head and stays.
+ *  Hair and ears are masked for everyone. */
+export function helmetHidden(head, sex, helmVis, geosets, bearded = null) {
   const id = head && (sex === "f" ? head.helm_f : head.helm_m);
   const masks = id ? helmVis?.[id] : null;
   if (!masks) return geosets;
@@ -167,6 +174,7 @@ export function helmetHidden(head, sex, helmVis, geosets) {
     const group = Math.floor(g / 100);
     const at = HELM_VIS_GROUPS.indexOf(group);
     if (at < 0) continue;
+    if (bearded && group >= 1 && group <= 3 && !bearded.has(g)) continue;
     const variant = group === 0 ? g : g % 100;
     if (!(masks[at] & (1 << variant))) continue;
     out.delete(g);

@@ -681,3 +681,25 @@ async function testHelmetHides() {
 }
 
 smoke("a helm hides the hair and beard it covers", () => testHelmetHides());
+
+// ...but only what is actually facial HAIR. Groups 1-3 are not facial hair on every race:
+// Turtle reuses them for head SHAPES on goblins, and a goblin female's head is geoset 103,
+// so obeying a helm's beard mask deleted her face and left the hair and mask floating over
+// nothing. The discriminator is art: her 103 paints no texture, while a goblin MALE's 103
+// is a moustache and does, so his is covered and hers is not.
+async function testHelmetKeepsHeads() {
+  const at = async (url) => {
+    await nav(url);
+    await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+    return page.evaluate(() => window.__mv().geosets);
+  };
+  const fBare = await at("?dressing&race=9&sex=f&face=5&hair=3&facial=1");
+  const fHelm = await at("?dressing&race=9&sex=f&face=5&hair=3&facial=1&head=81007");
+  const mBare = await at("?dressing&race=9&sex=m&hair=2&facial=1");
+  const mHelm = await at("?dressing&race=9&sex=m&hair=2&facial=1&head=1024");
+  console.log(`goblin: f ${fBare} -> ${fHelm} | m ${mBare} -> ${mHelm}`);
+  return fBare.includes(103) && fHelm.includes(103)          // her head survives the mask
+    && mBare.includes(103) && !mHelm.includes(103);          // his moustache does not
+}
+
+smoke("a helm covers a goblin's moustache but not her head", () => testHelmetKeepsHeads());

@@ -873,7 +873,11 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
   the cloth. Two traps: the bit index is the GEOSET NUMBER within its group, not the
   picker's variation index (a human female's hairstyle 0 is geoset 2, and the female row
   for that hood sets bit 2 while bit 0 is clear -- indexing by variation leaves exactly the
-  wrong hair on); and **geoset 0 is the BODY**, which only shares group 0 with the hair, so
+  wrong hair on); **groups 1-3 are not facial hair on every race** -- Turtle reuses them
+  for head SHAPES on goblins, so a beard mask deleted a goblin female's face and left her
+  hair and mask floating over nothing, and the discriminator is ART: her geoset 103 paints
+  no texture while a goblin MALE's 103 is a moustache and does, so his is covered and hers
+  is not; and **geoset 0 is the BODY**, which only shares group 0 with the hair, so
   obeying the mask's bit 0 -- set on most full helms -- deleted the entire character and
   left a helmet floating over an empty stage. Hidden hair falls back to the bald cap and
   hidden ears to the earless head (701), which is what those geosets exist for.
