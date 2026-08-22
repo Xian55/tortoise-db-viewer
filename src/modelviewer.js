@@ -44,34 +44,6 @@ export function destroyActive() {
 }
 if (typeof window !== "undefined") window.__mvDestroy = destroyActive;
 
-// A held weapon has no pose of its own. The .m2b bakes Stand frame 0, and a vanilla
-// character's bind pose is already arms-down, so the hand bone sits only ~14 degrees off
-// bind -- which leaves a weapon in the hand exactly as it was authored, and most are
-// authored lying along the model's forward axis. It reads as a sword held out flat in
-// front of the character.
-//
-// There is no single correction to apply, because the models do not share one authored
-// axis: a claymore points forward, a bow does not. What they DO share is a shape -- the
-// grip sits at the model's origin and the mass hangs off one side of it. So take the
-// direction the mass lies in and rotate it DOWN, by the shortest arc, which leaves the
-// roll about that axis exactly as authored (a sword's edge keeps facing where it did).
-//
-// This is a pose choice, not a client behaviour: WoW poses held weapons from the
-// weapon-drawn animations, which a static viewer does not have. Hanging at the side is
-// what a standing character with a drawn weapon looks like.
-const DOWN = new THREE.Vector3(0, 0, -1);
-function hangDown(model) {
-  const p = model.pos;
-  let cx = 0, cy = 0, cz = 0;
-  const n = p.length / 3;
-  for (let i = 0; i < p.length; i += 3) { cx += p[i]; cy += p[i + 1]; cz += p[i + 2]; }
-  const dir = new THREE.Vector3(cx / n, cy / n, cz / n);
-  // A fist weapon wraps the hand: its mass IS the origin, so there is no direction to
-  // hang and the authored orientation is already the right one.
-  if (dir.length() < 1e-3) return new THREE.Quaternion();
-  return new THREE.Quaternion().setFromUnitVectors(dir.normalize(), DOWN);
-}
-
 /** Cheap probe -- callers use it to decide whether to offer a 3D tab at all. Creating
  *  and dropping one throwaway context is far cheaper than importing this chunk, but this
  *  lives here so the answer and the renderer can never disagree. */
@@ -292,7 +264,6 @@ function buildViewer(el, model, slotTex, opts = {}) {
     const sub = meshFor(a.model, a.slotTex, {});
     sub.mesh.position.set(point.pos[0], point.pos[1], point.pos[2]);
     sub.mesh.quaternion.set(point.quat[0], point.quat[1], point.quat[2], point.quat[3]);
-    if (a.grip) sub.mesh.quaternion.multiply(hangDown(a.model));
     root.add(sub.mesh);
     attached.push(sub);
     drawnSubs.push(...sub.drawn.map((d) => [`att${a.attach}`, d[1], d[2], d[3]]));
@@ -673,7 +644,7 @@ export async function mountCharacterViewer(el, opts = {}) {
           ? loadTexture(embeddedUrl(t.name))
           : (a.texture ? loadTexture(textureUrl(a.texture)) : Promise.resolve(null))
       )));
-      attached.push({ model: m, slotTex: st, attach: a.attach, label: a.model, grip: a.grip });
+      attached.push({ model: m, slotTex: st, attach: a.attach, label: a.model });
     } catch { /* this race has no such variant, or the file was never exported */ }
   }));
 

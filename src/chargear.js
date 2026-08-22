@@ -111,9 +111,13 @@ const SHIELD = 14;
 
 
 // A weapon is posed by the hand bone's own rotation, which the .m2b bakes alongside the
-// attachment position (format v2). The sheath rules in items.sheath are NOT applied: a
-// standing character wears its weapons, but a dressing room exists to show them, so they
-// are drawn as held -- the same choice Wowhead's makes.
+// attachment position (format v2), and by NOTHING else -- the client applies no
+// correction on top of the bone either. It reads as the weapon held out from the fist
+// rather than hanging at the side, because the pose is Stand frame 0 and a vanilla bind
+// pose is already arms-down, so the hand bone barely rotates. That is what the data says
+// the weapon looks like on this frame; an invented rotation to make it hang would be a
+// guess dressed up as a pose. The sheath rules in items.sheath are likewise NOT applied:
+// a standing character wears its weapons, but a dressing room exists to show them.
 function heldAttach(it) {
   if (it.inv === SHIELD) return 0;
   const bySlot = it.slot ? HAND_BY_SLOT[it.slot] : undefined;
@@ -136,11 +140,8 @@ export function attachedModels(items, { race, sex }) {
   for (const it of items) {
     const held = heldAttach(it);
     if (held !== undefined && it.model_l) {
-      // `grip` asks the viewer to hang the model off the hand rather than leave it in
-      // whatever orientation it was authored in. A shield is exempt: it is strapped flat
-      // to the forearm and already lands right.
       out.push({ model: it.model_l, texture: it.tex_l, attach: held, item: it.entry,
-        inv: it.inv, grip: held !== 0 });
+        inv: it.inv });
       continue;
     }
     const points = SLOT_ATTACH[it.inv];

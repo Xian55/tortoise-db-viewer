@@ -748,19 +748,15 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
   forearm point (attachment 0), not into a fist. Attachment ids were measured off a posed
   body: 1 and 2 are a mirrored pair at 42% of height, 0 sits further out at 47%, 12 is
   behind the spine at 76%. Inv 28 (relic) is excluded -- the game does not draw it either.
-- **A held weapon has no pose of its own, and there is no single rotation that fixes it.**
-  The `.m2b` bakes Stand frame 0, and a vanilla character's bind pose is ALREADY arms-down,
-  so the hand bone sits only ~14 degrees off bind -- a weapon lands in the hand exactly as
-  it was authored, which for most is lying flat out in front of the character. The models
-  do not share one authored axis (a claymore points forward, a bow does not), so a constant
-  correction fixes swords and tilts bows. What they do share is a shape: the grip is at the
-  model's origin and the mass hangs off one side of it. `modelviewer.js` `hangDown()` points
-  that direction DOWN by the shortest arc, which leaves the roll about it exactly as
-  authored (a sword's edge keeps facing where it did) and needs nothing per weapon type. A
-  fist weapon, whose mass IS the origin, correctly gets no rotation at all. This is a pose
-  choice rather than a client behaviour -- WoW poses held weapons from the weapon-drawn
-  animations, which a static viewer does not have; `items.sheath` is likewise unused,
-  because a dressing room exists to show the weapon rather than to wear it.
+- **A held weapon takes the hand bone's rotation and nothing else.** The `.m2b` bakes
+  Stand frame 0, and a vanilla character's bind pose is already arms-down, so the hand bone
+  sits only ~14 degrees off bind -- the weapon ends up held out from the fist rather than
+  hanging at the side. That is not a bug to correct: the client applies no rotation on top
+  of the bone either, and the alternatives were tried and rejected on screen. Pointing the
+  model's mass down (the obvious fix) hangs a claymore convincingly and tilts a bow, since
+  the models share no authored axis; rolling it a further quarter turn only changes which
+  face you see. `items.sheath` is likewise unused -- a standing character wears its weapons,
+  but a dressing room exists to show them.
 - **Framing counts what is held, up to a point.** A claymore reaches ~1.5 body radii from
   centre and a helm's spikes reach above the head, so framing the body alone crops them;
   framing the union lets one polearm shrink the character to nothing. The widening is
