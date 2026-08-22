@@ -653,6 +653,14 @@ jQuery and a **CORS proxy server** besides. Same call, same reason, as `OWN_MODE
   per-slot lists were derived from the data, not recalled: over every non-hidden item of a
   slot, each has a dominant set at 88-100% and noise at 3-8%. Notably a belt paints `leg_u`
   (the hip), not the torso, and a chest takes the robe list only when it IS a robe.
+- **Model urls carry a version stamp** (`MODELS_V`, hashed from the asset manifest at build
+  time). The set is served with a seven-day max-age under names that never change, so
+  REPLACING a file leaves visitors -- and individual CDN edges -- on the old copy until the
+  TTL expires: after the v3 character re-export one PoP served the new models while another
+  still answered with v2, which read as one race keeping the wrong shoulder scale and went
+  red in CI while passing locally. One stamp covers the whole set, so any republish
+  invalidates every model3d url; the cost is re-downloading a few MB on a release that
+  actually changed models.
 - Assets are the R2 set `model3d/` (817 models 7.7 MB + 1,559 item textures 6.9 MB + 274
   embedded 1.8 MB), `optional` like `sounds`. The DB cost is **+0.11 MB brotli**.
 
