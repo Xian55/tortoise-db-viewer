@@ -1184,13 +1184,11 @@ async function showDressingRoom(params, navigate) {
 
   app.innerHTML = `<div class="dressing">
       <h1>Dressing room</h1>
-      <div class="dress-bar" id="dress-bar"></div>
       <div class="dress-room">
-        <div class="dress-col dress-col-l">${slotCol(SLOTS_L)}</div>
-        <div id="mv-host" class="mv-host"><p class="muted">Loading character…</p></div>
-        <div class="dress-col dress-col-r">${slotCol(SLOTS_R)}</div>
+        <div class="dress-col dress-col-l">${slotCol([...SLOTS_L, ...SLOTS_R, ...SLOTS_W])}</div>
+        <div id="mv-host" class="mv-host"><p class="muted">Loading character&hellip;</p></div>
+        <div class="dress-bar" id="dress-bar"></div>
       </div>
-      <div class="dress-weapons">${slotCol(SLOTS_W)}</div>
       <div class="dress-actions">
         <button type="button" class="btn" id="dress-set">Wear a set\u2026</button>
         <button type="button" class="btn" id="dress-random">\u{1F3B2} Random look</button>
@@ -1258,7 +1256,8 @@ async function showDressingRoom(params, navigate) {
       return `<button type="button" class="sw${c ? "" : " sw-num"}" data-key="${key}" data-val="${v}"${face}`
         + ` aria-pressed="${v === cur}" title="${esc(label)} ${v}">${c ? "" : v}</button>`;
     }).join("");
-    return field(label, `${values.indexOf(cur) + 1} / ${values.length}`, `<div class="swatches">${cells}</div>`);
+    return field(label, `${values.indexOf(cur) + 1} / ${values.length}`,
+      `<div class="swatches">${cells}</div>`);
   };
   const stepper = (label, key, values, cur) => {
     if (values.length < 2) return "";
@@ -1274,20 +1273,25 @@ async function showDressingRoom(params, navigate) {
 
   const render = () => {
     const raceName = data.races.find((r) => r.id === state.race)?.name || "";
+    // Gender leads the same row as the races, because it IS one of the choices the row
+    // is making -- and because the portraits are per gender, so the two controls are
+    // reading the same picture.
+    const sexTile = (val, label, glyph) =>
+      `<button type="button" class="race-tile sex-tile" data-key="sex" data-val="${val}"`
+      + ` aria-pressed="${state.sex === val}" title="${label}">`
+      + `<i>${glyph}</i><span>${label}</span></button>`;
     const tiles = data.races.map((r) =>
       `<button type="button" class="race-tile" data-key="race" data-val="${r.id}"`
       + ` aria-pressed="${r.id === state.race}" title="${esc(r.name)}">`
-      + `<img src="${RACE_ICON(r.id, state.sex)}" alt="" loading="lazy" width="40" height="40">`
+      + `<img src="${RACE_ICON(r.id, state.sex)}" alt="" loading="lazy" width="38" height="38">`
       + `<span>${esc(r.name)}</span></button>`).join("");
-    const facial = geosetOpts("facial");
     bar.innerHTML =
       field("Race", raceName,
-        `<div class="race-grid">${tiles}</div>`
-        + `<div class="seg" data-key="sex">`
-        + `<button type="button" data-val="m" aria-pressed="${state.sex === "m"}">Male</button>`
-        + `<button type="button" data-val="f" aria-pressed="${state.sex === "f"}">Female</button></div>`)
+        `<div class="race-row">${sexTile("m", "Male", "\u2642")}${sexTile("f", "Female", "\u2640")}`
+        + `<span class="race-sep"></span>${tiles}</div>`)
       + swatch("Skin", "skin", opts("skin", 1), state.skin, palette(`${state.race}-${state.sex}-skin`))
-      + swatch("Hair colour", "hcolor", opts("hair", 1), state.hairColor, palette(`${state.race}-${state.sex}-hair`))
+      + swatch("Hair colour", "hcolor", opts("hair", 1), state.hairColor,
+        palette(`${state.race}-${state.sex}-hair`))
       + field("Face & hair", "",
         `<div class="steps">`
         + stepper("Face", "face", opts("face", 0), state.face)
@@ -1297,7 +1301,8 @@ async function showDressingRoom(params, navigate) {
         // heavy-lidded look, 2 is open eyes with pupils -- and calling that "Facial hair"
         // sends people hunting for a bug in the eye textures. Detect it from the data:
         // no facial texture rows means the geosets are something else on this race.
-        + stepper(hasFacialArt() ? "Facial hair" : "Face detail", "facial", facial, state.facialHair)
+        + stepper(hasFacialArt() ? "Facial hair" : "Face detail", "facial",
+          geosetOpts("facial"), state.facialHair)
         + `</div>`);
   };
 
@@ -1636,7 +1641,7 @@ async function showDressingRoom(params, navigate) {
     render(); syncUrl(); await mount();
   };
 
-  bar.addEventListener("click", async (e) => {
+  const onPick = async (e) => {
     const step = e.target.closest(".stepper button");
     if (step) {
       // Steppers wrap. Reaching the end of eleven hairstyles and having to click back
@@ -1654,7 +1659,10 @@ async function showDressingRoom(params, navigate) {
     if (!btn) return;
     const key = btn.dataset.key;
     await set(key, key === "sex" ? btn.dataset.val : Number(btn.dataset.val));
-  });
+  };
+  // Three hosts, one handler: the strips are part of the same picker, they just sit
+  // beside the model instead of above it.
+  bar.addEventListener("click", onPick);
 
   render();
   await mount();

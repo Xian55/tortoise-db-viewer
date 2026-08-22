@@ -137,9 +137,11 @@ async function testDressingRoom(race, sex) {
   await page.waitForSelector("#mv-host canvas", { timeout: T });
   await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
   const st = await page.evaluate(() => window.__mv());
+  // Scope by data-key: gender shares the tile class with the races (it leads the same
+  // row), so an unscoped "first pressed tile" reads the gender as the race.
   const picked = await page.evaluate(() => ({
-    race: document.querySelector('.race-tile[aria-pressed="true"]')?.dataset.val,
-    sex: document.querySelector('.seg[data-key="sex"] [aria-pressed="true"]')?.dataset.val,
+    race: document.querySelector('.race-tile[data-key="race"][aria-pressed="true"]')?.dataset.val,
+    sex: document.querySelector('.race-tile[data-key="sex"][aria-pressed="true"]')?.dataset.val,
   }));
   console.log(`dressing ${race}-${sex}: tris=${st.triangles} meshes=${st.meshes} geosets=[${st.geosets}] picked=${JSON.stringify(picked)}`);
   // the pickers must also AGREE with the URL -- a look that renders while the controls
@@ -359,17 +361,17 @@ async function testPickers() {
   await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
   const before = await page.evaluate(() => ({
     selects: document.querySelectorAll("#dress-bar select").length,
-    tiles: document.querySelectorAll(".race-tile").length,
+    tiles: document.querySelectorAll('.race-tile[data-key="race"]').length,
     swatches: document.querySelectorAll(".sw").length,
     steppers: document.querySelectorAll(".stepper").length,
-    iconOk: [...document.querySelectorAll(".race-tile img")].every((i) => i.complete && i.naturalWidth > 0),
+    iconOk: [...document.querySelectorAll('.race-tile[data-key="race"] img')].every((i) => i.complete && i.naturalWidth > 0),
   }));
   // switching race must re-clamp: a tauren has option counts a human does not
   await page.click('.race-tile[data-val="6"]');
   await page.waitForFunction(() => location.search.includes("race=6"), { timeout: T });
   await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
   const after = await page.evaluate(() => ({
-    pressed: document.querySelector('.race-tile[aria-pressed="true"]')?.dataset.val,
+    pressed: document.querySelector('.race-tile[data-key="race"][aria-pressed="true"]')?.dataset.val,
     tris: window.__mv().triangles,
   }));
   console.log(`pickers: ${JSON.stringify(before)} -> race ${after.pressed}, ${after.tris} tris`);

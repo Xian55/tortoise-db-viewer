@@ -729,6 +729,17 @@ what 4 looks like. Anything with a preview now shows it and everything else step
   wraps and counts ("Hair 12 / 26").
 - **Changing race CLAMPS every other option.** A gnome has fewer skins than a tauren, and
   carrying an out-of-range index across the change renders a character with no head.
+- **The room is two rails and nothing underneath**: everything you WEAR down the left
+  (weapons included -- they get no row of their own), everything about the CHARACTER down
+  the right, model between them. That is a fit requirement rather than taste: with a
+  weapons row and an action bar stacked below the stage, the weapon slots sat under the
+  fold, so changing one scrolled the character out of view. The room is sized from the
+  VIEWPORT (`calc(100vh - 210px)`) so the model takes whatever height is left; measured
+  fitting at 1366x768, 1320x900 and 1920x1080. Below the breakpoint the rails stack and
+  the cap is dropped -- scrolling is fine when there is no room to avoid it.
+- **Gender leads the race row** and shares its tile class, so a selector like
+  "first pressed .race-tile" reads the GENDER as the race (it cost three smoke failures).
+  Scope on `data-key`.
 - The action bar under the model is one row: wear a set, roll a random look, undress, save
   the outfit, share it. **A saved outfit is just its query string** under a name in
   `localStorage` -- the URL already IS the outfit, which is what makes a look shareable.
