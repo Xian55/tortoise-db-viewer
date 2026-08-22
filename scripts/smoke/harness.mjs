@@ -57,7 +57,12 @@ const ISOLATE = process.env.SMOKE_ISOLATE === "1";
 // NB: if you see a FLOOD of these locally, the cause is usually public/model-thumbs
 // being empty rather than Wowhead -- without its manifest every id falls back to the
 // CDN. `bun run assets -- --only model-thumbs` fixes that.
-export const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|zamimg\.com|minimap\/.+\.webp$|changelog\.json|raw\.githubusercontent\.com|cdn\.jsdelivr\.net/;
+// `model3d/comp/**` misses are DELIBERATE, not breakage: an armor component texture ships
+// as a male+female PAIR or as one unisex file, never both, so every layer asks for its
+// sexed name first and falls back to `_u`. One of the two is always a 404 by design. It
+// only shows up in CI: a local run serves those files off disk, while CI reads them from
+// R2 where the miss is real.
+export const BENIGN = /favicon\.ico|icons\.json|worldofwarcraft\.com|zamimg\.com|minimap\/.+\.webp$|changelog\.json|raw\.githubusercontent\.com|cdn\.jsdelivr\.net|model3d\/comp\/.+\.webp$/;
 // Benign *pageerror* messages. SPA nav (pushState) swaps #app out from under a
 // Leaflet/Pixi map whose queued animation callbacks then fire once against removed
 // DOM -> a spurious async "_leaflet_pos"/getPosition error. The legacy suite never
