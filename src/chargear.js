@@ -142,6 +142,42 @@ export const RACE_CODE = {
   1: "hu", 2: "or", 3: "dw", 4: "ni", 5: "sc", 6: "ta", 7: "gn", 8: "tr", 9: "go", 10: "be",
 };
 
+// What a helmet HIDES. The client keeps this in HelmetGeosetVisData: one row per helm
+// style, five bitmasks -- hair, the three facial groups, ears -- and a set bit means "this
+// geoset is covered, do not draw it". Without it a hood renders with the character's hair
+// sticking straight through the cloth.
+//
+// The bit index is the GEOSET NUMBER within its group, not the picker's variation index:
+// a human female's hairstyle 0 is geoset 2, and row 306 (this helm, female) has bit 2 set
+// while bit 0 is clear. Indexing by the variation would leave exactly the wrong hair on.
+const HELM_VIS_GROUPS = [0, 1, 2, 3, 7];      // hair, facial 1-3, ears
+const EAR_BARE = 701;                          // the earless head, drawn when ears are hidden
+
+/** Geosets to drop for the worn helm, plus any that replace them. */
+export function helmetHidden(head, sex, helmVis, geosets) {
+  const id = head && (sex === "f" ? head.helm_f : head.helm_m);
+  const masks = id ? helmVis?.[id] : null;
+  if (!masks) return geosets;
+  const out = new Set(geosets);
+  for (const g of geosets) {
+    // Geoset 0 is the BODY, not a hair variant -- it only shares group 0 with them. The
+    // hair mask has bit 0 set on most full helms, so treating it as one deleted the whole
+    // character and left a helmet floating over an empty stage.
+    if (g === 0) continue;
+    const group = Math.floor(g / 100);
+    const at = HELM_VIS_GROUPS.indexOf(group);
+    if (at < 0) continue;
+    const variant = group === 0 ? g : g % 100;
+    if (!(masks[at] & (1 << variant))) continue;
+    out.delete(g);
+    // An open scalp is a hole in the head, so hair gives way to the bald cap and an ear
+    // geoset to the earless head -- which is what 701 exists for.
+    if (group === 0) out.add(1);
+    if (group === 7) out.add(EAR_BARE);
+  }
+  return out;
+}
+
 /**
  * The model files an outfit needs hung off the skeleton.
  * Returns [{ model, texture, attach, item }] -- `model` is the .m2b basename.

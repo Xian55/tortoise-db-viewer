@@ -14,7 +14,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { parseM2B, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
 import { compositeBody, SECTION_REGIONS } from "./charcomposite.js";
-import { COMPONENT_REGIONS, applyGear, inPaintOrder, attachedModels } from "./chargear.js";
+import { COMPONENT_REGIONS, applyGear, inPaintOrder, attachedModels, helmetHidden } from "./chargear.js";
 import { MODELS_BASE } from "./config.js";
 
 // The ONE live viewer. A WebGL context is scarce and is not garbage-collected, so
@@ -818,7 +818,8 @@ export async function mountCharacterViewer(el, opts = {}) {
     attached,
     label: `${race}-${sex}`,
     cape: backItem ? { item: backItem.entry, texture: backItem.tex_l, loaded: !!capeTex } : null,
-    geosets: applyGear(baseGeosets(model, { hairGeoset, facial: facialGeosets }), worn, present),
+    geosets: helmetHidden(worn.find((it) => it.inv === 1), sex, data.helmVis,
+      applyGear(baseGeosets(model, { hairGeoset, facial: facialGeosets }), worn, present)),
     skipEmbedded: true,
     // Straight on, and the axis was MEASURED rather than recalled: a character model is
     // symmetric across Y (the human male spans y -0.54..0.54 but x -0.49..0.33), so Y is

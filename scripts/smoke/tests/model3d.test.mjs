@@ -655,3 +655,29 @@ async function testPickerPlacement() {
 }
 
 smoke("dressing room picker stays on screen for the bottom slots", () => testPickerPlacement());
+
+// A helm hides what it covers. The client keeps that in HelmetGeosetVisData -- five
+// bitmasks per helm style (hair, the three facial groups, ears) where a set bit means
+// "covered, do not draw" -- and without it a hood renders with the hair through the cloth.
+// Two things this pins: the bit index is the GEOSET number, not the picker's variation,
+// and geoset 0 is the BODY, which shares group 0 with the hair and must never be hidden
+// (the mask has bit 0 set on most full helms; obeying it deleted the whole character).
+async function testHelmetHides() {
+  const at = async (url) => {
+    await nav(url);
+    await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+    return page.evaluate(() => window.__mv().geosets);
+  };
+  const bare = await at("?dressing&race=1&sex=m&hair=3&facial=4");
+  const helmed = await at("?dressing&race=1&sex=m&hair=3&facial=4&head=1024");   // hides hair + facial
+  const headband = await at("?dressing&race=1&sex=f&hair=5&head=1");             // hides nothing
+  const g = (list, group) => list.filter((x) => Math.floor(x / 100) === group);
+  console.log(`helmvis: bare=[${bare}] helmed=[${helmed}] headband=[${headband}]`);
+  return bare.includes(0) && helmed.includes(0)              // the body survives
+    && g(bare, 1).length > 0 && g(helmed, 1).length === 0     // facial hair covered
+    && bare.includes(4) && !helmed.includes(4)                // the hairstyle covered
+    && helmed.includes(701) && !helmed.includes(702)          // ears give way to the bare head
+    && headband.includes(7) && headband.includes(702);        // and a headband covers nothing
+}
+
+smoke("a helm hides the hair and beard it covers", () => testHelmetHides());
