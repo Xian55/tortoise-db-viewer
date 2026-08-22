@@ -137,9 +137,14 @@ async function testDressingRoom(race, sex) {
   await page.waitForSelector("#mv-host canvas", { timeout: T });
   await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
   const st = await page.evaluate(() => window.__mv());
-  const pickers = await page.$$eval(".dress-pick select", (e) => e.map((s) => s.dataset.key));
-  console.log(`dressing ${race}-${sex}: tris=${st.triangles} meshes=${st.meshes} geosets=[${st.geosets}] pickers=[${pickers}]`);
-  return st.triangles > 0 && st.meshes > 1 && pickers.includes("race") && pickers.includes("sex");
+  const picked = await page.evaluate(() => ({
+    race: document.querySelector('.race-tile[aria-pressed="true"]')?.dataset.val,
+    sex: document.querySelector('.seg[data-key="sex"] [aria-pressed="true"]')?.dataset.val,
+  }));
+  console.log(`dressing ${race}-${sex}: tris=${st.triangles} meshes=${st.meshes} geosets=[${st.geosets}] picked=${JSON.stringify(picked)}`);
+  // the pickers must also AGREE with the URL -- a look that renders while the controls
+  // show something else is the same bug as one that renders wrong.
+  return st.triangles > 0 && st.meshes > 1 && picked.race === String(race) && picked.sex === sex;
 }
 
 // The naked mannequin must show the body and its bare limbs, and nothing it is not
@@ -343,3 +348,55 @@ async function testEntryPoints() {
 }
 
 smoke("dressing room is reachable without typing a URL", () => testEntryPoints());
+
+// The appearance pickers are the character creator's, not a form's: race portraits,
+// colour swatches, and steppers only where nothing can be previewed. Asserting "no
+// <select> survives" is the point of the change, and the race icons must actually load --
+// they are committed art served from the asset origin, so a wrong path is a silent
+// blank tile rather than an error.
+async function testPickers() {
+  await nav("?dressing&race=1&sex=f&hair=1");
+  await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
+  const before = await page.evaluate(() => ({
+    selects: document.querySelectorAll("#dress-bar select").length,
+    tiles: document.querySelectorAll(".race-tile").length,
+    swatches: document.querySelectorAll(".sw").length,
+    steppers: document.querySelectorAll(".stepper").length,
+    iconOk: [...document.querySelectorAll(".race-tile img")].every((i) => i.complete && i.naturalWidth > 0),
+  }));
+  // switching race must re-clamp: a tauren has option counts a human does not
+  await page.click('.race-tile[data-val="6"]');
+  await page.waitForFunction(() => location.search.includes("race=6"), { timeout: T });
+  await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
+  const after = await page.evaluate(() => ({
+    pressed: document.querySelector('.race-tile[aria-pressed="true"]')?.dataset.val,
+    tris: window.__mv().triangles,
+  }));
+  console.log(`pickers: ${JSON.stringify(before)} -> race ${after.pressed}, ${after.tris} tris`);
+  return before.selects === 0 && before.tiles === 10 && before.swatches > 5
+    && before.steppers >= 2 && before.iconOk && after.pressed === "6" && after.tris > 0;
+}
+
+smoke("dressing room picks by portrait and swatch, not dropdown", () => testPickers());
+
+// The action bar: a random look must produce a DIFFERENT, still-renderable character, and
+// saving keeps the outfit as its URL (the URL already is the outfit).
+async function testActions() {
+  await nav("?dressing&race=1&sex=m&hair=1&chest=17581");
+  await page.waitForFunction(() => window.__mv && window.__mv().running, { timeout: T });
+  const first = await page.evaluate(() => location.search);
+  await page.click("#dress-save");
+  await page.waitForFunction(() => document.querySelectorAll(".outfit-chip").length === 1, { timeout: T });
+  const chip = await page.$eval(".outfit-chip a", (a) => a.textContent.trim());
+  await page.click("#dress-random");
+  await page.waitForFunction((q) => location.search !== q, { timeout: T }, first);
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const rolled = await page.evaluate(() => location.search);
+  // and the saved outfit is still one click away
+  const chips = await page.$$eval(".outfit-chip", (e) => e.length);
+  await page.evaluate(() => localStorage.removeItem("tw-outfits"));
+  console.log(`actions: saved "${chip}", rolled ${rolled.slice(0, 60)}, chips=${chips}`);
+  return chip.length > 0 && rolled !== first && chips === 1;
+}
+
+smoke("dressing room saves an outfit and rolls a random look", () => testActions());

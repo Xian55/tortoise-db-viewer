@@ -274,12 +274,12 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // the item and pushes it off-centre. Same rule render-model-thumbs.py frames by.
   const body = opaqueBounds(model) || bounds(model);
   const center = body.center;
-  // What is HELD reaches past the body -- a claymore hangs below the feet, a helm's
-  // spikes above the head -- so framing the body alone crops them. Framing the union
-  // instead would let one polearm shrink the character to nothing, so the widening is
-  // capped at half again, past which the weapon overflows rather than the character
-  // shrinking -- a claymore hung at the hip reaches about 1.5 body radii from centre.
-  const radius = Math.min(attachedRadius(center, attached) || body.radius, body.radius * 1.5);
+  // What is HELD reaches past the body -- a claymore points out past the fist, a helm's
+  // spikes above the head -- so framing the body alone crops them. Framing the union is
+  // worse: a weapon reaches ~1.5 body radii, so the CHARACTER then renders at two thirds
+  // the size in the same pane, and the character is what the page is about. The widening
+  // is capped hard at a tenth, which recovers the helm and lets the weapon overflow.
+  const radius = Math.min(attachedRadius(center, attached) || body.radius, body.radius * 1.1);
   const camera = new THREE.PerspectiveCamera(35, width() / height(), radius / 100, radius * 100);
   const target = new THREE.Vector3(center[0], center[2], -center[1]);  // same swap as root
   // A weapon reads best from a three-quarter angle; a character has a front, and showing
@@ -290,7 +290,11 @@ function buildViewer(el, model, slotTex, opts = {}) {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.copy(target);
   controls.enableDamping = true;
-  controls.enablePan = false;
+  // Panning is on: a dressing room is looked at close up -- the trim on a pauldron, the
+  // hem of a robe -- and orbit alone can only circle the centre of the model, so the only
+  // way to put a detail in the middle of the screen is to move the target with it.
+  controls.enablePan = true;
+  controls.screenSpacePanning = true;     // pan up = up the screen, not along the ground
   controls.minDistance = radius * 1.2;
   controls.maxDistance = radius * 8;
   controls.update();

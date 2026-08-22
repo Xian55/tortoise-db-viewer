@@ -12,6 +12,7 @@ import { externalMenuHtml, wireExternalMenu, chatMacro, chatButtonHtml, wireChat
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown, ftsQuery } from "./search.js";
 import { DRESS_SLOT } from "./chargear.js";
+import CHAR_PALETTE from "../scripts/data/char-palette.json";
 import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, OWN_ITEM_MODELS, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
@@ -1184,17 +1185,21 @@ async function showDressingRoom(params, navigate) {
   app.innerHTML = `<div class="dressing">
       <h1>Dressing room</h1>
       <div class="dress-bar" id="dress-bar"></div>
-      <div class="dress-actions">
-        <button type="button" class="btn" id="dress-set">Wear a set...</button>
-        <button type="button" class="btn-sm" id="dress-strip">Take everything off</button>
-        <span class="muted" id="dress-msg"></span>
-      </div>
       <div class="dress-room">
         <div class="dress-col dress-col-l">${slotCol(SLOTS_L)}</div>
         <div id="mv-host" class="mv-host"><p class="muted">Loading character…</p></div>
         <div class="dress-col dress-col-r">${slotCol(SLOTS_R)}</div>
       </div>
       <div class="dress-weapons">${slotCol(SLOTS_W)}</div>
+      <div class="dress-actions">
+        <button type="button" class="btn" id="dress-set">Wear a set\u2026</button>
+        <button type="button" class="btn" id="dress-random">\u{1F3B2} Random look</button>
+        <button type="button" class="btn" id="dress-strip">Undress</button>
+        <button type="button" class="btn" id="dress-save">Save outfit</button>
+        <button type="button" class="btn" id="dress-share">\u{1F517} Share</button>
+        <span class="muted" id="dress-msg"></span>
+      </div>
+      <div class="dress-saved" id="dress-saved"></div>
       <div class="search-dropdown dress-pop" id="dress-pop" hidden>
         <input id="dress-find" type="search" placeholder="Search by name…" autocomplete="off">
         <div id="dress-hits"></div>
@@ -1217,6 +1222,11 @@ async function showDressingRoom(params, navigate) {
     return;
   }
 
+  // Sampled colours for the skin/hair swatches (scripts/build-char-palette.py). Bundled
+  // rather than fetched with the rest of the appearance data: it is 4 KB and the picker
+  // needs it on first paint.
+  const palette = (key) => CHAR_PALETTE[key] || null;
+
   // How many variations/colours this race+gender actually offers. Asked of the data
   // rather than assumed: Turtle's own races do not carry the same counts as Blizzard's.
   const opts = (kind, idx) => {
@@ -1232,33 +1242,65 @@ async function showDressingRoom(params, navigate) {
     (data.sections[`${state.race}-${state.sex}-facial`] || []).some((r) => r[2].length);
   const geosetOpts = (table) =>
     [...new Set((data[table][`${state.race}-${state.sex}`] || []).map((r) => r[0]))].sort((a, b) => a - b);
-  const pick = (label, key, values, cur) => values.length > 1
-    ? `<label class="dress-pick">${esc(label)}<select data-key="${key}">`
-      // Label with the value itself, not v+1: the URL carries the raw variation, and a
-      // 1-based label makes the picker and the link disagree about which style is which.
-      + values.map((v) => `<option value="${v}"${v === cur ? " selected" : ""}>${v}</option>`).join("")
-      + `</select></label>`
-    : "";
-  const render = () => {
-    bar.innerHTML =
-      `<label class="dress-pick">Race<select data-key="race">`
-      + data.races.map((r) => `<option value="${r.id}"${r.id === state.race ? " selected" : ""}>${esc(r.name)}</option>`).join("")
-      + `</select></label>`
-      + `<label class="dress-pick">Gender<select data-key="sex">`
-      + `<option value="m"${state.sex === "m" ? " selected" : ""}>Male</option>`
-      + `<option value="f"${state.sex === "f" ? " selected" : ""}>Female</option></select></label>`
-      + pick("Skin", "skin", opts("skin", 1), state.skin)
-      + pick("Face", "face", opts("face", 0), state.face)
-      + pick("Hair", "hair", geosetOpts("hair"), state.hair)
-      + pick("Hair colour", "hcolor", opts("hair", 1), state.hairColor)
-      // The groups 1-3 mechanism is "facial hair" only where the race HAS facial-hair
-      // art. Turtle reuses it on goblin females for the eyes -- variation 0 is a
-      // heavy-lidded look, 2 is open eyes with pupils -- and calling that "Facial hair"
-      // sends people hunting for a bug in the eye textures. Detect it from the data:
-      // no facial texture rows means the geosets are something else on this race.
-      + pick(hasFacialArt() ? "Facial hair" : "Face detail", "facial",
-        geosetOpts("facial"), state.facialHair);
+  // The pickers are the character creator's, not a form's. Every option that HAS a
+  // preview shows it -- a race is its portrait, a skin or hair colour is that colour --
+  // and only the ones that cannot be previewed in a swatch (face, hairstyle, markings)
+  // stay as a stepper, which is still one click per change rather than three.
+  const RACE_ICON = (id, sex) => `${ASSETS_BASE}icons/race/${id}-${sex}.webp`;
+  const swatch = (label, key, values, cur, colours) => {
+    if (values.length < 2) return "";
+    const cells = values.map((v) => {
+      const c = colours && colours[v];
+      // No sampled colour (a race whose art the client does not ship) degrades to the
+      // number rather than to an empty circle that looks broken. One class attribute,
+      // not two -- a second is silently dropped, which left the fallback unstyled.
+      const face = c ? ` style="background:${c}"` : "";
+      return `<button type="button" class="sw${c ? "" : " sw-num"}" data-key="${key}" data-val="${v}"${face}`
+        + ` aria-pressed="${v === cur}" title="${esc(label)} ${v}">${c ? "" : v}</button>`;
+    }).join("");
+    return field(label, `${values.indexOf(cur) + 1} / ${values.length}`, `<div class="swatches">${cells}</div>`);
   };
+  const stepper = (label, key, values, cur) => {
+    if (values.length < 2) return "";
+    const at = Math.max(0, values.indexOf(cur));
+    return `<div class="stepper" data-key="${key}">`
+      + `<button type="button" data-step="-1" aria-label="Previous ${esc(label)}">\u2039</button>`
+      + `<span class="val">${esc(label)} ${at + 1} / ${values.length}</span>`
+      + `<button type="button" data-step="1" aria-label="Next ${esc(label)}">\u203a</button></div>`;
+  };
+  const field = (label, note, body) =>
+    `<div class="dfield"><div class="dfield-lbl"><span>${esc(label)}</span>`
+    + `<span class="dim">${esc(note)}</span></div>${body}</div>`;
+
+  const render = () => {
+    const raceName = data.races.find((r) => r.id === state.race)?.name || "";
+    const tiles = data.races.map((r) =>
+      `<button type="button" class="race-tile" data-key="race" data-val="${r.id}"`
+      + ` aria-pressed="${r.id === state.race}" title="${esc(r.name)}">`
+      + `<img src="${RACE_ICON(r.id, state.sex)}" alt="" loading="lazy" width="40" height="40">`
+      + `<span>${esc(r.name)}</span></button>`).join("");
+    const facial = geosetOpts("facial");
+    bar.innerHTML =
+      field("Race", raceName,
+        `<div class="race-grid">${tiles}</div>`
+        + `<div class="seg" data-key="sex">`
+        + `<button type="button" data-val="m" aria-pressed="${state.sex === "m"}">Male</button>`
+        + `<button type="button" data-val="f" aria-pressed="${state.sex === "f"}">Female</button></div>`)
+      + swatch("Skin", "skin", opts("skin", 1), state.skin, palette(`${state.race}-${state.sex}-skin`))
+      + swatch("Hair colour", "hcolor", opts("hair", 1), state.hairColor, palette(`${state.race}-${state.sex}-hair`))
+      + field("Face & hair", "",
+        `<div class="steps">`
+        + stepper("Face", "face", opts("face", 0), state.face)
+        + stepper("Hair", "hair", geosetOpts("hair"), state.hair)
+        // The groups 1-3 mechanism is "facial hair" only where the race HAS facial-hair
+        // art. Turtle reuses it on goblin females for the eyes -- variation 0 is a
+        // heavy-lidded look, 2 is open eyes with pupils -- and calling that "Facial hair"
+        // sends people hunting for a bug in the eye textures. Detect it from the data:
+        // no facial texture rows means the geosets are something else on this race.
+        + stepper(hasFacialArt() ? "Facial hair" : "Face detail", "facial", facial, state.facialHair)
+        + `</div>`);
+  };
+
   const KEY = { hcolor: "hairColor", facial: "facialHair" };
 
   const hitsEl = app.querySelector("#dress-hits");
@@ -1497,6 +1539,73 @@ async function showDressingRoom(params, navigate) {
   app.querySelector("#dress-set")?.addEventListener("click", (e) => {
     if (activeSlot === "__set") closeSlot(); else openSets(e.currentTarget);
   });
+  // Saved outfits live in this browser, not in the URL: the URL already IS the outfit
+  // (that is what makes a look shareable), so saving one is just keeping the query
+  // string under a name. Kept per browser, like the compare tray.
+  const STORE = "tw-outfits";
+  const readSaved = () => {
+    try { return JSON.parse(localStorage.getItem(STORE) || "[]"); } catch { return []; }
+  };
+  const writeSaved = (list) => {
+    try { localStorage.setItem(STORE, JSON.stringify(list.slice(0, 24))); } catch { /* full or private */ }
+  };
+  const savedEl = app.querySelector("#dress-saved");
+  const renderSaved = () => {
+    const list = readSaved();
+    savedEl.innerHTML = list.length
+      ? `<span class="dim">Saved</span>` + list.map((o, i) =>
+        `<span class="outfit-chip"><a class="nav" href="?${esc(o.q)}">${esc(o.n)}</a>`
+        + `<button type="button" class="outfit-x" data-i="${i}" title="Forget this outfit">\u2715</button></span>`).join("")
+      : "";
+  };
+  savedEl.addEventListener("click", (e) => {
+    const x = e.target.closest(".outfit-x");
+    if (!x) return;
+    const list = readSaved();
+    list.splice(Number(x.dataset.i), 1);
+    writeSaved(list);
+    renderSaved();
+  });
+  renderSaved();
+
+  app.querySelector("#dress-save")?.addEventListener("click", () => {
+    const list = readSaved();
+    const q = new URLSearchParams(location.search).toString();
+    if (list.some((o) => o.q === q)) { say("That outfit is already saved."); return; }
+    const worn0 = wornRows.find((r) => r.slot === "chest") || wornRows[0];
+    // Name it after something recognisable rather than "Outfit 4": the chest piece if
+    // there is one, else the race, which is at least what the picture shows.
+    const name = worn0?.name || `${data.races.find((r) => r.id === state.race)?.name || "Look"}`;
+    list.unshift({ n: name.slice(0, 28), q });
+    writeSaved(list);
+    renderSaved();
+    say(`Saved as "${name.slice(0, 28)}".`);
+  });
+
+  app.querySelector("#dress-share")?.addEventListener("click", async () => {
+    // The plain page URL, not the OG share link: ?dressing has no unfurl endpoint, and
+    // an outfit is the whole query string rather than one entity id.
+    try {
+      await navigator.clipboard.writeText(location.href);
+      say("Link copied \u2014 it carries the whole outfit.");
+    } catch { say("Could not reach the clipboard."); }
+  });
+
+  app.querySelector("#dress-random")?.addEventListener("click", async () => {
+    const any = (vals) => vals[Math.floor(Math.random() * vals.length)] ?? 0;
+    state.race = any(data.races.map((r) => r.id));
+    state.sex = Math.random() < 0.5 ? "m" : "f";
+    // Clamp first: the options below belong to the NEW race, and asking for the old
+    // race's counts would roll a hairstyle this one does not have.
+    clamp();
+    state.skin = any(opts("skin", 1));
+    state.face = any(opts("face", 0));
+    state.hair = any(geosetOpts("hair"));
+    state.hairColor = any(opts("hair", 1));
+    state.facialHair = any(geosetOpts("facial"));
+    render(); syncUrl(); await mount();
+  });
+
   app.querySelector("#dress-strip")?.addEventListener("click", async () => {
     if (!worn.size) return;
     worn.clear();
@@ -1506,16 +1615,45 @@ async function showDressingRoom(params, navigate) {
     say("Everything taken off.");
   });
 
+
   // Race / gender / skin / face / hair. A new race has its own option counts, so the
   // picker list is rebuilt, and the URL keeps the look shareable.
-  bar.addEventListener("change", async (e) => {
-    const sel = e.target.closest("select");
-    if (!sel) return;
-    const k = sel.dataset.key;
-    state[KEY[k] || k] = k === "sex" ? sel.value : Number(sel.value);
-    render();
-    syncUrl();
-    await mount();
+  // A race change can leave a look pointing at an option the new race does not have (a
+  // gnome has fewer skins than a tauren), which used to render a character with no head.
+  // Clamp everything that is out of range to the nearest option that exists.
+  const clamp = () => {
+    const fit = (vals, cur) => (vals.includes(cur) ? cur : (vals[0] ?? 0));
+    state.skin = fit(opts("skin", 1), state.skin);
+    state.face = fit(opts("face", 0), state.face);
+    state.hairColor = fit(opts("hair", 1), state.hairColor);
+    state.hair = fit(geosetOpts("hair"), state.hair);
+    state.facialHair = fit(geosetOpts("facial"), state.facialHair);
+  };
+
+  const set = async (key, value) => {
+    state[KEY[key] || key] = value;
+    if (key === "race" || key === "sex") clamp();
+    render(); syncUrl(); await mount();
+  };
+
+  bar.addEventListener("click", async (e) => {
+    const step = e.target.closest(".stepper button");
+    if (step) {
+      // Steppers wrap. Reaching the end of eleven hairstyles and having to click back
+      // through all of them is the kind of thing a dropdown was at least honest about.
+      const box = step.closest(".stepper");
+      const key = box.dataset.key;
+      const vals = key === "hair" || key === "facial" ? geosetOpts(key)
+        : opts(key === "hcolor" ? "hair" : key, key === "face" ? 0 : 1);
+      const at = Math.max(0, vals.indexOf(state[KEY[key] || key]));
+      const next = vals[(at + Number(step.dataset.step) + vals.length) % vals.length];
+      await set(key, next);
+      return;
+    }
+    const btn = e.target.closest("[data-key][data-val]");
+    if (!btn) return;
+    const key = btn.dataset.key;
+    await set(key, key === "sex" ? btn.dataset.val : Number(btn.dataset.val));
   });
 
   render();

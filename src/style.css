@@ -592,7 +592,7 @@ a.ilink.zone { color: #8fd18f; }
 #zonemap:fullscreen { border: 0; border-radius: 0; }
 /* 3D item preview (src/modelviewer.js). Needs an explicit height: the canvas is sized
    from the host element, and a host that sizes itself from its content collapses to 0. */
-.mv-host { height: 60vh; min-height: 320px; position: relative; display: flex;
+.mv-host { height: 68vh; min-height: 400px; max-height: 720px; position: relative; display: flex;
   align-items: center; justify-content: center; overflow: hidden;
   border: 1px solid var(--border); border-radius: 8px;
   /* A dark item on a near-black pane disappears; the soft radial lifts the middle
@@ -1601,16 +1601,24 @@ td .pet-rank { margin: 1px 0; }
 /* Dressing room: a paperdoll -- slots flank the character, so their POSITION says which
    body part they are. The gap is deliberately generous (unlike Wowhead's, where the
    columns crowd the model): the character is the thing being looked at. */
-.dress-room { display: grid; grid-template-columns: minmax(150px, 200px) minmax(0, 1fr) minmax(150px, 200px);
-  gap: 56px; align-items: start; margin: 10px 0; }
-.dress-col { display: flex; flex-direction: column; gap: 8px; }
-.dress-slot { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 6px;
+/* The slots flank the model the way the in-game window arranges them, so position is
+   what says which slot a plate is. They were 200px wide with a 56px moat on either side
+   -- 512px of the page spent on eleven mostly-empty rectangles -- while the model sat in
+   what was left. Narrower plates and a tighter gutter hand that width back to the stage,
+   which is the thing anyone came here to look at. */
+.dress-room { display: grid; grid-template-columns: minmax(140px, 176px) minmax(0, 1fr) minmax(140px, 176px);
+  gap: 20px; align-items: stretch; margin: 10px auto; max-width: 1040px; }
+/* Centred in the column, not stacked at the top and not spread to the corners. Stacking
+   left the bottom third of both flanks empty; spreading (space-between) pushed the plates
+   so far apart they stopped reading as one list. */
+.dress-col { display: flex; flex-direction: column; justify-content: center; gap: 7px; }
+.dress-slot { display: flex; align-items: center; gap: 7px; width: 100%; padding: 3px 5px;
   background: none; border: 1px solid var(--border); border-radius: 8px; color: inherit;
   cursor: pointer; text-align: left; font-size: 12px; }
 .dress-slot:hover, .dress-slot.active { border-color: var(--accent, #c8a24a); background: var(--panel); }
-.dress-slot-icon { flex: 0 0 auto; width: 36px; height: 36px; border: 1px solid var(--border);
+.dress-slot-icon { flex: 0 0 auto; width: 30px; height: 30px; border: 1px solid var(--border);
   border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.dress-slot-icon img, .dress-slot-icon .icon-sprite { width: 32px; height: 32px; }
+.dress-slot-icon img, .dress-slot-icon .icon-sprite { width: 26px; height: 26px; }
 /* The name truncates while the take-off button keeps its own space, so a long item name
    cannot squeeze the X out of the slot. */
 .dress-slot-label { flex: 1 1 auto; min-width: 0; color: var(--muted); display: flex;
@@ -1621,10 +1629,68 @@ td .pet-rank { margin: 1px 0; }
 .dress-off { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
 .dress-off:hover { color: var(--fg); }
 .item-dress { margin: 6px 0 2px; font-size: 13px; }
-.dress-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0 4px; }
+
+/* The dressing room's appearance pickers: the character creator's, not a form's. Each
+   field is a labelled box; what can be previewed (race portraits, skin and hair colours)
+   is shown rather than numbered, and only the rest keeps a stepper. */
+/* One row of equal-height boxes that USES the width. As plain flex items each box was
+   only as tall as its own content and the row trailed off into dead space on the right,
+   which is most of what made the panel read as a form. */
+.dress-bar { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px;
+  margin: 10px auto 12px; max-width: 1040px; }
+.dfield { border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  padding: 8px 10px; display: flex; flex-direction: column; }
+.dfield:last-child { flex: 1 1 220px; }
+.dfield-lbl { display: flex; justify-content: space-between; gap: 12px; align-items: center;
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+.dfield-lbl .dim { letter-spacing: 0; text-transform: none; font-size: 11px; }
+.race-grid { display: grid; grid-template-columns: repeat(5, 54px); gap: 4px; }
+.race-tile { display: grid; justify-items: center; gap: 2px; padding: 3px 2px 2px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--muted);
+  cursor: pointer; font: inherit; font-size: 9px; line-height: 1.1; }
+.race-tile img { width: 40px; height: 40px; border-radius: 4px; display: block; }
+.race-tile:hover { border-color: #3b414f; color: var(--text); }
+.race-tile[aria-pressed="true"] { border-color: var(--gold); color: var(--text); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
+.seg button { padding: 4px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel2);
+  color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; }
+.seg button:hover { border-color: #3b414f; color: var(--text); }
+.seg button[aria-pressed="true"] { border-color: var(--gold); color: var(--text); }
+.swatches { display: grid; grid-template-columns: repeat(5, 24px); gap: 5px; align-content: start; }
+.sw { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; padding: 0;
+  cursor: pointer; font: inherit; font-size: 10px; color: var(--text); box-shadow: 0 0 0 1px var(--border); }
+.sw:hover { box-shadow: 0 0 0 1px #545b6b; }
+.sw[aria-pressed="true"] { border-color: var(--gold); }
+.sw-num { background: var(--panel2); }
+.steps { display: flex; flex-direction: column; justify-content: center; gap: 7px;
+  min-width: 190px; height: 100%; }
+.stepper { display: flex; align-items: center; gap: 5px; }
+.stepper button { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--panel2); color: var(--text); cursor: pointer; font: inherit; padding: 0; line-height: 1; }
+.stepper button:hover { border-color: #3b414f; }
+.stepper .val { flex: 1; text-align: center; font-size: 12px; color: var(--muted);
+  font-variant-numeric: tabular-nums; }
+.dress-saved { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px auto 0;
+  max-width: 1040px; font-size: 12px; }
+.dress-saved .dim { color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px; }
+.outfit-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px 2px 8px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--panel); }
+.outfit-x { background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit;
+  padding: 0 3px; line-height: 1; }
+.outfit-x:hover { color: var(--text); }
+.dress-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+  gap: 8px; margin: 0 auto 4px; max-width: 1040px; padding: 9px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--panel); }
+.dress-actions #dress-msg { flex-basis: 100%; text-align: center; font-size: 12px; }
+.dress-actions #dress-msg:empty { display: none; }
+.dress-saved { justify-content: center; }
 /* Weapons sit under the model, as they do in the in-game window. */
-.dress-weapons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 10px; }
-.dress-weapons .dress-slot { width: auto; flex: 0 1 200px; }
+/* Weapons sit UNDER the model, centred on it, rather than trailing along the bottom of
+   the page: they are worn on the character like everything else, and lining them up with
+   the left-hand column read as a fourth, unrelated group. */
+.dress-weapons { display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+  gap: 8px; margin: 0 auto 10px; max-width: 1040px; }
+.dress-weapons .dress-slot { width: auto; flex: 0 1 176px; }
 .dress-note { font-size: 12px; }
 /* The slot picker reuses the top-bar search panel (.search-dropdown / .sd-row), so both
    searches on the site look and behave the same. */
@@ -1635,7 +1701,8 @@ td .pet-rank { margin: 1px 0; }
 .dress-pop .sd-row .icon-sprite, .dress-pop .sd-row img { width: 20px; height: 20px; flex: none; }
 /* Narrow screens: the columns stop flanking and sit under the model. */
 @media (max-width: 900px) {
-  .dress-room { grid-template-columns: 1fr; gap: 14px; }
+  .dress-room { grid-template-columns: 1fr; gap: 12px; }
+  .mv-host { height: 60vh; }
   .dress-col { flex-direction: row; flex-wrap: wrap; }
   .dress-col .dress-slot { width: auto; flex: 1 1 150px; }
 }

@@ -128,6 +128,8 @@ python scripts/extract-minimap.py     # LOCAL: client minimap BLPs -> public/min
 python scripts/extract-talents.py     # LOCAL: client Talent.dbc + TalentTab.dbc -> scripts/data/talents.json (talent-tree structure)
 python scripts/extract-random-suffix.py # LOCAL: client ItemRandomProperties.dbc + SpellItemEnchantment.dbc -> scripts/data/random-suffix.json (random suffix id -> "of the Bear" name + stats; VERIFY offsets)
 python scripts/extract-class-icons.py # LOCAL: crops the client class-emblem sheet -> public/icons/class/<slug>.webp (talent class picker)
+python scripts/extract-race-icons.py  # LOCAL: crops the client race-portrait sheet -> public/icons/race/<chrRacesId>-<m|f>.webp (dressing-room race picker)
+python scripts/build-char-palette.py  # LOCAL: averages each skin/hair texture -> scripts/data/char-palette.json (the swatch colours; reads the EXPORTED char textures, so no client needed)
 python scripts/transcribe-sounds.py   # LOCAL+GPU: Whisper over public/sounds -> scripts/data/voice-transcripts-auto.json (machine transcripts for the ~1.6k clips no text table records). `--model`/`--compute`/`--only`/`--limit`. Needs faster-whisper. See "Transcribing the clips nothing writes down"
 bun scripts/extract-script-sounds.mjs # LOCAL: server ScriptDev2 src + the SQL dumps -> scripts/data/script-sounds.json (script_name -> the script_texts entries it speaks + sounds it plays, plus the sound-id worklist extract-sounds.py needs). Run BEFORE extract-sounds.py
 python scripts/extract-sounds.py      # LOCAL: client MPQ audio -> public/sounds/**.ogg (Opus, R2-only) + scripts/data/sound-map.json (committed mapping). `--only creature,npc,zone,va,cdir,text`, `--limit N`, `--jobs N`, `--dry-run`. Needs ffmpeg. See "Sounds"
@@ -699,6 +701,40 @@ looking rather than by recalling:
   every texture and drops the dead ones (419 rows lost all three and are removed), because
   trusting the table renders a Troll at skin colour 9 nude and leaves bald patches where a
   scalp is missing. An appearance the client cannot paint is not offered in the picker.
+
+**The pickers are the character creator's, not a form's** (`?dressing`). Seven `<select>`s
+in a row is a form: every change costs open-scroll-pick, and "Skin 4" says nothing about
+what 4 looks like. Anything with a preview now shows it and everything else steps:
+
+- **Race is its portrait**, cropped from the client's own
+  `UI-CharacterCreate-Races.blp` by `extract-race-icons.py` -- the twin of the class-emblem
+  script, and committed for the same reason. **The grid is not Blizzard's**: vanilla ships
+  4 columns addressed by `RACE_ICON_TCOORDS`, Turtle widened it to 5 for the races it added,
+  and the cells are SQUARE 64px while the texture is 512x256 -- only 322px of it is content,
+  the rest being power-of-two padding. Dividing the texture width by the column count gives
+  102px cells that straddle their neighbours and slice every portrait; take the cell size
+  from the row height instead. Icons are per race AND gender, so the grid repaints when the
+  gender flips.
+- **Skin and hair colour are the colour**, sampled offline by `build-char-palette.py`:
+  it averages each option's texture into one hex (~4 KB for all 38 palettes) and is
+  BUNDLED rather than fetched -- `char-appearance.json` is ~1 MB and lives on R2, and the
+  picker needs its colours on first paint. Two things it must do: mask the sample (a skin
+  texture is a body ATLAS, so averaging the whole thing drags the tone toward the dead
+  space between the rectangles -- the upper-left quadrant is torso skin on every race) and
+  ignore anything the alpha test would drop, since a hair texture is mostly transparent.
+  **A palette that samples one colour for every index is dropped**, not shown: tauren hair
+  is exactly that (the option changes geometry the texture does not follow), and nine
+  identical circles claim a choice that does not exist -- those fall back to numbers.
+- **Face, hairstyle and markings keep a stepper** because nothing can preview them, but it
+  wraps and counts ("Hair 12 / 26").
+- **Changing race CLAMPS every other option.** A gnome has fewer skins than a tauren, and
+  carrying an out-of-range index across the change renders a character with no head.
+- The action bar under the model is one row: wear a set, roll a random look, undress, save
+  the outfit, share it. **A saved outfit is just its query string** under a name in
+  `localStorage` -- the URL already IS the outfit, which is what makes a look shareable.
+- **Camera panning is on** (`screenSpacePanning`): orbit alone can only circle the model's
+  centre, so without it there is no way to put the trim of a pauldron in the middle of the
+  screen.
 
 ### Wearing armor (`src/chargear.js`)
 
@@ -1356,7 +1392,10 @@ Client-derived **image** trees are no longer committed. CI still can't regenerat
   class-picker emblems (`public/icons/class/<slug>.webp` via
   `extract-class-icons.py`, cropped from the client character-create sheet; served
   from `${ASSETS_BASE}icons/class/`, synced to R2 by deploy.yml's `public/icons`
-  sync). See "Custom
+  sync) and the dressing room's race portraits (`public/icons/race/<chrRacesId>-<m|f>.webp`
+  via `extract-race-icons.py`, the same sheet family and the same sync) plus the skin/hair
+  swatch colours (`scripts/data/char-palette.json` via `build-char-palette.py`, bundled by
+  Vite rather than served -- the picker needs them on first paint). See "Custom
   icons" / `scripts/extract-maps.py` / "Seamless world map". Plus scripted-transform
   spawn links (`scripts/data/scripted-spawn-links.json`): creatures with no static
   `creature` row that a server **C++** script swaps in at another NPC's location (the
