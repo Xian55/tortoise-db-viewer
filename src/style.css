@@ -1669,6 +1669,7 @@ td .pet-rank { margin: 1px 0; }
 .dress-off { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
 .dress-off:hover { color: var(--fg); }
 .item-dress { margin: 6px 0 2px; font-size: 13px; }
+.mv-note { margin: 6px 0 0; font-size: 12px; text-align: center; }
 
 /* The dressing room's appearance pickers: the character creator's, not a form's. Each
    field is a labelled box; what can be previewed (race portraits, skin and hair colours)

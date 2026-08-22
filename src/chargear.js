@@ -28,6 +28,47 @@ export const SLOT_GEOSET_GROUPS = {
 export const geosetFor = (group, value) => (value ? group * 100 + value + 1 : 0);
 
 // Which region of the atlas each item_appearance component column paints.
+// WHICH REGIONS EACH SLOT PAINTS. ItemDisplayInfo hands out eight component textures per
+// row and a tier piece routinely carries the whole SET's pack: Dreadnaught Gauntlets name
+// all eight, Sabatons six, and the Helmet names a chest and a trouser texture. Painting
+// every one of them re-skinned the character's torso and legs the moment a helmet or a
+// glove went on. The client reads only the regions that belong to the slot.
+//
+// Derived from the data rather than recalled -- share of rows setting each column, over
+// every non-hidden item of that slot. Each slot has a dominant set at 88-100% and noise at
+// 3-8%, and the cut is unambiguous:
+//
+//   shirt   arm_u 80  arm_l 63  torso_u 99  torso_l 98
+//   chest   arm_u 78  arm_l 28  torso_u 99  torso_l 98   (leg 19% = the robes among them)
+//   waist   leg_u 98                                     (a belt paints the hip, not the torso)
+//   legs    leg_u 98  leg_l 94
+//   feet    leg_l 91  foot 98
+//   wrist   arm_l 98
+//   hands   arm_l 88  hand 98
+//   tabard  torso_u 94  torso_l 94
+//   robe    arm_u 89  arm_l 60  torso_u 99  torso_l 97  leg_u 100  leg_l 99
+const SLOT_REGIONS = {
+  4: ["arm_u", "arm_l", "torso_u", "torso_l"],
+  5: ["arm_u", "arm_l", "torso_u", "torso_l"],
+  6: ["leg_u"],
+  7: ["leg_u", "leg_l"],
+  8: ["leg_l", "foot"],
+  9: ["arm_l"],
+  10: ["arm_l", "hand"],
+  19: ["torso_u", "torso_l"],
+  20: ["arm_u", "arm_l", "torso_u", "torso_l", "leg_u", "leg_l"],
+};
+
+/** The [column, region] pairs this item may paint. Empty for anything that is a model, is
+ *  held, or is the cape -- none of those touch the skin atlas. */
+export function componentLayers(it) {
+  // A robe is filed as a plain chest (inv 5) and its skirt is the reason the leg regions
+  // are in play at all, so it takes the robe list rather than the chest one.
+  const allow = SLOT_REGIONS[isRobe(it) ? 20 : it.inv];
+  if (!allow) return [];
+  return COMPONENT_REGIONS.filter(([, region]) => allow.includes(region));
+}
+
 export const COMPONENT_REGIONS = [
   ["t_arm_u", "arm_u"], ["t_arm_l", "arm_l"], ["t_hand", "hand"],
   ["t_torso_u", "torso_u"], ["t_torso_l", "torso_l"],
@@ -208,6 +249,8 @@ export function attachedModels(items, { race, sex }) {
   const code = `${RACE_CODE[race] || "hu"}${sex === "f" ? "f" : "m"}`;
   const out = [];
   for (const it of items) {
+    // Same stale-model trap as the item page: a glove or a boot can name a shoulder in
+    // ModelName, and only the slots that actually attach a model may read that field.
     const held = heldAttach(it);
     if (held !== undefined && it.model_l) {
       out.push({ model: it.model_l, texture: it.tex_l, attach: held, item: it.entry,

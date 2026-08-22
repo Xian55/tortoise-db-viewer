@@ -55,6 +55,22 @@ const raceIdOf = (bit) => {
   return id >= 1 && id <= 10 ? id : 1;
 };
 
+/** The imported character as a dressing-room URL: its race, its gender and everything it
+ *  wears that shows. The room speaks the same query string the sheet does, so "open it
+ *  over there" is a link rather than a hand-off -- and once there the visitor can swap a
+ *  piece, roll a look, or share the outfit, none of which the sheet does. */
+export function dressingUrl(ch, sex) {
+  const q = new URLSearchParams({ dressing: "", race: raceIdOf(ch.race), sex });
+  for (const key of VISUAL_SLOTS) {
+    const id = ch.slots?.[key]?.itemId;
+    // The room keys weapons by the SLOT they are worn in, which is the same thing the
+    // loadout records -- so a one-hander in the off hand stays in the off hand.
+    const param = HELD_SLOT[key] || key.toLowerCase();
+    if (id) q.set(param, id);
+  }
+  return `?${q}`;
+}
+
 function char3dHtml(ch) {
   const open = (() => { try { return localStorage.getItem("tw_char3d") === "1"; } catch { return false; } })();
   const sex = (() => { try { return localStorage.getItem("tw_char3d_sex") === "f" ? "f" : "m"; } catch { return "m"; } })();
@@ -67,6 +83,7 @@ function char3dHtml(ch) {
             <option value="f"${sex === "f" ? " selected" : ""}>Female</option>
           </select>
         </label>
+        <a class="nav btn" id="char3dRoom" href="${dressingUrl(ch, sex)}">Open in dressing room</a>
         <span class="muted">Drag to turn, scroll to zoom.</span>
       </div>
       <div class="mv-host" id="char3dHost"></div>
@@ -1014,6 +1031,12 @@ export async function showCharacter(idOrChar, navigate) {
     const hostEl = app.querySelector("#char3dHost");
     let mounted = false;
     const sexOf = () => (localStorage.getItem("tw_char3d_sex") === "f" ? "f" : "m");
+    // The gender is a viewer-only choice, so the link has to be rewritten when it changes
+    // -- otherwise "open in dressing room" quietly hands over the other one.
+    const syncRoomLink = () => {
+      const a = document.getElementById("char3dRoom");
+      if (a) a.href = dressingUrl(ch, sexOf());
+    };
     const mount = async () => {
       if (!hostEl) return;
       // Same rule as the dressing room: the sheet may be gone by the time the model
@@ -1053,8 +1076,10 @@ export async function showCharacter(idOrChar, navigate) {
     });
     app.querySelector("#char3dSex")?.addEventListener("change", async (e) => {
       try { localStorage.setItem("tw_char3d_sex", e.target.value); } catch { /* private mode */ }
+      syncRoomLink();
       if (wrap.classList.contains("open")) await mount();
     });
+    syncRoomLink();
     if (wrap?.classList.contains("open")) mount();
   }
 
