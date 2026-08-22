@@ -523,19 +523,21 @@ function buildViewer(el, model, slotTex, opts = {}) {
     // The idle spin exists to show the model from every side, so it stops after one full
     // revolution instead of turning forever: a preview nobody is looking at should end
     // up costing exactly nothing, and any interaction wakes it again anyway.
+    // ONE clock for both movers. Each used to take `last` for itself, so with the
+    // animation running it claimed the elapsed time first and the turntable's dt came out
+    // as zero on every frame -- Rotate lit up and the model did not turn.
     let step = false;
-    if (animating && rig && (!last || now - last >= MIN_MS)) {
-      const prev = last;
-      last = now;
+    const due = !last || now - last >= MIN_MS;
+    const dt = due && last ? Math.min((now - last) / 1000, 0.25) : 0;  // clamp: a
+    if (due) last = now;                            // backgrounded tab returns a huge dt
+    if (animating && rig && due) {
       // Wall-clock, not a frame counter: the draw rate is throttled, and a per-frame step
       // would run the loop at a different speed on a 30 and a 60 fps machine.
-      animClock += prev ? Math.min(now - prev, 250) : 0;
+      animClock += dt * 1000;
       poseTime(animClock);
       step = true;
     }
-    if (spin && (!last || now - last >= MIN_MS)) {
-      const dt = last ? Math.min((now - last) / 1000, 0.25) : 0;  // clamp: a backgrounded
-      last = now;                                                 // tab returns a huge dt
+    if (spin && due) {
       root.rotation.z += SPIN_RATE * dt;
       spun += SPIN_RATE * dt;
       // One revolution and stop -- unless the caller asked for a turntable, in which
