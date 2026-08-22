@@ -639,9 +639,20 @@ jQuery and a **CORS proxy server** besides. Same call, same reason, as `OWN_MODE
 - **The pane mounts on VISIBILITY, not on the tab click.** Relying on the click leaves it
   stuck on "Loading model…" whenever the listener is missing — which is exactly what a
   Vite HMR update does, by re-running `main.js` while leaving the rendered DOM in place.
-- Offered only for models that stand alone: `per_race` items (every helm, most shoulders,
-  modelled once per race+gender) and texture-only armor need a character to sit on, so
-  they get no tab rather than an empty one. ~2.5k of 10.2k displays qualify today.
+- **Two kinds of preview.** A weapon stands alone and is rendered by itself; a helm, a
+  shoulder or any texture-only armor is shown ON the dressing room's mannequin (a stock
+  human male, with a link to try it on your own character). Those used to get no tab at all.
+- **The model field is only trusted for the slots that USE a model.** ItemDisplayInfo keeps
+  a stale `ModelName` on plenty of texture-only rows -- Dreadnaught Gauntlets and Sabatons
+  both name `LShoulder_Plate_A_01` -- which the client never reads for those slots, and
+  which rendered a pauldron on the gauntlets' page.
+- **A slot paints only ITS OWN regions of the body atlas** (`componentLayers`). A row hands
+  out eight component textures and a tier piece routinely carries the whole SET's pack: the
+  Gauntlets name all eight, the Sabatons six, the Helmet a chest and a trouser texture --
+  so painting all of them re-skinned the torso and legs the moment a helmet went on. The
+  per-slot lists were derived from the data, not recalled: over every non-hidden item of a
+  slot, each has a dominant set at 88-100% and noise at 3-8%. Notably a belt paints `leg_u`
+  (the hip), not the torso, and a chest takes the robe list only when it IS a robe.
 - Assets are the R2 set `model3d/` (817 models 7.7 MB + 1,559 item textures 6.9 MB + 274
   embedded 1.8 MB), `optional` like `sounds`. The DB cost is **+0.11 MB brotli**.
 

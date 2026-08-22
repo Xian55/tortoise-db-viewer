@@ -78,15 +78,24 @@ async function testCanvasNotBlank(id) {
 // Armor paints onto the character rather than carrying a model of its own, and helms are
 // modelled once per race+gender -- neither can be previewed standalone, so neither may
 // offer an empty tab. 7457 = Knight's Gauntlets (textures only), 83216 = a helm.
-async function testNoTabWithoutModel(...ids) {
-  const found = [];
-  for (const id of ids) {
+// Who gets a 3D tab, and in which of the two forms. A weapon stands alone; a helm, a
+// shoulder and any texture-only armor are shown ON the mannequin, which is why they have
+// a tab at all now. A ring changes nothing about how a character looks and gets none.
+//
+// The reason string is asserted rather than just the tab's presence: "worn" vs "on" is the
+// difference between the two renderers, and a helm silently falling back to the standalone
+// path is exactly the bug that put a pauldron on the gauntlets' page.
+async function testTabKinds(cases) {
+  const got = {};
+  for (const [id] of cases) {
     await nav(`?item=${id}`);
     await page.waitForSelector(".item-rel .tab", { timeout: T });
-    if (await page.$('.tab[data-tab="model3d"]')) found.push(id);
+    const has = !!(await page.$('.tab[data-tab="model3d"]'));
+    const why = await page.evaluate(() => document.querySelector("#app")?.dataset.model3d);
+    got[id] = has ? why : `none:${why}`;
   }
-  console.log(`model3d no-tab: offered for ${found.length ? found.join(", ") : "none"} (want none)`);
-  return found.length === 0;
+  console.log(`tab kinds: ${JSON.stringify(got)}`);
+  return cases.every(([id, want]) => got[id] === want || (want === "none" && got[id].startsWith("none")));
 }
 
 // A WebGL context is scarce and is not garbage-collected: leaving one behind per page
@@ -127,7 +136,13 @@ async function testIdleCostsNothing(id) {
 smoke("model3d item 10571 renders geometry", () => testItemModel(10571));
 smoke("model3d stops rendering when its pane is hidden", () => testIdleCostsNothing(10571));
 smoke("model3d item 10571 canvas is not blank", () => testCanvasNotBlank(10571));
-smoke("model3d no tab for texture-only 7457 / per-race helm 83216", () => testNoTabWithoutModel(7457, 83216));
+smoke("model3d tab: alone for a weapon, worn for armor, none for a ring", () => testTabKinds([
+  [10571, "on"],       // a mace: its own model
+  [22418, "worn"],     // Dreadnaught Helmet: per-race, needs a head to sit on
+  [22421, "worn"],     // Dreadnaught Gauntlets: texture-only
+  [7457, "worn"],      // plain armor
+  [19382, "none"],     // a ring changes nothing about how a character looks
+]));
 smoke("model3d releases its WebGL context on navigation", () => testContextReleased(10571));
 
 // ---- dressing room (?dressing) -------------------------------------------------
@@ -756,3 +771,42 @@ async function testPhoneLayout() {
 }
 
 smoke("dressing room puts the model first on a phone", () => testPhoneLayout());
+
+// A slot paints only ITS OWN regions of the body atlas. ItemDisplayInfo hands out eight
+// component textures per row and a tier piece routinely carries the whole set's pack --
+// Dreadnaught Gauntlets name all eight, the Helmet names a chest and a trouser texture --
+// so painting every one of them re-skinned the torso and legs the moment a helmet went on.
+async function testSlotPaintsItsOwnRegions() {
+  const shot = async (url) => {
+    await nav(url);
+    await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+    await new Promise((r) => setTimeout(r, 400));
+    return page.evaluate(() => window.__mv.snapshot({ background: false }));
+  };
+  const bare = await shot("?dressing&race=1&sex=m&hair=1");
+  const helmed = await shot("?dressing&race=1&sex=m&hair=1&head=22418");
+  const gloved = await shot("?dressing&race=1&sex=m&hair=1&hands=22421");
+  // A helm and a glove must each change the picture -- and the body underneath must be
+  // the same in both, which it is not if either painted the torso from its stale pack.
+  const chest = async (url) => {
+    await nav(url);
+    await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+    await new Promise((r) => setTimeout(r, 400));
+    // sample the torso from the composited atlas: same skin means no bleed
+    return page.evaluate(() => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      const ctx = c.getContext("2d");
+      const src = document.querySelector("#mv-host canvas");
+      ctx.drawImage(src, 0, 0, 256, 256);
+      const d = ctx.getImageData(128, 90, 1, 1).data;
+      return `${d[0]},${d[1]},${d[2]}`;
+    });
+  };
+  const bareChest = await chest("?dressing&race=1&sex=m&hair=1");
+  const helmChest = await chest("?dressing&race=1&sex=m&hair=1&head=22418");
+  console.log(`regions: helmChanged=${bare !== helmed} gloveChanged=${bare !== gloved} torso ${bareChest} -> ${helmChest}`);
+  return bare !== helmed && bare !== gloved && bareChest === helmChest;
+}
+
+smoke("a slot paints only its own regions of the body", () => testSlotPaintsItsOwnRegions());

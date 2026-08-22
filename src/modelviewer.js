@@ -14,7 +14,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { parseM2B, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
 import { compositeBody, SECTION_REGIONS } from "./charcomposite.js";
-import { COMPONENT_REGIONS, applyGear, inPaintOrder, attachedModels, helmetHidden } from "./chargear.js";
+import { componentLayers, applyGear, inPaintOrder, attachedModels, helmetHidden } from "./chargear.js";
 import { MODELS_BASE } from "./config.js";
 
 // The ONE live viewer. A WebGL context is scarce and is not garbage-collected, so
@@ -733,7 +733,9 @@ export async function mountCharacterViewer(el, opts = {}) {
   // covers its bracer, a boot covers the trouser leg, a belt sits over both.
   const worn = inPaintOrder(opts.items || []);
   for (const item of worn) {
-    for (const [col, region] of COMPONENT_REGIONS) {
+    // Only the regions this slot actually paints -- see componentLayers(): a tier row
+    // carries the whole set's textures, and a glove that painted a torso was the result.
+    for (const [col, region] of componentLayers(item)) {
       if (item[col]) layers.push({ urls: compUrls(region, item[col]), region });
     }
   }

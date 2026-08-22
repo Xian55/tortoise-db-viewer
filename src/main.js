@@ -11,7 +11,7 @@ import { showWeightSets, showSharedWeightSet } from "./weightsets.js";
 import { externalMenuHtml, wireExternalMenu, chatMacro, chatButtonHtml, wireChatButton } from "./external.js";
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown, ftsQuery } from "./search.js";
-import { DRESS_SLOT } from "./chargear.js";
+import { DRESS_SLOT, HAND_BY_INV } from "./chargear.js";
 import CHAR_PALETTE from "../scripts/data/char-palette.json";
 import RACE_LABELS from "../scripts/data/race-labels.json";
 import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, OWN_ITEM_MODELS, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
@@ -259,7 +259,11 @@ function webglOk() {
 // the largest on the site after the zone map, and most visitors to an item page never
 // open it. Any failure -- chunk, model file, WebGL context -- degrades to a line of text
 // inside the pane; the rest of the page has already rendered and must not be disturbed.
-function mountModelTab(appearance) {
+// The eight component-texture columns: what makes a texture-only piece worth previewing.
+const COMP_COLUMNS = ["t_arm_u", "t_arm_l", "t_hand", "t_torso_u", "t_torso_l",
+  "t_leg_u", "t_leg_l", "t_foot"];
+
+function mountModelTab(appearance, wornEntry) {
   const bar = app.querySelector(".tabbar");
   const host = app.querySelector("#mv-host");
   if (!bar || !host) return;
@@ -269,14 +273,24 @@ function mountModelTab(appearance) {
     if (started) return;
     started = true;
     try {
-      const { mountItemViewer } = await import("./modelviewer.js");
+      const mod = await import("./modelviewer.js");
       host.innerHTML = "";
       destroyViewer();
-      const viewer = await mountItemViewer(host, {
-        model: appearance.model_l,
-        texture: appearance.tex_l,
-        cancelled: () => myRoute !== routeSeq,
-      });
+      // A piece that needs a body gets one: the same mannequin the dressing room mounts,
+      // wearing this and nothing else. Human male because every helm and shoulder ships
+      // that variant; the note under the pane says so and links to the room, where the
+      // visitor can put it on their own race.
+      const viewer = wornEntry
+        ? await mod.mountCharacterViewer(host, {
+          race: 1, sex: "m", hair: 1,
+          items: await query(Q.qDressItemsIn(1), [wornEntry]).catch(() => []),
+          cancelled: () => myRoute !== routeSeq,
+        })
+        : await mod.mountItemViewer(host, {
+          model: appearance.model_l,
+          texture: appearance.tex_l,
+          cancelled: () => myRoute !== routeSeq,
+        });
       if (myRoute !== routeSeq) { try { viewer.destroy(); } catch { /* gone */ } return; }
       activeViewer = viewer;
     } catch (err) {
@@ -1047,33 +1061,46 @@ async function showItem(id) {
     { id: "samemodel", label: "Same model", ...regTable(sameModelCols, sameModel) },
   ];
 
-  // A 3D tab, but only when there is something to show. `per_race` items (every helm,
-  // most shoulders) are modelled once PER RACE AND GENDER, so they need a character to
-  // sit on -- until that exists, offering an empty tab would be worse than none. Armor
-  // with no model of its own is texture-only for the same reason.
-  const model3d = appearance && appearance.model_l && appearance.per_race === 0 && webglOk();
-  // Why the tab is absent, on the element itself. Four independent gates can hide it and
-  // three of them are invisible from the outside, which turned one flaky smoke failure
-  // into a long hunt; it also answers "why do I not have the 3D tab" for a visitor.
-  app.dataset.model3d = model3d ? "on"
+  // A 3D tab, and there are two ways to earn one.
+  //
+  // A weapon stands on its own and is rendered alone. Everything else needs a body: a
+  // helm or a shoulder is modelled once PER RACE AND GENDER, and most armor is nothing
+  // but textures painted on the skin. Both used to get no tab at all, which is why
+  // Dreadnaught Helmet had none; the mannequin the dressing room is built on wears them.
+  //
+  // And the model field is only trusted for the slots that USE one. ItemDisplayInfo keeps
+  // a stale ModelName on plenty of texture-only rows -- Dreadnaught Gauntlets and Sabatons
+  // both name `LShoulder_Plate_A_01` -- which the client never reads for those slots and
+  // which rendered a pauldron on the gauntlet's page.
+  const held = HAND_BY_INV[it.inventory_type] !== undefined;
+  const standalone = !!(held && appearance && appearance.model_l && appearance.per_race === 0);
+  const wearable = !!(DRESS_SLOT[it.inventory_type] && appearance
+    && (appearance.model_l || COMP_COLUMNS.some((c) => appearance[c])));
+  const model3d = webglOk() && OWN_ITEM_MODELS && (standalone || wearable);
+  // Why the tab is absent, on the element itself. Several independent gates can hide it
+  // and most are invisible from the outside, which turned one flaky smoke failure into a
+  // long hunt; it also answers "why do I not have the 3D tab" for a visitor.
+  app.dataset.model3d = model3d ? (standalone ? "on" : "worn")
     : !OWN_ITEM_MODELS ? "dataset"
       : !it.display_id ? "no-display"
         : !appearance ? "no-appearance-row"
-          : !appearance.model_l ? "texture-only"
-            : appearance.per_race !== 0 ? "per-race-model"
-              : "no-webgl";
+          : !webglOk() ? "no-webgl"
+            : "nothing-to-show";
   if (model3d) {
+    const note = standalone ? ""
+      : `<p class="muted mv-note">Shown on a human male \u2014 <a class="nav" `
+        + `href="?dressing&${DRESS_SLOT[it.inventory_type]}=${it.entry}">try it on your own character \u203a</a></p>`;
     tabDefs.push({
       id: "model3d", label: "3D", count: 1, noCount: true,
-      html: `<div id="mv-host" class="mv-host"><p class="muted">Loading model…</p></div>`,
+      html: `<div id="mv-host" class="mv-host"><p class="muted">Loading model\u2026</p></div>${note}`,
     });
   }
 
   // The way in to the dressing room from an item. Deliberately NOT tied to the 3D tab:
-  // most armor is texture-only and has no tab, and seeing a chestpiece ON a character is
-  // exactly what it needs. Turtle-only, like every other use of these models.
+  // the tab shows the piece on a stock human male, and this is how a visitor puts it on
+  // their own race and gender.
   const dressLink = (row) => (OWN_ITEM_MODELS && DRESS_SLOT[row.inventory_type] && webglOk()
-    ? `<div class="item-dress"><a class="nav" href="?dressing&${DRESS_SLOT[row.inventory_type]}=${row.entry}">Try it on a character \u203a</a></div>`
+    ? `<div class="item-dress"><a class="nav" href="?dressing&${DRESS_SLOT[row.inventory_type]}=${row.entry}">Try it on a character ›</a></div>`
     : "");
 
   // quality + item-class subtitle, each a link into the item browser filtered by it
@@ -1099,7 +1126,7 @@ async function showItem(id) {
     </div>`;
   mountTables();
   wireTabs();
-  if (model3d) mountModelTab(appearance);
+  if (model3d) mountModelTab(appearance, standalone ? null : it.entry);
   // Per-suffix chat link. Delegated, so it survives nothing in particular here but keeps
   // the macro building where `it` (name + quality) already is, instead of stamping ~30
   // fully-built macros into data- attributes.
