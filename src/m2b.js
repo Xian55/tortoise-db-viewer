@@ -31,7 +31,12 @@ export function parseM2B(buffer) {
   // v2 added the attachment rotation. Refusing v1 outright is deliberate: a stale cached
   // file would otherwise be read with a 32-byte stride over 16-byte records and hang
   // every item off nonsense coordinates, which is far harder to recognise than an error.
-  if (version !== 2) throw new Error(`m2b version ${version} is not readable (want 2)`);
+  // v2 and v3 differ only in the attachment stride (v3 carries the bone's scale), so both
+  // are readable -- which is what lets the character models be re-exported without
+  // reshipping every weapon.
+  if (version !== 2 && version !== 3) {
+    throw new Error(`m2b version ${version} is not readable (want 2 or 3)`);
+  }
   const flags = dv.getUint16(6, true);
   const nVert = dv.getUint32(8, true);
   const nIdx = dv.getUint32(12, true);
@@ -68,9 +73,13 @@ export function parseM2B(buffer) {
       texSlot: dv.getUint8(b + 14),      // 0xFF = the submesh resolved no texture
     });
   }
+  // v2 attachments are 32 bytes (id, bone, pos, quat); v3 adds the bone's SCALE, which
+  // the client applies -- the shoulder bone is scaled per race, so without it a blood elf
+  // wears human-sized pauldrons. Both strides are read so a v2 file still loads.
+  const attStride = version >= 3 ? 36 : 32;
   const attachments = [];
   for (let i = 0; i < nAtt; i++) {
-    const b = off.att + i * 32;
+    const b = off.att + i * attStride;
     // `pos` is in the model's own space, in the SAME baked pose as the vertices -- not
     // bone-local as the M2 stores it. A helm hung at the bind-pose head is not at the head.
     attachments.push({
@@ -80,6 +89,7 @@ export function parseM2B(buffer) {
       // beside the hand instead of being gripped by it.
       quat: [dv.getFloat32(b + 16, true), dv.getFloat32(b + 20, true),
         dv.getFloat32(b + 24, true), dv.getFloat32(b + 28, true)],
+      scale: version >= 3 ? dv.getFloat32(b + 32, true) || 1 : 1,
     });
   }
 

@@ -43,7 +43,7 @@ APPEARANCE = os.path.join(ROOT, "scripts", "data", "item-appearance.json")
 OUT_DIR = os.path.join(ROOT, "public", "model3d")
 
 MAGIC = b"M2B1"
-VERSION = 2   # v2: attachments carry the bone's ROTATION as well as its position
+VERSION = 3   # v3: attachments also carry the bone's SCALE (v2 had position + rotation)
 FLAG_POSED = 1
 
 # A section table keeps the loader honest: it reads by offset, so adding a section later
@@ -126,24 +126,33 @@ def build_m2b(m2):
     # ...and its ROTATION, which is the half that is easy to forget: hang a weapon at the
     # right position without the hand's orientation and it floats horizontally beside the
     # character instead of being gripped. The quaternion is taken from the bone's world
-    # matrix, with scale divided out so a scaled bone cannot skew the item.
+    # matrix, with scale divided out so a scaled bone cannot skew the item -- and that
+    # scale is then kept as its own number, because the CLIENT APPLIES IT. The shoulder
+    # bone is scaled per race (measured: human male 1.00, blood elf female 0.574, gnome
+    # 0.650, tauren 1.600), which is exactly why the same pauldrons look tiny on a gnome
+    # and enormous on a tauren. Dropping it dressed a blood elf in human-sized shoulders.
     G = bone_matrices(m2) if m2["bones"] else None
     attrows = []
     for a in m2["attach"]:
         if a["bone"] >= len(m2["bones"]) or a["id"] >= 64:
             continue
         if G is None:
-            attrows.append((a["id"] & 0xFFFF, a["bone"] & 0xFFFF, *a["pos"], 0.0, 0.0, 0.0, 1.0))
+            attrows.append((a["id"] & 0xFFFF, a["bone"] & 0xFFFF, *a["pos"], 0.0, 0.0, 0.0, 1.0, 1.0))
             continue
         M = G[a["bone"]]
         wp = M @ np.array([*a["pos"], 1.0])
         R = M[:3, :3].copy()
+        norms = []
         for c in range(3):
             n = np.linalg.norm(R[:, c])
+            norms.append(n)
             if n > 1e-8:
                 R[:, c] /= n
+        # One number: a bone scaled non-uniformly would skew the item, and none are --
+        # every character attachment measured is uniform to three decimals.
+        scale = float(sum(norms) / 3.0) or 1.0
         attrows.append((a["id"] & 0xFFFF, a["bone"] & 0xFFFF,
-                        float(wp[0]), float(wp[1]), float(wp[2]), *mat_to_quat(R)))
+                        float(wp[0]), float(wp[1]), float(wp[2]), *mat_to_quat(R), scale))
 
     strblob = b"".join(s.encode("latin1") + b"\0" for s in strings)
 
@@ -154,7 +163,7 @@ def build_m2b(m2):
         "idx": idx.tobytes(),
         "sub": b"".join(struct.pack("<2H2I3BB", *r, 0) for r in subrows),
         "tex": b"".join(struct.pack("<2BH", *r) for r in texrows),
-        "att": b"".join(struct.pack("<2H7f", *r) for r in attrows),
+        "att": b"".join(struct.pack("<2H8f", *r) for r in attrows),
         "str": strblob,
     }
 

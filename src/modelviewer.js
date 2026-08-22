@@ -274,6 +274,12 @@ function buildViewer(el, model, slotTex, opts = {}) {
     const sub = meshFor(a.model, a.slotTex, {});
     sub.mesh.position.set(point.pos[0], point.pos[1], point.pos[2]);
     sub.mesh.quaternion.set(point.quat[0], point.quat[1], point.quat[2], point.quat[3]);
+    // The attachment bone's own scale, which the client applies: it is 1.00 on a human
+    // male but 0.574 on a blood elf female and 1.600 on a tauren, and that is exactly why
+    // one pair of pauldrons looks tiny on a gnome and enormous on a tauren in game.
+    // Without it a blood elf wore human-sized shoulders -- reported as "two shoulders",
+    // the huge one being ours and the right-sized one the character's own silhouette.
+    if (point.scale && point.scale !== 1) sub.mesh.scale.setScalar(point.scale);
     root.add(sub.mesh);
     attached.push(sub);
     drawnSubs.push(...sub.drawn.map((d) => [`att${a.attach}`, d[1], d[2], d[3]]));
@@ -459,7 +465,12 @@ function buildViewer(el, model, slotTex, opts = {}) {
       running, visible, onScreen: onScreen(),   // false/false = costing nothing right now
       geosets: opts.geosets ? [...opts.geosets].sort((a, b) => a - b) : null,
       cape: opts.cape || null,
-      attached: (opts.attached || []).map((a) => ({ attach: a.attach, model: a.label || null })),
+      attached: (opts.attached || []).map((a) => ({
+        attach: a.attach, model: a.label || null,
+        // the bone scale the client applies -- per race, and the reason a tauren's
+        // pauldrons dwarf a gnome's
+        scale: +(model.attachments.find((at) => at.id === a.attach)?.scale ?? 1).toFixed(3),
+      })),
       // [geoset, texType, blend, hasTexture] per drawn submesh -- what actually
       // reached the GPU, which is the only way to tell "filtered out" from
       // "drawn but invisible".
