@@ -14,7 +14,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { parseM2B, parseAnimPack, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
 import { compositeBody, SECTION_REGIONS } from "./charcomposite.js";
-import { componentLayers, applyGear, inPaintOrder, attachedModels, helmetHidden } from "./chargear.js";
+import { componentLayers, applyGear, inPaintOrder, attachedModels, helmetHidden,
+  structuralGeosets } from "./chargear.js";
 import { MODELS_BASE, MODELS_V } from "./config.js";
 
 // The ONE live viewer. A WebGL context is scarce and is not garbage-collected, so
@@ -952,7 +953,7 @@ const BALD_SCALP = 1;   // geoset 1: the scalp cap worn when no hairstyle is dra
 /** Which group 1-3 geosets on this race are actual facial HAIR: the ones whose variation
  *  paints a texture. Everything else in those groups is head geometry that a helm's beard
  *  mask must leave alone -- goblin head shapes, troll tusks. */
-function beardedGeosets(data, race, sex) {
+function beardedGeosets(data, race, sex, model) {
   const painted = new Set((data.sections[`${race}-${sex}-facial`] || [])
     .filter((r) => r[2].length).map((r) => r[0]));
   const out = new Set();
@@ -960,6 +961,9 @@ function beardedGeosets(data, race, sex) {
     if (!painted.has(row[0])) continue;
     row.slice(1).forEach((v, i) => { if (v) out.add(FACIAL_GROUP_ORDER[i] * 100 + v); });
   }
+  // ...minus the ones that are the head itself. A goblin's head shape paints a texture
+  // exactly as a beard does, so it passes the art test and a hood deleted his face.
+  for (const g of structuralGeosets(model)) out.delete(g);
   return out;
 }
 
@@ -1172,7 +1176,7 @@ export async function mountCharacterViewer(el, opts = {}) {
     cape: backItem ? { item: backItem.entry, texture: backItem.tex_l, loaded: !!capeTex } : null,
     geosets: helmetHidden(worn.find((it) => it.inv === 1), sex, data.helmVis,
       applyGear(baseGeosets(model, { hairGeoset, facial: facialGeosets }), worn, present),
-      beardedGeosets(data, race, sex)),
+      beardedGeosets(data, race, sex, model)),
     skipEmbedded: true,
     // Straight on, and the axis was MEASURED rather than recalled: a character model is
     // symmetric across Y (the human male spans y -0.54..0.54 but x -0.49..0.33), so Y is

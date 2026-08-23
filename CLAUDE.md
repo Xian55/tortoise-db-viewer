@@ -1025,10 +1025,18 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
   picker's variation index (a human female's hairstyle 0 is geoset 2, and the female row
   for that hood sets bit 2 while bit 0 is clear -- indexing by variation leaves exactly the
   wrong hair on); **groups 1-3 are not facial hair on every race** -- Turtle reuses them
-  for head SHAPES on goblins, so a beard mask deleted a goblin female's face and left her
-  hair and mask floating over nothing, and the discriminator is ART: her geoset 103 paints
-  no texture while a goblin MALE's 103 is a moustache and does, so his is covered and hers
-  is not; and **geoset 0 is the BODY**, which only shares group 0 with the hair, so
+  for head SHAPES on goblins, so a beard mask deleted a goblin's face and left the hair and
+  mask floating over nothing. ART was the first discriminator tried -- hide it only where
+  the variation paints a texture -- and it is WRONG: a goblin male's head shape paints a
+  texture exactly as a beard does, so his face was still deleted by any hood (his 102-106
+  are all head shapes, not the moustache they were once recorded as). SIZE separates them,
+  measured against the body's OWN head rather than against a constant, since a beard is a
+  patch on a head the body already has: the biggest facial geoset comes to 0.14-0.65x the
+  head-region vertices on every race with real facial hair (human male beards 0.14, dwarf
+  0.28, human female piercings 0.65) and 3.3x / 7.0x on goblin males and females, with
+  nothing in between (`chargear.js` `structuralGeosets`, computed per model at mount). His
+  genuinely small group-3 piece (302, 44 verts) stays hideable, which is what keeps the
+  rule from meaning "never hide anything"; and **geoset 0 is the BODY**, which only shares group 0 with the hair, so
   obeying the mask's bit 0 -- set on most full helms -- deleted the entire character and
   left a helmet floating over an empty stage. Hidden hair falls back to the bald cap and
   hidden ears to the earless head (701), which is what those geosets exist for.
@@ -1053,6 +1061,13 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
 - **A helm is 20 files**, one per race+gender (`Helm_Mail_D_01_HuM` … `_BeF`); the bare
   name does not exist. `export-models.py` expands them, which is most of the 4,015 item
   models.
+- **The picker equips into the slot it was OPENED for**, not into the one the item's
+  inventory type implies. A one-hander is inv 13, which maps to the main hand, so choosing
+  a second Cruel Barb in the off-hand picker re-equipped the hand that already held one and
+  dual-wielding was impossible through the UI -- while the same pair set straight from a
+  `?mainhand=&offhand=` URL rendered fine, which is what made it read as a search bug.
+  Each picker's query already restricts results to the types its slot accepts, so the open
+  slot is both the more specific answer and a safe one. The same rule, one layer down:
 - **Which hand a weapon lands in is a property of the SLOT, not of the item.** A
   one-hander (inv 13) is a main hand or an off hand depending on where it was equipped, so
   reading the item alone puts a dual-wielder's second sword in the hand that already holds
