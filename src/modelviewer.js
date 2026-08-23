@@ -12,7 +12,7 @@
 // spinning in a hidden pane burns battery for nothing.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { parseM2B, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
+import { parseM2B, parseAnimPack, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
 import { compositeBody, SECTION_REGIONS } from "./charcomposite.js";
 import { componentLayers, applyGear, inPaintOrder, attachedModels, helmetHidden } from "./chargear.js";
 import { MODELS_BASE, MODELS_V } from "./config.js";
@@ -222,8 +222,39 @@ const _qa = new THREE.Quaternion();
 const _qb = new THREE.Quaternion();
 
 /** Pose one rigged model at `t` milliseconds into its animation. */
-function poseAt(model, bones, cursors, t) {
-  const tracks = model.anim.tracks;
+/** The tracks that answer to no animation, at wall-clock time `ms`. Applied AFTER the
+ *  clip, because poseAt resets a bone with no key of its own to identity -- and these are
+ *  exactly the bones the clip says nothing about: the eye-blink scale, and the fixed
+ *  rotations a few models express as a degenerate 33ms loop. */
+function poseGlobals(model, bones, ms) {          // ms === null -> each track's rest phase
+  const g = model.globals;
+  for (let i = 0; i < g.length; i++) {
+    const { bone, kind, duration, track } = g[i];
+    const b = bones[bone];
+    if (!b || !track.times.length) continue;
+    const t = ms === null ? g[i].rest : duration > 0 ? ms % duration : 0;
+    const k = keyAt(track, t, 0);
+    const v = track.vals;
+    const a = k * track.comps;
+    if (kind === 1) {
+      _qa.set(v[a], v[a + 1], v[a + 2], v[a + 3]);
+      if (k + 1 < track.times.length) {
+        const t0 = track.times[k], t1 = track.times[k + 1];
+        _qb.set(v[a + 4], v[a + 5], v[a + 6], v[a + 7]);
+        _qa.slerp(_qb, t1 > t0 ? (t - t0) / (t1 - t0) : 0);
+      }
+      b.quaternion.copy(_qa);
+    } else if (kind === 2) {
+      b.scale.set(v[a], v[a + 1], v[a + 2]);
+    } else {
+      b.position.x += v[a]; b.position.y += v[a + 1]; b.position.z += v[a + 2];
+    }
+  }
+}
+
+const fin = (v) => (Number.isFinite(v) ? v : 1);   // a missing value, not a zero one
+
+function poseAt(model, bones, cursors, tracks, t) {
   for (let i = 0; i < bones.length; i++) {
     const tr = tracks[i];
     const info = model.bones[i];
@@ -267,7 +298,12 @@ function poseAt(model, bones, cursors, t) {
       cursors[i * 3 + 2] = k;
       const v = tr.scale.vals;
       const a = k * 3;
-      bone.scale.set(v[a] || 1, v[a + 1] || 1, v[a + 2] || 1);
+      // NOT `v[a] || 1`. A scale of exactly ZERO is how the client hides a mesh it is
+      // not using -- a character carries two eyelids, one for blinking and one for
+      // sleeping, and holds the spare at scale 0 for the whole animation -- and 0 is
+      // falsy, so that guard turned every hidden mesh back to full size. A blood elf
+      // male wore a flat quad over his eyes for exactly this reason.
+      bone.scale.set(fin(v[a]), fin(v[a + 1]), fin(v[a + 2]));
     } else {
       bone.scale.set(1, 1, 1);
     }
@@ -373,10 +409,39 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // every model did before the rig existed, and animating simply advances the clock.
   const rig = built.rig || null;
   const cursors = rig ? new Uint16Array(model.bones.length * 3) : null;
+  // Which animation is playing. The model ships only the idle; a whole pack arrives from
+  // the sidecar the first time someone opens the picker, and swapping is then just a
+  // different track list over the same skeleton.
+  let clip = model.anim || null;
+  let clips = model.anims && model.anims.length ? model.anims : (clip ? [clip] : []);
+  // The cursors remember where in each track the last frame landed, so a frame costs a
+  // step rather than a search. They are only wrong when time goes BACKWARDS -- the loop
+  // wrapping, or a different animation being picked -- so that, and only that, resets them.
+  let poseAtMs = -1;
+  // Global tracks keep their OWN clock: blinking is 6633ms of eye whatever is playing,
+  // which is the whole point of the client binding it to a global sequence rather than to
+  // an animation. It only advances while something is being drawn, so a still model does
+  // not blink -- the same bargain as the rest of the viewer's idle discipline.
+  let globalClock = 0;
+  // Animation is OFF unless asked for: the viewer's whole idle discipline is that a
+  // preview nobody is looking at costs nothing, and a looping skeleton is the one thing
+  // that would draw forever. Declared here rather than beside the loop, because
+  // poseTime() reads them and runs during the build, before the loop exists.
+  let animating = !!opts.animate;
+  let animClock = 0;
+  let forcedPhase = null;                // debug only: see globalClock() on the API
   const poseTime = (ms) => {
-    if (!rig || !model.anim) return;
-    poseAt(model, rig.skeleton.bones, cursors, model.anim.duration
-      ? ((ms % model.anim.duration) + model.anim.duration) % model.anim.duration : 0);
+    if (!rig || !clip) return;
+    const t = clip.duration ? ((ms % clip.duration) + clip.duration) % clip.duration : 0;
+    if (t < poseAtMs) cursors.fill(0);
+    poseAtMs = t;
+    poseAt(model, rig.skeleton.bones, cursors, clip.tracks, t);
+    // A still model sits at each global track's RESTING value rather than at t=0 -- it is
+    // not playing, so it should look like the thing it looks like most of the time.
+    if (model.globals?.length) {
+      poseGlobals(model, rig.skeleton.bones,
+        forcedPhase !== null ? forcedPhase : animating ? globalClock : null);
+    }
   };
   poseTime(0);
   const drawnSubs = built.drawn;
@@ -469,11 +534,6 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // page is about what the outfit looks like from the front, and a model that turns away
   // on its own has to be caught and dragged back.
   let spin = opts.spin !== false;
-  // Animation is OFF unless asked for. The viewer's whole idle discipline is that a
-  // preview nobody is looking at costs nothing, and a looping skeleton is the one thing
-  // that would draw forever; a toggle earns that cost only when someone wants it.
-  let animating = !!opts.animate;
-  let animClock = 0;
   controls.addEventListener("start", () => { spin = false; });
 
   // ---- render scheduling -------------------------------------------------------
@@ -497,8 +557,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // controls.update() reports whether the camera actually moved -- that, not
   // `enableDamping` (which is simply always on), is what says damping has settled and
   // the loop may stop.
-  const draw = () => {
-    const changed = controls.update();
+  const render = () => {
     // The key light RIDES THE CAMERA. With it fixed in world space the model is lit from
     // one side only, so turning a character around to look at the back of a cloak showed
     // it in shadow -- the exact thing you rotated to see. Offset up-and-left of the eye
@@ -508,14 +567,38 @@ function buildViewer(el, model, slotTex, opts = {}) {
     key.position.x -= radius * 0.8;
     renderer.render(scene, camera);
     frames++;
-    return changed;
   };
+  const draw = () => { const changed = controls.update(); render(); return changed; };
 
   // Rotation is per SECOND, not per frame: the draw rate is throttled below, and a
   // frame-based step silently turns "one revolution" into two different durations on a
   // 30 fps and a 60 fps machine (measured: a 17s turn became 35s once throttled).
   const SPIN_RATE = (Math.PI * 2) / 17;  // rad/s -> one full turn in 17 seconds
-  const MIN_MS = 1000 / 30;              // the idle spin looks the same at 30fps
+  // A frame that shows the same pose as the last one is pure cost, and a mover that
+  // advances on some frames and not others is what judder IS. So the frame budget is the
+  // step: every frame drawn advances the movers, and every step is drawn.
+  //
+  // The two movers want different budgets. A turntable at 17s per revolution is 0.37 deg
+  // per 30fps frame -- no eye can see the difference at 60 -- so it halves its own cost.
+  // A dance is motion the eye tracks, where 30fps reads as a stutter, so it takes the
+  // display's own rate and pays for it with the pose maths, which is the cheap half.
+  const SPIN_MS = 1000 / 30;
+  const ANIM_MS = 1000 / 60;
+  // Vsync does not land on exact multiples, so a frame arriving a hair early must count as
+  // due -- without the slack a 60Hz display alternates 2 and 3 vsyncs per step, which is
+  // the very judder this is here to remove.
+  const SLACK = 3;
+  // What the machine can actually HOLD, measured as the gap between frames that were
+  // drawn -- not as the cost of the render call, which on any real driver returns long
+  // before the GPU has finished and so reports a fast machine on a slow one. A machine
+  // that misses the 60fps budget produces random frame times, which reads as worse stutter
+  // than an honest steady 30, so it is stepped down to 30 and the pacing stays even.
+  // Recovery is a periodic retry rather than a second threshold: at 30fps nothing can be
+  // observed about whether 60 would hold now, and the thing that made it slow (another
+  // tab, a thermal dip) does go away.
+  let gapEma = 0;
+  let retryAt = 0;
+  let animMs = ANIM_MS;
 
   const tick = (now) => {
     if (!alive) { running = false; return; }
@@ -527,13 +610,25 @@ function buildViewer(el, model, slotTex, opts = {}) {
     // animation running it claimed the elapsed time first and the turntable's dt came out
     // as zero on every frame -- Rotate lit up and the model did not turn.
     let step = false;
-    const due = !last || now - last >= MIN_MS;
+    // Damping and a live drag must stay responsive whatever the movers are doing, so the
+    // camera is updated first and a frame it changed is always drawn.
+    const moved = controls.update();
+    const due = !last || now - last >= (animating ? animMs : SPIN_MS) - SLACK;
+    if (!due && !moved) { raf = requestAnimationFrame(tick); return; }   // nothing new
     const dt = due && last ? Math.min((now - last) / 1000, 0.25) : 0;  // clamp: a
-    if (due) last = now;                            // backgrounded tab returns a huge dt
+    if (due && last && animating) {                 // backgrounded tab returns a huge dt
+      const gap = Math.min(now - last, 250);
+      gapEma = gapEma ? gapEma * 0.9 + gap * 0.1 : gap;
+      if (animMs === ANIM_MS && gapEma > 24) { animMs = SPIN_MS; gapEma = 0; retryAt = now + 5000; }
+      else if (animMs === SPIN_MS && now >= retryAt) { animMs = ANIM_MS; gapEma = 0; }
+    }
+    if (due) last = now;
     if (animating && rig && due) {
-      // Wall-clock, not a frame counter: the draw rate is throttled, and a per-frame step
-      // would run the loop at a different speed on a 30 and a 60 fps machine.
+      // Wall-clock, not a frame counter: the draw rate depends on the display and the
+      // budget above, and a per-frame step would run the loop at a different speed on a
+      // 30 and a 60 fps machine.
       animClock += dt * 1000;
+      globalClock += dt * 1000;
       poseTime(animClock);
       step = true;
     }
@@ -545,8 +640,8 @@ function buildViewer(el, model, slotTex, opts = {}) {
       if (spun >= Math.PI * 2 && !opts.keepSpinning) spin = false;
       step = true;
     }
-    const changed = draw();
-    if (spin || animating || changed || step) raf = requestAnimationFrame(tick);
+    render();
+    if (spin || animating || moved || step) raf = requestAnimationFrame(tick);
     else running = false;
   };
   const wake = () => {
@@ -603,7 +698,10 @@ function buildViewer(el, model, slotTex, opts = {}) {
       status: "ok", model: opts.label || null, texture: opts.texture || null,
       textured: !!tex, meshes: drawn, triangles: model.idx.length / 3,
       vertices: model.pos.length / 3, frames, spinning: spin,
-      rigged: !!rig, animating, animMs: model.anim ? model.anim.duration : 0,
+      rigged: !!rig, animating, animMs: clip ? clip.duration : 0,
+      globals: model.globals?.length || 0,
+      frameGap: Math.round(gapEma * 10) / 10, fpsTarget: Math.round(1000 / animMs),
+      clip: clip ? clip.name : null, clipCount: clips.length,
       running, visible, onScreen: onScreen(),   // false/false = costing nothing right now
       geosets: opts.geosets ? [...opts.geosets].sort((a, b) => a - b) : null,
       cape: opts.cape || null,
@@ -685,9 +783,45 @@ function buildViewer(el, model, slotTex, opts = {}) {
       wake();
     },
     resize: onResize,
+    /** Every animation this model can play, in the order the exporter picked them. */
+    clips: () => clips.map((c, i) => ({ i, id: c.id, name: c.name, ms: c.duration })),
+    /** Which one is playing. */
+    clipIndex: () => Math.max(0, clips.indexOf(clip)),
+    /** Hand the viewer the sidecar's animations (see parseAnimPack). Keeps whatever is
+     *  playing selected by NAME, so loading the pack mid-idle does not jump the pose. */
+    setClips: (list) => {
+      if (!list?.length) return;
+      const wanted = clip?.name;
+      clips = list;
+      clip = clips.find((c) => c.name === wanted) || clips[0];
+      cursors?.fill(0); poseAtMs = -1;
+      animClock = 0;
+      poseTime(0);
+      if (!animating) draw();
+    },
+    /** Switch animation. Playing continues; paused re-poses on the new clip's frame 0. */
+    setClip: (i) => {
+      const next = clips[i];
+      if (!next) return false;
+      clip = next;
+      cursors?.fill(0); poseAtMs = -1;
+      animClock = 0;
+      poseTime(0);
+      if (animating) wake(); else draw();
+      return true;
+    },
+    /** Debug: drive the global-sequence clock by hand (blinking is one of these), so a
+     *  test can look at a phase instead of waiting 6.6s to catch a 100ms event. */
+    globalClock: (ms) => {
+      forcedPhase = ms;                  // overrides the resting phase a still model uses
+      globalClock = ms;
+      poseTime(animClock);
+      draw();
+    },
     /** Play or pause the idle animation. Returns the new state. */
     animate: (on) => {
       animating = !!on && !!rig;
+      gapEma = 0; animMs = ANIM_MS; retryAt = 0;
       if (!animating) { animClock = 0; poseTime(0); draw(); }
       else wake();
       return animating;
@@ -729,6 +863,12 @@ function buildViewer(el, model, slotTex, opts = {}) {
   hook.view = viewer.view;               // so a test can read the camera, like snapshot
   hook.reset = viewer.reset;
   hook.animate = viewer.animate;
+  hook.clips = viewer.clips;
+  hook.setClip = viewer.setClip;
+  hook.setClips = viewer.setClips;
+  hook.globalClock = viewer.globalClock;
+  hook.bodyAtlas = () => (lastBodyAtlas ? lastBodyAtlas.toDataURL("image/png") : null);
+  hook.clipIndex = viewer.clipIndex;
   window.__mv = hook;                    // smoke-test hook, same convention as __zoneDots
   return viewer;
 }
@@ -741,6 +881,27 @@ let charDataPromise = null;
 /** The race/skin/face/hair option tables (scripts/data/char-appearance.json). Fetched,
  *  not bundled: at ~1 MB it would be the largest single thing in the main JS chunk, paid
  *  by every visitor to serve one page. Cached for the session. */
+// The last body atlas composited, for debugging what a mesh is actually sampling. A
+// character's skin is painted from ten rectangles and the client ships none of the result,
+// so "is that a closed eyelid or the face texture" is otherwise unanswerable from outside.
+let lastBodyAtlas = null;
+
+const animPacks = new Map();
+
+/** Every animation for one character model, fetched once and shared. Kept out of the
+ *  model file on purpose: sixteen animations inline more than doubled a character's
+ *  download, and most visitors never press play. */
+export function characterAnimations(race, sex) {
+  const key = `${race}-${sex}`;
+  if (!animPacks.has(key)) {
+    animPacks.set(key, fetch(`${MODELS_BASE}char/${key}.anm${MODELS_V}`)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`no animations (${r.status})`))))
+      .then(parseAnimPack)
+      .catch((e) => { animPacks.delete(key); throw e; }));
+  }
+  return animPacks.get(key);
+}
+
 export function charAppearance() {
   if (!charDataPromise) {
     charDataPromise = fetch(`${MODELS_BASE}char-appearance.json${MODELS_V}`)
@@ -904,6 +1065,7 @@ export async function mountCharacterViewer(el, opts = {}) {
     base: skinRow?.[2]?.[0] ? charTexUrl(skinRow[2][0]) : null,
     layers,
   });
+  lastBodyAtlas = canvas;                // debug: __mv.bodyAtlas() dumps what was painted
   const body = new THREE.CanvasTexture(canvas);
   body.colorSpace = THREE.SRGBColorSpace;
   body.flipY = false;

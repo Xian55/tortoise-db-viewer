@@ -22,6 +22,100 @@ export const TEX_HAIR = 6;
  *  the model's height, 5/6 are a mirrored pair at 80%, 1/2 another at 42%. */
 export const ATTACH = { shield: 0, handRight: 1, handLeft: 2, shoulderRight: 5, shoulderLeft: 6, head: 11 };
 
+/** Tracks bound to a GLOBAL SEQUENCE: they belong to no animation, loop on a clock of
+ *  their own, and apply whatever is playing. Blinking is one of these -- a track scaling
+ *  the closed-eye mesh up for ~100ms, three times in 6633ms -- so reading them as part of
+ *  the played clip blinks at the clip's rate and jumps at its loop. */
+function readGlobals(dv, start) {
+  const count = dv.getUint16(start, true);
+  let b = start + 4;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const bone = dv.getUint16(b, true);
+    const kind = dv.getUint8(b + 2);                 // 0 trans, 1 rot, 2 scale
+    const duration = dv.getUint32(b + 4, true);
+    const n = dv.getUint16(b + 8, true);
+    b += 12;
+    const comps = kind === 1 ? 4 : 3;
+    const times = new Uint32Array(n);
+    const vals = new Float32Array(n * comps);
+    for (let k = 0; k < n; k++) {
+      times[k] = dv.getUint32(b, true);
+      for (let c = 0; c < comps; c++) vals[k * comps + c] = dv.getFloat32(b + 4 + c * 4, true);
+      b += 4 + comps * 4;
+    }
+    // Where in the cycle to sit when nothing is playing. NOT t=0: a tauren female's
+    // blink straddles the loop boundary, so her track starts at 1.0 (lid shut) and
+    // freezing at zero left her with her eyes closed for good. The state the cycle HOLDS
+    // is the one it spends longest in -- the midpoint of the widest gap between keys.
+    let rest = 0, widest = -1;
+    for (let k = 0; k + 1 < times.length; k++) {
+      const gap = times[k + 1] - times[k];
+      if (gap > widest) { widest = gap; rest = times[k] + gap / 2; }
+    }
+    out.push({ bone, kind, duration, rest, track: { times, vals, comps } });
+  }
+  return out;
+}
+
+/** One animation's per-bone tracks. Shared by the model's own section and the sidecar,
+ *  which is why the encoding is identical in both. */
+function readTracks(dv, start, nBone) {
+  let b = start;
+  const tracks = [];
+  for (let i = 0; i < nBone; i++) {
+    const nT = dv.getUint16(b, true);
+    const nR = dv.getUint16(b + 2, true);
+    const nS = dv.getUint16(b + 4, true);
+    b += 8;
+    const read = (n, comps) => {
+      if (!n) return null;
+      const times = new Uint32Array(n);
+      const vals = new Float32Array(n * comps);
+      for (let k = 0; k < n; k++) {
+        times[k] = dv.getUint32(b, true);
+        for (let c = 0; c < comps; c++) vals[k * comps + c] = dv.getFloat32(b + 4 + c * 4, true);
+        b += 4 + comps * 4;
+      }
+      return { times, vals, comps };
+    };
+    tracks.push({ trans: read(nT, 3), rot: read(nR, 4), scale: read(nS, 3) });
+  }
+  return { tracks, next: b };
+}
+
+/** The animation sidecar: every animation a character has, fetched only when someone
+ *  asks for one. Sixteen of them inline took a character from 245 KB to 560 KB, paid by
+ *  every visitor who only wanted to look at a tabard. */
+export function parseAnimPack(buffer) {
+  const dv = new DataView(buffer);
+  // M2A1 and M2A2 differ in what they LEAVE OUT (global tracks moved into the model),
+   // not in layout, and both are on the CDN during a rollout.
+  const magic = dv.getUint32(0, true);
+  if (magic !== 0x3141324d && magic !== 0x3241324d) throw new Error("not an m2b animation pack");
+  const count = dv.getUint16(4, true);
+  const nBone = dv.getUint16(6, true);
+  const strLen = dv.getUint32(8, true);
+  const strAt = 12;
+  const name = (o) => {
+    let end = strAt + o;
+    while (end < strAt + strLen && dv.getUint8(end) !== 0) end++;
+    return new TextDecoder("latin1").decode(new Uint8Array(buffer, strAt + o, end - strAt - o));
+  };
+  let b = strAt + strLen;
+  const out = [];
+  for (let a = 0; a < count; a++) {
+    const id = dv.getUint16(b, true);
+    const nameOff = dv.getUint16(b + 2, true);
+    const duration = dv.getUint32(b + 4, true);
+    b += 8;
+    const { tracks, next } = readTracks(dv, b, nBone);
+    b = next;
+    out.push({ id, name: name(nameOff), duration, tracks });
+  }
+  return out;
+}
+
 export function parseM2B(buffer) {
   const dv = new DataView(buffer);
   if (buffer.byteLength < HEADER || dv.getUint32(0, true) !== MAGIC) {
@@ -38,8 +132,11 @@ export function parseM2B(buffer) {
   // RIGGED one -- bind-pose vertices plus a skeleton, per-vertex weights and the Stand
   // animation's keys -- and carries three more sections. The count is implied by the
   // version, so the table is never guessed at.
-  if (version < 2 || version > 4) {
-    throw new Error(`m2b version ${version} is not readable (want 2-4)`);
+  // v5 replaced the single inline animation with a LIST -- in the model that list holds
+  // only the idle, the rest arriving from the sidecar (parseAnimPack). v6 adds `glb`, the
+  // tracks that belong to no animation and run on their own clock (blinking).
+  if (version < 2 || version > 6) {
+    throw new Error(`m2b version ${version} is not readable (want 2-6)`);
   }
   const flags = dv.getUint16(6, true);
   const nVert = dv.getUint32(8, true);
@@ -51,7 +148,8 @@ export function parseM2B(buffer) {
   const bbox = [];
   for (let i = 0; i < 6; i++) bbox.push(dv.getFloat32(24 + i * 4, true));
   const off = {};
-  const sections = version >= 4 ? [...SECTIONS, "bon", "skn", "anm"] : SECTIONS;
+  const sections = version >= 6 ? [...SECTIONS, "bon", "skn", "anm", "glb"]
+    : version >= 4 ? [...SECTIONS, "bon", "skn", "anm"] : SECTIONS;
   sections.forEach((name, i) => { off[name] = dv.getUint32(48 + i * 4, true); });
 
   const str = (o) => {
@@ -104,6 +202,8 @@ export function parseM2B(buffer) {
   let bones = null;
   let skin = null;
   let anim = null;
+  let anims = [];
+  let globals = [];
   if (version >= 4 && nBone) {
     bones = [];
     for (let i = 0; i < nBone; i++) {
@@ -118,33 +218,35 @@ export function parseM2B(buffer) {
       index: new Uint8Array(buffer, off.skn, nVert * 4 * 2).filter((_, i) => i % 8 < 4),
       weight: new Uint8Array(buffer, off.skn, nVert * 4 * 2).filter((_, i) => i % 8 >= 4),
     };
-    // duration, then per bone: three key counts followed by the keys themselves.
-    const dur = dv.getUint32(off.anm, true);
-    let b = off.anm + 8;
-    const tracks = [];
-    for (let i = 0; i < nBone; i++) {
-      const nT = dv.getUint16(b, true);
-      const nR = dv.getUint16(b + 2, true);
-      const nS = dv.getUint16(b + 4, true);
-      b += 8;
-      const read = (n, comps) => {
-        if (!n) return null;
-        const times = new Uint32Array(n);
-        const vals = new Float32Array(n * comps);
-        for (let k = 0; k < n; k++) {
-          times[k] = dv.getUint32(b, true);
-          for (let c = 0; c < comps; c++) vals[k * comps + c] = dv.getFloat32(b + 4 + c * 4, true);
-          b += 4 + comps * 4;
-        }
-        return { times, vals, comps };
-      };
-      tracks.push({ trans: read(nT, 3), rot: read(nR, 4), scale: read(nS, 3) });
+    // v5 carries a LIST (in practice the idle alone -- the rest arrive from the sidecar,
+    // see parseAnimPack). v4 wrote one animation with no count, so the two are read
+    // differently: a reader that assumes v5 on a v4 file takes the duration for a count
+    // and produces garbage, and both versions are live on the CDN during any rollout.
+    const count = version >= 5 ? dv.getUint16(off.anm, true) : 1;
+    let b = off.anm + (version >= 5 ? 4 : 0);
+    const list = [];
+    for (let a = 0; a < count; a++) {
+      let id = 0, name = "Stand", duration;
+      if (version >= 5) {
+        id = dv.getUint16(b, true);
+        name = str(dv.getUint16(b + 2, true));
+        duration = dv.getUint32(b + 4, true);
+        b += 8;
+      } else {
+        duration = dv.getUint32(b, true);          // v4: duration, bone count, then keys
+        b += 8;
+      }
+      const { tracks, next } = readTracks(dv, b, nBone);
+      b = next;
+      list.push({ id, name, duration, tracks });
     }
-    anim = { duration: dur, tracks };
+    anim = list[0] || null;
+    anims = list;
+    if (version >= 6 && off.glb) globals = readGlobals(dv, off.glb, buffer);
   }
 
   return {
-    version, posed: !!(flags & 1), nBone, bbox, bones, skin, anim,
+    version, posed: !!(flags & 1), nBone, bbox, bones, skin, anim, anims, globals,
     pos: new Float32Array(buffer, off.pos, nVert * 3),
     nrm: new Float32Array(buffer, off.nrm, nVert * 3),
     uv: new Float32Array(buffer, off.uv, nVert * 2),

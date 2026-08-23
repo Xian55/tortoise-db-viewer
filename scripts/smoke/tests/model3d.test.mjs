@@ -878,3 +878,130 @@ async function testSpinWhileAnimating() {
 }
 
 smoke("the turntable still turns while the animation plays", () => testSpinWhileAnimating());
+
+// Switching animations. The model file holds only its idle -- the other fifteen are a
+// sidecar (.anm) fetched the first time someone opens the picker -- so this also proves
+// the two halves agree on an encoding they no longer share a file with.
+//
+// It deliberately passes in BOTH states, because a model-format bump reaches R2 and the
+// deployed code at different moments: against models that predate the sidecar the picker
+// has nothing to offer and the room must simply keep working. It asserts the strong thing
+// whenever the sidecar is actually there, and says in its log which half ran.
+async function testAnimationPicker() {
+  await nav("?dressing&race=1&sex=m&hair=3");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await page.focus("#dress-clip");                       // what pulls the sidecar down
+  await page.waitForFunction(
+    () => document.querySelectorAll("#dress-clip option").length > 1, { timeout: 8000 },
+  ).catch(() => {});
+  const names = await page.$$eval("#dress-clip option", (o) => o.map((x) => x.value));
+  if (names.length < 2) {
+    const ok = await page.evaluate(() => window.__mv().triangles > 0);
+    console.log(`clips: no sidecar on this origin (${names.join(",") || "none"}) - room still renders=${ok}`);
+    return ok;
+  }
+  const idle = await page.evaluate(() => window.__mv());
+  await page.click("#dress-anim");                       // play, so the pose is moving
+  await new Promise((r) => setTimeout(r, 600));
+  const before = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  await page.select("#dress-clip", "EmoteDance");
+  await new Promise((r) => setTimeout(r, 600));
+  const dancing = await page.evaluate(() => window.__mv());
+  const after = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  console.log(`clips: ${names.length} offered, ${idle.clip}/${idle.animMs}ms -> ${dancing.clip}/${dancing.animMs}ms moved=${before !== after}`);
+  return names.length >= 8 && names.includes("EmoteDance") && idle.clip === "Stand"
+    && dancing.clip === "EmoteDance" && dancing.animMs !== idle.animMs && before !== after;
+}
+
+smoke("a character can be asked for a different animation", () => testAnimationPicker());
+
+// One step per frame, one frame per step. The loop used to render on every rAF while
+// advancing the movers on a 33ms gate: half the frames redrew an identical pose, which is
+// full GPU cost for the judder it produced. The turntable turns 0.37 degrees per 30fps
+// frame and keeps that budget; the animation takes the display's rate. Measured as a
+// RATIO so the assertion means the same thing on any machine.
+async function testFramePacing() {
+  await nav("?dressing&race=1&sex=m&hair=3");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const rate = async (ms) => page.evaluate((ms) => new Promise((done) => {
+    const a = window.__mv().frames;
+    setTimeout(() => done((window.__mv().frames - a) / (ms / 1000)), ms);
+  }), ms);
+  await page.click("#dress-spin");
+  const spinning = await rate(1500);
+  await page.click("#dress-spin");
+  await page.click("#dress-anim");
+  const playing = await rate(1500);
+  const target = await page.evaluate(() => window.__mv().fpsTarget);
+  console.log(`pacing: turntable ${spinning.toFixed(0)}fps, animation ${playing.toFixed(0)}fps (target ${target})`);
+  // The turntable is the regression guard: it must stay near its own 30fps budget however
+  // fast the display is, and the bug being pinned drew every rAF for it (60). The
+  // animation is only checked against the budget it actually chose -- a loaded CI box
+  // legitimately steps down to 30, which is the adaptive rule doing its job.
+  return spinning > 20 && spinning < 40 && playing > 20
+    && (target === 60 ? playing > spinning * 1.5 : playing < spinning * 1.5);
+}
+
+smoke("the turntable draws half the frames the animation does", () => testFramePacing());
+
+// A mesh the client hides is hidden by a SCALE OF EXACTLY ZERO, and zero is falsy: the
+// old `v || 1` guard turned every hidden mesh back to full size. Characters carry two
+// eyelids -- one animated, one for sleeping -- so a blood elf male wore a flat quad over
+// his eyes, and only races whose spare lid is hidden this way showed it. Checked on the
+// eye glow, which is unmistakable in pixels: bright blue where a covered eye is skin.
+async function testHiddenMeshStaysHidden() {
+  await nav("?dressing&race=10&sex=m&hair=0&face=0");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await new Promise((r) => setTimeout(r, 400));
+  const found = await page.evaluate(async () => {
+    const url = window.__mv.snapshot({ background: false });
+    const img = new Image();
+    await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = url; });
+    const c = document.createElement("canvas");
+    c.width = img.width; c.height = img.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
+    // the head is the top of the figure; the glow is the only strongly blue thing on it
+    let top = c.height, glow = 0;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] > 8) { top = Math.floor((i >> 2) / c.width); break; }
+    }
+    const until = top + Math.floor(c.height * 0.12);
+    for (let y = top; y < until; y++) {
+      for (let x = 0; x < c.width; x++) {
+        const o = (y * c.width + x) * 4;
+        if (data[o + 3] > 100 && data[o + 2] - data[o] > 30) glow++;
+      }
+    }
+    return glow;
+  });
+  console.log(`hidden mesh: blood elf male glowing-eye pixels = ${found} (0 means a lid is covering them)`);
+  return found > 20;
+}
+
+smoke("a mesh the client hides at scale zero stays hidden", () => testHiddenMeshStaysHidden());
+
+// A still model sits at each global track's RESTING value, not at t=0. A tauren female's
+// blink straddles the loop boundary -- her track starts at 1.0, lid shut -- so freezing
+// the clock at zero left her with her eyes closed for good, while every other race
+// happened to start open. The resting phase is the midpoint of the widest gap between
+// keys: the state the cycle actually holds.
+async function testRestPhase() {
+  await nav("?dressing&race=6&sex=f&hair=0");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await new Promise((r) => setTimeout(r, 400));
+  // Global tracks live in .m2b v6; a model that predates it carries none, and on such an
+  // origin there is no resting phase to be wrong about. Like the animation picker, this
+  // asserts the strong thing only where the data for it exists.
+  const globals = await page.evaluate(() => window.__mv().globals);
+  const resting = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  const atZero = await page.evaluate(() => {
+    window.__mv.globalClock(0);                        // the phase the old code froze at
+    return window.__mv.snapshot({ background: false });
+  });
+  console.log(`rest phase: ${globals} global tracks; tauren female differs from her t=0 pose = ${resting !== atZero}`);
+  return globals ? resting !== atZero : true;
+}
+
+smoke("a still character rests where its blink cycle rests", () => testRestPhase());

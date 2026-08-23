@@ -763,6 +763,96 @@ looking rather than by recalling:
   trusting the table renders a Troll at skin colour 9 nude and leaves bald patches where a
   scalp is missing. An appearance the client cannot paint is not offered in the picker.
 
+### Animations
+
+A character is a **rigged** model (`.m2b` v4 added bind-pose vertices + bones + weights,
+v5 made the animation a list) posed per frame in the browser; a rigid model -- every item
+-- keeps its baked Stand pose and cannot be animated at all.
+
+- **Sixteen animations, in a sidecar.** `WANT_ANIMS` in `export-models.py` picks them by
+  the client's OWN name from `AnimationData.dbc` (the id alone says nothing, and "69 is
+  Dance" is exactly the recall this codebase avoids). All sixteen inline took a character
+  from 245 KB to 560 KB, paid by every visitor who only wanted to look at a tabard -- so
+  the model keeps its idle and the rest go to `char/<race>-<sex>.anm` (`M2A1`), fetched by
+  `characterAnimations()` the first time someone hovers the picker. Same encoding both
+  sides, one `readTracks()`, so they cannot drift apart.
+- **Only PRIMARY sequences** (`sub == 0`): a sub-variant is the same move at another tempo.
+- **The reader accepts v4 and v5**, because a format bump reaches R2 and the deployed code
+  at different moments and both are live during any rollout. v4 wrote one animation with no
+  count; read as v5 its duration IS the count, and the result is garbage rather than an
+  error. Ship the reader FIRST, publish the models second -- the reverse breaks the live
+  room for the length of the deploy.
+- **The selection is remembered by NAME, not by index.** A viewer is rebuilt on every equip
+  and every appearance change, and a race that lacks one animation shifts every index after
+  it, so an index silently lands on a different move after a race change.
+- **Wall-clock, one clock.** The animation and the turntable both step from the same frame
+  delta; each taking it for itself left the spin's dt at zero every frame (Rotate lit up,
+  nothing turned). A per-frame step would also run the loop at different speeds on a 30 and
+  a 60 fps machine.
+- **One step per frame, one frame per step** -- the whole of why animation looked jittery.
+  The loop rendered on every rAF (60fps) while advancing the movers on a 33ms gate, so half
+  the frames redrew a pose identical to the last one and motion arrived in 33ms jumps
+  against a 60Hz display: full GPU cost, visible judder. Now a tick that is not due draws
+  nothing, and every frame drawn carries a fresh pose. The turntable keeps the 30fps budget
+  (0.37 degrees per frame at 17s a revolution -- no eye sees 60) and so **halved** its
+  draws; the animation takes the display's rate, which the pose maths pays for. Measured:
+  spin 60 -> 30 fps for the same motion, animation 5.1% -> 3.9% of a core while now moving
+  twice as often.
+- **The frame budget adapts on the achieved GAP, not on render cost.** `renderer.render()`
+  returns long before the GPU is done, so timing the call reports a fast machine on a slow
+  one (measured 1.97ms under an 8x CPU throttle). The gap between drawn frames is the real
+  signal: over 24ms means 60 is not being held, and an honest steady 30 reads better than a
+  random 45. Recovery is a 5s retry, because at 30fps nothing can be observed about whether
+  60 would hold again.
+- **Track cursors are only reset when time goes BACKWARDS.** They exist so a frame costs a
+  step rather than a search through every key; resetting them per frame (as the first cut
+  did) turns each frame into a full scan of ~75 bones' tracks. Backwards means the loop
+  wrapping or a different animation being picked -- both of which do reset them.
+- **`?models=local` (dev only)** points `MODELS_BASE` at `public/model3d`, which is where
+  the exporter writes -- otherwise a format bump cannot be looked at before it is published.
+- **Global tracks are real.** A track with no range for the played sequence still applies
+  (the client reads it whole); dropping those cost every pauldron its bone scale, and a
+  blood elf's shoulders came out human-sized.
+- **Blinking runs on a GLOBAL SEQUENCE, not on the animation.** A track can be bound to a
+  global sequence (`M2Track.global_seq >= 0`), which loops on a clock of its own whatever
+  is playing -- a human's blink is one track scaling the closed-eye mesh up for ~100ms,
+  three times in 6633ms. Filing those keys under the played clip (as the first cut did)
+  blinks at the CLIP's rate and jumps at its loop: Stand is 2667ms, so the character
+  blinked twice in 2.7s instead of three times in 6.6s, and Dance blinked at a third rate
+  again. They live in `.m2b` v6's own `glb` section now, applied after the clip and stepped
+  by a separate clock -- which also means a still model does not blink, the same bargain
+  the rest of the viewer's idle discipline makes.
+
+**Two eyelids, and both ways of hiding one.** A character model carries the eyelid twice --
+one lid animated for blinking, one for sleeping and dying -- and the client shows exactly
+one. It hides the spare in whichever of two ways the artist chose, and BOTH were broken
+here, each on different races, which is why this looked like several unrelated bugs:
+
+- **Alpha zero on the M2Color the texture unit points at.** The alpha is not on the mesh
+  and not on the material -- it is a `fixed16` track on `M2Color`, indexed by the texture
+  unit's field 4 -- so a submesh can be valid geometry with valid textures and still be
+  something the game never draws. Goblins of both genders hide their spare this way, and we
+  drew it: a closed eyelid painted over a wide-awake face. `export-models.py` now drops any
+  submesh whose alpha is zero across **every animation we ship** -- judged over that set,
+  not over the whole file, because in animation 145 the spare IS shown, which is how a
+  corpse closes its eyes.
+- **Scale exactly zero on the bone.** `bone.scale.set(v || 1, ...)` -- and zero is falsy,
+  so every mesh the client had collapsed came back at full size. Blood elf males hide their
+  spare with a per-clip `(0,0,0)`, and wore a flat quad over their eyes for it. Human males
+  escaped only because their lid is hidden by a GLOBAL track, which goes through a
+  different code path.
+
+The lesson generalises past eyelids: **visibility in an M2 is not a property of the mesh.**
+It is spread across the geoset selection, the bone's scale, and an alpha track reached
+through a colour index -- and a mesh is drawn only if all three agree.
+
+**Two debug hooks, because neither question is answerable from outside.** `__mv.bodyAtlas()`
+returns the composited 256x256 body texture as a PNG -- the client ships none of the result,
+so "is that a closed eyelid or the face texture" is otherwise a guess; comparing it against
+the source BLPs is what proved the composite exact (mean diff 0.0) and moved the search to
+geometry. `__mv.globalClock(ms)` drives the global-sequence clock by hand, so a 100ms blink
+in a 6633ms cycle can be looked at instead of waited for.
+
 **The pickers are the character creator's, not a form's** (`?dressing`). Seven `<select>`s
 in a row is a form: every change costs open-scroll-pick, and "Skin 4" says nothing about
 what 4 looks like. Anything with a preview now shows it and everything else steps:
