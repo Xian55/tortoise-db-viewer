@@ -12,8 +12,8 @@ import { externalMenuHtml, wireExternalMenu, chatMacro, chatButtonHtml, wireChat
 import { initHovercards } from "./hovercard.js";
 import { runSearch, initSearchDropdown, ftsQuery } from "./search.js";
 import { DRESS_SLOT, HAND_BY_INV } from "./chargear.js";
-import CHAR_PALETTE from "../scripts/data/char-palette.json";
-import RACE_LABELS from "../scripts/data/race-labels.json";
+import { appearancePicker, readAppearance, appearanceParams, rememberAppearance, recallAppearance }
+  from "./appearance.js";
 import { ASSETS_BASE, MAPS_BASE, MAPS_BASE_MAIN, MINIMAP_BASE, MAP_SUB, DATA_BASE, API_BASE, MODEL_THUMBS_BASE, OWN_ITEM_MODELS, resolveOrigins, DATASET, DATASETS, EXPANSION, OG_BASE, HAS_OG_API, getAtlasUrls } from "./config.js";
 import { buildNavHtml, wireNav, closeNav } from "./nav.js";
 import { buildQuestMap } from "./questmap.js";
@@ -264,64 +264,27 @@ const COMP_COLUMNS = ["t_arm_u", "t_arm_l", "t_hand", "t_torso_u", "t_torso_l",
   "t_leg_u", "t_leg_l", "t_foot"];
 
 function mountModelTab(appearance, wornEntry) {
-  const bar = app.querySelector(".tabbar");
   const host = app.querySelector("#mv-host");
-  if (!bar || !host) return;
-  let started = false;
-  const myRoute = routeSeq;
-  const mount = async () => {
-    if (started) return;
-    started = true;
-    try {
-      const mod = await import("./modelviewer.js");
-      host.innerHTML = "";
-      destroyViewer();
-      // A piece that needs a body gets one: the same mannequin the dressing room mounts,
-      // wearing this and nothing else. Human male because every helm and shoulder ships
-      // that variant; the note under the pane says so and links to the room, where the
-      // visitor can put it on their own race.
-      const viewer = wornEntry
-        ? await mod.mountCharacterViewer(host, {
-          race: 1, sex: "m", hair: 1,
-          items: await query(Q.qDressItemsIn(1), [wornEntry]).catch(() => []),
-          cancelled: () => myRoute !== routeSeq,
-        })
-        : await mod.mountItemViewer(host, {
-          model: appearance.model_l,
-          texture: appearance.tex_l,
-          cancelled: () => myRoute !== routeSeq,
-        });
-      if (myRoute !== routeSeq) { try { viewer.destroy(); } catch { /* gone */ } return; }
-      activeViewer = viewer;
-    } catch (err) {
-      if (err?.message === "cancelled" || myRoute !== routeSeq) return;
-      host.innerHTML = `<p class="muted">3D preview unavailable${err?.message ? ` — ${esc(err.message)}` : ""}.</p>`;
-    }
-  };
-  // Mount when the pane BECOMES VISIBLE, not when its tab is clicked. The click is only
-  // one way to get there, and relying on it leaves the pane stuck on "Loading model…"
-  // whenever the listener is missing -- which is exactly what a Vite HMR update does, by
-  // re-running this module while leaving the already-rendered DOM in place. Visibility is
-  // the actual condition we care about, so observe that instead.
-  if (typeof IntersectionObserver === "function") {
-    const io = new IntersectionObserver(([e]) => {
-      if (!e.isIntersecting) return;
-      io.disconnect();
-      mount();
+  if (!host) return;
+  // A piece that needs a body gets one, and gets the pickers with it: the same rail the
+  // set preview and the dressing room use, so an item can be judged on the character the
+  // visitor actually plays. A weapon stands alone -- there is no character to customise --
+  // so it keeps the plain spinning viewer it has always had.
+  if (wornEntry) {
+    mountDressedPreview({
+      host,
+      railEl: app.querySelector("#item-appearance"),
+      entries: [wornEntry],
+      onChange: (state) => {
+        const link = app.querySelector(".mv-note a");
+        if (!link) return;
+        const lq = new URLSearchParams(link.getAttribute("href").replace(/^\?/, ""));
+        for (const [k, v] of Object.entries(appearanceParams(state))) lq.set(k, v);
+        link.setAttribute("href", `?${lq}`);
+      },
     });
-    io.observe(host);
-  } else {
-    bar.addEventListener("tabshow", (e) => { if (e.detail?.id === "model3d") mount(); });
+    return;
   }
-}
-
-/** The dressing-room mannequin wearing a whole SET, mounted into a plain host rather than
- *  a tab pane. Same discipline as mountModelTab: built when the host first becomes
- *  visible (a set page is long, and most visitors never scroll to it), and abandoned if
- *  the route changed while the models were downloading. */
-function mountSetModel(entries) {
-  const host = app.querySelector("#mv-host");
-  if (!host || !entries.length) return;
   let started = false;
   const myRoute = routeSeq;
   const mount = async () => {
@@ -329,12 +292,11 @@ function mountSetModel(entries) {
     started = true;
     try {
       const mod = await import("./modelviewer.js");
-      const items = await query(Q.qDressItemsIn(entries.length), entries).catch(() => []);
-      if (myRoute !== routeSeq) return;
       host.innerHTML = "";
       destroyViewer();
-      const viewer = await mod.mountCharacterViewer(host, {
-        race: 1, sex: "m", hair: 1, items,
+      const viewer = await mod.mountItemViewer(host, {
+        model: appearance.model_l,
+        texture: appearance.tex_l,
         cancelled: () => myRoute !== routeSeq,
       });
       if (myRoute !== routeSeq) { try { viewer.destroy(); } catch { /* gone */ } return; }
@@ -344,11 +306,111 @@ function mountSetModel(entries) {
       host.innerHTML = `<p class="muted">3D preview unavailable${err?.message ? ` — ${esc(err.message)}` : ""}.</p>`;
     }
   };
+  // Mount when the pane BECOMES VISIBLE, not when its tab is clicked. The click is only
+  // one way to get there, and relying on it leaves the pane stuck on "Loading model..."
+  // whenever the listener is missing -- which is exactly what a Vite HMR update does, by
+  // re-running this module while leaving the already-rendered DOM in place.
   if (typeof IntersectionObserver === "function") {
     const io = new IntersectionObserver(([e]) => { if (!e.isIntersecting) return; io.disconnect(); mount(); });
     io.observe(host);
-  } else mount();
+  } else {
+    app.querySelector(".tabbar")?.addEventListener("tabshow", (e) => {
+      if (e.detail?.id === "model3d") mount();
+    });
+  }
 }
+
+/**
+ * A character wearing something, with the dressing room's own pickers around it. Used by
+ * BOTH the item set's preview and an item's 3D tab -- they ask the identical question
+ * ("what does this look like on me") and a second copy of the mount/re-mount/remember
+ * dance is how the two would come to answer it differently.
+ *
+ * `entries` are the item ids to wear. The rail is optional: a page that has nowhere to put
+ * the pickers still gets the remembered character.
+ */
+function mountDressedPreview({ host, railEl, entries, onChange }) {
+  if (!host || !entries.length) return;
+  const myRoute = routeSeq;
+  // Who to show it on: what the link says, else whoever this visitor last built in the
+  // dressing room, else a human male. A preview is asking "would I wear this", and that is
+  // a different question on a tauren.
+  const state = readAppearance(new URLSearchParams(location.search), recallAppearance() || {});
+  let items = null;
+  let seq = 0;
+  const mount = async () => {
+    const my = ++seq;
+    try {
+      const mod = await import("./modelviewer.js");
+      if (!items) items = await query(Q.qDressItemsIn(entries.length), entries).catch(() => []);
+      if (myRoute !== routeSeq || my !== seq) return;
+      if (railEl && !railEl.dataset.wired) {
+        railEl.dataset.wired = "1";
+        const data = await mod.charAppearance();
+        if (myRoute !== routeSeq) return;
+        appearancePicker({
+          data,
+          state,
+          el: railEl,
+          onChange: async () => {
+            // The look rides in the URL so a shared link shows what the sender saw, and is
+            // remembered so the next preview opens on the same character.
+            const q = new URLSearchParams(location.search);
+            for (const [k, v] of Object.entries(appearanceParams(state))) q.set(k, v);
+            history.replaceState({}, "", `?${q}`);
+            rememberAppearance(state);
+            onChange?.(state);
+            await mount();
+          },
+        }).render();
+      }
+      const view = (() => { try { return activeViewer?.view?.() ?? null; } catch { return null; } })();
+      destroyViewer();
+      host.innerHTML = "";
+      const viewer = await mod.mountCharacterViewer(host, {
+        ...state, items, view,
+        // Straight on and STILL. An opening revolution was tried and is worse here than on
+        // a weapon's own preview: the pickers re-mount the model, so the turn either
+        // restarted under every click or -- stopped after the first mount -- left the
+        // character parked at whatever angle it had reached. Judging a look wants a fixed
+        // view, and the model is draggable.
+        spin: false,
+        cancelled: () => myRoute !== routeSeq || my !== seq,
+      });
+      if (myRoute !== routeSeq || my !== seq) { try { viewer.destroy(); } catch { /* gone */ } return; }
+      activeViewer = viewer;
+    } catch (err) {
+      if (err?.message === "cancelled" || myRoute !== routeSeq) return;
+      host.innerHTML = `<p class="muted">3D preview unavailable${err?.message ? ` — ${esc(err.message)}` : ""}.</p>`;
+    }
+  };
+  // On VISIBILITY, not on load: a set page is long and an item's 3D tab starts hidden, and
+  // a preview nobody has scrolled to should cost nothing.
+  let started = false;
+  const first = () => { if (started) return; started = true; mount(); };
+  if (typeof IntersectionObserver === "function") {
+    const io = new IntersectionObserver(([e]) => { if (!e.isIntersecting) return; io.disconnect(); first(); });
+    io.observe(host);
+  } else first();
+}
+
+function mountSetModel(entries) {
+  mountDressedPreview({
+    host: app.querySelector("#mv-host"),
+    railEl: app.querySelector("#set-appearance"),
+    entries,
+    // The way into the room follows the preview: having looked at a set on a tauren,
+    // "try it on a character" that opened a human male would throw the answer away.
+    onChange: (state) => {
+      const link = app.querySelector(".item-dress a");
+      if (!link) return;
+      const lq = new URLSearchParams(link.getAttribute("href").replace(/^\?/, ""));
+      for (const [k, v] of Object.entries(appearanceParams(state))) lq.set(k, v);
+      link.setAttribute("href", `?${lq}`);
+    },
+  });
+}
+
 
 /** One piece per SLOT, best first. A set routinely carries several items for one slot --
  *  a 1H and a 2H, two rings -- and Q_SET_PIECES orders by item level, so the first of
@@ -1134,12 +1196,18 @@ async function showItem(id) {
           : !webglOk() ? "no-webgl"
             : "nothing-to-show";
   if (model3d) {
+    // No "shown on a human male" caption any more: the pickers under the model say whose
+    // character it is, and the sentence only repeated them. What is worth keeping is the
+    // way OUT -- into the room, where the rest of an outfit can go on.
     const note = standalone ? ""
-      : `<p class="muted mv-note">Shown on a human male \u2014 <a class="nav" `
-        + `href="?dressing&${DRESS_SLOT[it.inventory_type]}=${it.entry}">try it on your own character \u203a</a></p>`;
+      : `<p class="muted mv-note"><a class="nav" `
+        + `href="?dressing&${DRESS_SLOT[it.inventory_type]}=${it.entry}&${new URLSearchParams(appearanceParams(recallAppearance() || {})).toString()}">Try it on a character ›</a></p>`;
     tabDefs.push({
       id: "model3d", label: "3D", count: 1, noCount: true,
-      html: `<div id="mv-host" class="mv-host"><p class="muted">Loading model\u2026</p></div>${note}`,
+      html: standalone
+        ? `<div id="mv-host" class="mv-host"><p class="muted">Loading model…</p></div>${note}`
+        : `<div class="mv-stage"><div id="mv-host" class="mv-host"><p class="muted">Loading model…</p></div>`
+          + `<div class="mv-appearance" id="item-appearance"></div></div>${note}`,
     });
   }
 
@@ -1211,15 +1279,12 @@ async function showDressingRoom(params, navigate) {
   // still the current one.
   const myRoute = routeSeq;
   const num = (k, d) => (params.get(k) !== null && params.get(k) !== "" ? Number(params.get(k)) : d);
-  const state = {
-    race: num("race", 1), sex: params.get("sex") === "f" ? "f" : "m",
-    skin: num("skin", 0), face: num("face", 0),
-    hair: num("hair", 0), hairColor: num("hcolor", 0), facialHair: num("facial", 0),
-    // Absent from a link, the paint FOLLOWS the facial index -- which is exactly what the
-    // single coupled stepper used to do, so every URL written before the split still
-    // renders the character it described.
-    facePaint: params.get("paint") !== null ? num("paint", 0) : num("facial", 0),
-  };
+  // A link says who to render; absent that, whoever this visitor last built here. Either
+  // way it is remembered immediately: arriving on a shared link is as much a statement of
+  // "this is the character I am looking at" as building one, and the item and set previews
+  // read this to decide who to dress.
+  const state = readAppearance(params, recallAppearance() || {});
+  rememberAppearance(state);
   // Visual slots only -- a ring changes nothing about how you look. Head, shoulders and
   // anything held are MODELS hung off an attachment point rather than textures painted
   // on the body, but from here they are just another slot.
@@ -1276,13 +1341,26 @@ async function showDressingRoom(params, navigate) {
           <div id="mv-host" class="mv-host"><p class="muted">Loading character&hellip;</p></div>
           <div class="mv-preview-tag" id="dress-preview-tag" hidden>Preview — click to keep</div>
           <div class="mv-tools">
-            <button type="button" class="mv-tool" id="dress-anim" aria-pressed="false" title="Play the animation"><i>\u25B6</i><span>Animate</span></button>
-            <select class="mv-tool mv-clip" id="dress-clip" title="Which animation"><option value="0">Stand</option></select>
-            <button type="button" class="mv-tool" id="dress-spin" aria-pressed="false" title="Turn the model"><i>\u21BB</i><span>Rotate</span></button>
-            <button type="button" class="mv-tool" id="dress-reset" title="Back to the straight-on view"><i>\u21BA</i><span>Reset</span></button>
-            <button type="button" class="mv-tool" id="dress-full" title="Fill the screen"><i>\u26F6</i><span>Fullscreen</span></button>
-            <button type="button" class="mv-tool" id="dress-shot" title="Save a PNG of this view"><i>\u{1F4F7}</i><span>Screenshot</span></button>
-            <label class="mv-tool mv-chk" title="Save with no background at all"><input type="checkbox" id="dress-alpha"><span>transparent</span></label>
+            <button type="button" class="mv-tool" id="dress-anim" aria-pressed="false"
+              aria-label="Play the animation" title="Play the animation"><i>\u25B6</i></button>
+            <select class="mv-tool mv-clip" id="dress-clip" aria-label="Which animation"
+              title="Which animation"><option value="0">Stand</option></select>
+            <!-- Anticlockwise, because that is the way the turntable actually turns
+                 (root.rotation.z increases, which reads as leftward from the front). -->
+            <button type="button" class="mv-tool" id="dress-spin" aria-pressed="false"
+              aria-label="Turn the model" title="Turn the model"><i>\u21BA</i></button>
+            <!-- NOT a mirrored arrow. Rotate is \u21BB and reset was \u21BA: the same shape flipped,
+                 for two controls that share nothing -- one spins the model, the other puts the
+                 camera back where it started. A bullseye reads as "recentre" and cannot be
+                 mistaken for the turntable at a glance. -->
+            <button type="button" class="mv-tool" id="dress-reset"
+              aria-label="Back to the straight-on view" title="Back to the straight-on view"><i>\u25CE</i></button>
+            <button type="button" class="mv-tool" id="dress-full"
+              aria-label="Fill the screen" title="Fill the screen"><i>\u26F6</i></button>
+            <button type="button" class="mv-tool" id="dress-shot"
+              aria-label="Save a PNG of this view" title="Save a PNG of this view"><i>\u{1F4F7}</i></button>
+            <button type="button" class="mv-tool" id="dress-alpha" aria-pressed="false"
+              aria-label="Save with no background" title="Save with no background \u2014 transparent PNG"><i>\u25A8</i></button>
           </div>
         </div>
         <div class="dress-bar" id="dress-bar"></div>
@@ -1319,137 +1397,6 @@ async function showDressingRoom(params, navigate) {
     return;
   }
 
-  // Sampled colours for the skin/hair swatches (scripts/build-char-palette.py). Bundled
-  // rather than fetched with the rest of the appearance data: it is 4 KB and the picker
-  // needs it on first paint.
-  const palette = (key) => CHAR_PALETTE[key] || null;
-
-  // How many variations/colours this race+gender actually offers. Asked of the data
-  // rather than assumed: Turtle's own races do not carry the same counts as Blizzard's.
-  const opts = (kind, idx) => {
-    const rows = data.sections[`${state.race}-${state.sex}-${kind}`] || [];
-    return [...new Set(rows.map((r) => r[idx]))].sort((a, b) => a - b);
-  };
-  // Hair and facial-hair VARIATIONS come from the geoset tables, not from the texture
-  // sections: a variation can exist as geometry while painting no texture at all (every
-  // race's bald, and all five of the goblin's facial options), and offering only the
-  // textured ones hides real choices -- while offering ones the race lacks used to leave
-  // it headless.
-  const geosetOpts = (table) =>
-    [...new Set((data[table][`${state.race}-${state.sex}`] || []).map((r) => r[0]))].sort((a, b) => a - b);
-
-  // Shape and paint are TWO CHOICES on some races and one on others, and the data says
-  // which. A troll's fourteen "tusk" variations resolve to five tusk shapes and nine war
-  // paints, and the game lets you pick one of each; a human's nine beards are nine
-  // beards -- shape and texture travel together and splitting them would offer 54
-  // combinations the game does not have.
-  //
-  // The test is the collapse: split when the distinct geoset sets number two thirds of
-  // the variations or fewer. Measured, that is trolls, undead and night elf females
-  // (ratios 0.36, 0.25, 0.10) but not orc males (0.91) or human males (0.67), which
-  // matches what those races' creators actually offer.
-  const SPLIT_RATIO = 0.65;
-  const facialAxes = () => {
-    const rows = data.facial[`${state.race}-${state.sex}`] || [];
-    const byGeoset = new Map();               // geoset signature -> its lowest variation
-    for (const r of [...rows].sort((a, b) => a[0] - b[0])) {
-      const key = r.slice(1).join(",");
-      if (!byGeoset.has(key)) byGeoset.set(key, r[0]);
-    }
-    const painted = [...new Set((data.sections[`${state.race}-${state.sex}-facial`] || [])
-      .filter((r) => r[2].length).map((r) => r[0]))].sort((a, b) => a - b);
-    const bare = rows.map((r) => r[0]).filter((v) => !painted.includes(v)).sort((a, b) => a - b);
-    const split = rows.length > 1 && byGeoset.size <= rows.length * SPLIT_RATIO
-      && painted.length > 0 && bare.length > 0;
-    return {
-      split,
-      shapes: [...byGeoset.values()].sort((a, b) => a - b),
-      // "no paint" is a real choice, and it is whichever variation carries no texture.
-      paints: [bare[0], ...painted],
-    };
-  };
-  // The pickers are the character creator's, not a form's. Every option that HAS a
-  // preview shows it -- a race is its portrait, a skin or hair colour is that colour --
-  // and only the ones that cannot be previewed in a swatch (face, hairstyle, markings)
-  // stay as a stepper, which is still one click per change rather than three.
-  const RACE_ICON = (id, sex) => `${ASSETS_BASE}icons/race/${id}-${sex}.webp`;
-  const swatch = (label, key, values, cur, colours) => {
-    if (values.length < 2) return "";
-    const cells = values.map((v) => {
-      const c = colours && colours[v];
-      // No sampled colour (a race whose art the client does not ship) degrades to the
-      // number rather than to an empty circle that looks broken. One class attribute,
-      // not two -- a second is silently dropped, which left the fallback unstyled.
-      const face = c ? ` style="background:${c}"` : "";
-      return `<button type="button" class="sw${c ? "" : " sw-num"}" data-key="${key}" data-val="${v}"${face}`
-        + ` aria-pressed="${v === cur}" title="${esc(label)} ${v}">${c ? "" : v}</button>`;
-    }).join("");
-    return field(label, `${values.indexOf(cur) + 1} / ${values.length}`,
-      `<div class="swatches">${cells}</div>`);
-  };
-  const stepper = (label, key, values, cur) => {
-    if (values.length < 2) return "";
-    const at = Math.max(0, values.indexOf(cur));
-    return `<div class="stepper" data-key="${key}">`
-      + `<button type="button" data-step="-1" aria-label="Previous ${esc(label)}">\u2039</button>`
-      + `<span class="val">${esc(label)} ${at + 1} / ${values.length}</span>`
-      + `<button type="button" data-step="1" aria-label="Next ${esc(label)}">\u203a</button></div>`;
-  };
-  const field = (label, note, body) =>
-    `<div class="dfield"><div class="dfield-lbl"><span>${esc(label)}</span>`
-    + `<span class="dim">${esc(note)}</span></div>${body}</div>`;
-
-  const render = () => {
-    const raceName = data.races.find((r) => r.id === state.race)?.name || "";
-    const lab = RACE_LABELS[state.race] || {};
-    const axes = facialAxes();
-    // With the shape split off, the race's own word names the SHAPE (a troll's "Tusks");
-    // where a race has only one shape -- a night elf female has exactly one -- the shape
-    // stepper hides itself and the word belongs to the paint, which is what "Markings"
-    // means there.
-    const labels = {
-      hair: lab.hair || "Hair",
-      facial: lab[state.sex] || "Facial hair",
-    };
-    if (axes.split && axes.shapes.length < 2) labels.paint = labels.facial;
-    // Gender leads the same row as the races, because it IS one of the choices the row
-    // is making -- and because the portraits are per gender, so the two controls are
-    // reading the same picture.
-    const sexTile = (val, label, glyph) =>
-      `<button type="button" class="race-tile sex-tile" data-key="sex" data-val="${val}"`
-      + ` aria-pressed="${state.sex === val}" title="${label}">`
-      + `<i>${glyph}</i><span>${label}</span></button>`;
-    const tiles = data.races.map((r) =>
-      `<button type="button" class="race-tile" data-key="race" data-val="${r.id}"`
-      + ` aria-pressed="${r.id === state.race}" title="${esc(r.name)}">`
-      + `<img src="${RACE_ICON(r.id, state.sex)}" alt="" loading="lazy" width="38" height="38">`
-      + `<span>${esc(r.name)}</span></button>`).join("");
-    bar.innerHTML =
-      field("Race", raceName,
-        `<div class="race-row">${sexTile("m", "Male", "\u2642")}${sexTile("f", "Female", "\u2640")}`
-        + `<span class="race-sep"></span>${tiles}</div>`)
-      + swatch("Skin", "skin", opts("skin", 1), state.skin, palette(`${state.race}-${state.sex}-skin`))
-      + swatch("Hair colour", "hcolor", opts("hair", 1), state.hairColor,
-        palette(`${state.race}-${state.sex}-hair`))
-      + field("Face & hair", "",
-        `<div class="steps">`
-        + stepper("Face", "face", opts("face", 0), state.face)
-        + stepper(labels.hair, "hair", geosetOpts("hair"), state.hair)
-        // What this option is CALLED is per race, and the client says so: ChrRaces names a
-        // token per race and gender and the glue strings give it text. A troll's option is
-        // Tusks, an undead's is Features, a tauren's hair slider is Horns. Calling them all
-        // "Facial hair" sends people looking for a beard slider that does not exist -- and
-        // the guess it replaces ("Face detail" when a race had no facial textures) was
-        // right about goblins by accident and wrong about trolls.
-        + (axes.split
-          ? stepper(labels.facial, "facial", axes.shapes, state.facialHair)
-            + stepper(labels.paint || "Face paint", "paint", axes.paints, state.facePaint)
-          : stepper(labels.facial, "facial", geosetOpts("facial"), state.facialHair))
-        + `</div>`);
-  };
-
-  const KEY = { hcolor: "hairColor", facial: "facialHair", paint: "facePaint" };
-
   const hitsEl = app.querySelector("#dress-hits");
   const findEl = app.querySelector("#dress-find");
   const popEl = app.querySelector("#dress-pop");
@@ -1461,9 +1408,7 @@ async function showDressingRoom(params, navigate) {
   let cursor = -1;                            // keyboard selection within them
 
   const syncUrl = () => {
-    const q = new URLSearchParams({ dressing: "", race: state.race, sex: state.sex,
-      skin: state.skin, face: state.face, hair: state.hair, hcolor: state.hairColor,
-      facial: state.facialHair, paint: state.facePaint });
+    const q = new URLSearchParams({ dressing: "", ...appearanceParams(state) });
     for (const [slot, entry] of worn) q.set(slot, entry);
     history.replaceState({}, "", `?${q}`);
   };
@@ -1860,15 +1805,15 @@ async function showDressingRoom(params, navigate) {
     state.sex = Math.random() < 0.5 ? "m" : "f";
     // Clamp first: the options below belong to the NEW race, and asking for the old
     // race's counts would roll a hairstyle this one does not have.
-    clamp();
-    state.skin = any(opts("skin", 1));
-    state.face = any(opts("face", 0));
-    state.hair = any(geosetOpts("hair"));
-    state.hairColor = any(opts("hair", 1));
-    const ax = facialAxes();
-    state.facialHair = any(ax.split ? ax.shapes : geosetOpts("facial"));
+    picker.clamp();
+    state.skin = any(picker.opts("skin", 1));
+    state.face = any(picker.opts("face", 0));
+    state.hair = any(picker.geosetOpts("hair"));
+    state.hairColor = any(picker.opts("hair", 1));
+    const ax = picker.facialAxes();
+    state.facialHair = any(ax.split ? ax.shapes : picker.geosetOpts("facial"));
     state.facePaint = any(ax.split ? ax.paints : [state.facialHair]);
-    render(); syncUrl(); await mount();
+    render(); syncUrl(); rememberAppearance(state); await mount();
   });
 
   app.querySelector("#dress-reset")?.addEventListener("click", () => {
@@ -1893,7 +1838,7 @@ async function showDressingRoom(params, navigate) {
   });
 
   app.querySelector("#dress-shot")?.addEventListener("click", () => {
-    const alpha = app.querySelector("#dress-alpha")?.checked;
+    const alpha = app.querySelector("#dress-alpha")?.getAttribute("aria-pressed") === "true";
     let url;
     try { url = activeViewer?.snapshot({ background: !alpha }); } catch { url = null; }
     if (!url) { say("Nothing to capture yet."); return; }
@@ -1971,6 +1916,14 @@ async function showDressingRoom(params, navigate) {
     try { activeViewer?.animate(animating); } catch { /* between mounts */ }
   });
 
+  // A pressed toggle, lit gold like Animate and Rotate, rather than a checkbox with a
+  // word beside it: it says the same thing in the same language as the buttons it sits
+  // among, and costs the pill 90px less width.
+  app.querySelector("#dress-alpha")?.addEventListener("click", (e) => {
+    e.currentTarget.setAttribute("aria-pressed",
+      String(e.currentTarget.getAttribute("aria-pressed") !== "true"));
+  });
+
   app.querySelector("#dress-spin")?.addEventListener("click", (e) => {
     spinning = !spinning;
     e.currentTarget.setAttribute("aria-pressed", String(spinning));
@@ -2011,48 +1964,14 @@ async function showDressingRoom(params, navigate) {
   // A race change can leave a look pointing at an option the new race does not have (a
   // gnome has fewer skins than a tauren), which used to render a character with no head.
   // Clamp everything that is out of range to the nearest option that exists.
-  const clamp = () => {
-    const fit = (vals, cur) => (vals.includes(cur) ? cur : (vals[0] ?? 0));
-    state.skin = fit(opts("skin", 1), state.skin);
-    state.face = fit(opts("face", 0), state.face);
-    state.hairColor = fit(opts("hair", 1), state.hairColor);
-    state.hair = fit(geosetOpts("hair"), state.hair);
-    const ax = facialAxes();
-    state.facialHair = fit(ax.split ? ax.shapes : geosetOpts("facial"), state.facialHair);
-    state.facePaint = fit(ax.split ? ax.paints : geosetOpts("facial"), state.facePaint);
-  };
-
-  const set = async (key, value) => {
-    state[KEY[key] || key] = value;
-    if (key === "race" || key === "sex") clamp();
-    render(); syncUrl(); await mount();
-  };
-
-  const onPick = async (e) => {
-    const step = e.target.closest(".stepper button");
-    if (step) {
-      // Steppers wrap. Reaching the end of eleven hairstyles and having to click back
-      // through all of them is the kind of thing a dropdown was at least honest about.
-      const box = step.closest(".stepper");
-      const key = box.dataset.key;
-      const ax = facialAxes();
-      const vals = key === "paint" ? ax.paints
-        : key === "facial" ? (ax.split ? ax.shapes : geosetOpts("facial"))
-          : key === "hair" ? geosetOpts("hair")
-            : opts(key === "hcolor" ? "hair" : key, key === "face" ? 0 : 1);
-      const at = Math.max(0, vals.indexOf(state[KEY[key] || key]));
-      const next = vals[(at + Number(step.dataset.step) + vals.length) % vals.length];
-      await set(key, next);
-      return;
-    }
-    const btn = e.target.closest("[data-key][data-val]");
-    if (!btn) return;
-    const key = btn.dataset.key;
-    await set(key, key === "sex" ? btn.dataset.val : Number(btn.dataset.val));
-  };
-  // Three hosts, one handler: the strips are part of the same picker, they just sit
-  // beside the model instead of above it.
-  bar.addEventListener("click", onPick);
+  // The character-creator pickers, shared with the item-set preview (src/appearance.js).
+  // The room's answer to a change is: repaint the rail, rewrite the URL, remember the look
+  // for other pages to preview on, and rebuild the character.
+  const picker = appearancePicker({
+    data, state, el: bar,
+    onChange: async () => { syncUrl(); rememberAppearance(state); await mount(); },
+  });
+  const render = picker.render;
 
   render();
   await mount();
@@ -2179,12 +2098,16 @@ async function showItemSet(id) {
   // mannequin the item page uses, with the way into the dressing room right under it.
   const pieces = await query(Q.Q_SET_PIECES, [id]).catch(() => []);
   const worn = setLoadout(pieces);
-  const dressQuery = [...worn].map(([slot, entry]) => `${slot}=${entry}`).join("&");
+  const look = readAppearance(new URLSearchParams(location.search), recallAppearance() || {});
+  const dressQuery = [...[...worn].map(([slot, entry]) => `${slot}=${entry}`),
+    ...Object.entries(appearanceParams(look)).map(([k, v]) => `${k}=${v}`)].join("&");
   const show3d = OWN_ITEM_MODELS && webglOk() && worn.size > 0 && (await caps()).appearance;
   const preview = show3d
     ? `<div class="set-preview">
-         <div id="mv-host" class="mv-host"><p class="muted">Loading model…</p></div>
-         <p class="muted mv-note">Shown on a human male</p>
+         <div class="mv-stage">
+           <div id="mv-host" class="mv-host"><p class="muted">Loading model…</p></div>
+           <div class="mv-appearance" id="set-appearance"></div>
+         </div>
        </div>`
     : "";
   app.innerHTML = `<div class="results item-set-page">

@@ -784,6 +784,43 @@ async function testItemSetPreview() {
 
 smoke("an item set is shown worn, and links into the room", () => testItemSetPreview());
 
+// The set preview wears the dressing room's own pickers (src/appearance.js), so a set can
+// be judged on the character you actually play rather than on a stock human male. Three
+// things have to hold: the pickers drive the model, the choice rides in the URL so a
+// shared link shows what the sender saw, and the look is REMEMBERED -- which is what lets
+// a set page open on your character without a link saying so.
+async function testSetAppearance() {
+  await nav("?itemset=201&race=1&sex=m");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await new Promise((r) => setTimeout(r, 500));
+  const human = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  // every group is one row or one column -- the rule that keeps the controls off the model
+  const shapes = await page.$$eval(".mv-appearance .dfield", (els) => els.map((e) => {
+    const inner = e.querySelector(".race-row, .swatches, .steps");
+    if (!inner) return "?";
+    const kids = [...inner.children].filter((c) => c.getBoundingClientRect().width > 0);
+    const rows = new Set(kids.map((c) => Math.round(c.getBoundingClientRect().top)));
+    const cols = new Set(kids.map((c) => Math.round(c.getBoundingClientRect().left)));
+    return `${e.dataset.field}:${rows.size === 1 ? "row" : cols.size === 1 ? "col" : "block"}`;
+  }));
+  await page.click('.mv-appearance [data-key="race"][data-val="6"]');
+  await page.waitForFunction(() => /race=6/.test(location.search), { timeout: 15000 });
+  await new Promise((r) => setTimeout(r, 2500));
+  const tauren = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  const link = await page.$eval(".item-dress a", (a) => a.getAttribute("href"));
+  const remembered = await page.evaluate(() => localStorage.getItem("tw-appearance"));
+  // ...and a fresh set page, with nothing in its URL, opens on that same character
+  await nav("?itemset=630");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const opened = await page.evaluate(() => window.__mv().race ?? null);
+  console.log(`set pickers: ${shapes.join(" ")} | changed=${tauren !== human} link=${/race=6/.test(link)} remembered=${/"race":6/.test(remembered || "")}`);
+  return shapes.every((s2) => s2.endsWith("row") || s2.endsWith("col"))
+    && tauren !== human && /race=6/.test(link) && /"race":6/.test(remembered || "")
+    && (opened === null || opened === 6);
+}
+
+smoke("a set can be tried on any race, and remembers which", () => testSetAppearance());
+
 // Hover a search result and it goes ON the character. A row of icons and names says
 // nothing about how a piece will look with the rest of an outfit, which is what people
 // are actually choosing between. The preview must be exactly that -- a preview: it may

@@ -669,6 +669,44 @@ jQuery and a **CORS proxy server** besides. Same call, same reason, as `OWN_MODE
 - **Two kinds of preview.** A weapon stands alone and is rendered by itself; a helm, a
   shoulder or any texture-only armor is shown ON the dressing room's mannequin (a stock
   human male, with a link to try it on your own character). Those used to get no tab at all.
+- **One preview, three pages.** `src/appearance.js` holds the character-creator pickers
+  (race/gender portraits, skin and hair swatches, the per-race steppers) and `main.js`
+  `mountDressedPreview()` holds the mount/re-mount/remember dance. The dressing room, an
+  item set's preview and an item's 3D tab all run through them, because every rule in the
+  pickers is a race-specific reading of client data -- which facial axes split, what a race
+  calls them (a tauren's "Horns"), which values exist, how to clamp on a race change -- and
+  a second copy drifts the moment one page grows an option. Same reason `selbar.js` exists.
+  The module renders CONTROLS and names each field (`data-field`); WHERE they sit is the
+  page's business, which is how one implementation is a stacked rail in the room and thin
+  strips around a set's model.
+- **The look is remembered, and that is the point.** The room stores the appearance on
+  arrival as well as on change (`tw-appearance`), so a set or item preview opens on the
+  character the visitor actually plays rather than a stock human male -- and it rides in the
+  URL too, so a shared link shows what the sender saw. This also killed the "Shown on a
+  human male" captions: the pickers under the model say whose character it is.
+- **Every group is one row or one column, never a block.** A 2x6 grid of portraits beside a
+  5x3 grid of swatches reads as panels competing with the model; the same controls as
+  single-file strips down the stage's edges take a third of the surface and leave the
+  character the middle. A strip that outgrows the stage scrolls (twelve portraits already
+  reach 462px of a 520px stage).
+- **A rail that runs out of height must scroll, never grow sideways.** Both of the room's
+  rails produced layout bugs at unusual window sizes, from the same root -- containers sized
+  for a tall desktop with free rein to overflow when they are not on one. The slot rail is a
+  grid item, and a grid row grows to its tallest item whatever the track says, so on a
+  924x423 window it pushed the row past `height: calc(100vh - 210px)` and the model host
+  (`height: 100%`) ran over the action bar and the footer; `min-height: 0` lets the track
+  bind. The appearance rail is a wrapping COLUMN, so at 981x620 it wrapped into a second
+  column outside the 236px track and off the right of the screen, unreachable;
+  `flex-wrap: nowrap` plus `overflow-y: auto` is the fix. Under 560px of viewport height the
+  room stops trying to fit the window at all and simply scrolls.
+- **The viewer's tool pill is icons only**, and two of its glyphs were lying. With words it
+  came to ~700px -- wider than the stage on a short window, where it hung outside the pane --
+  and every button carries a title and an aria-label, so the word was never what made it
+  usable. `transparent` is a pressed toggle lit gold like its neighbours rather than a
+  checkbox with a caption. Rotate is `↺` because the turntable actually advances
+  anticlockwise (`root.rotation.z` increases; measured +0.542 rad), and Reset is a bullseye
+  `◎` rather than `↺`'s mirror image: two controls that share nothing should not
+  wear the same shape flipped.
 - **An item SET is previewed the same way** (`?itemset=`), wearing every piece at once --
   which is the question a set page exists to answer and eight tooltips cannot. One piece
   per SLOT, best first: a set routinely carries several items for one slot (a 1H and a 2H,
