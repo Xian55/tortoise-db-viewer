@@ -1,7 +1,7 @@
 // Zone pages + world map: parchment maps, category toggles, farming routes,
 // gather granularity, floor switchers, quests, flights, and the seamless world map.
 import { page, nav, T, smoke } from "../harness.mjs";
-import { testBrowse, waitMapStill } from "./_shared.mjs";
+import { testBrowse, waitMapStill, waitStable } from "./_shared.mjs";
 
 // zone page: Leaflet renders the parchment image + per-category marker toggles.
 // (markers use a canvas renderer, so assert the image layer + layer control.)
@@ -35,7 +35,8 @@ async function testZoneDotMenu(id) {
   await page.setViewport({ width: 1280, height: 900 });
   await nav(`?zone=${id}`);
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
-  await new Promise((r) => setTimeout(r, 600));
+  // The layer panel is what the next line clicks into, so wait for its rows to exist.
+  await page.waitForFunction(() => document.querySelectorAll("#zonemap .wm-panel .wm-row").length > 0, { timeout: T });
   // the docked layer panel is open by default; tick the densest category row
   await page.evaluate(() => {
     const rows = [...document.querySelectorAll("#zonemap .wm-panel .wm-row")];
@@ -97,7 +98,8 @@ async function testZoneDotMenu(id) {
 async function testFarmRoute(areaid, item) {
   await nav(`?zone=${areaid}&gather=${item}`);
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
-  await new Promise((r) => setTimeout(r, 700));
+  // Both numbers below are read off the DOM, so wait for the DOM, not for 700ms.
+  await page.waitForFunction(() => document.querySelectorAll("#zonemap .wm-panel .wm-row .wm-row-main").length > 0, { timeout: T });
   const overlays = await page.$$eval("#zonemap .wm-panel .wm-row .wm-row-main", (e) => e.map((x) => x.textContent.trim()));
   const stops = await page.$$eval(".route-stop", (e) => e.length);
   const hasRoute = overlays.some((o) => /route/i.test(o));
@@ -170,7 +172,8 @@ async function testZoneFloors(areaid, minFloors) {
   const src1 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src")).catch(() => "");
   // switch to a non-active floor; map image should change
   await page.evaluate(() => { const b = [...document.querySelectorAll("#floorswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
-  await new Promise((r) => setTimeout(r, 400));
+  // The assertion IS that the src changed -- so wait for exactly that.
+  await page.waitForFunction((s) => document.querySelector("#zonemap .leaflet-image-layer")?.getAttribute("src") !== s, { timeout: T }, src1).catch(() => {});
   const src2 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src")).catch(() => "");
   console.log(`zone-floors ${areaid}: floors=${floors} active=${active} src1=${src1} src2=${src2} switched=${src1 !== src2}`);
   return floors >= minFloors && active === 1 && src1 !== src2;
@@ -208,13 +211,13 @@ async function testEmptyZone(id, expectName) {
 async function testFlights() {
   await nav(`?flights`);
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
-  await new Promise((r) => setTimeout(r, 500));
+  await page.waitForFunction(() => document.querySelectorAll(".flight-node").length > 0, { timeout: T }).catch(() => {});
   const nodes = await page.$$eval(".flight-node", (e) => e.length);
   const conts = await page.$$eval("#contswitch button", (b) => b.length).catch(() => 0);
   const src1 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src"));
   await page.evaluate(() => { const b = [...document.querySelectorAll("#contswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
   await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
-  await new Promise((r) => setTimeout(r, 500));
+  await page.waitForFunction((s) => document.querySelector("#zonemap .leaflet-image-layer")?.getAttribute("src") !== s, { timeout: T }, src1).catch(() => {});
   const src2 = await page.$eval("#zonemap .leaflet-image-layer", (e) => e.getAttribute("src"));
   console.log(`flights: nodes=${nodes} continents=${conts} src1=${src1} src2=${src2} switched=${src1 !== src2}`);
   return nodes > 20 && conts === 2 && src1 !== src2;
@@ -227,7 +230,8 @@ async function testWorldMap() {
   await page.setViewport({ width: 1280, height: 900 });
   await nav(`?worldmap`);
   await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: T });
-  await new Promise((r) => setTimeout(r, 500));
+  // Tiles arrive progressively, so "loaded" is the count settling, not a fixed delay.
+  await waitStable(() => page.$$eval("#zonemap img.leaflet-tile-loaded", (e) => e.length));
   const tiles = await page.$$eval("#zonemap img.leaflet-tile-loaded", (e) => e.length);
   const src1 = await page.$eval("#zonemap img.leaflet-tile", (e) => e.getAttribute("src")).catch(() => "");
   const conts = await page.$$eval("#contswitch button", (b) => b.length).catch(() => 0);
@@ -255,7 +259,7 @@ async function testWorldMap() {
   // switch continents -> tiles re-request from the other map's pyramid path
   await page.evaluate(() => { const b = [...document.querySelectorAll("#contswitch button")].find((x) => !x.classList.contains("active")); if (b) b.click(); });
   await page.waitForSelector("#zonemap img.leaflet-tile-loaded", { timeout: T });
-  await new Promise((r) => setTimeout(r, 500));
+  await page.waitForFunction((s) => document.querySelector("#zonemap img.leaflet-tile")?.getAttribute("src") !== s, { timeout: T }, src1).catch(() => {});
   const src2 = await page.$eval("#zonemap img.leaflet-tile", (e) => e.getAttribute("src")).catch(() => "");
   const m1 = /minimap\/(\d+)\//.exec(src1)?.[1], m2 = /minimap\/(\d+)\//.exec(src2)?.[1];
   console.log(`worldmap: tiles=${tiles} conts=${conts} cats=${cats} search=${search.filtered}/${search.all} collapse=${collapseOk} map1=${m1} map2=${m2} switched=${m1 !== m2}`);
@@ -277,15 +281,18 @@ async function testWorldMapState() {
   const mobChecked = await page.evaluate(`!!(${rowByText("/Enemy Mobs/")})?.querySelector("input")?.checked`);
   // toggle Vendors on -> cats in URL gains it
   await page.evaluate(`(${rowByText("/Vendors/")})?.querySelector("input")?.click()`);
-  await new Promise((r) => setTimeout(r, 350));
+  // Wait for the value asserted below, not merely for the param to exist: mob is checked
+  // by default, so `cats` is usually in the URL already and "has cats" would pass before
+  // the click had landed.
+  await page.waitForFunction(() => /vendor/.test(new URLSearchParams(location.search).get("cats") || ""), { timeout: T }).catch(() => {});
   const catsUrl = (await qp("cats")) || "";
   // focus a zone -> URL gains focus=<areaid>
   await page.evaluate(() => { const s = document.querySelector("#zonemap .wm-zone"); s.value = [...s.options].find((o) => o.value)?.value; s.dispatchEvent(new Event("change", { bubbles: true })); });
-  await new Promise((r) => setTimeout(r, 350));
+  await page.waitForFunction(() => new URLSearchParams(location.search).has("focus"), { timeout: T }).catch(() => {});
   const focusUrl = await qp("focus");
   // name filter -> URL gains q=
   await page.evaluate(() => { const i = document.querySelector("#zonemap .wm-name"); i.value = "wolf"; i.dispatchEvent(new Event("input", { bubbles: true })); });
-  await new Promise((r) => setTimeout(r, 400));
+  await page.waitForFunction(() => new URLSearchParams(location.search).has("q"), { timeout: T }).catch(() => {});
   const qUrl = await qp("q");
   console.log(`worldmap-state: zoneOpts=${zoneOpts} nameInput=${hasNameInput} mobChecked=${mobChecked} cats="${catsUrl}" focus=${focusUrl} q=${qUrl}`);
   return zoneOpts > 1 && hasNameInput && mobChecked && /(^|,)mob(,|$)/.test(catsUrl) && /vendor/.test(catsUrl) && focusUrl != null && qUrl === "wolf";

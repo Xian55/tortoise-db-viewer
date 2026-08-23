@@ -46,6 +46,38 @@ export async function waitMapStill(sample, opts) {
   return waitStable(sample, opts);
 }
 
+// Run `act`, then wait for the model viewer to have REBUILT and settled.
+//
+// Every equip, every hover preview and every appearance change builds a NEW viewer (see
+// "The camera survives a re-mount" in the root CLAUDE.md), so the hook object's identity
+// flipping is the exact "the change has landed" signal -- and `running === false` is then
+// the frame a snapshot() will read. That matters because almost every test here asserts by
+// comparing two snapshots, and a snapshot taken mid-rebuild compares the wrong frames.
+//
+// This replaces the sleeps that used to stand in for it. Measured on the race swap it was
+// written for: identity flips at 143ms and the loop is idle at 160ms, where the sleep
+// guessed 2500ms. It is not only ~15x faster, it is the more correct wait: a fixed sleep
+// expires whether or not the model finished loading, so on a slow machine it asserts on
+// whatever happened to be on screen.
+export async function afterRemount(act, { timeout = T } = {}) {
+  await page.evaluate(() => { window.__mvPrev = window.__mv; });
+  await act();
+  await page.waitForFunction(
+    () => window.__mv && window.__mv !== window.__mvPrev
+      && window.__mv().triangles > 0 && window.__mv().running === false,
+    { timeout },
+  );
+}
+
+// The same settle without a rebuild: the viewer is the one already mounted, we just want
+// the render loop to have gone quiet before reading a frame.
+export async function viewerIdle({ timeout = T } = {}) {
+  await page.waitForFunction(
+    () => window.__mv && window.__mv().triangles > 0 && window.__mv().running === false,
+    { timeout },
+  );
+}
+
 // Detail pages carry a Share button copying the prerendered /<prefix>/<id> link.
 export async function testShareButton(param, id, prefix) {
   await nav(`?${param}=${id}`);
