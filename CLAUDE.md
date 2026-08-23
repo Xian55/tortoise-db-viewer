@@ -97,6 +97,17 @@ public/icons/custom-atlas.{webp,json} the shippable atlas (render.js draws sprit
   has stats for the heavy joins. The DB-worker opens read-only with tuned pragmas
   (`cache_size=-32768` 32 MB, `temp_store=MEMORY`, `query_only=ON`). `page_size`
   stays 4096 — measured optimal for the brotli download (8k/16k/32k compress worse).
+- **The build itself is ~83% SQLite, not JS** (`bun --cpu-prof-md scripts/build-db.mjs`
+  writes a readable profile). Three things follow from that profile, worth 40s → 27s:
+  the **migrations are applied one transaction per FILE** — statement-at-a-time was 37%
+  of all CPU, since each one then commits on its own; `staging.rows()` reads back with
+  **`values()`** (positional arrays) rather than building an object per row and mapping
+  it straight back, which was ~12%; and the build opens with a **256 MB `cache_size`**
+  plus `temp_store=MEMORY`, far above the runtime pragmas above, because it is the only
+  writer of a throwaway file. Verified content-identical across the change (all 65
+  content tables, same 110 tables, same migration counts) — but note `version.json` is a
+  hash of the **file bytes**, so a physical-layout change like this moves it once and
+  re-invalidates client caches even though nothing in the data moved.
 
 ## Commands
 

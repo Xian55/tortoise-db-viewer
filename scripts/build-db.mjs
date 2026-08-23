@@ -72,6 +72,12 @@ const db = await openDatabase(OUT);
 db.pragma("page_size = 4096"); // must be set before any table is created
 db.pragma("journal_mode = OFF");
 db.pragma("synchronous = OFF");
+// This process builds a throwaway file from scratch and is the only thing touching it, so
+// it can be far more generous than the runtime pragmas in db-worker.js. The default 2 MB
+// page cache is the constraint that matters: the build joins staged tables many times the
+// size of it, and ANALYZE + VACUUM walk the whole 84 MB file at the end.
+db.pragma("cache_size = -262144"); // 256 MB, in KiB (negative = size not page count)
+db.pragma("temp_store = MEMORY");  // sorts/temp b-trees stay off disk
 console.log(`Runtime: ${RUNTIME}`);
 
 const t0 = Date.now();

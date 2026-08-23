@@ -110,26 +110,40 @@ export function buildStaging(db, SQL_DIR, UPD_DIR, specs) {
     for (const f of files) {
       stats.files++;
       const sql = readFileSync(f, "utf8");
-      for (const raw of splitStatements(sql)) {
-        const t = translate(raw, staged, PFX);
-        if (t === null) { stats.skipped++; continue; }
-        try { db.exec(t); stats.applied++; }
-        catch (e) {
-          stats.errors++;
-          if (stats.errors <= 10) console.warn(`  migration error in ${basename(f)}: ${e.message}`);
+      // One transaction PER FILE. Applying a migration statement at a time was the single
+      // biggest cost in the build (37% of CPU): with no explicit transaction every one of
+      // them commits on its own, and these files are mostly long runs of small DML. Per
+      // file rather than one transaction for all 118, so a file stays the unit of work and
+      // peak memory stays bounded. The per-statement catch is kept INSIDE, which is what
+      // preserves the old semantics -- SQLite does not abort a transaction over a failed
+      // statement, and since nothing rethrows, one bad statement still skips only itself.
+      db.transaction(() => {
+        for (const raw of splitStatements(sql)) {
+          const t = translate(raw, staged, PFX);
+          if (t === null) { stats.skipped++; continue; }
+          try { db.exec(t); stats.applied++; }
+          catch (e) {
+            stats.errors++;
+            if (stats.errors <= 10) console.warn(`  migration error in ${basename(f)}: ${e.message}`);
+          }
         }
-      }
+      })();
     }
   }
 
   return {
     has: (table) => staged.has(table),
     columns: (table) => colsByTable[table],
-    // yield rows as positional arrays in the staged column order (iterRows shape)
+    // Yield rows as positional arrays in the staged column order (iterRows shape), read
+    // positionally. `SELECT *` returns columns in physical order and
+    // colsByTable is kept in that same order (the migration pre-scan pushes each
+    // ALTER-added name as it adds the column), so values() yields exactly what the old
+    // `cols.map((c) => r[c])` built -- without materialising an object per row and mapping
+    // it straight back. That round trip was ~12% of the build's CPU time.
     rows: function* (table) {
       const cols = colsByTable[table];
       if (!cols) return;
-      for (const r of db.prepare(`SELECT * FROM \`${PFX}${table}\``).all()) yield cols.map((c) => r[c]);
+      yield* db.prepare(`SELECT * FROM \`${PFX}${table}\``).values();
     },
     drop: () => { for (const t of staged) db.exec(`DROP TABLE \`${PFX}${t}\``); },
     stats,
