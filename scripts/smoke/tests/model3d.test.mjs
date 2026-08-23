@@ -784,6 +784,44 @@ async function testItemSetPreview() {
 
 smoke("an item set is shown worn, and links into the room", () => testItemSetPreview());
 
+// Hover a search result and it goes ON the character. A row of icons and names says
+// nothing about how a piece will look with the rest of an outfit, which is what people
+// are actually choosing between. The preview must be exactly that -- a preview: it may
+// not touch the URL, and moving away must put the outfit back.
+async function testHoverPreview() {
+  await nav("?dressing&race=1&sex=m&hair=3&chest=60180");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const worn = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  const url = await page.evaluate(() => location.search);
+  await page.evaluate(() => document.querySelector('[data-slot="chest"]').click());
+  await page.waitForFunction(() => !document.getElementById("dress-pop").hidden, { timeout: 10000 });
+  await page.type("#dress-find", "robe");
+  await page.waitForSelector("#dress-pop .sd-row[data-i]", { timeout: 15000 });
+
+  await page.hover("#dress-pop .sd-row[data-i='1']");
+  await page.waitForFunction(() => !document.getElementById("dress-preview-tag").hidden, { timeout: 15000 })
+    .catch(() => {});
+  await new Promise((r) => setTimeout(r, 1200));
+  const previewed = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  const urlWhilePreviewing = await page.evaluate(() => location.search);
+
+  await page.evaluate(() => document.getElementById("dress-hits")
+    .dispatchEvent(new MouseEvent("mouseleave")));
+  await new Promise((r) => setTimeout(r, 1400));
+  const back = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+
+  await page.hover("#dress-pop .sd-row[data-i='1']");
+  await new Promise((r) => setTimeout(r, 400));
+  await page.click("#dress-pop .sd-row[data-i='1']");
+  await page.waitForFunction(() => document.getElementById("dress-preview-tag").hidden, { timeout: 10000 })
+    .catch(() => {});
+  const committed = await page.evaluate(() => location.search);
+  console.log(`hover preview: changed=${previewed !== worn} urlUntouched=${urlWhilePreviewing === url} restored=${back === worn} committed=${committed !== url}`);
+  return previewed !== worn && urlWhilePreviewing === url && back === worn && committed !== url;
+}
+
+smoke("hovering a result tries it on without keeping it", () => testHoverPreview());
+
 // A robe paints AFTER the legs: its skirt covers them, which is what the robe geoset is
 // for. Filed under the chest's usual paint slot, a pair of trousers painted over the skirt
 // the robe had just drawn and the legs won. Asserted by pixels rather than by order --
