@@ -88,6 +88,21 @@ function parseAlloc(search, data) {
   return alloc;
 }
 
+const classOrder = (classes) => CLASS_ORDER.filter((s) => classes[s])
+  .concat(Object.keys(classes).filter((s) => !CLASS_ORDER.includes(s)));
+
+/** The class strip that stays on top of a tree, so swapping class is one click rather
+ *  than a trip back to the picker. Links carry NO `t=`: an allocation is encoded
+ *  positionally against one class's trees, so handing it to another class either
+ *  mis-reads it or silently drops points. Switching class starts that class empty. */
+function classSwitch(classes, active) {
+  return `<nav class="talent-switch" aria-label="Class">${classOrder(classes).map((s) => `
+    <a class="nav talent-swatch${s === active ? " on" : ""}" href="?talents=${s}"
+       title="${esc(classes[s].name)}"${s === active ? ' aria-current="page"' : ""}>
+      <img src="${ASSETS_BASE}icons/class/${s}.webp" alt="" width="28" height="28" loading="lazy">
+      <span>${esc(classes[s].name)}</span></a>`).join("")}</nav>`;
+}
+
 export async function showTalents(clsParam) {
   const app = document.getElementById("app");
   const classes = talentsData.classes || {};
@@ -95,8 +110,7 @@ export async function showTalents(clsParam) {
 
   if (!slug || !classes[slug]) {
     document.title = "Talent Calculator - Tortoise-WoW DB";
-    const order = CLASS_ORDER.filter((s) => classes[s]).concat(Object.keys(classes).filter((s) => !CLASS_ORDER.includes(s)));
-    const links = order.map((s) => `<a class="nav talent-cls" href="?talents=${s}">
+    const links = classOrder(classes).map((s) => `<a class="nav talent-cls" href="?talents=${s}">
       <img class="talent-cls-icon" src="${ASSETS_BASE}icons/class/${s}.webp" alt="" width="48" height="48" loading="lazy">
       <span>${esc(classes[s].name)}</span></a>`).join("");
     const emptyMsg = TURTLE_DATASETS.has(DATASET)
@@ -170,6 +184,7 @@ export async function showTalents(clsParam) {
     const spentPer = data.tabs.map((tab) => tab.talents.reduce((s, t) => s + (alloc[t.id] || 0), 0));
     const spentTotal = spentPer.reduce((a, b) => a + b, 0);
     app.innerHTML = `<div class="talent-page">
+      ${classSwitch(classes, slug)}
       <div class="talent-head">
         <h1>${esc(data.name)} Talents</h1>
         <div class="talent-status">Points spent: <b>${spentTotal}</b> / ${maxPoints}

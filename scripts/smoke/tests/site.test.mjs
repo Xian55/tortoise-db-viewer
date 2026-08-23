@@ -41,6 +41,28 @@ async function testTalents() {
   return icons === 9 && iconOk && tabs.length === 3 && rank === `${max}/${max}` && spent === max && /[?&]t=/.test(url);
 }
 
+// The class strip stays on top of an open tree, so swapping class is one click instead of
+// a trip back to the picker. It deliberately drops the `t=` build: an allocation is
+// encoded positionally against ONE class's trees, so carrying it across would either
+// mis-read it or silently spend points somewhere else.
+async function testTalentClassSwitch() {
+  await nav(`?talents=paladin`);
+  await page.waitForSelector(".talent-tree", { timeout: T });
+  const strip = await page.$$eval(".talent-swatch", (a) => a.map((x) => x.getAttribute("href")));
+  const active = await page.$$eval(".talent-swatch.on", (a) => a.map((x) => x.getAttribute("href")));
+  await page.click("a.talent-cell:not(.locked)");
+  await page.waitForFunction(() => /[?&]t=/.test(location.search), { timeout: 10000 });
+  await page.evaluate(() => [...document.querySelectorAll(".talent-swatch")]
+    .find((a) => a.getAttribute("href") === "?talents=mage").click());
+  await page.waitForFunction(() => document.title.startsWith("Mage"), { timeout: T });
+  await page.waitForSelector(".talent-tree", { timeout: T });
+  const url = await page.evaluate(() => location.search);
+  const spent = await page.$eval(".talent-status b", (e) => e.textContent);
+  console.log(`talent-switch: ${strip.length} classes, active=${active.join()} -> ${url} spent=${spent}`);
+  return strip.length === 9 && active.length === 1 && active[0] === "?talents=paladin"
+    && url === "?talents=mage" && spent === "0";
+}
+
 // Site footer: shows the page load time always, and an "Updated <date>" stamp
 // when version.json carries builtAt (CI build writes it).
 async function testFooter() {
@@ -187,6 +209,7 @@ async function testMobileNav() {
 
 smoke("home embed links", () => testHomeEmbed());
 smoke("talents calculator", () => testTalents());
+smoke("the talent class strip swaps class without the build", () => testTalentClassSwitch());
 smoke("footer", () => testFooter());
 smoke("dataset toggle", () => testDatasetToggle());
 smoke("changelog empty-state", () => testChangelog());

@@ -413,6 +413,23 @@ a.xt-item:hover { background: var(--panel2); color: var(--gold); text-decoration
 .talent-reset { padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; color: var(--text); background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; }
 .talent-reset:hover { border-color: var(--gold); color: var(--gold); }
 .talent-note { font-size: 12px; margin: 2px 0 14px; }
+/* The class strip above an open tree. Compact enough that nine classes fit one row on a
+   laptop and wrap on a phone, rather than costing the height a second row of tiles would. */
+.talent-switch { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.talent-swatch { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 999px;
+  color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1; }
+.talent-swatch img { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #000;
+  background: #000; }
+.talent-swatch:hover { border-color: var(--gold); color: var(--gold); text-decoration: none; }
+.talent-swatch.on { color: var(--gold); border-color: var(--gold); background: var(--panel); }
+/* Icons only on a phone, and tight enough that all nine still fit ONE row at 400px --
+   at the earlier 6px gap the ninth wrapped onto a line of its own. */
+@media (max-width: 560px) {
+  .talent-switch { gap: 4px; }
+  .talent-swatch { padding: 3px; }
+  .talent-swatch span { display: none; }
+}
 .talent-classlist { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
 .talent-cls { display: flex; flex-direction: column; align-items: center; gap: 7px; width: 92px;
   padding: 12px 8px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
