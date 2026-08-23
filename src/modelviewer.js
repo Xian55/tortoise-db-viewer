@@ -226,13 +226,13 @@ const _qb = new THREE.Quaternion();
  *  clip, because poseAt resets a bone with no key of its own to identity -- and these are
  *  exactly the bones the clip says nothing about: the eye-blink scale, and the fixed
  *  rotations a few models express as a degenerate 33ms loop. */
-function poseGlobals(model, bones, ms) {
+function poseGlobals(model, bones, ms) {          // ms === null -> each track's rest phase
   const g = model.globals;
   for (let i = 0; i < g.length; i++) {
     const { bone, kind, duration, track } = g[i];
     const b = bones[bone];
     if (!b || !track.times.length) continue;
-    const t = duration > 0 ? ms % duration : 0;
+    const t = ms === null ? g[i].rest : duration > 0 ? ms % duration : 0;
     const k = keyAt(track, t, 0);
     const v = track.vals;
     const a = k * track.comps;
@@ -423,13 +423,25 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // an animation. It only advances while something is being drawn, so a still model does
   // not blink -- the same bargain as the rest of the viewer's idle discipline.
   let globalClock = 0;
+  // Animation is OFF unless asked for: the viewer's whole idle discipline is that a
+  // preview nobody is looking at costs nothing, and a looping skeleton is the one thing
+  // that would draw forever. Declared here rather than beside the loop, because
+  // poseTime() reads them and runs during the build, before the loop exists.
+  let animating = !!opts.animate;
+  let animClock = 0;
+  let forcedPhase = null;                // debug only: see globalClock() on the API
   const poseTime = (ms) => {
     if (!rig || !clip) return;
     const t = clip.duration ? ((ms % clip.duration) + clip.duration) % clip.duration : 0;
     if (t < poseAtMs) cursors.fill(0);
     poseAtMs = t;
     poseAt(model, rig.skeleton.bones, cursors, clip.tracks, t);
-    if (model.globals?.length) poseGlobals(model, rig.skeleton.bones, globalClock);
+    // A still model sits at each global track's RESTING value rather than at t=0 -- it is
+    // not playing, so it should look like the thing it looks like most of the time.
+    if (model.globals?.length) {
+      poseGlobals(model, rig.skeleton.bones,
+        forcedPhase !== null ? forcedPhase : animating ? globalClock : null);
+    }
   };
   poseTime(0);
   const drawnSubs = built.drawn;
@@ -522,11 +534,6 @@ function buildViewer(el, model, slotTex, opts = {}) {
   // page is about what the outfit looks like from the front, and a model that turns away
   // on its own has to be caught and dragged back.
   let spin = opts.spin !== false;
-  // Animation is OFF unless asked for. The viewer's whole idle discipline is that a
-  // preview nobody is looking at costs nothing, and a looping skeleton is the one thing
-  // that would draw forever; a toggle earns that cost only when someone wants it.
-  let animating = !!opts.animate;
-  let animClock = 0;
   controls.addEventListener("start", () => { spin = false; });
 
   // ---- render scheduling -------------------------------------------------------
@@ -692,6 +699,7 @@ function buildViewer(el, model, slotTex, opts = {}) {
       textured: !!tex, meshes: drawn, triangles: model.idx.length / 3,
       vertices: model.pos.length / 3, frames, spinning: spin,
       rigged: !!rig, animating, animMs: clip ? clip.duration : 0,
+      globals: model.globals?.length || 0,
       frameGap: Math.round(gapEma * 10) / 10, fpsTarget: Math.round(1000 / animMs),
       clip: clip ? clip.name : null, clipCount: clips.length,
       running, visible, onScreen: onScreen(),   // false/false = costing nothing right now
@@ -804,7 +812,12 @@ function buildViewer(el, model, slotTex, opts = {}) {
     },
     /** Debug: drive the global-sequence clock by hand (blinking is one of these), so a
      *  test can look at a phase instead of waiting 6.6s to catch a 100ms event. */
-    globalClock: (ms) => { globalClock = ms; poseTime(animClock); draw(); },
+    globalClock: (ms) => {
+      forcedPhase = ms;                  // overrides the resting phase a still model uses
+      globalClock = ms;
+      poseTime(animClock);
+      draw();
+    },
     /** Play or pause the idle animation. Returns the new state. */
     animate: (on) => {
       animating = !!on && !!rig;

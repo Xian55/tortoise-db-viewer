@@ -981,3 +981,27 @@ async function testHiddenMeshStaysHidden() {
 }
 
 smoke("a mesh the client hides at scale zero stays hidden", () => testHiddenMeshStaysHidden());
+
+// A still model sits at each global track's RESTING value, not at t=0. A tauren female's
+// blink straddles the loop boundary -- her track starts at 1.0, lid shut -- so freezing
+// the clock at zero left her with her eyes closed for good, while every other race
+// happened to start open. The resting phase is the midpoint of the widest gap between
+// keys: the state the cycle actually holds.
+async function testRestPhase() {
+  await nav("?dressing&race=6&sex=f&hair=0");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  await new Promise((r) => setTimeout(r, 400));
+  // Global tracks live in .m2b v6; a model that predates it carries none, and on such an
+  // origin there is no resting phase to be wrong about. Like the animation picker, this
+  // asserts the strong thing only where the data for it exists.
+  const globals = await page.evaluate(() => window.__mv().globals);
+  const resting = await page.evaluate(() => window.__mv.snapshot({ background: false }));
+  const atZero = await page.evaluate(() => {
+    window.__mv.globalClock(0);                        // the phase the old code froze at
+    return window.__mv.snapshot({ background: false });
+  });
+  console.log(`rest phase: ${globals} global tracks; tauren female differs from her t=0 pose = ${resting !== atZero}`);
+  return globals ? resting !== atZero : true;
+}
+
+smoke("a still character rests where its blink cycle rests", () => testRestPhase());

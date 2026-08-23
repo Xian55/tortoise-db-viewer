@@ -44,7 +44,16 @@ function readGlobals(dv, start) {
       for (let c = 0; c < comps; c++) vals[k * comps + c] = dv.getFloat32(b + 4 + c * 4, true);
       b += 4 + comps * 4;
     }
-    out.push({ bone, kind, duration, track: { times, vals, comps } });
+    // Where in the cycle to sit when nothing is playing. NOT t=0: a tauren female's
+    // blink straddles the loop boundary, so her track starts at 1.0 (lid shut) and
+    // freezing at zero left her with her eyes closed for good. The state the cycle HOLDS
+    // is the one it spends longest in -- the midpoint of the widest gap between keys.
+    let rest = 0, widest = -1;
+    for (let k = 0; k + 1 < times.length; k++) {
+      const gap = times[k + 1] - times[k];
+      if (gap > widest) { widest = gap; rest = times[k] + gap / 2; }
+    }
+    out.push({ bone, kind, duration, rest, track: { times, vals, comps } });
   }
   return out;
 }
