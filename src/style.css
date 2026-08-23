@@ -407,6 +407,16 @@ a.xt-item:hover { background: var(--panel2); color: var(--gold); text-decoration
 .rep-tiers th, .rep-tiers td { padding: 4px 16px 4px 0; border: none; }
 .rep-tiers .num { text-align: right; font-variant-numeric: tabular-nums; }
 .rep-notes { margin: 0; padding-left: 18px; line-height: 1.7; flex: 1 1 320px; }
+/* An item set, with what it looks like worn beside it. The card keeps its natural width
+   and the model takes the rest; below the breakpoint the model goes underneath, where it
+   is still the first thing after the set's own tooltip. */
+.set-top { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+.set-top-main { flex: 1 1 380px; min-width: 0; }
+.set-preview { flex: 1 1 340px; max-width: 460px; }
+.set-preview .mv-host { height: 460px; }
+.set-preview .mv-note { margin: 6px 0 0; }
+@media (max-width: 720px) { .set-preview .mv-host { height: 340px; } }
+
 /* talent calculator */
 .talent-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; margin-bottom: 6px; }
 .talent-status { font-size: 14px; }

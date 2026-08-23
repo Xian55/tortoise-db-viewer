@@ -315,6 +315,53 @@ function mountModelTab(appearance, wornEntry) {
   }
 }
 
+/** The dressing-room mannequin wearing a whole SET, mounted into a plain host rather than
+ *  a tab pane. Same discipline as mountModelTab: built when the host first becomes
+ *  visible (a set page is long, and most visitors never scroll to it), and abandoned if
+ *  the route changed while the models were downloading. */
+function mountSetModel(entries) {
+  const host = app.querySelector("#mv-host");
+  if (!host || !entries.length) return;
+  let started = false;
+  const myRoute = routeSeq;
+  const mount = async () => {
+    if (started) return;
+    started = true;
+    try {
+      const mod = await import("./modelviewer.js");
+      const items = await query(Q.qDressItemsIn(entries.length), entries).catch(() => []);
+      if (myRoute !== routeSeq) return;
+      host.innerHTML = "";
+      destroyViewer();
+      const viewer = await mod.mountCharacterViewer(host, {
+        race: 1, sex: "m", hair: 1, items,
+        cancelled: () => myRoute !== routeSeq,
+      });
+      if (myRoute !== routeSeq) { try { viewer.destroy(); } catch { /* gone */ } return; }
+      activeViewer = viewer;
+    } catch (err) {
+      if (err?.message === "cancelled" || myRoute !== routeSeq) return;
+      host.innerHTML = `<p class="muted">3D preview unavailable${err?.message ? ` — ${esc(err.message)}` : ""}.</p>`;
+    }
+  };
+  if (typeof IntersectionObserver === "function") {
+    const io = new IntersectionObserver(([e]) => { if (!e.isIntersecting) return; io.disconnect(); mount(); });
+    io.observe(host);
+  } else mount();
+}
+
+/** One piece per SLOT, best first. A set routinely carries several items for one slot --
+ *  a 1H and a 2H, two rings -- and Q_SET_PIECES orders by item level, so the first of
+ *  each slot is the one to show. The same rule the dressing room's "Wear a set" uses. */
+function setLoadout(pieces) {
+  const worn = new Map();
+  for (const piece of pieces) {
+    const slot = DRESS_SLOT[piece.inv];
+    if (slot && !worn.has(slot)) worn.set(slot, piece.entry);
+  }
+  return worn;
+}
+
 function route() {
   // Audio must not outlive the page that started it -- a zone track would keep playing
   // over whatever you navigated to.
@@ -2068,8 +2115,29 @@ async function showItemSet(id) {
   const [members, bonuses, statRows] = await Promise.all([
     query(Q.Q_ITEMSET_MEMBERS, [id]), query(Q.Q_ITEMSET_BONUSES, [id]), query(Q.Q_ITEMSET_STATS, [id]),
   ]);
-  app.innerHTML = `<div class="results item-set-page"><h1>${esc(set.name)}</h1>${renderItemSet(set, members, bonuses, null, false)}${setSummary(members, statRows)}</div>`;
+  // What the set actually looks like, worn. A set page is where someone decides whether to
+  // chase it, and eight tooltips do not answer that -- so the pieces go on the same
+  // mannequin the item page uses, with the way into the dressing room right under it.
+  const pieces = await query(Q.Q_SET_PIECES, [id]).catch(() => []);
+  const worn = setLoadout(pieces);
+  const dressQuery = [...worn].map(([slot, entry]) => `${slot}=${entry}`).join("&");
+  const show3d = OWN_ITEM_MODELS && webglOk() && worn.size > 0 && (await caps()).appearance;
+  const preview = show3d
+    ? `<div class="set-preview">
+         <div id="mv-host" class="mv-host"><p class="muted">Loading model…</p></div>
+         <p class="muted mv-note">Shown on a human male</p>
+       </div>`
+    : "";
+  app.innerHTML = `<div class="results item-set-page">
+    <h1>${esc(set.name)}</h1>
+    <div class="set-top">
+      <div class="set-top-main">${renderItemSet(set, members, bonuses, null, false)}${
+        dressQuery ? `<div class="item-dress"><a class="nav" href="?dressing&${dressQuery}">Try it on a character ›</a></div>` : ""}</div>
+      ${preview}
+    </div>
+    ${setSummary(members, statRows)}</div>`;
   mountTables();
+  if (show3d) mountSetModel([...worn.values()]);
 }
 
 async function showSpell(id) {
