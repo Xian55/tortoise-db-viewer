@@ -424,10 +424,75 @@ a.xt-item:hover { background: var(--panel2); color: var(--gold); text-decoration
    is still the first thing after the set's own tooltip. */
 .set-top { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
 .set-top-main { flex: 1 1 380px; min-width: 0; }
-.set-preview { flex: 1 1 340px; max-width: 460px; }
-.set-preview .mv-host { height: 460px; }
-.set-preview .mv-note { margin: 6px 0 0; }
-@media (max-width: 720px) { .set-preview .mv-host { height: 340px; } }
+.set-preview { flex: 1 1 420px; max-width: 560px; }
+/* The pickers FLANK the model rather than sitting under it -- shared by the item set's
+   preview and an item's own 3D tab: the stage is the tallest
+   thing on the page and a bar below it pushed the character off the top of the screen on
+   a laptop.
+   Every group is ONE ROW OR ONE COLUMN -- never a block. A 2x6 grid of portraits and a
+   5x3 grid of swatches read as panels competing with the model; the same controls as
+   single-file strips down the edges take a third of the surface and leave the character
+   the middle of the stage, which is what anyone came to look at. */
+.mv-stage { position: relative; }
+.set-preview .mv-host { height: 520px; }
+.mv-appearance { position: absolute; inset: 0; display: grid; padding: 8px; gap: 6px;
+  grid-template-columns: auto 1fr auto auto; grid-template-rows: 1fr auto;
+  pointer-events: none; }
+/* Only the controls take the pointer -- the empty middle stays draggable, or the model
+   could not be turned. */
+.mv-appearance .dfield { pointer-events: auto; background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border); border-radius: 999px; padding: 4px; margin: 0;
+  min-width: 0; align-self: start; backdrop-filter: blur(2px);
+  /* A strip is as long as the race has options -- twelve portraits already reach 471px of
+     a 520px stage -- so it scrolls rather than hanging off the bottom on a short one. The
+     scrollbar itself is hidden: it would be wider than the swatches. */
+  max-height: 100%; overflow-y: auto; scrollbar-width: none; }
+.mv-appearance .dfield::-webkit-scrollbar { display: none; }
+.mv-appearance [data-field="race"] { grid-column: 1; grid-row: 1; }
+.mv-appearance [data-field="skin"] { grid-column: 3; grid-row: 1; }
+.mv-appearance [data-field="hcolor"] { grid-column: 4; grid-row: 1; }
+/* The steppers are the one group that cannot be a strip of dots, so they take the one
+   row along the bottom instead of a third column. */
+.mv-appearance [data-field="steps"] { grid-column: 1 / -1; grid-row: 2; justify-self: center;
+  border-radius: 10px; padding: 5px 8px; }
+/* A strip has no room for a caption; the race's name is worth keeping, the rest are their
+   own labels. */
+.mv-appearance .dfield-lbl { display: none; }
+.mv-appearance [data-field="steps"] .dfield-lbl { display: none; }
+.mv-appearance .race-row { display: grid; grid-template-columns: 1fr; gap: 3px; }
+.mv-appearance .race-tile { width: auto; padding: 2px; border-radius: 50%; }
+.mv-appearance .race-tile span { display: none; }
+.mv-appearance .race-tile img { width: 28px; height: 28px; border-radius: 50%; }
+.mv-appearance .race-sep { display: none; }
+.mv-appearance .sex-tile i { font-size: 14px; line-height: 28px; }
+.mv-appearance .swatches { display: grid; grid-template-columns: 1fr; gap: 3px; }
+.mv-appearance .sw { width: 22px; height: 22px; font-size: 9px; }
+.mv-appearance .steps { display: flex; flex-direction: row; gap: 6px; min-width: 0; width: auto; }
+.mv-appearance .stepper { display: flex; min-width: 0; font-size: 11px; gap: 2px; }
+.mv-appearance .stepper button { flex: 0 0 auto; }
+.mv-appearance .stepper .val { flex: 0 1 auto; min-width: 0; max-width: 96px; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Under the breakpoint the model is small enough that overlaid controls would cover it,
+   so they drop below -- still one row or one column each. */
+@media (max-width: 720px) {
+  .set-preview .mv-host { height: 360px; }
+  .mv-appearance { position: static; grid-template-columns: 1fr; grid-template-rows: none;
+    padding: 0; margin-top: 10px; gap: 8px; }
+  .mv-appearance [data-field] { grid-column: 1; grid-row: auto; justify-self: stretch;
+    border-radius: 10px; }
+  .mv-appearance .race-row { grid-auto-flow: column; grid-template-columns: none;
+    overflow-x: auto; }
+  .mv-appearance .swatches { grid-auto-flow: column; grid-template-columns: none;
+    overflow-x: auto; }
+  .mv-appearance .steps { flex-wrap: wrap; justify-content: center; }
+}
+
+/* An item set, with what it looks like worn beside it. The card keeps its natural width
+   and the model takes the rest; below the breakpoint the model goes underneath, where it
+   is still the first thing after the set's own tooltip. */
+.set-top { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+.set-top-main { flex: 1 1 380px; min-width: 0; }
+.set-preview { flex: 1 1 420px; max-width: 560px; }
 
 /* talent calculator */
 .talent-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; margin-bottom: 6px; }
@@ -1662,6 +1727,28 @@ td .pet-rank { margin: 1px 0; }
    the header, the pickers and the action bar have had theirs, so a visitor never has to
    scroll the character out of view to reach a slot. */
 .dressing .dress-room { height: calc(100vh - 210px); min-height: 420px; max-height: 860px; }
+/* A grid row grows to its tallest ITEM whatever the track says, and the slot rail is
+   fourteen rows tall -- so on a short viewport (a 924x423 window, a laptop with devtools
+   open) the rail pushed the row past the room's own height and the model host, which is
+   height:100%, ran straight over the action bar and the footer. min-height:0 lets the
+   track actually bind, and the rails scroll inside themselves instead. */
+.dressing .dress-room > * { min-height: 0; }
+.dressing .dress-room > .dress-col { overflow-y: auto; scrollbar-width: thin; }
+/* The appearance rail is a WRAPPING COLUMN, so when its fields are taller than the room
+   -- a 981x620 window is enough -- it wraps into a SECOND column, which lands outside the
+   236px track and off the right of the screen with no way to reach it. A rail that runs
+   out of height should scroll, like the slot rail beside it, not grow sideways. */
+.dressing #dress-bar { flex-wrap: nowrap; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; }
+
+/* Short as well as narrow: under ~560px of viewport height the three-column room cannot
+   show a character AND its rails, so it stops trying to fit the window and simply
+   scrolls -- which is what the phone layout does for the same reason. */
+@media (max-height: 560px) and (min-width: 721px) {
+  .dressing .dress-room { height: auto; min-height: 0; max-height: none; }
+  .dressing .dress-room > .dress-col { overflow-y: visible; }
+  .dressing .mv-wrap { height: 66vh; min-height: 280px; }
+}
 .dress-slot { display: flex; align-items: center; gap: 7px; width: 100%; padding: 3px 5px;
   background: none; border: 1px solid var(--border); border-radius: 8px; color: inherit;
   cursor: pointer; text-align: left; font-size: 12px; }
@@ -1694,15 +1781,20 @@ td .pet-rank { margin: 1px 0; }
   display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 999px;
   border: 1px solid var(--border); background: rgba(13, 14, 18, 0.78); }
 .mv-tool i { font-style: normal; line-height: 1; }
-.mv-tool { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border: 0;
+/* Icons only. With words the pill came to ~700px -- wider than the stage on a short
+   window, where it hung outside the model's pane -- and every button carries a title and
+   an aria-label, so the word was never what made it usable. */
+.mv-tool { display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  min-width: 30px; padding: 5px 7px; border: 0;
   border-radius: 999px; background: none; color: var(--muted); cursor: pointer;
-  font: inherit; font-size: 12px; white-space: nowrap; }
+  font: inherit; font-size: 14px; line-height: 1; white-space: nowrap; }
 .mv-tool:hover { color: var(--text); background: var(--panel2); }
 .mv-tool[aria-pressed="true"] { color: var(--gold, #ffd100); background: var(--panel2); }
 .mv-clip { padding: 3px 6px; border-radius: 999px; border: 1px solid var(--border);
   background: var(--panel2); color: var(--text); font: inherit; font-size: 12px; }
-.mv-chk { cursor: pointer; }
-.mv-chk input { accent-color: var(--gold, #ffd100); margin: 0; }
+.mv-tools .mv-clip { font-size: 12px; }
+/* The bullseye is a hair smaller than the arrows at the same font-size. */
+.mv-tools #dress-reset i { font-size: 15px; }
 /* Fullscreen: the wrapper becomes the screen, so the fixed pane height must not follow. */
 .mv-wrap:fullscreen { background: var(--bg); }
 .mv-wrap:fullscreen > .mv-host { height: 100%; width: 100%; border-radius: 0; }
@@ -1859,9 +1951,7 @@ td .pet-rank { margin: 1px 0; }
    The glyph and the word are separate elements so the word can simply be dropped -- a
    font-size:0 trick blanks the button instead, which is what the first attempt did. */
 @media (max-width: 480px) {
-  .mv-tool span { display: none; }
   .mv-tool { padding: 6px 8px; gap: 0; }
-  .mv-chk::after { content: "PNG"; font-size: 10px; color: var(--muted); margin-left: 3px; }
   .dress-col { grid-template-columns: 1fr; }
 }
 
