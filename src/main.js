@@ -1274,6 +1274,7 @@ async function showDressingRoom(params, navigate) {
         </div>
         <div class="mv-wrap">
           <div id="mv-host" class="mv-host"><p class="muted">Loading character&hellip;</p></div>
+          <div class="mv-preview-tag" id="dress-preview-tag" hidden>Preview — click to keep</div>
           <div class="mv-tools">
             <button type="button" class="mv-tool" id="dress-anim" aria-pressed="false" title="Play the animation"><i>\u25B6</i><span>Animate</span></button>
             <select class="mv-tool mv-clip" id="dress-clip" title="Which animation"><option value="0">Stand</option></select>
@@ -1515,9 +1516,13 @@ async function showDressingRoom(params, navigate) {
   let spinning = false;                      // the model holds still until asked to turn
   let animating = false;                     // ...and does not breathe until asked either
   const stale = (my) => my !== mountSeq || myRoute !== routeSeq;
-  const mount = async () => {
+  // `preview` is a Map of slot -> entry laid over what is worn, rendered but never
+  // written to `worn` or the URL: hovering a search result shows the piece ON the
+  // character, which is the whole question a row of icons and names cannot answer.
+  const mount = async (preview = null) => {
     const my = ++mountSeq;
-    const ids = [...worn.values()];
+    const shown = preview ? new Map([...worn, ...preview]) : worn;
+    const ids = [...shown.values()];
     if (ids.length) {
       try {
         const rows = await query(Q.qDressItemsIn(ids.length), ids);
@@ -1525,13 +1530,15 @@ async function showDressingRoom(params, navigate) {
         // where it was equipped, and the same entry can legitimately fill two slots
         // (dual-wielding a pair of the same sword).
         const byEntry = new Map(rows.map((r) => [r.entry, r]));
-        wornRows = [...worn].map(([slot, entry]) => {
+        wornRows = [...shown].map(([slot, entry]) => {
           const r = byEntry.get(entry);
           return r ? { ...r, slot } : null;
         }).filter(Boolean);
       } catch { wornRows = []; }
     } else wornRows = [];
     if (stale(my)) return;
+    const tag = app.querySelector("#dress-preview-tag");
+    if (tag) tag.hidden = !preview;
     renderSlots();
     // Where the visitor had put the camera, before the old viewer is thrown away.
     let view = null;
@@ -1586,6 +1593,7 @@ async function showDressingRoom(params, navigate) {
     anchor = null;
     popEl.hidden = true;
     renderSlots();
+    clearPreview();
   };
   const openSlot = (key, btn) => {
     activeSlot = key;
@@ -1648,8 +1656,48 @@ async function showDressingRoom(params, navigate) {
   const paintCursor = () => {
     hitsEl.querySelectorAll(".sd-row").forEach((el, i) => el.classList.toggle("active", i === cursor));
   };
+
+  // Hover to try it on. A row of icons and names says nothing about how a piece will look
+  // with the rest of an outfit, and the room already renders the real thing -- so pointing
+  // at a result puts it on the character, and only a click keeps it. The overlay never
+  // touches `worn` or the URL, so moving the pointer away puts the outfit back exactly.
+  let previewKey = "";                       // what is on the model right now, if anything
+  let previewTimer = 0;
+  const setPieceCache = new Map();
+  const previewMap = async (row) => {
+    if (activeSlot === "__set") {
+      if (!setPieceCache.has(row.id)) {
+        setPieceCache.set(row.id, await query(Q.Q_SET_PIECES, [row.id]).catch(() => []));
+      }
+      return setLoadout(setPieceCache.get(row.id));
+    }
+    const slot = activeSlot || SLOT_PARAM[row.inv];
+    return slot ? new Map([[slot, row.entry]]) : null;
+  };
+  const previewRow = (row) => {
+    if (!row) return;
+    const key = activeSlot === "__set" ? `set:${row.id}` : `${activeSlot}:${row.entry}`;
+    if (key === previewKey) return;          // already showing it; re-hovering is free
+    clearTimeout(previewTimer);
+    // Long enough that dragging the pointer down a list does not rebuild the character
+    // once per row, short enough to feel like it answers immediately.
+    previewTimer = setTimeout(async () => {
+      const map = await previewMap(row);
+      if (!map?.size) return;
+      previewKey = key;
+      await mount(map);
+    }, 130);
+  };
+  const clearPreview = async () => {
+    clearTimeout(previewTimer);
+    if (!previewKey) return;
+    previewKey = "";
+    await mount();                           // back to what is actually worn
+  };
   const equip = async (row) => {
     if (!row) return;
+    clearTimeout(previewTimer);
+    previewKey = "";                         // the commit below re-mounts; do not do it twice
     if (activeSlot === "__set") { await equipSet(row.id, row.name); return; }
     // The slot the PICKER was opened for, not the one the item's inventory type implies.
     // A one-hander is inv 13, which maps to the main hand, so choosing a second Cruel Barb
@@ -1687,8 +1735,11 @@ async function showDressingRoom(params, navigate) {
       } catch { rows = []; }
       if (findEl.value.trim() !== term) return;             // stale, the user moved on
       hits = rows.slice(0, 20); cursor = -1;
+      // The hint earns its line: hovering is not a gesture anyone expects from a search
+      // result, and without it the feature is invisible.
+      const tip = `<div class="sd-row sd-foot">Hover a result to see it on your character</div>`;
       hitsEl.innerHTML = hits.length
-        ? hits.map((r, i) => (setMode
+        ? tip + hits.map((r, i) => (setMode
           ? `<div class="sd-row" data-i="${i}"><span class="ilink">${esc(r.name)}</span>`
             + `<span class="sd-tag">${r.pieces} piece${r.pieces === 1 ? "" : "s"}</span></div>`
           : `<div class="sd-row" data-i="${i}">${iconImg(r.icon, "icon-sm")}`
@@ -1702,14 +1753,22 @@ async function showDressingRoom(params, navigate) {
   findEl.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { closeSlot(); return; }
     if (!hits.length) return;
-    if (e.key === "ArrowDown") { e.preventDefault(); cursor = (cursor + 1) % hits.length; paintCursor(); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); cursor = (cursor - 1 + hits.length) % hits.length; paintCursor(); }
+    // The arrow keys preview too -- keyboard and pointer should learn the same thing.
+    if (e.key === "ArrowDown") { e.preventDefault(); cursor = (cursor + 1) % hits.length; paintCursor(); previewRow(hits[cursor]); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); cursor = (cursor - 1 + hits.length) % hits.length; paintCursor(); previewRow(hits[cursor]); }
     else if (e.key === "Enter" && cursor >= 0) { e.preventDefault(); equip(hits[cursor]); }
   });
   hitsEl.addEventListener("click", (e) => {
     const row = e.target.closest(".sd-row[data-i]");
     if (row) equip(hits[Number(row.dataset.i)]);
   });
+  hitsEl.addEventListener("mouseover", (e) => {
+    const row = e.target.closest(".sd-row[data-i]");
+    if (row) previewRow(hits[Number(row.dataset.i)]);
+  });
+  // Leaving the LIST, not the panel: the pointer crossing the search box on its way out
+  // should not flicker the outfit back and forth.
+  hitsEl.addEventListener("mouseleave", () => { clearPreview(); });
 
   roomEl.addEventListener("click", async (e) => {
     const lk = e.target.closest(".dress-lock");

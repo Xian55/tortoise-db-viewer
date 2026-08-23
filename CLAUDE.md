@@ -1070,6 +1070,15 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
 - **A helm is 20 files**, one per race+gender (`Helm_Mail_D_01_HuM` … `_BeF`); the bare
   name does not exist. `export-models.py` expands them, which is most of the 4,015 item
   models.
+- **Hovering a result tries it on.** A row of icons and names says nothing about how a
+  piece will look with the rest of an outfit, which is what people are actually choosing
+  between -- and the room already renders the real thing, so the results list drives the
+  model: pointing at a row (or arrowing onto it) puts it on the character, and only a click
+  keeps it. `mount()` takes a slot->entry overlay laid over `worn` that is rendered and
+  never written, so leaving restores the outfit exactly and the URL never moves; a badge
+  over the stage says which state you are looking at. Debounced 130ms, because dragging the
+  pointer down a list would otherwise rebuild the character once per row. Hovering a SET
+  previews the whole loadout through the same `setLoadout()` the set page uses.
 - **The picker equips into the slot it was OPENED for**, not into the one the item's
   inventory type implies. A one-hander is inv 13, which maps to the main hand, so choosing
   a second Cruel Barb in the off-hand picker re-equipped the hand that already held one and

@@ -407,6 +407,18 @@ a.xt-item:hover { background: var(--panel2); color: var(--gold); text-decoration
 .rep-tiers th, .rep-tiers td { padding: 4px 16px 4px 0; border: none; }
 .rep-tiers .num { text-align: right; font-variant-numeric: tabular-nums; }
 .rep-notes { margin: 0; padding-left: 18px; line-height: 1.7; flex: 1 1 320px; }
+/* Hover-to-try-on. The badge sits over the stage rather than in the rail, because the
+   rail legitimately shows the previewed piece in its slot and the question the badge
+   answers is "is this mine yet?". */
+.mv-wrap { position: relative; }
+.mv-preview-tag { position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  padding: 4px 12px; border-radius: 999px; pointer-events: none; z-index: 2;
+  background: rgba(0, 0, 0, 0.66); border: 1px solid var(--gold); color: var(--gold);
+  font-size: 12px; font-weight: 600; white-space: nowrap; }
+.sd-foot { font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border);
+  cursor: default; }
+.sd-foot:hover { background: none; }
+
 /* An item set, with what it looks like worn beside it. The card keeps its natural width
    and the model takes the rest; below the breakpoint the model goes underneath, where it
    is still the first thing after the set's own tooltip. */
