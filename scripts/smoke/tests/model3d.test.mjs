@@ -698,26 +698,68 @@ async function testHelmetHides() {
 smoke("a helm hides the hair and beard it covers", () => testHelmetHides());
 
 // ...but only what is actually facial HAIR. Groups 1-3 are not facial hair on every race:
-// Turtle reuses them for head SHAPES on goblins, and a goblin female's head is geoset 103,
-// so obeying a helm's beard mask deleted her face and left the hair and mask floating over
-// nothing. The discriminator is art: her 103 paints no texture, while a goblin MALE's 103
-// is a moustache and does, so his is covered and hers is not.
+// Turtle reuses them for head SHAPES on goblins, so obeying a helm's beard mask deleted a
+// goblin's face and left the hair and mask floating over nothing.
+//
+// Art was the first discriminator tried -- hide it only where the variation paints a
+// texture -- and it is wrong: a goblin MALE's head shape paints a texture exactly as a
+// beard does, so his face was still being deleted (geosets 102-106 are all head shapes,
+// not the moustache they were taken for). SIZE is what separates them, measured against
+// the body's own head rather than a constant: a beard is a patch on a head the body
+// already has, so it comes to 0.14-0.65x the head-region vertices on every race with real
+// facial hair, while a goblin's IS the head at 3.3x / 7.0x. His group-3 piece (302, 44
+// verts) is genuinely small and stays hideable, which is what keeps this from being
+// "never hide anything".
 async function testHelmetKeepsHeads() {
   const at = async (url) => {
     await nav(url);
     await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
     return page.evaluate(() => window.__mv().geosets);
   };
-  const fBare = await at("?dressing&race=9&sex=f&face=5&hair=3&facial=1");
   const fHelm = await at("?dressing&race=9&sex=f&face=5&hair=3&facial=1&head=81007");
-  const mBare = await at("?dressing&race=9&sex=m&hair=2&facial=1");
-  const mHelm = await at("?dressing&race=9&sex=m&hair=2&facial=1&head=1024");
-  console.log(`goblin: f ${fBare} -> ${fHelm} | m ${mBare} -> ${mHelm}`);
-  return fBare.includes(103) && fHelm.includes(103)          // her head survives the mask
-    && mBare.includes(103) && !mHelm.includes(103);          // his moustache does not
+  // variation 5 gives him a head shape (102) AND a small group-3 feature (302)
+  const mBare = await at("?dressing&race=9&sex=m&hair=2&facial=5");
+  const mHelm = await at("?dressing&race=9&sex=m&hair=2&facial=5&head=1024");
+  const hum = await at("?dressing&race=1&sex=m&hair=3&facial=4&head=1024");
+  console.log(`goblin: f -> ${fHelm} | m ${mBare} -> ${mHelm} | human -> ${hum}`);
+  return fHelm.includes(103)                                 // her head survives the mask
+    && mBare.includes(102) && mHelm.includes(102)            // and so does his
+    && mBare.includes(302) && !mHelm.includes(302)           // his small feature does not
+    && hum.filter((g) => g >= 100 && g < 400).length === 0;   // nor a human's beard
 }
 
 smoke("a helm covers a goblin's moustache but not her head", () => testHelmetKeepsHeads());
+
+// A weapon goes in the slot you opened the picker for, not the one its inventory type
+// implies. A one-hander is inv 13, which maps to the main hand, so choosing a second Cruel
+// Barb in the OFF-hand picker re-equipped the hand that already held one -- dual-wielding
+// was impossible through the UI, while the same pair set straight from a URL worked fine.
+async function testEquipIntoTheOpenSlot() {
+  await nav("?dressing&race=2&sex=f&mainhand=5191");
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  // Scoped to #dress-pop: the slot picker is the same panel component as the TOP-BAR
+  // search, so a bare `.search-dropdown input` types into the wrong one.
+  await page.evaluate(() => document.querySelector('[data-slot="offhand"]').click());
+  await page.waitForFunction(() => !document.getElementById("dress-pop").hidden, { timeout: 10000 });
+  await page.type("#dress-find", "Cruel Barb");
+  await page.waitForSelector("#dress-pop .sd-row[data-i]", { timeout: 15000 });
+  await page.click("#dress-pop .sd-row[data-i]");
+  // The equip re-mounts the viewer, so wait for the model rather than for the URL, which
+  // is written first.
+  // Guarded: the hook is briefly absent while the viewer is torn down and rebuilt, and an
+  // unguarded poll throws into the page, which the harness rightly counts as an error.
+  await page.waitForFunction(
+    () => window.__mv
+      && window.__mv().attached.filter((a) => a.attach === 1 || a.attach === 2).length === 2,
+    { timeout: 20000 },
+  ).catch(() => {});
+  const url = await page.evaluate(() => location.search);
+  const hands = await page.evaluate(() => window.__mv().attached.filter((a) => a.attach === 1 || a.attach === 2));
+  console.log(`open slot: url=${/mainhand=5191/.test(url)}/${/offhand=5191/.test(url)} weapons held=${hands.length}`);
+  return /mainhand=5191/.test(url) && /offhand=5191/.test(url) && hands.length === 2;
+}
+
+smoke("a weapon goes in the slot whose picker you opened", () => testEquipIntoTheOpenSlot());
 
 // A robe paints AFTER the legs: its skirt covers them, which is what the robe geoset is
 // for. Filed under the chest's usual paint slot, a pair of trousers painted over the skirt
@@ -1005,3 +1047,4 @@ async function testRestPhase() {
 }
 
 smoke("a still character rests where its blink cycle rests", () => testRestPhase());
+

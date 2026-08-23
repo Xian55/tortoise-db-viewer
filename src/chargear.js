@@ -216,6 +216,54 @@ const EAR_BARE = 701;                          // the earless head, drawn when e
  *  tusks, so obeying a helm's beard mask deleted her face and left the hair and the mask
  *  floating over nothing. A geoset with no art behind it is part of the head and stays.
  *  Hair and ears are masked for everyone. */
+/** Geosets in the "facial hair" groups that are actually the character's HEAD, and which
+ *  a helm's beard mask must therefore never remove.
+ *
+ *  Turtle reuses groups 1-3 for head SHAPES on goblins, and a goblin's head shape paints a
+ *  texture exactly like a beard does -- so the art-backed test that separates a goblin
+ *  female's blank 103 from a goblin male's moustache says "hideable" here, and equipping a
+ *  hood deleted his entire face, ears and all.
+ *
+ *  The test that does separate them is SIZE, measured against the body's own head rather
+ *  than against a constant: a beard is a patch on a head the body already has, while a
+ *  goblin's "facial" geoset IS the head, so it outweighs whatever geometry the naked body
+ *  carries up there. Measured over all 20 character models, the biggest facial geoset comes
+ *  to 0.14-0.65x the body's head-region vertices on every race with real facial hair
+ *  (human male beards 0.14, dwarf 0.28, human female piercings 0.65) and 3.3x / 7.0x on
+ *  goblin males and females. Nothing sits between. */
+export function structuralGeosets(model) {
+  const group = (g) => Math.floor(g / 100);
+  const { idx, pos, submeshes } = model;
+  const vertsOf = (s) => {
+    const set = new Set();
+    for (let i = s.first; i < s.first + s.count; i++) set.add(idx[i]);
+    return set;
+  };
+  const facial = submeshes.filter((s) => group(s.geoset) >= 1 && group(s.geoset) <= 3);
+  if (!facial.length) return new Set();
+  // Model space is Z-up (the viewer swaps to Y-up only when it builds the scene).
+  let lowest = Infinity;
+  const verts = new Map();
+  for (const s of facial) {
+    const vs = vertsOf(s);
+    verts.set(s, vs);
+    for (const v of vs) lowest = Math.min(lowest, pos[v * 3 + 2]);
+  }
+  const seen = new Set();
+  let head = 0;                          // the naked body's own vertices up at face height
+  for (const s of submeshes) {
+    if (s.geoset !== 0) continue;
+    for (const v of vertsOf(s)) {
+      if (seen.has(v)) continue;
+      seen.add(v);
+      if (pos[v * 3 + 2] >= lowest) head++;
+    }
+  }
+  const out = new Set();
+  for (const [s, vs] of verts) if (vs.size > head) out.add(s.geoset);
+  return out;
+}
+
 export function helmetHidden(head, sex, helmVis, geosets, bearded = null) {
   const id = head && (sex === "f" ? head.helm_f : head.helm_m);
   const masks = id ? helmVis?.[id] : null;

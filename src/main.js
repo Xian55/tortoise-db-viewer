@@ -1604,7 +1604,13 @@ async function showDressingRoom(params, navigate) {
   const equip = async (row) => {
     if (!row) return;
     if (activeSlot === "__set") { await equipSet(row.id, row.name); return; }
-    worn.set(SLOT_PARAM[row.inv], row.entry);
+    // The slot the PICKER was opened for, not the one the item's inventory type implies.
+    // A one-hander is inv 13, which maps to the main hand, so choosing a second Cruel Barb
+    // in the off-hand picker re-equipped the hand that already held one and left the off
+    // hand empty -- there was no way to dual-wield at all. The query behind each picker
+    // already restricts results to the types that slot accepts, so the open slot is both
+    // the more specific answer and a safe one.
+    worn.set(activeSlot || SLOT_PARAM[row.inv], row.entry);
     closeSlot();
     syncUrl();
     await mount();
