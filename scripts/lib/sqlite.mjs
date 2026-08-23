@@ -25,10 +25,21 @@ class Wrapped {
   }
   prepare(s) {
     const st = this.db.prepare(s);
+    const bun = this.bun;
     return {
       run: (...a) => st.run(...flat(a)),
       all: (...a) => st.all(...flat(a)),
       get: (...a) => st.get(...flat(a)),
+      // Rows as POSITIONAL arrays instead of objects. For the staging read-back that is
+      // most of a row's cost: building an object per row and then mapping it back to an
+      // array showed up at ~12% of the whole build in a CPU profile, for data that was
+      // positional on both sides of the trip. better-sqlite3 makes raw mode sticky on the
+      // statement, so it is switched back off afterwards.
+      values: (...a) => {
+        if (bun) return st.values(...flat(a));
+        st.raw(true);
+        try { return st.all(...flat(a)); } finally { st.raw(false); }
+      },
     };
   }
   transaction(fn) {

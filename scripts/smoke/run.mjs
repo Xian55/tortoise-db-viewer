@@ -1,8 +1,17 @@
-// Parallel smoke runner. bun test has no worker pool, so we shard at the PROCESS
-// level: split the test files across K `bun test` children, each with its own
-// persistent Chrome profile (SMOKE_USER_DATA_DIR) -> its own OPFS -> no shared
-// SAHPool lock, so they run truly in parallel and the DB is downloaded once per
-// profile (then reused across runs).
+// Parallel smoke runner. We shard at the PROCESS level: split the test files across K
+// `bun test` children, each with its own persistent Chrome profile
+// (SMOKE_USER_DATA_DIR) -> its own OPFS -> no shared SAHPool lock, so they run truly in
+// parallel and the DB is downloaded once per profile (then reused across runs).
+//
+// bun 1.4 added `bun test --parallel`, and it does NOT replace this, for a reason worth
+// writing down because the flag looks like an exact fit. --parallel implies --isolate:
+// each test FILE gets a fresh global, so the beforeAll/afterAll that setup.mjs registers
+// from the --preload run once per FILE rather than once per process -- i.e. Chrome would
+// be launched and torn down 18 times instead of K. `--no-isolate` shares the module
+// registry back (measured: the preload module itself does then run once per worker) but
+// the root hooks still fire per file, and the workers exit without running any
+// beforeExit/exit/SIGTERM handler, so there is no place left to close the browser. What
+// IS worth taking from 1.4 is --timings: see the shard-balancing block below.
 //
 //   node scripts/smoke/run.mjs                 # boot a preview server, shard across ~cpu-2 procs
 //   node scripts/smoke/run.mjs -j 6            # 6 shards
@@ -13,7 +22,7 @@
 // Each shard writes a JUnit XML (bun's --reporter=junit) which we parse for robust
 // per-test results + durations -- more reliable than scraping the console summary.
 import { spawn, spawnSync } from "node:child_process";
-import { readdirSync, statSync, readFileSync, mkdirSync, existsSync } from "node:fs";
+import { readdirSync, statSync, readFileSync, writeFileSync, rmSync, mkdirSync, existsSync } from "node:fs";
 import os from "node:os";
 import http from "node:http";
 import path from "node:path";
@@ -23,6 +32,23 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TESTS_DIR = path.join(HERE, "tests");
 const SETUP = path.join(HERE, "setup.mjs");
 const JUNIT_DIR = path.resolve(".smoke-cache/junit");
+// bun >= 1.4 `--timings <file> --update-timings` records measured per-file durations as
+// {version, files: {<cwd-relative posix path>: ms}}. Each shard writes its own file (they
+// run concurrently, so one shared target would race), and we fold them into TIMINGS after
+// every run -- see mergeTimings().
+const TIMINGS = path.resolve(".smoke-cache/timings.json");
+const shardTimings = (i) => path.resolve(`.smoke-cache/timings-${i}.json`);
+// A bun below 1.4 rejects the flags outright and every shard dies at argv parse -- i.e.
+// the whole suite fails for a reason that has nothing to do with the site. Gate on the
+// version rather than on the error, so an old bun just falls back to size balancing.
+const TIMINGS_OK = (() => {
+  if (process.env.SMOKE_NO_TIMINGS) return false;
+  try {
+    const [maj, min] = spawnSync("bun", ["--version"], { encoding: "utf8", shell: true })
+      .stdout.trim().split(".").map(Number);
+    return maj > 1 || (maj === 1 && min >= 4);
+  } catch { return false; }
+})();
 const DEFAULT_BASE = "http://localhost:4317/tortoise-db-viewer/";
 const PORT = 4317;
 
@@ -58,14 +84,72 @@ let files = readdirSync(TESTS_DIR)
   .map((f) => path.join(TESTS_DIR, f));
 if (filters.length) files = files.filter((f) => filters.some((s) => path.basename(f).toLowerCase().includes(s)));
 if (!files.length) { console.error(`No test files match [${filters.join(", ")}] in ${TESTS_DIR}`); process.exit(1); }
-// heaviest-first so round-robin balances the shards
-files.sort((a, b) => statSync(b).size - statSync(a).size);
+
+// --- shard balancing ---
+// The wall time of the whole suite is the busy time of its SLOWEST shard, so how the
+// files are split is the only lever the runner itself has. File size was a proxy for
+// that and a poor one -- a 4 KB module that loads three zone maps outweighs a 12 KB one
+// asserting on table rows -- and it once put the two heaviest files in the same shard.
+// So we balance on the MEASURED duration of the previous run instead (bun's own
+// --timings file, written by every shard), and fall back to size only on the very first
+// run, before any measurement exists. Files added since the last run get the median, so
+// one unknown can be assumed neither free nor dominant.
+// The assignment is LPT (longest-processing-time first into the currently-lightest
+// shard) -- the standard 4/3-approximation for this, and what bun's own --shard does
+// with the same file.
+const sizes = new Map(files.map((f) => [f, statSync(f).size]));
+function readTimings() {
+  // Key by BASENAME: bun writes cwd-relative paths, and basename is already the key the
+  // JUnit parse and the time profile below use.
+  try {
+    const j = JSON.parse(readFileSync(TIMINGS, "utf8"));
+    return new Map(Object.entries(j.files || {}).map(([k, ms]) => [k.split(/[\\/]/).pop(), ms]));
+  } catch { return new Map(); }
+}
+const timings = readTimings();
+const measured = [...timings.values()].sort((a, b) => a - b);
+const median = measured.length ? measured[measured.length >> 1] : 0;
+const weightOf = (f) => (measured.length ? (timings.get(path.basename(f)) ?? median) : sizes.get(f));
+files.sort((a, b) => (weightOf(b) - weightOf(a)) || (sizes.get(b) - sizes.get(a)));
 
 const cap = jobs || Math.max(1, Math.min(files.length, (os.cpus().length || 4) - 2));
 const K = Math.min(cap, files.length);
-// round-robin the size-sorted files into K buckets
 const shards = Array.from({ length: K }, () => []);
-files.forEach((f, i) => shards[i % K].push(f));
+const load = new Array(K).fill(0);
+for (const f of files) {
+  let light = 0;
+  for (let i = 1; i < K; i++) if (load[i] < load[light]) light = i;
+  shards[light].push(f);
+  load[light] += weightOf(f);
+}
+
+// Fold the per-shard timing files into the one TIMINGS file and delete them. A file moves
+// between shards from run to run, so leaving the per-shard files in place would mean the
+// next run reads two different durations for the same file with no way to tell which is
+// current. Seeded from the existing merged file so a FILTERED run (`bun run smoke item`)
+// updates only what it ran instead of wiping every other file's measurement.
+function mergeTimings() {
+  let merged = {};
+  try { merged = JSON.parse(readFileSync(TIMINGS, "utf8")).files || {}; } catch { /* first run */ }
+  let got = 0;
+  for (let i = 0; i < K; i++) {
+    const p = shardTimings(i);
+    try {
+      for (const [f, ms] of Object.entries(JSON.parse(readFileSync(p, "utf8")).files || {})) {
+        // Blend rather than overwrite. These are wall times on a developer's machine, so
+        // anything else competing for the CPU inflates them -- measured: one file recorded
+        // 15.9s during a background installer and 4.6s once it finished, a 3.5x spike. Taken
+        // as-is that one bad run mis-balances every run after it. An even EMA absorbs a spike
+        // in two or three runs while still tracking a test that genuinely got slower.
+        merged[f] = merged[f] ? Math.round((merged[f] + ms) / 2) : ms;
+      }
+      got++;
+    } catch { /* shard died before writing */ }
+    try { rmSync(p, { force: true }); } catch { /* nothing to remove */ }
+  }
+  if (!got) return;
+  try { writeFileSync(TIMINGS, JSON.stringify({ version: 1, files: merged }, null, 2)); } catch { /* cache only -- never fail the run over it */ }
+}
 
 const ping = (base) => new Promise((res) => {
   const req = http.get(base, (r) => { r.destroy(); res(true); });
@@ -128,7 +212,11 @@ function runShard(idx, shardFiles, base) {
   return new Promise((resolve) => {
     const xml = path.join(JUNIT_DIR, `shard-${idx}.xml`);
     const env = { ...process.env, SMOKE_BASE: base, SMOKE_USER_DATA_DIR: `.smoke-cache/shard-${idx}` };
-    const args = ["test", "--reporter=junit", `--reporter-outfile=${xml}`, "--preload", SETUP, ...shardFiles];
+    const args = ["test", "--reporter=junit", `--reporter-outfile=${xml}`,
+      // Measure this shard's per-file durations for the NEXT run's balancing. Needs bun
+      // >= 1.4; an older bun rejects the flags outright, so they're opt-out via env.
+      ...(TIMINGS_OK ? [`--timings=${shardTimings(idx)}`, "--update-timings"] : []),
+      "--preload", SETUP, ...shardFiles];
     const child = spawn("bun", args, { env, shell: true });
     let out = "";
     const cap = (b) => { out += b.toString(); };
@@ -148,6 +236,7 @@ const bar = (t, max, w = 24) => "█".repeat(Math.max(1, Math.round((t / max) * 
 async function runOnce(base) {
   const t0 = Date.now();
   const results = await Promise.all(shards.map((s, i) => runShard(i, s, base)));
+  if (TIMINGS_OK) mergeTimings();
   return { results, elapsed: ((Date.now() - t0) / 1000).toFixed(1) };
 }
 
@@ -178,7 +267,10 @@ function printProfile(results, elapsed) {
 
 if (!existsSync(JUNIT_DIR)) mkdirSync(JUNIT_DIR, { recursive: true });
 const { base, proc } = await ensureServer();
-console.log(`[shard] ${files.length} files across ${K} shard(s)${repeat > 1 ? ` x${repeat} (flake check)` : ""}`);
+const balanceBy = !TIMINGS_OK ? "file size (bun < 1.4: no --timings)"
+  : measured.length ? `measured time (${measured.length} file(s) timed; predicted slowest shard ${(Math.max(...load) / 1000).toFixed(1)}s)`
+  : "file size (first run -- no timings yet)";
+console.log(`[shard] ${files.length} files across ${K} shard(s), balanced by ${balanceBy}${repeat > 1 ? ` x${repeat} (flake check)` : ""}`);
 
 if (repeat > 1) {
   // ---- flake check: run the whole sharded suite N times, classify each test ----
