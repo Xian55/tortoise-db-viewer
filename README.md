@@ -1,20 +1,61 @@
 # Tortoise-WoW Item Database
 
-A fast, static, octowow-style item database for [Tortoise-WoW](https://github.com/Penqle/tortoise-wow),
-hosted on GitHub Pages. Item pages, NPC pages, drop sources, vendors, quests,
-disenchanting, crafting, and filterable browse/finder pages for items and NPCs —
-all queried **in the browser** with the official SQLite WASM build.
-
-Routes: `?item=<id>`, `?npc=<id>`, `?browse=items` / `?browse=npcs` (with filter
-query params, e.g. `?browse=items&class=2&quality=4&minrl=40`), `?search=<term>`.
+A fast, static database and character planner for [Tortoise-WoW](https://github.com/Penqle/tortoise-wow),
+hosted on GitHub Pages. Items, NPCs, quests, spells, zones, maps, sounds, a talent
+calculator and a 3D dressing room — with **no backend**: the whole world database is
+shipped to the browser and queried there with the official SQLite WASM build.
 
 **Live:** https://xian55.github.io/tortoise-db-viewer/
+
+## Features
+
+**Look things up**
+
+- Pages for items, NPCs, quests, spells, objects, factions, zones, sub-zones, dungeons
+  and item sets — each with where it drops, who sells it and what it's used for
+- Search across all of them at once, including *inside* voice lines and NPC gossip
+  (`?search=`) — substring matching, so "fang" finds "Shadowfang"
+- Browse/finder pages with filters for items, NPCs, quests, spells, objects, zones,
+  sub-zones, factions, item sets and crafting (`?browse=items&class=2&quality=4&minrl=40`)
+- Every stat shown against a comparable cohort — "×0.80 the armor of a typical level 63
+  boss", "more melee DPS than 98% of level 54 mobs"
+
+**Plan a character**
+
+- 3D dressing room (`?dressing`): 10 races × 2 genders, full appearance customisation,
+  every visible slot, item sets, 16 animations, screenshots (incl. transparent PNGs)
+- 3D previews on item and item-set pages — worn on *your* character, not a stock model
+- Import your character from the GearExport addon (`?loadout=`) and find upgrades
+- Talent calculator for every class, build saved in the URL (`?talents=mage`)
+- Item comparison (`?compare=`), stat-weight scoring, and a cross-page compare tray
+- Hunter pet families and abilities (`?pets`), profession planner, levelling and
+  attunement guides (`?guides`)
+
+**Find your way around**
+
+- Zone maps with every spawn plotted, filterable by category (GPU-drawn, ~12k markers)
+- A seamless, zoomable world map per continent (`?worldmap=0`)
+- Flight-path network (`?flights`), gathering nodes, and instance/dungeon pages
+
+**Listen**
+
+- Extracted game audio: NPC voice lines, zone music and ambience (`?sounds`)
+- Transcripts for ~1,600 clips nothing in the game data writes down, and full-text
+  search over them (`?voicelines`)
+
+**Take it elsewhere**
+
+- Embeddable tooltips for forums and fan sites (`public/embed/tw-power.js`)
+- A public JSON API — `api.tortoiseclothing.org/i/<id>` for items, `/n`, `/q`, `/s`
+- Four datasets behind one toggle: Turtle Main, Turtle Dev, vanilla cMaNGOS and TBC
+- Shareable links for everything, and a changelog of what the server changed
+  (`?changelog`)
 
 ## How it works
 
 The server's SQL dumps are compiled at build time into one indexed SQLite file.
-The browser downloads that file once (GitHub Pages gzips it, ~27 MB → ~8.6 MB on
-the wire) and loads it into [`@sqlite.org/sqlite-wasm`](https://sqlite.org/wasm).
+The browser downloads that file once (~90 MB, served brotli-compressed from R2 at
+~18 MB on the wire) and loads it into [`@sqlite.org/sqlite-wasm`](https://sqlite.org/wasm).
 Every query — including the recursive loot-reference resolution and substring
 search — then runs locally with zero further network round-trips.
 
