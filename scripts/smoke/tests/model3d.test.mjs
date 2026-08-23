@@ -761,6 +761,29 @@ async function testEquipIntoTheOpenSlot() {
 
 smoke("a weapon goes in the slot whose picker you opened", () => testEquipIntoTheOpenSlot());
 
+// An item set is where someone decides whether to chase it, and eight tooltips do not
+// answer "what does it look like". The set page wears the whole thing on the same
+// mannequin the item page uses -- one piece per SLOT, best first, since a set routinely
+// carries several items for one slot (a 1H and a 2H, two rings).
+async function testItemSetPreview() {
+  await nav("?itemset=201");                       // Arcanist's Regalia: 8 visible pieces
+  await page.waitForSelector("#mv-host", { timeout: T });
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const st = await page.evaluate(() => window.__mv());
+  const link = await page.$eval(".item-dress a", (a) => a.getAttribute("href"));
+  const attached = st.attached.map((a) => a.model).join(" ");
+  // a set with a weapon puts it in a hand, which the robe set cannot prove
+  await nav("?itemset=630");                       // Towerforge Battlegear: a 2H maul
+  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  const held = await page.evaluate(() => window.__mv().attached.filter((a) => a.attach === 1).length);
+  console.log(`set preview: 201 attached [${attached}] link=${link} | 630 weapons held=${held}`);
+  return st.triangles > 0 && /Helm_Robe_RaidMage/i.test(attached) && /Shoulder_Robe_RaidMage/i.test(attached)
+    && /^\?dressing&/.test(link) && /head=16795/.test(link) && /chest=16798/.test(link)
+    && held === 1;
+}
+
+smoke("an item set is shown worn, and links into the room", () => testItemSetPreview());
+
 // A robe paints AFTER the legs: its skirt covers them, which is what the robe geoset is
 // for. Filed under the chest's usual paint slot, a pair of trousers painted over the skirt
 // the robe had just drawn and the legs won. Asserted by pixels rather than by order --

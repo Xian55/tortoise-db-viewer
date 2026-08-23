@@ -669,6 +669,15 @@ jQuery and a **CORS proxy server** besides. Same call, same reason, as `OWN_MODE
 - **Two kinds of preview.** A weapon stands alone and is rendered by itself; a helm, a
   shoulder or any texture-only armor is shown ON the dressing room's mannequin (a stock
   human male, with a link to try it on your own character). Those used to get no tab at all.
+- **An item SET is previewed the same way** (`?itemset=`), wearing every piece at once --
+  which is the question a set page exists to answer and eight tooltips cannot. One piece
+  per SLOT, best first: a set routinely carries several items for one slot (a 1H and a 2H,
+  two rings), and `Q_SET_PIECES` already orders by item level, so the first of each slot is
+  the one to show -- the same rule the room's own "Wear a set" uses. It mounts on
+  VISIBILITY rather than on load, since a set page is long and most visitors never scroll
+  that far, and the "Try it on a character" link carries the whole loadout as
+  `?dressing&head=…&chest=…`. A set with nothing wearable (rings and trinkets) renders no
+  preview at all rather than an empty stage.
 - **The model field is only trusted for the slots that USE a model.** ItemDisplayInfo keeps
   a stale `ModelName` on plenty of texture-only rows -- Dreadnaught Gauntlets and Sabatons
   both name `LShoulder_Plate_A_01` -- which the client never reads for those slots, and
