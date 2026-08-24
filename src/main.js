@@ -109,6 +109,17 @@ const SOUND_KIND = {
 const app = document.getElementById("app");
 const searchInput = document.getElementById("search");
 
+// The landing page's whole job is to send you somewhere, and search is the fastest
+// way there -- so it takes the caret on arrival. Only HERE, though: on a detail page
+// a focused text input swallows space/PageDown, i.e. it would break scrolling on the
+// pages people actually read. A coarse pointer (phone/tablet) is skipped because
+// focus there pops the on-screen keyboard over a page nobody asked to type on, and
+// `preventScroll` keeps a restored scroll position (back-navigation to home) put.
+function focusSearch() {
+  if (window.matchMedia?.("(pointer: coarse)").matches) return;
+  if (searchInput !== document.activeElement) searchInput.focus({ preventScroll: true });
+}
+
 const lvlRange = (r) => (r.level_max && r.level_max !== r.level_min ? `${r.level_min}-${r.level_max}` : (r.level_min || ""));
 
 // Compact "2h" / "3h" / "12h" / "7d" / "2h13m" from a seconds value (vendor restock).
@@ -720,6 +731,8 @@ function showHome() {
       </ul>
     </section>
   </div>`;
+
+  focusSearch();
 }
 
 async function showSearch(term) {
