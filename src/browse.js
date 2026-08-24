@@ -3,7 +3,7 @@
 // shared sortable table (src/table.js), the same one used everywhere else.
 import { query, caps } from "./db.js";
 import { Q_CRAFTING, Q_FACTIONS, Q_ZONES, Q_BROWSE_SUBZONES, Q_BROWSE_SPELLS, Q_BROWSE_ITEMSETS, Q_BROWSE_OBJECTS, Q_PROFESSION_LEARN } from "./queries.js";
-import { itemLink, npcLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, objectLink, sourceTags, moneyHtml, teamBadge, esc } from "./render.js";
+import { itemLink, npcLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, objectLink, sourceTags, moneyHtml, teamBadge, esc, craftBand, craftSkill, craftSkillCell } from "./render.js";
 import { createTable } from "./table.js";
 import { selbarHtml, updateSelbar, wireSelbar } from "./selbar.js";
 import { loadSets, resolveWeights } from "./weightsets.js";
@@ -544,32 +544,6 @@ async function browseNpcs(p) {
   return { rows, cols: hideCols(NPC_COLS, hide), filters, noun: "NPCs" };
 }
 
-// Effective craft skill: many Turtle recipes have a bogus skill_req=1 while the
-// real trivial range is e.g. 175-210, so use skill_min when it's higher -- this is
-// also the sort/progression key (see craftSkill()).
-function craftSkill(c) {
-  // orange = the required/learn skill (when you can first craft, 100% skill-up).
-  // NOT max(min, req): with req < min (e.g. a 300-recipe whose trivial band is
-  // 320/340) max() would equal yellow and drop the real orange (-> "320 330 340"
-  // instead of wowhead's "300 320 330 340").
-  return c.req || c.min || 0;
-}
-
-// Skill-up difficulty colors (orange→yellow→green→grey): orange = the effective
-// start, then the trivial range yellow(min) / green(mid) / grey(max). Adjacent
-// equal values are deduped so a recipe doesn't read "175 175 193 210".
-function craftSkillCell(c) {
-  const span = (v, col) => `<span style="color:${col}">${v}</span>`;
-  const start = craftSkill(c);
-  if (!c.max) return span(start, "#ff8040");
-  const min = c.min || start, green = Math.round((min + c.max) / 2);
-  const bands = [[start, "#ff8040"], [min, "#ffd100"], [green, "#40c040"], [c.max, "#808080"]];
-  const out = [];
-  let prev = null;
-  for (const [v, col] of bands) { if (v !== prev) out.push(span(v, col)); prev = v; }
-  return `<span style="white-space:nowrap">${out.join(" ")}</span>`;
-}
-
 // Gathering professions (Fishing/Herbalism/Skinning) craft nothing, so the recipe
 // query is empty for them. Show their learnable abilities + trainers instead: the
 // spell, its proficiency tier, which NPCs teach it, and which faction those
@@ -634,7 +608,7 @@ async function browseCrafting(p) {
       g = {
         spell: r.spell, item: r.item, item_name: r.item_name, quality: r.quality, item_icon: r.item_icon,
         spell_name: r.spell_name, spell_icon: r.spell_icon,
-        skill: r.skill, req: r.learn_req ?? r.skill_req, min: r.skill_min, max: r.skill_max,
+        skill: r.skill, ...craftBand(r),
         trainer: r.trainer, auto: r.auto, recipe_item: r.recipe_item, recipe_name: r.recipe_name, recipe_quality: r.recipe_quality, recipe_icon: r.recipe_icon,
         reagents: [],
       };

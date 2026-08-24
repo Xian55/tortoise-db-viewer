@@ -2,7 +2,7 @@
 // custom icons, world-drop split, same-model, compare, sources, buy price,
 // gather/spell links, crafting/reagent relations, share button.
 import { page, nav, T, smoke } from "../harness.mjs";
-import { testShareButton, testLocationSubzoneLink } from "./_shared.mjs";
+import { testShareButton, testLocationSubzoneLink, testCraftBand } from "./_shared.mjs";
 
 async function testItem(id, expectName) {
   await nav(`?item=${id}`);
@@ -400,3 +400,5 @@ smoke("share item 2770", () => testShareButton("item", 2770, "i"));
 smoke("item peer-card 871 DPS outlier", () => testItemPeerCard(871, "DPS", true));
 smoke("item peer-card 16963 armor", () => testItemPeerCard(16963, "Armor", false));
 smoke("item peer-card none 2770", () => testItemNoPeerCard(2770));
+smoke("item craft-band created-by 4593", () => testCraftBand("?item=4593", /Created by/, ["100", "140", "160", "180"]));
+smoke("item craft-band teaches 6330", () => testCraftBand("?item=6330", /Teaches/, ["100", "140", "160", "180"]));

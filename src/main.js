@@ -1,7 +1,7 @@
 import "./style.css";
 import { query, queryOne, preconnect, getMeta, caps } from "./db.js";
 import * as Q from "./queries.js";
-import { qualityColor, renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText } from "./render.js";
+import { qualityColor, renderTooltip, tabs, itemLink, npcLink, dungeonLink, questLink, factionLink, zoneLink, subzoneLink, spellLink, petFamilyLink, objectLink, spellTooltip, spellCost, resolveSpellText, moneyHtml, iconImg, iconGridImg, sourceTags, teamBadge, teamLabel, pct, dropQty, esc, setIconAtlas, setModelThumbs, modelThumbUrl, readableText, craftBand, craftSkill, craftSkillCell } from "./render.js";
 import { createTable } from "./table.js";
 import { CREATURE_TYPE, CREATURE_RANK, PROFESSION_LABEL, QUEST_TYPE, REP_STANDING, REP_TO_STANDING, REP_EXALTED, repStandingReached, CONTINENT, GAMEOBJECT_TYPE, INV_TYPE, QUALITY, ITEM_CLASS, questZoneLabel, classRestrictions, setClassMask, raceRestrictions, questFaction, npcRoles, DMG_SCHOOL, RESISTANCES, SPELL_SCHOOL, POWER_TYPE, SPELL_DISPEL, SPELL_MECHANIC, SPELL_EFFECT, SPELL_AURA, SPELL_FLAGS, GEAR_STAT_LABEL, GEAR_CRITERIA, MAX_SKILL, skinningReq } from "./constants.js";
 import { showBrowse } from "./browse.js";
@@ -1115,22 +1115,19 @@ async function showItem(id) {
       value: (r) => r.created_name || "" },
     { label: "Via spell", cls: "muted", cell: (r) => spellLink(r.spell, r.spell_name, r.spell_icon), value: (r) => r.spell_name },
   ];
-  // recipe/pattern/plans -> the item it teaches you to craft
-  // orange/required skill (when you can first craft) = learn_req, falling back to
-  // the spell's req then the trivial yellow. NOT skill_min alone -- that's the
-  // yellow trivial level and can exceed the 300 cap (e.g. a 300-recipe at 320).
-  const orangeSkill = (t) => t.learn_req || t.skill_req || t.skill_min || 0;
+  // recipe/pattern/plans -> the item it teaches you to craft, with the full
+  // orange/yellow/green/grey skill-up bracket (see render.js craftBand).
   const teachesCols = [
     { label: "Teaches", cell: (t) => itemLink(t.item, t.item_name, t.quality, t.item_icon), value: (t) => t.item_name },
     { label: "Profession", cls: "muted", cell: (t) => esc(PROFESSION_LABEL[t.skill] || ""), value: (t) => PROFESSION_LABEL[t.skill] || "" },
-    { label: "Skill", num: true, cls: "muted", cell: (t) => orangeSkill(t) || "", value: (t) => orangeSkill(t) },
+    { label: "Skill", num: true, cls: "muted", cell: (t) => craftSkillCell(craftBand(t)), value: (t) => craftSkill(craftBand(t)) },
   ];
 
   // created-by: group reagents per spell
   const bySpell = new Map();
   for (const r of createdBy) {
     if (!bySpell.has(r.entry)) bySpell.set(r.entry, {
-      entry: r.entry, name: r.name, icon: r.spell_icon, skill: r.skill, req: r.skill_req,
+      entry: r.entry, name: r.name, icon: r.spell_icon, skill: r.skill, ...craftBand(r),
       recipe_item: r.recipe_item, recipe_name: r.recipe_name, recipe_quality: r.recipe_quality, recipe_icon: r.recipe_icon,
       trainer: r.trainer, auto: r.auto, reagents: [],
     });
@@ -1141,7 +1138,8 @@ async function showItem(id) {
   const createdCols = [
     { label: "Spell", cell: (s) => spellLink(s.entry, s.name, s.icon), value: (s) => s.name },
     // profession links to the crafting browse filtered to that profession
-    { label: "Profession", cls: "muted", cell: (s) => (profOf(s) ? `<a class="nav" href="?browse=crafting&prof=${s.skill}">${esc(profOf(s))}</a>` + (s.req > 1 ? ` <span class="dim">(${s.req})</span>` : "") : ""), value: (s) => profOf(s) },
+    { label: "Profession", cls: "muted", cell: (s) => (profOf(s) ? `<a class="nav" href="?browse=crafting&prof=${s.skill}">${esc(profOf(s))}</a>` : ""), value: (s) => profOf(s) },
+    { label: "Skill", num: true, cls: "muted", cell: (s) => craftSkillCell(s), value: (s) => craftSkill(s) },
     { label: "Reagents", cls: "muted", cell: (s) => s.reagents.join(", "), value: (s) => s.reagents.length },
     // how the craft is learned: the recipe/pattern item, or Trainer / Auto
     { label: "Source", cls: "muted", cell: (s) => (s.recipe_item ? itemLink(s.recipe_item, s.recipe_name, s.recipe_quality, s.recipe_icon)
@@ -2229,7 +2227,7 @@ async function showSpell(id) {
 
   const producesCols = [
     { label: "Creates", cell: (r) => itemLink(r.item, r.item_name, r.quality, r.item_icon), value: (r) => r.item_name },
-    { label: "Skill", num: true, cls: "muted", cell: (r) => r.skill_req || r.skill_min || "", value: (r) => r.skill_req || r.skill_min || 0 },
+    { label: "Skill", num: true, cls: "muted", cell: (r) => craftSkillCell(craftBand(r)), value: (r) => craftSkill(craftBand(r)) },
   ];
   const reagentCols = [
     { label: "Reagent", cell: (r) => itemLink(r.item, r.item_name, r.quality, r.item_icon), value: (r) => r.item_name },
