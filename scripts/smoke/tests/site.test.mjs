@@ -207,7 +207,21 @@ async function testMobileNav() {
   return toggleVisible && hiddenBefore && shownAfter;
 }
 
+// The landing page hands the caret to the search box; a detail page must NOT --
+// a focused text input there swallows space/PageDown, i.e. breaks scrolling.
+async function testHomeAutofocus() {
+  await nav(`?`, { full: true });
+  await page.waitForSelector(".home", { timeout: T });
+  const onHome = await page.evaluate(() => document.activeElement?.id);
+  await nav(`?item=2770`, { full: true });
+  await page.waitForSelector(".tooltip .tt-name", { timeout: T });
+  const onItem = await page.evaluate(() => document.activeElement?.id);
+  console.log(`home-autofocus: home="${onHome}" item="${onItem}"`);
+  return onHome === "search" && onItem !== "search";
+}
+
 smoke("home embed links", () => testHomeEmbed());
+smoke("home autofocuses search, detail pages do not", () => testHomeAutofocus());
 smoke("talents calculator", () => testTalents());
 smoke("the talent class strip swaps class without the build", () => testTalentClassSwitch());
 smoke("footer", () => testFooter());
