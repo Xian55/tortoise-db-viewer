@@ -112,3 +112,24 @@ export async function testLocationSubzoneLink(url, expectSub, tab = null) {
   console.log(`loc-subzone-link ${url}${tab ? ` [${tab}]` : ""}: ${JSON.stringify(cell)}`);
   return !!cell && cell.zoneLink && /^\?subzone=\d+$/.test(cell.href) && (!expectSub || cell.name === expectSub);
 }
+
+// A recipe's skill-up bracket (orange/yellow/green/grey) must render on EVERY page that
+// names the craft, not just ?browse=crafting: the crafted item's "Created by", the
+// recipe item's "Teaches" and the craft spell's "Creates". Asserts the actual numbers,
+// because the orange end comes from craft_source.learn_req -- many Turtle recipes carry
+// a bogus skill_req of 1, so a band missing that join silently starts at 1.
+export async function testCraftBand(route, tabRe, expect) {
+  await nav(route);
+  await page.waitForSelector(".tab", { timeout: T });
+  if (tabRe) {
+    await page.evaluate((re) => {
+      const t = [...document.querySelectorAll(".tab")].find((x) => new RegExp(re).test(x.textContent));
+      if (t) t.click();
+    }, tabRe.source);
+  }
+  await page.waitForSelector(".tabpane:not(.hidden) .craft-band", { timeout: T });
+  const band = await page.$$eval(".tabpane:not(.hidden) .craft-band span", (e) => e.map((s) => s.textContent.trim()));
+  const colors = await page.$$eval(".tabpane:not(.hidden) .craft-band span", (e) => e.map((s) => s.style.color));
+  console.log(`craft band ${route}: [${band.join(" ")}] colors=[${colors.join(",")}]`);
+  return band.join(" ") === expect.join(" ") && new Set(colors).size === expect.length;
+}

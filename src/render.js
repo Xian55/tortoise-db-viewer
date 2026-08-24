@@ -494,3 +494,39 @@ export function dropQty(min, max) {
   const lo = min && min > 0 ? min : 1;
   return ` <span class="drop-qty" title="Drops ${lo === hi ? hi : `${lo}-${hi}`} at a time">×${lo === hi ? hi : `${lo}-${hi}`}</span>`;
 }
+
+// ---- Recipe difficulty (orange / yellow / green / grey skill-up thresholds) ----
+// The band a craft is worth at each skill level, wowhead-style. Sources:
+//   orange = the skill you can first craft at (100% skill-up) -- the recipe item's
+//            own requirement (craft_source.learn_req) if it has one, else the
+//            spell's skill_line_ability req. Many Turtle recipes carry a bogus
+//            skill_req = 1, so learn_req leads.
+//   yellow = skill_min (TrivialSkillLineRankLow), grey = skill_max (…High),
+//   green  = their midpoint. The client stores only the two ends.
+// Normalizes a raw query row (learn_req/skill_req/skill_min/skill_max) to the
+// {req, min, max} shape the two renderers below take.
+export function craftBand(r) {
+  return { req: r.learn_req || r.skill_req || 0, min: r.skill_min || 0, max: r.skill_max || 0 };
+}
+
+// The single number a craft sorts/progresses by: its orange start.
+// NOT max(min, req): with req < min (e.g. a 300-recipe whose trivial band is
+// 320/340) max() would equal yellow and drop the real orange (-> "320 330 340"
+// instead of wowhead's "300 320 330 340").
+export function craftSkill(c) {
+  return c.req || c.min || 0;
+}
+
+// The colored bracket itself. Adjacent equal values are deduped so a recipe
+// doesn't read "175 175 193 210".
+export function craftSkillCell(c) {
+  const span = (v, col) => `<span style="color:${col}">${v}</span>`;
+  const start = craftSkill(c);
+  if (!c.max) return start ? span(start, "#ff8040") : "";
+  const min = c.min || start, green = Math.round((min + c.max) / 2);
+  const bands = [[start, "#ff8040"], [min, "#ffd100"], [green, "#40c040"], [c.max, "#808080"]];
+  const out = [];
+  let prev = null;
+  for (const [v, col] of bands) { if (v && v !== prev) out.push(span(v, col)); prev = v; }
+  return `<span class="craft-band" title="Skill-up chance: orange guaranteed, yellow high, green low, grey none" style="white-space:nowrap">${out.join(" ")}</span>`;
+}

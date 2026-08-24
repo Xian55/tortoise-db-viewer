@@ -1,5 +1,5 @@
 import { page, nav, T, smoke } from "../harness.mjs";
-import { testBrowse, testShareButton } from "./_shared.mjs";
+import { testBrowse, testShareButton, testCraftBand } from "./_shared.mjs";
 
 // spell detail: header name + relation tabs + sortable pane (+ Learned-from link
 // when craft-taught -- the recipe item links back from the spell page).
@@ -97,3 +97,4 @@ smoke("spell quest-reward 23161", () => testSpellQuestReward(23161));
 smoke("share spell 41746", () => testShareButton("spell", 41746, "s"));
 smoke("search spells Shadowforged", () => testSearchSpells("Shadowforged"));
 smoke("browse spells", () => testBrowse("spells", "", "Profession"));
+smoke("spell craft-band creates 7755", () => testCraftBand("?spell=7755", /Creates/, ["100", "140", "160", "180"]));

@@ -375,7 +375,7 @@ export const Q_QUEST_ITEM = `SELECT q.entry, q.title, q.level, q.minlevel, q.req
 export const Q_STARTS_QUEST = `SELECT q.entry, q.title, q.level, q.reqraces FROM quests q WHERE q.entry = (SELECT start_quest FROM items WHERE entry = ?1) AND q.entry > 0`;
 
 export const Q_CREATED_BY = `
-  SELECT s.entry, s.name, s.icon AS spell_icon, sc.skill, sc.skill_req, ci.entry AS reagent_item, ci.name AS reagent_name, ci.quality AS reagent_quality, di.icon AS reagent_icon, sr.count,
+  SELECT s.entry, s.name, s.icon AS spell_icon, sc.skill, sc.skill_req, sc.skill_min, sc.skill_max, ci.entry AS reagent_item, ci.name AS reagent_name, ci.quality AS reagent_quality, di.icon AS reagent_icon, sr.count,
          cs.recipe_item, cs.trainer, cs.auto, cs.learn_req, rc.name AS recipe_name, rc.quality AS recipe_quality, rcdi.icon AS recipe_icon
   FROM spell_creates sc JOIN spells s ON s.entry = sc.spell
   LEFT JOIN spell_reagent sr ON sr.spell = sc.spell
@@ -526,10 +526,11 @@ export const Q_MOUNT_SOURCE = `
 // Items this craft spell produces (+ the skill-up thresholds for difficulty).
 export const Q_SPELL_PRODUCES = `
   SELECT sc.item, ci.name AS item_name, ci.quality, di.icon AS item_icon,
-         sc.skill, sc.skill_req, sc.skill_min, sc.skill_max
+         sc.skill, sc.skill_req, sc.skill_min, sc.skill_max, cs.learn_req
   FROM spell_creates sc
   JOIN items ci ON ci.entry = sc.item
   LEFT JOIN item_display_info di ON di.ID = ci.display_id
+  LEFT JOIN craft_source cs ON cs.spell = sc.spell
   WHERE sc.spell = ?1 ORDER BY ci.quality DESC, ci.name`;
 
 // Reagents the craft consumes.
