@@ -140,20 +140,34 @@ async function testCompare(a, b) {
   return cards === 2 && rows >= 2 && best > 0;
 }
 
-// Items that roll a random suffix (item.random_property) show a "🎲 Random suffix"
-// badge + the pool of possible suffixes with stat ranges + chance (item 7457
-// "Knight's Gauntlets" -> of the Bear / of the Whale / …).
+// Items that roll a random suffix (item.random_property) show the client's
+// "<Random enchantment>" placeholder line in the TOOLTIP itself (so it rides along
+// on every hovercard too), plus a "🎲 Random suffix" badge + the pool of possible
+// suffixes with stat ranges + chance (item 7457 "Knight's Gauntlets" -> of the Bear
+// / of the Whale / …).
 async function testItemRandomSuffix(id) {
   await nav(`?item=${id}`);
   await page.waitForSelector(".item-view", { timeout: T });
   const r = await page.evaluate(() => ({
     badge: !!document.querySelector('.item-meta .tagx[title*="random"]'),
+    ttLine: (document.querySelector(".tooltip .tt-rand") || {}).textContent || "",
     rows: document.querySelectorAll(".item-suffixes .suf-list li").length,
     hasBear: [...document.querySelectorAll(".item-suffixes .suf-name")].some((e) => /of the Bear/i.test(e.textContent)),
     hasChance: !!document.querySelector(".item-suffixes .suf-chance"),
   }));
-  console.log(`item ${id} random suffix: badge=${r.badge} rows=${r.rows} bear=${r.hasBear} chance=${r.hasChance}`);
-  return r.badge && r.rows > 0 && r.hasBear && r.hasChance;
+  console.log(`item ${id} random suffix: badge=${r.badge} tt="${r.ttLine}" rows=${r.rows} bear=${r.hasBear} chance=${r.hasChance}`);
+  return r.badge && /^<Random enchantment>$/.test(r.ttLine.trim()) && r.rows > 0 && r.hasBear && r.hasChance;
+}
+
+// The placeholder line on its own: present exactly on the items that roll a suffix.
+// 15247 (Bloodstrike Dagger) rolls one; 2770 (Copper Ore) can't and must show none.
+async function testRandomEnchantLine(id, expect) {
+  await nav(`?item=${id}`);
+  await page.waitForSelector(".tooltip .tt-name", { timeout: T });
+  const txt = await page.evaluate(() => (document.querySelector(".tooltip .tt-rand") || {}).textContent || "");
+  const has = /^<Random enchantment>$/.test(txt.trim());
+  console.log(`item ${id} random-enchant line: "${txt}" expect=${expect}`);
+  return has === expect;
 }
 
 // container/lockbox item shows a "Contains" tab listing what it yields
@@ -379,6 +393,8 @@ smoke("item same-model 33292", () => testSameModel(33292, 2));
 smoke("item mount 18768", () => testMount(18768, 14557, "Swift Dawnsaber"));
 smoke("item compare 47185:47191", () => testCompare(47185, 47191));
 smoke("item random-suffix 7457", () => testItemRandomSuffix(7457));
+smoke("item random-enchant line 15247", () => testRandomEnchantLine(15247, true));
+smoke("item random-enchant line 2770 absent", () => testRandomEnchantLine(2770, false));
 smoke("item container 16882", () => testContainer(16882, "Junkbox"));
 smoke("item vendor-restock 2319", () => testVendorRestock(2319));
 smoke("item sold-by location+faction 2319", () => testSoldByLocation(2319));

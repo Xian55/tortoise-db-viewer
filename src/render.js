@@ -235,6 +235,13 @@ export function renderTooltip(it, { spellMap = new Map(), linkSpells = false, se
     }
   }
 
+  // An item that rolls a random suffix ("of the Bear") shows the client's placeholder
+  // where the rolled stats would sit: green like an enchantment, above durability --
+  // which is where the 1.12 tooltip puts it. `rolls_suffix` is build-db's flag (a
+  // random_property that has a real suffix pool); a DB built before that column simply
+  // reads undefined, so the line is absent rather than wrong.
+  if (it.rolls_suffix) line("&lt;Random enchantment&gt;", "tt-rand");
+
   if (it.max_durability) line(`Durability ${it.max_durability} / ${it.max_durability}`);
 
   // requirements

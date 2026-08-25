@@ -108,6 +108,24 @@ async function testFilter(param, value) {
   return rows > 0 && sel === value;
 }
 
+// Random-suffix filter: suffix=1 keeps only items that can roll one ("of the Bear").
+// Verified end-to-end -- the first result's own page must carry the tooltip
+// placeholder -- since a WHERE clause that silently matched everything would still
+// pass a row-count check.
+async function testSuffixFilter() {
+  await nav(`?browse=items&suffix=1`);
+  await page.waitForSelector(".browse table tbody tr", { timeout: T });
+  const rows = await page.$$eval(".browse table tbody tr", (r) => r.length);
+  const first = await page.$eval(".browse table tbody tr a[href*='item=']", (a) => a.getAttribute("href")).catch(() => "");
+  const id = (first.match(/item=(\d+)/) || [])[1];
+  if (!id) { console.log(`suffix-filter: rows=${rows} no item link`); return false; }
+  await nav(`?item=${id}`);
+  await page.waitForSelector(".tooltip .tt-name", { timeout: T });
+  const line = await page.evaluate(() => !!document.querySelector(".tooltip .tt-rand"));
+  console.log(`suffix-filter: rows=${rows} first=${id} hasLine=${line}`);
+  return rows > 0 && line;
+}
+
 // unobtainable (dev-artifact) items are hidden by default but shown when opted in;
 // item 5031 ("ZZZZZZZZ") is a known dev artifact.
 async function testUnobtainable() {
@@ -328,6 +346,8 @@ smoke("filter uclass=8", () => testFilter("uclass", "8"));
 smoke("filter faction=a", () => testFilter("faction", "a"));
 smoke("filter prof=197", () => testFilter("prof", "197"));
 smoke("filter unique=1", () => testFilter("unique", "1"));
+smoke("filter suffix=1", () => testFilter("suffix", "1"));
+smoke("suffix filter end-to-end", () => testSuffixFilter());
 smoke("unobtainable hidden", () => testUnobtainable());
 smoke("selection", () => testSelection());
 smoke("group-selection", () => testGroupSelection());

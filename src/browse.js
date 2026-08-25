@@ -272,7 +272,9 @@ async function browseItems(p) {
     bind: p.get("bind") || "", uclass: p.get("uclass") || "", faction: p.get("faction") || "",
     unique: p.get("unique") || "", prof: p.get("prof") || "", origin: p.get("origin") || "",
     mount: p.get("mount") || "", food: p.get("food") || "",
+    suffix: p.get("suffix") || "",
   };
+  const hasSuffix = (await caps()).rollsSuffix;
   const criteria = parseCriteria(p.get("stats"));
   const weights = parseWeights(p.get("weights"));
   const presetId = p.get("preset") || "";
@@ -329,6 +331,10 @@ async function browseItems(p) {
   else if (f.faction === "h") { where.push(`NOT ${exclusiveTo}`); binds.push(RACE_ALLIANCE, RACE_HORDE, 1); }
   if (f.unique === "1") where.push("i.max_count = 1");
   if (f.mount === "1") where.push("i.is_mount = 1");
+  // items that can drop with a random suffix ("of the Bear"). OPTIONAL SCHEMA:
+  // `rolls_suffix` post-dates some datasets' DBs, and an unknown column would throw
+  // for the whole browse -- so both the clause and its control hang off caps().
+  if (f.suffix === "1" && hasSuffix) where.push("i.rolls_suffix = 1");
   // pet-food diet (1 Meat … 6 Fruit): hunter-pet feeding, linked from the Pets pages.
   if (f.food !== "") add("i.food_type = ?", +f.food);
   if (f.prof !== "") add("i.required_skill = ?", +f.prof);
@@ -440,6 +446,7 @@ async function browseItems(p) {
   if (f.origin !== "") chip(`<b>${f.origin === "tw" ? "Turtle WoW" : "Classic 1.12"}</b>`, `data-rf="origin"`);
   if (f.unique === "1") chip(`<b>Unique</b>`, `data-rf="unique"`);
   if (f.mount === "1") chip(`<b>Mounts</b>`, `data-rf="mount"`);
+  if (f.suffix === "1" && hasSuffix) chip(`<b>Random enchantment</b>`, `data-rf="suffix"`);
   for (const c of criteria) chip(`<b>${esc(GEAR_STAT_LABEL[c.key] || c.key)} ${esc(c.op)} ${esc(c.val)}</b>`, `data-rcrit="${esc(`${c.key},${c.op},${c.val}`)}"`);
   if (weights.length) chip(`⚔ <b>Gear score (${weights.length})</b>`, `data-rweights="1"`);
   const chipsHtml = chips.length
@@ -447,7 +454,7 @@ async function browseItems(p) {
 
   // collapsible sub-sections; each auto-opens when it has active values + shows a count badge.
   const badge = (n) => (n ? ` <span class="badge">${n}</span>` : "");
-  const moreCount = [f.minil, f.maxil, f.bind, f.uclass, f.faction, f.prof, f.origin, f.unique === "1" ? "1" : "", f.mount === "1" ? "1" : ""].filter(Boolean).length;
+  const moreCount = [f.minil, f.maxil, f.bind, f.uclass, f.faction, f.prof, f.origin, f.unique === "1" ? "1" : "", f.mount === "1" ? "1" : "", f.suffix === "1" && hasSuffix ? "1" : ""].filter(Boolean).length;
   const section = (title, count, body, open = count) => `<details class="sec"${open ? " open" : ""}><summary>${title}${badge(count)}</summary><div class="sec-body">${body}</div></details>`;
   const moreBody = `<div class="filters embed">
     ${numField("minil", "iLvl ≥", f.minil)} ${numField("maxil", "iLvl ≤", f.maxil)}
@@ -458,6 +465,7 @@ async function browseItems(p) {
     ${selectField("unique", "Unique", options([["1", "Unique only"]], f.unique, "Any"))}
     ${selectField("origin", "Origin", options([["tw", "Turtle WoW"], ["vanilla", "Classic 1.12"]], f.origin, "Any"))}
     ${selectField("mount", "Mounts", options([["1", "Mounts only"]], f.mount, "Any"))}
+    ${hasSuffix ? selectField("suffix", "Random enchant", options([["1", "Rolls a suffix"]], f.suffix, "Any")) : ""}
   </div>`;
   // Columns is its own group -- it controls what's SHOWN, not what's filtered. Muted
   // badge = how many columns are visible; opens when a custom set is active.
