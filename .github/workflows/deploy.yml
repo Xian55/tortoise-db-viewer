@@ -49,6 +49,43 @@ jobs:
       # visitor downloads come off GitHub Pages bandwidth. AWS CLI is preinstalled
       # on ubuntu-latest; R2 speaks the S3 API. Hash-based cache invalidation still
       # works: version.json is no-store, the DB is cache-busted by ?v=.
+      # The DB's OWN content hash. Note version.json also carries a `builtAt` timestamp,
+      # fresh on every build -- so `hashFiles('public/data/version.json')` never matches
+      # twice, and anything keyed on the file rather than on this field silently never
+      # caches. (That was exactly the API JSON gate's bug, fixed below.)
+      - name: DB content hash
+        id: dbhash
+        run: echo "hash=$(jq -r .version public/data/version.json)" >> "$GITHUB_OUTPUT"
+
+      # Brotli q10 over the ~81 MB DB is ~140s of the ~150s the upload step used to cost,
+      # and build-db is deterministic: on a code-only deploy it recompressed identical
+      # bytes into an identical 17 MB result, every time. Measured over four consecutive
+      # deploys, the DB content hash did not move once (the tooltip JSON step, gated on
+      # the same content, reported "skipped" on all four).
+      #
+      # So cache the RESULT by that hash. The upload itself is deliberately left
+      # unconditional: it is ~10s, and it means R2 can never be left holding a stale or
+      # missing object however the cache behaves. Everything downstream (the jsDelivr/raw
+      # mirror, which copies this file) sees it present either way.
+      - name: Restore compressed DB
+        id: brcache
+        uses: actions/cache@v6
+        with:
+          path: public/data/tortoise.sqlite.br
+          key: db-br-v1-${{ steps.dbhash.outputs.hash }}
+
+      # DB: immutable (cache-busted by ?v=). Pre-brotli it and store with
+      # Content-Encoding: br so the browser fetch() transparently decompresses
+      # (~81 MB -> ~17 MB on the wire; OPFS still caches the full DB). Same object
+      # key, so the client URL is unchanged. Compress via Bun's node:zlib.
+      # Quality 10, not 11: q11 costs ~3 min of CI for only ~1 MB smaller than q10
+      # (~140s) -- not worth it every deploy for a once-per-visitor, OPFS-cached
+      # download. Both stay under jsDelivr's 20 MB mirror limit.
+      - name: Compress DB (content changed only)
+        if: steps.brcache.outputs.cache-hit != 'true'
+        run: |
+          bun -e 'import {brotliCompressSync,constants} from "node:zlib"; import {readFileSync,writeFileSync} from "node:fs"; const i=readFileSync("public/data/tortoise.sqlite"); const o=brotliCompressSync(i,{params:{[constants.BROTLI_PARAM_QUALITY]:10,[constants.BROTLI_PARAM_SIZE_HINT]:i.length}}); writeFileSync("public/data/tortoise.sqlite.br",o); console.log("brotli",i.length,"->",o.length);'
+
       - name: Upload DB to Cloudflare R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -56,14 +93,7 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
-          # DB: immutable (cache-busted by ?v=). Pre-brotli it and store with
-          # Content-Encoding: br so the browser fetch() transparently decompresses
-          # (~81 MB -> ~17 MB on the wire; OPFS still caches the full DB). Same object
-          # key, so the client URL is unchanged. Compress via Bun's node:zlib.
-          # Quality 10, not 11: q11 costs ~3 min of CI for only ~1 MB smaller than q10
-          # (~140s) -- not worth it every deploy for a once-per-visitor, OPFS-cached
-          # download. Both stay under jsDelivr's 20 MB mirror limit.
-          bun -e 'import {brotliCompressSync,constants} from "node:zlib"; import {readFileSync,writeFileSync} from "node:fs"; const i=readFileSync("public/data/tortoise.sqlite"); const o=brotliCompressSync(i,{params:{[constants.BROTLI_PARAM_QUALITY]:10,[constants.BROTLI_PARAM_SIZE_HINT]:i.length}}); writeFileSync("public/data/tortoise.sqlite.br",o); console.log("brotli",i.length,"->",o.length);'
+          ls -l public/data/tortoise.sqlite.br
           aws s3 cp public/data/tortoise.sqlite.br s3://tortoise-db-viewer/data/tortoise.sqlite \
             --endpoint-url "$R2_ENDPOINT" \
             --content-type application/octet-stream \
@@ -313,7 +343,11 @@ jobs:
         uses: actions/cache@v6
         with:
           path: api-json
-          key: api-${{ hashFiles('public/data/version.json', 'scripts/build-api.mjs', 'src/queries.js', 'src/render.js', 'src/constants.js') }}
+          # The DB's content hash, NOT hashFiles(version.json) -- that file carries a
+          # `builtAt` timestamp that is new on every build, so the old key changed every
+          # run and this cache could never hit. `Build API JSON` had been re-running on
+          # every deploy since, ~29s of work whose inputs had not moved.
+          key: api-${{ steps.dbhash.outputs.hash }}-${{ hashFiles('scripts/build-api.mjs', 'src/queries.js', 'src/render.js', 'src/constants.js') }}
 
       - name: Build API JSON (cache miss only)
         if: steps.apicache.outputs.cache-hit != 'true'
