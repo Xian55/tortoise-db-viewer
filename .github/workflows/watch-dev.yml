@@ -28,7 +28,7 @@ jobs:
 
       - name: Restore last-seen SHA
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .upstream-dev-sha
           key: upstream-dev-sha-${{ steps.up.outputs.sha }}

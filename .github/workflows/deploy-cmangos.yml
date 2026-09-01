@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout site
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # cmangos ships the Classic world DB as SQLite on every release. Grab the latest.
       - name: Download cmangos Classic SQLite DB
