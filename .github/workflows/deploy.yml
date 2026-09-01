@@ -19,10 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout site
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout server SQL dumps (sparse)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Penqle/tortoise-wow
           path: server
@@ -91,7 +91,7 @@ jobs:
 
       - name: Restore static-asset sync marker
         id: assetcache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .r2-assets-synced
           key: r2-assets-v1-${{ steps.assetshash.outputs.hash }}
@@ -224,7 +224,7 @@ jobs:
 
       - name: Restore tooltip JSON
         id: ttcache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: tt-json
           key: tt-${{ steps.tthash.outputs.hash }}
@@ -281,7 +281,7 @@ jobs:
       # OUTPUT digest from the (cache-restored) manifest.json, so publishing stays precise.
       - name: Restore API JSON
         id: apicache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: api-json
           key: api-${{ hashFiles('public/data/version.json', 'scripts/build-api.mjs', 'src/queries.js', 'src/render.js', 'src/constants.js') }}
@@ -326,7 +326,7 @@ jobs:
       - name: Stamp the artifact with this commit
         run: echo "${{ github.sha }}" > dist/deploy-marker.txt
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -356,7 +356,7 @@ jobs:
       # fires only while the site is NOT yet serving this commit, and the final verdict
       # is a site check -- so a "failed" attempt that published passes, and an attempt
       # that reported success but published nothing still fails.
-      - uses: actions/checkout@v4      # only for .github/scripts/pages-live.sh
+      - uses: actions/checkout@v7      # only for .github/scripts/pages-live.sh
         with:
           sparse-checkout: .github/scripts
           sparse-checkout-cone-mode: false
@@ -373,7 +373,7 @@ jobs:
       # not watched), then be patient. Re-deploy only if a long poll shows the site
       # really isn't updating.
       - id: t1
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
         with:
           timeout: 120000
         continue-on-error: true
@@ -386,7 +386,7 @@ jobs:
         run: sleep 30
       - id: t2
         if: steps.c1.outcome == 'failure'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
         with:
           timeout: 120000
         continue-on-error: true
@@ -399,7 +399,7 @@ jobs:
         run: sleep 60
       - id: t3
         if: steps.c2.outcome == 'failure'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
         with:
           timeout: 120000
         continue-on-error: true

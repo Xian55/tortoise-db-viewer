@@ -23,10 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout site
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout server SQL dumps (sparse, 1181dev)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Penqle/tortoise-wow
           ref: 1181dev
