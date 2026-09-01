@@ -1984,6 +1984,14 @@ async function showDressingRoom(params, navigate) {
   });
   const render = picker.render;
 
+  // Clamp what ARRIVED, not only what changes later. A link (or a remembered look) can
+  // name an option this race does not have, or -- before the fix in appearance.js -- a
+  // facial shape and a face paint that disagree on a race where they are one choice.
+  // Healing it here is what makes every link written by the old build render correctly,
+  // and re-remembering is what carries the repair to the item and set previews, which
+  // read the stored look and never run a picker of their own.
+  picker.clamp();
+  rememberAppearance(state);
   render();
   await mount();
 }

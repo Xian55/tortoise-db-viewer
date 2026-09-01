@@ -1015,7 +1015,14 @@ what 4 looks like. Anything with a preview now shows it and everything else step
   or human males (0.67), matching what those creators actually offer. Where a race has only
   ONE shape the shape stepper hides itself and the race's word moves to the paint, which is
   exactly what "Markings" means on a night elf female. `?paint=` carries it; absent, it
-  follows `?facial=`, so every link written before the split still renders what it said. Read in order, a troll's tusks (column 1) resolve to geoset 2xx, and no
+  follows `?facial=`, so every link written before the split still renders what it said.
+  **But the two params are always WRITTEN, split or not**, and on an unsplit race the
+  picker moves only `facial` -- so leaving `paint` behind pinned the beard TEXTURE while
+  the geoset kept changing, and a human male's nine beards rendered as two (bare chin,
+  sideburns). It survived every reload by riding in the URL and in `tw-appearance`. The
+  picker now moves them together where the race does not split them, and the room
+  `clamp()`s + re-remembers on ARRIVAL as well as on change, which is what repairs the
+  links and the stored looks the old build wrote. Read in order, a troll's tusks (column 1) resolve to geoset 2xx, and no
   troll model contains a single 2xx -- so trolls had no tusks at all while the picker
   offered fourteen styles of nothing. The order was scored, not guessed: of the six
   permutations, 1/3/2 resolves 240 of 286 references against the models' actual geosets,
@@ -1067,6 +1074,27 @@ character sheet's **Show in 3D** panel wears a real `?loadout=`.
   does not identify a robe (most are filed as plain chest, inv 5); the GEOSET does, by
   addressing group 13. It still goes under the belt and boots, where those sit on a robe in
   game.
+- **Some geosets are decided by the OUTFIT, not by the item that sets them** (`chargear.js`
+  `outfitOverrides`, run at the end of `applyGear`). Each item is right about its own group
+  and wrong only in company, so no per-item pass can see these: a ROBE swallows the boot
+  geoset and the tabard's flaps -- both reach into the space its skirt occupies -- and a
+  GLOVE replaces the sleeve at the wrist rather than sharing it with a puff-sleeved robe.
+  The tabard still paints the torso; only its geometry goes, which is how a tabard looks
+  over a robe in game.
+  - **"Hidden" is an empty group, NEVER the bare variant** -- and the boot is where that
+    distinction costs something. Only groups 4, 5 and 13 carry a variant 1 at all (measured
+    over all 20 character models; a bare arm and a bare chest ARE the body), and 501 is not
+    an ankle trim, it is the whole SHIN: z 0.087..0.638 on a human female against the
+    skirt's 0..1.147. Falling back to it leaves the calf inside the robe and poking out
+    through it, which is what "the boots still clip with the robe from behind" was -- and it
+    hides from a front view AND from a bare-footed one, since with no boot equipped that
+    same mesh wears the robe's own texture and blends in. The skirt reaches the floor on
+    every race, so dropping the group bares nothing.
+  - **The texture side is the same rule** (`componentLayers(it, { robed })`): a boot under a
+    robe must not paint `leg_l` either. That rectangle is the lower leg, the skirt is what
+    samples it once a robe is on (geoset 1302 spans leg_u + leg_l -- measured from its UVs,
+    not assumed), so the boot was overwriting the robe's own authored hem with a band of
+    boot. `foot` stays -- those are the toes, which do show below the hem.
 - **A cloak is neither texture nor model.** It is the character's own cape geoset textured
   from the ITEM -- that is what texture-unit type 2 means on a character, so binding the
   body atlas there painted the cape with skin and belt.

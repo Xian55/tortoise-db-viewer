@@ -225,6 +225,100 @@ async function testRobeOverLegs() {
 
 smoke("a robe covers the trousers under it", () => testRobeOverLegs());
 
+// ...and it swallows the GEOMETRY of the pieces that reach into the same space, which no
+// per-item geoset pass can see: each item is right about its own group and wrong only in
+// company. Reported from the live site as three separate bugs -- boots poking through the
+// skirt, a tabard's flaps hanging in front of it, and puff sleeves flaring out past the
+// gloves -- and they are one rule each, applied once the whole outfit is known.
+// "Hidden" is an EMPTY group, never the bare variant. Only groups 4, 5 and 13 carry a
+// variant 1 at all (measured over all 20 character models), so for the sleeve and the
+// tabard there is nothing else it could mean -- and for the boot the bare variant is the
+// trap: 501 is the SHIN, not an ankle trim, so falling back to it left the calf inside the
+// skirt and poking through it, which is what "the boots still clip with the robe from
+// behind" was. The skirt reaches the floor on every race, so dropping the group bares
+// nothing.
+async function testOutfitOverrides() {
+  const at = async (url) => {
+    await nav(url);
+    await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+    return page.evaluate(() => window.__mv().geosets);
+  };
+  const group = (list, g) => list.filter((x) => Math.floor(x / 100) === g);
+  const who = "?dressing&race=1&sex=m&hair=3";
+  // Feet of the Lynx -> 504, Naga Battle Gloves -> 402, Greymane Tabard -> 1202,
+  // Ancient Elven Robes -> 802 (sleeve) + 1302 (skirt).
+  const plain = await at(`${who}&feet=1121&tabard=61368`);
+  const robed = await at(`${who}&chest=51848&feet=1121&tabard=61368`);
+  const robe = await at(`${who}&chest=51848`);
+  const gloved = await at(`${who}&chest=51848&hands=888`);
+  console.log(`overrides: plain=[${plain}] robed=[${robed}] robe=[${robe}] gloved=[${gloved}]`);
+  return plain.includes(504) && plain.includes(1202)          // worn normally, both show
+    && robed.includes(1302)                                   // the robe is actually on
+    && group(robed, 5).length === 0                           // no boot, and no bare shin
+    && group(robed, 12).length === 0                          // tabard flaps gone
+    && robe.includes(802)                                     // the sleeve, with no glove
+    && gloved.includes(402) && group(gloved, 8).length === 0;  // glove cuff replaces it
+}
+
+smoke("a robe hides the boots and tabard, a glove the sleeve", () => testOutfitOverrides());
+
+// The same rule on the TEXTURE side. `leg_l` is the lower-leg rectangle of the body atlas,
+// and under a robe the thing sampling it is the skirt -- so a boot painting there replaced
+// the robe's own authored hem with a band of boot. Read off the composited atlas rather
+// than off the screen: the rectangle either changed or it did not, and a rendered
+// comparison would also pick up the toes, which the boot legitimately still paints.
+async function testRobeKeepsItsHem() {
+  const legLower = async (url) => {
+    await nav(url);
+    await viewerIdle();
+    return page.evaluate(async () => {
+      const img = await createImageBitmap(await (await fetch(window.__mv.bodyAtlas())).blob());
+      const c = document.createElement("canvas");
+      c.width = 128; c.height = 64;                        // charcomposite REGIONS.leg_l
+      c.getContext("2d").drawImage(img, 128, 160, 128, 64, 0, 0, 128, 64);
+      return c.toDataURL();
+    });
+  };
+  const who = "?dressing&race=1&sex=f&hair=3";
+  const robe = await legLower(`${who}&chest=51848`);
+  const robeBoots = await legLower(`${who}&chest=51848&feet=4320`);
+  const legs = await legLower(`${who}&legs=6568`);
+  const legsBoots = await legLower(`${who}&legs=6568&feet=4320`);
+  console.log(`hem: robeKept=${robe === robeBoots} bootsStillPaint=${legs !== legsBoots}`);
+  // The second half guards the first: if the boot painted nothing anywhere, "kept" would
+  // pass for the wrong reason.
+  return robe === robeBoots && legs !== legsBoots;
+}
+
+smoke("a robe keeps its own hem under boots", () => testRobeKeepsItsHem());
+
+// One stepper, two URL params. Where a race does not SPLIT its facial shape from its face
+// paint (a human's nine beards are nine beards), the picker moves only `facial` -- but the
+// look is written out as `facial` AND `paint`, so leaving `paint` behind pinned the beard
+// TEXTURE while the geoset went on changing. Nine human male beards rendered as two, and
+// the stale pair survived every reload by riding in the URL and in localStorage.
+async function testFacialPaintCoupled() {
+  const shot = async (url) => {
+    await nav(url);
+    await viewerIdle();
+    return page.evaluate(() => window.__mv.snapshot({ background: false }));
+  };
+  // The poisoned link the old build wrote: shape 0 with style 8's paint. It must render as
+  // shape 0 does when asked honestly -- arriving is clamped, not only changing.
+  const healed = await shot("?dressing&race=1&sex=m&hair=3&facial=0&paint=8");
+  const honest = await shot("?dressing&race=1&sex=m&hair=3&facial=0&paint=0");
+  const other = await shot("?dressing&race=1&sex=m&hair=3&facial=3&paint=3");
+  await afterRemount(() => page.click('.stepper[data-key="facial"] button[data-step="1"]'));
+  const q = new URLSearchParams(await page.evaluate(() => location.search));
+  console.log(`facial/paint: healed=${healed === honest} distinct=${honest !== other}`
+    + ` stepped facial=${q.get("facial")} paint=${q.get("paint")}`);
+  // `distinct` guards `healed`: if the viewer drew nothing, every snapshot would match.
+  return healed === honest && honest !== other && q.get("facial") === q.get("paint");
+}
+
+smoke("facial hair and its paint move together where the race has one choice",
+  () => testFacialPaintCoupled());
+
 // On a phone the two rails cannot stand beside the model, and stacking them in source
 // order buried it under fourteen slot rows: you scrolled PAST the character to change it,
 // then back up to see the result. The model leads and stays put, and tabs swap which rail

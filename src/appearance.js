@@ -204,7 +204,10 @@ export function appearancePicker({ data, state, el, onChange = () => {} }) {
     state.hair = fit(geosetOpts("hair"), state.hair);
     const ax = facialAxes();
     state.facialHair = fit(ax.split ? ax.shapes : geosetOpts("facial"), state.facialHair);
-    state.facePaint = fit(ax.split ? ax.paints : geosetOpts("facial"), state.facePaint);
+    // Where the race does NOT split the two, the paint IS the shape. Clamping them apart
+    // let them drift, and both ride in the URL, so a link written after the drift pinned
+    // the texture while the geoset kept moving.
+    state.facePaint = ax.split ? fit(ax.paints, state.facePaint) : state.facialHair;
   };
 
   const set = async (key, value) => {
@@ -212,6 +215,12 @@ export function appearancePicker({ data, state, el, onChange = () => {} }) {
     // A gnome has fewer skins than a tauren, so carrying an out-of-range index across a
     // race change renders a character with no head.
     if (key === "race" || key === "sex") clamp();
+    // ONE stepper, TWO params. On a race whose shape and paint are a single choice the
+    // picker moves only `facial` -- but `appearanceParams` writes `paint` regardless, so
+    // leaving it behind pinned the TEXTURE at whatever it last was while the geoset went
+    // on changing. That is nine human male beards rendering as two (bare chin, sideburns),
+    // and it survived every reload because the stale pair was in the URL and in storage.
+    else if (key === "facial" && !facialAxes().split) state.facePaint = value;
     render();
     await onChange(key, value);
   };
