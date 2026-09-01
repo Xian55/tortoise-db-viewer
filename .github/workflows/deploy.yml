@@ -189,16 +189,45 @@ jobs:
       # saw it. It runs against the artifact we are about to publish (`dist`, via vite
       # preview), so it catches a broken build BEFORE it reaches users.
       #
-      # It needs the map/minimap trees, which are no longer in git, and the map tests
-      # genuinely require tiles to LOAD -- so fetch them first. Verified stable: 3
-      # consecutive full runs, 211 pass / 0 fail, zero flaky tests.
-      - name: Fetch map assets for the smoke suite
-        # model-thumbs too: without its manifest every NPC falls back to Wowhead's CDN,
-        # so the suite would exercise a code path production never takes.
-        run: bun scripts/fetch-assets.mjs --only maps,minimap,model-thumbs
+      # There USED to be a `fetch-assets --only maps,minimap,model-thumbs` step here, on
+      # the grounds that the map tests need tiles to load. It fetched into `public/` AFTER
+      # `vite build` had already copied that directory, and the suite is served by
+      # `vite preview` out of `dist/` -- so nothing ever read the 38s of files it
+      # downloaded. Nor could it have: this build bakes VITE_ASSETS_BASE, so maps, minimap
+      # AND the thumb manifest (fetched at runtime, src/main.js) all resolve to R2 whatever
+      # is on disk. Removing it changes nothing about what the suite exercises.
+      #
+      # What IS cached is the measured per-file timings, and only those. Without them
+      # run.mjs reports "balanced by file size (first run -- no timings yet)" on every
+      # single CI run, so the measured-time packing it was built for has never once been
+      # used here -- and file size is a poor proxy (browse.test.mjs ranks 6th by size and
+      # 2nd by time).
+      #
+      # The whole browser profile is deliberately NOT cached, though it holds the things
+      # that actually cost: each shard's OPFS copy of the DB (~4.1s of cold download a
+      # shard) and Chrome's HTTP cache for the R2 models the 3D tests pull. Measured, a
+      # shard profile is 343-486 MB; moving ~1.5 GB of cache in and out to save ~16s of
+      # warm-up is a losing trade, and one more thing to go stale. The timings file is
+      # ~1 KB.
+      #
+      # The key is the run id so it never hits exactly and always saves a fresh entry,
+      # with the prefix restore-key picking up the newest previous one. Timings are a
+      # property of the RUNNER rather than of the code, so there is nothing to key on, and
+      # a file whose duration has genuinely changed re-measures itself next run (run.mjs
+      # blends rather than overwrites).
+      - name: Restore smoke shard timings
+        uses: actions/cache@v6
+        with:
+          path: .smoke-cache/timings.json
+          key: smoke-timings-v1-${{ github.run_id }}
+          restore-keys: smoke-timings-v1-
 
       - name: Smoke test the built site
-        run: bun run smoke
+        # -j 4 rather than run.mjs's `cpus - 2`, which is 2 on a 4-vCPU hosted runner. That
+        # default was measured on an 8-core dev box where the work is CPU-bound; here the
+        # 3D files spend much of their time waiting on R2, so the runner has cores idle at
+        # K=2. Revert to plain `bun run smoke` if this does not hold up.
+        run: bun run smoke -- -j 4
 
       # Per-entity Open Graph "stub" pages so pasted links (Discord/Twitter/Slack)
       # unfurl with the real title/description instead of index.html's generic meta
