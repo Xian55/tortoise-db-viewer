@@ -57,6 +57,46 @@ It is now close to its floor, so know what the levers are before reaching for on
 So the only remaining lever is *less work*, and the biggest single file
 (`browse.test.mjs`, ~25s under contention, no sleeps left in it) is now the wall floor.
 
+### ...and where it goes in CI, which is a different machine
+
+Everything above was measured on an 8-core dev box. The deploy gate runs on a hosted
+`ubuntu-latest` (**4 vCPU**), where the same suite costs ~2.5x more per test and the
+conclusions change. `.github/workflows/smoke-bench.yml` is a manual, dispatch-only sweep
+that re-measures all of this in ~8 minutes without shipping a deploy; use it rather than
+pushing to main to learn one number.
+
+The deploy's smoke step went **91s → 74s**, and only two things did it:
+
+- **Cache `.smoke-cache/timings.json`** (86s → 74s). Every CI run before this logged
+  "balanced by file size (first run -- no timings yet)", so the timing-based packing above
+  had never once run there. With it, each 3D file gets a shard to itself (57.5s / 52.6s)
+  and the other 17 files fill two more (68.4s / 63.2s) -- which means **the 3D files are no
+  longer the floor, the "everything else" shards are**, and splitting a 3D file further
+  would now buy nothing.
+- **Delete the `fetch-assets` step** (~38s, off the job rather than the step). It fetched
+  into `public/` after `vite build` had copied it, and the suite is served out of `dist/`,
+  so nothing ever read it.
+
+Three things measured and rejected, so nobody re-runs them:
+
+- **Shard count is nearly flat here, unlike on the dev box.** With warm timings, K=4 medians
+  69.0s and K=5 67.8s -- 1.2s apart at 22% more total work (234s vs 285s). Over a wider
+  sweep K=2..6 lands in a 95-106s band while total work goes 199s → 467s. The runner is
+  CPU-saturated, so an added shard is paid for in contention: the slowest shard sits at
+  ~90s at K=3, K=4 *and* K=6. `-j 4` is set in deploy.yml on that evidence, and the
+  `cpus - 2` default (2 here) is the one thing clearly worse, at 106s.
+- **R2 latency is not the problem.** Building locally with CI's remote asset bases cost the
+  two 3D files 31.0s against 26.6s with local assets -- **14%**. So CI's ~3x per-test cost
+  is runner CPU, not the network, and serving assets from the preview server would be a lot
+  of machinery for a handful of seconds.
+- **Warm-up is not the problem either.** `warm()` is ~4.1s a shard cold, ~16s of a 235s
+  total at K=4. Caching the browser PROFILES would fix that and keep Chrome's HTTP cache,
+  but a shard profile measures 343-486 MB; moving ~1.5 GB of cache to save ~16s loses.
+
+Which leaves the same answer as the dev box, for a different reason: *less work*. The two
+3D files are ~110s of the ~235s total, and about half of `model3d-worn` is the
+elapsed-time assertions that cannot be waited into existence.
+
 ## Running
 
 ```sh
