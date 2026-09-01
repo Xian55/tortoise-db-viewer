@@ -1,0 +1,78 @@
+# Manual bench for the smoke suite's shard count. NOT part of any deploy.
+#
+# Exists because the only place the suite's real cost can be measured is a hosted runner
+# (4 vCPU, assets over the network from R2), and the only way we had to measure it was to
+# ship a deploy -- which re-uploads the DB, regenerates the OG/API JSON and republishes the
+# site, ~9 minutes, to learn one number. This builds the site and runs nothing else, so a
+# sweep over several shard counts costs a couple of minutes and touches no production
+# artifact.
+#
+# No DB build: vite.config.js reads only the committed asset manifest, and the suite
+# downloads the DB from R2 exactly as the deploy's run does -- so this measures the same
+# cold-start cost the real gate pays.
+name: Smoke bench (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: "Shard counts to try, comma separated (e.g. 2,3,4,6)"
+        default: "2,3,4,6"
+      repeats:
+        description: "Runs per shard count (median is what to read)"
+        default: "1"
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Build site
+        run: bunx --bun vite build
+        env:
+          VITE_DATA_BASE: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data/
+          VITE_DATA_BASE_DEV: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data-dev/
+          VITE_DATA_BASE_VANILLA_CMANGOS: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data-vanilla-cmangos/
+          VITE_DATA_BASE_TBC_CMANGOS: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/data-tbc-cmangos/
+          VITE_ASSETS_BASE: ${{ vars.ASSET_BASE_URL || 'https://pub-aedb97cad2314db2a24aed17421e1254.r2.dev' }}/
+          VITE_GH_REPO: ${{ github.repository }}
+          VITE_API_BASE: ${{ vars.API_BASE_URL || 'https://api.tortoiseclothing.org' }}
+
+      # One discarded run first, purely to write .smoke-cache/timings.json. Without it the
+      # first measurement packs shards by file SIZE and comes out badly imbalanced (the
+      # deploy that introduced -j 4 landed 71.0s against 27.8s), which measures the packing
+      # rather than the shard count.
+      - name: Warm the timings (discarded)
+        run: bun run smoke -- -j 4 || true
+
+      - name: Sweep
+        env:
+          SHARDS: ${{ inputs.shards }}
+          REPEATS: ${{ inputs.repeats }}
+        run: |
+          echo "K  run  wall     test-time  speedup  slowest-shard"
+          for k in $(echo "$SHARDS" | tr ',' ' '); do
+            for r in $(seq 1 "$REPEATS"); do
+              # Cold OPFS for every measurement: a later K would otherwise inherit the
+              # warm profiles an earlier one left behind and look faster for it. The
+              # timings file is deliberately kept, so every K packs by measured time.
+              rm -rf .smoke-cache/shard-* .smoke-cache/junit
+              bun run smoke -- -j "$k" > "bench-$k-$r.log" 2>&1 || echo "  K=$k run $r FAILED"
+              wall=$(grep -oE 'Wall [0-9.]+s \| test-time sum [0-9.]+s.*' "bench-$k-$r.log" | head -1)
+              slow=$(grep -oE '^  s[0-9]+ +[0-9.]+s' "bench-$k-$r.log" | sort -k2 -rn | head -1)
+              printf '%-2s %-4s %s   %s\n' "$k" "$r" "${wall:-NO RESULT}" "${slow:-}"
+            done
+          done
+          echo
+          echo "===== full profile per K ====="
+          for f in bench-*.log; do
+            echo "--- $f"
+            sed -n '/TIME PROFILE/,/^TOTAL:/p' "$f" | head -30
+          done
