@@ -60,13 +60,20 @@ const SLOT_REGIONS = {
 };
 
 /** The [column, region] pairs this item may paint. Empty for anything that is a model, is
- *  held, or is the cape -- none of those touch the skin atlas. */
-export function componentLayers(it) {
+ *  held, or is the cape -- none of those touch the skin atlas.
+ *
+ *  `robed` says a robe is in the outfit, which costs a BOOT its `leg_l`. That rectangle is
+ *  the lower leg, and a floor-length skirt (geoset 1302, measured z 0..1.147 against the
+ *  shin's 0.087..0.638) is what samples it once a robe is on -- so the boot was painting
+ *  over the robe's OWN hem, replacing its authored trim with a band of boot. Its `foot`
+ *  stays: that rectangle is the toes, which belong to the boot whenever they show. */
+export function componentLayers(it, { robed = false } = {}) {
   // A robe is filed as a plain chest (inv 5) and its skirt is the reason the leg regions
   // are in play at all, so it takes the robe list rather than the chest one.
   const allow = SLOT_REGIONS[isRobe(it) ? 20 : it.inv];
   if (!allow) return [];
-  return COMPONENT_REGIONS.filter(([, region]) => allow.includes(region));
+  const skip = robed && it.inv === 8 ? "leg_l" : null;
+  return COMPONENT_REGIONS.filter(([, region]) => allow.includes(region) && region !== skip);
 }
 
 export const COMPONENT_REGIONS = [
@@ -126,6 +133,52 @@ export function applyGear(baseSet, items, present) {
       out.add(want);
     });
   }
+  return outfitOverrides(out);
+}
+
+// The groups the whole-outfit overrides below name (the same numbers SLOT_GEOSET_GROUPS
+// hands out).
+const G_GLOVE = 4, G_BOOT = 5, G_SLEEVE = 8, G_TABARD = 12, G_ROBE = 13;
+
+/** Is something WORN in this group? Variant 1 is the bare state of every group that has
+ *  one (401 the bare hand, 501 the bare foot, 1301 the bare leg), so anything above it is
+ *  a garment. */
+const wearing = (set, group) =>
+  [...set].some((g) => Math.floor(g / 100) === group && g % 100 > 1);
+
+/** Draw nothing for this group. Measured over all 20 character models, only groups 4, 5
+ *  and 13 carry a variant 1 at all -- a bare arm and a bare chest ARE the body -- so for
+ *  the sleeve and the tabard this is the only meaning "hidden" can have anyway. */
+function dropGroup(out, group) {
+  for (const g of [...out]) if (Math.floor(g / 100) === group) out.delete(g);
+}
+
+/**
+ * The overrides the client applies once the WHOLE outfit is known: one garment hiding a
+ * geoset another garment turned on. No per-item pass can see these -- each item is right
+ * about its own group and wrong only in company -- which is why they live here, after the
+ * loop, rather than in the item's own geoset write.
+ *
+ * A ROBE covers the legs from the waist down, so the two pieces that reach into that
+ * space are taken off the model and left as texture alone:
+ *   - the whole BOOT group. Note "hidden" here is NOT the bare variant: 501 is the SHIN,
+ *     not an ankle trim (measured z 0.087..0.638 on a human female, against the skirt's
+ *     0..1.147), so falling back to it leaves the calf inside the skirt and poking out
+ *     through it -- which reads as the boots clipping through the robe from behind, and
+ *     is camouflaged rather than absent on a bare foot, since both then wear the robe's
+ *     own texture. The skirt reaches the floor on every race, so nothing is left bare.
+ *   - the TABARD's loose flaps, which hung in front of it. The tabard still paints the
+ *     torso -- it is only its geometry that a robe swallows, which is exactly how a
+ *     tabard looks over a robe in game.
+ * And a GLOVE replaces the sleeve at the wrist rather than sharing it: its cuff and a
+ * puff-sleeved robe's occupy the same space, and the sleeve poked out through the glove.
+ */
+export function outfitOverrides(out) {
+  if (wearing(out, G_ROBE)) {
+    dropGroup(out, G_BOOT);
+    dropGroup(out, G_TABARD);
+  }
+  if (wearing(out, G_GLOVE)) dropGroup(out, G_SLEEVE);
   return out;
 }
 

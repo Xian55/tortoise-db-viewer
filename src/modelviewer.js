@@ -15,7 +15,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { parseM2B, parseAnimPack, bounds, TEX_HAIR, TEX_OBJECT_SKIN } from "./m2b.js";
 import { compositeBody, SECTION_REGIONS } from "./charcomposite.js";
 import { componentLayers, applyGear, inPaintOrder, attachedModels, helmetHidden,
-  structuralGeosets } from "./chargear.js";
+  structuralGeosets, isRobe } from "./chargear.js";
 import { MODELS_BASE, MODELS_V } from "./config.js";
 
 // The ONE live viewer. A WebGL context is scarce and is not garbage-collected, so
@@ -1057,10 +1057,13 @@ export async function mountCharacterViewer(el, opts = {}) {
   // Worn gear paints over the skin, in the order the pieces overlap in life: a glove
   // covers its bracer, a boot covers the trouser leg, a belt sits over both.
   const worn = inPaintOrder(opts.items || []);
+  // Whether a ROBE is in the outfit is a fact about the outfit, not about any one piece,
+  // and it changes what a BOOT is allowed to paint (see componentLayers).
+  const robed = worn.some(isRobe);
   for (const item of worn) {
     // Only the regions this slot actually paints -- see componentLayers(): a tier row
     // carries the whole set's textures, and a glove that painted a torso was the result.
-    for (const [col, region] of componentLayers(item)) {
+    for (const [col, region] of componentLayers(item, { robed })) {
       if (item[col]) layers.push({ urls: compUrls(region, item[col]), region });
     }
   }
