@@ -33,7 +33,11 @@ export async function testBrowse(kind, query = "", expectHeader) {
 export async function waitStable(sample, { tries = 40, gap = 100 } = {}) {
   let prev = null;
   for (let i = 0; i < tries; i++) {
-    const cur = await sample();
+    // A sample that THROWS is "not settled yet", the same as one that returns null. It
+    // reads live page state, so it can legitimately catch a hook mid-swap (`window.__mv`
+    // is deleted by the old viewer's destroy() before the new mount installs its own);
+    // letting that escape turns a transient into a hard failure of whatever called us.
+    const cur = await sample().catch(() => null);
     const key = cur == null ? null : JSON.stringify(cur);
     if (key != null && key === prev) return cur;
     prev = key;

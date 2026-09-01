@@ -537,8 +537,13 @@ async function testCameraSurvives() {
   // waitStable returns null if it never settles, and every reader here dereferences the
   // result -- so fall back to one plain read rather than turning a slow settle into a crash.
   const dragged = (await waitStable(() => page.evaluate(() => window.__mv.view()))) || (await page.evaluate(() => window.__mv.view()));
-  await page.click('.sw[data-key="hcolor"][data-val="4"]');
-  await page.waitForFunction(() => window.__mv && window.__mv().triangles > 0, { timeout: T });
+  // afterRemount, NOT a wait for "a viewer with triangles": the OLD viewer still has
+  // triangles for as long as the click's async rebuild takes to tear it down, so that
+  // condition is satisfied by the thing being replaced -- and the very next sample then
+  // reads `window.__mv` in the window where destroy() has deleted it and the new mount has
+  // not yet set it, which throws. It went red in CI on a loaded runner and passed
+  // everywhere else, which is what a race that narrow looks like.
+  await afterRemount(() => page.click('.sw[data-key="hcolor"][data-val="4"]'));
   // waitStable returns null if it never settles, and every reader here dereferences the
   // result -- so fall back to one plain read rather than turning a slow settle into a crash.
   const after = (await waitStable(() => page.evaluate(() => window.__mv.view()))) || (await page.evaluate(() => window.__mv.view()));
