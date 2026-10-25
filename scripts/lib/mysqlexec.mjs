@@ -118,12 +118,15 @@ export function classify(stmt) {
 
 // Rewrite the (single) target-table token of a statement to `tgt`. The
 // migrations are single-table DML (no JOINs/subqueries), so only the leading
-// table reference after the verb keyword needs rewriting.
+// table reference after the verb keyword needs rewriting. `\s*` after the last
+// keyword, not `\s+`: MySQL accepts a backtick straight after it (`DELETE
+// from\`creature\`` in 20260821154713_world.sql), and a miss here runs the
+// statement against the unprefixed name -> "no such table".
 function rewriteTable(stmt, verb, tgt) {
-  if (verb === "UPDATE") return stmt.replace(/^(\s*UPDATE\s+)`?[a-zA-Z0-9_]+`?/i, `$1\`${tgt}\``);
-  if (verb === "DELETE") return stmt.replace(/^(\s*DELETE\s+FROM\s+)`?[a-zA-Z0-9_]+`?/i, `$1\`${tgt}\``);
+  if (verb === "UPDATE") return stmt.replace(/^(\s*UPDATE\s*)`?[a-zA-Z0-9_]+`?/i, `$1\`${tgt}\``);
+  if (verb === "DELETE") return stmt.replace(/^(\s*DELETE\s+FROM\s*)`?[a-zA-Z0-9_]+`?/i, `$1\`${tgt}\``);
   // INSERT [OR ...] INTO / REPLACE INTO
-  return stmt.replace(/^(\s*(?:INSERT(?:\s+OR\s+\w+)?|REPLACE)\s+INTO\s+)`?[a-zA-Z0-9_]+`?/i, `$1\`${tgt}\``);
+  return stmt.replace(/^(\s*(?:INSERT(?:\s+OR\s+\w+)?|REPLACE)\s+INTO\s*)`?[a-zA-Z0-9_]+`?/i, `$1\`${tgt}\``);
 }
 
 // Rewrite MySQL-isms in a statement so SQLite accepts it, retargeting the table
