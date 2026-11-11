@@ -1115,6 +1115,13 @@ export const qObjectLoot = (n) => `
 export const qObjectSpawns = (n) => `
   SELECT x, y, map, zone FROM spawn_points INDEXED BY idx_spawn_id
   WHERE kind='o' AND id IN (${inList(n)}) AND zone IS NOT NULL LIMIT 5000`;
+// Which of these objects are placed from a PLAYER REPORT rather than the server data
+// (build-db `reported_spawn`, from scripts/data/reported-spawns.json) -- the page says so
+// under the map. Optional schema: gate on caps().reported.
+export const qObjectReported = (n) => `
+  SELECT r.id, r.note, r.ref, r.near, c.name AS near_name
+  FROM reported_spawn r LEFT JOIN creatures c ON c.entry = r.near
+  WHERE r.kind = 'o' AND r.id IN (${inList(n)})`;
 // Quests this object('s group) starts / ends, and is a collection objective of.
 export const qObjectQuestStart = (n) => `
   SELECT DISTINCT q.entry, q.title, q.level FROM gameobject_quest_start r

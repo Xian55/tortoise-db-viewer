@@ -62,7 +62,51 @@ async function testReadableObject(id, expect) {
   return txt.includes(expect);
 }
 
+// An object the server SQL gives loot but no spawn row is placed from a player report
+// (scripts/data/reported-spawns.json). It must (a) get a map at all, and (b) SAY the
+// marker is approximate, naming the NPC it was reported next to -- a borrowed boss
+// coordinate with no disclosure would read as server data.
+async function testReportedObject(id, expectZone, expectNpc) {
+  await nav(`?object=${id}`);
+  await page.waitForSelector(".npc-head h1", { timeout: T });
+  await page.waitForSelector("#zonemap .leaflet-image-layer", { timeout: T });
+  const zones = await page.$$eval("#objzoneswitch button", (b) => b.map((x) => x.textContent.trim())).catch(() => []);
+  const note = await page.$eval(".reported-spawn", (e) => e.textContent.replace(/\s+/g, " ").trim()).catch(() => "");
+  const npcLinks = await page.$$eval(".reported-spawn a[href*='npc=']", (a) => a.map((x) => x.textContent.trim()));
+  const srcLinks = await page.$$eval(".reported-spawn a[href^='https://']", (a) => a.length);
+  console.log(`reported-object ${id}: zones=[${zones.join(" | ")}] npcs=[${npcLinks.join(", ")}] sources=${srcLinks} note="${note.slice(0, 90)}"`);
+  return zones.some((z) => z.includes(expectZone)) && note.includes("Approximate location")
+    && npcLinks.some((n) => n.includes(expectNpc)) && srcLinks > 0;
+}
+
+// ...and the reason it matters: the item that object holds finally names a zone on the
+// page people actually land on (the quest's required-items table had an empty Zone cell).
+async function testReportedObjectItemZone(item, expectZone) {
+  await nav(`?item=${item}`);
+  await page.waitForSelector(".item-rel .tabpane:not(.hidden) a.ilink.object[href*='object=']", { timeout: T });
+  // The tab groups by object name, so the first link sits in a group header: read the
+  // whole pane's rows rather than that one.
+  const rows = await page.$$eval(".item-rel .tabpane:not(.hidden) tbody tr",
+    (trs) => trs.map((tr) => tr.textContent.replace(/\s+/g, " ").trim()));
+  console.log(`reported-object item ${item}: rows=[${rows.join(" | ")}]`);
+  return rows.some((r) => r.includes(expectZone));
+}
+
+// The page the report came in on: quest 41333 needs Advanced Gemology I, which is
+// combined from two halves, so its required-items table falls back to where the
+// REAGENTS come from -- and the object row there had an empty Zone cell.
+async function testReportedObjectQuestZone(quest, obj, expectZone) {
+  await nav(`?quest=${quest}`);
+  await page.waitForSelector(`a.ilink.object[href*='object=${obj}']`, { timeout: T });
+  const row = await page.$eval(`a.ilink.object[href*='object=${obj}']`, (a) => a.closest("tr").textContent.replace(/\s+/g, " ").trim());
+  console.log(`reported-object quest ${quest}: row="${row}"`);
+  return row.includes(expectZone);
+}
+
 smoke("objects browse", () => testObjectsBrowse());
+smoke("reported object quest 41333 zone", () => testReportedObjectQuestZone(41333, 2020104, "Blackrock Spire"));
+smoke("reported object 2020104 Gemology Plans", () => testReportedObject(2020104, "Blackrock Spire", "Voone"));
+smoke("reported object item 56105 zone", () => testReportedObjectItemZone(56105, "Blackrock Spire"));
 smoke("object 1731 Copper Vein", () => testObject(1731, "Copper Vein", "Copper Ore"));
 smoke("object focus-zone 2852", () => testObjectFocusZone(2852, 10));
 smoke("readable-object 2082 Uther", () => testReadableObject(2082, "Uther"));

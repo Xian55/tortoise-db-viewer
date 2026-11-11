@@ -1,0 +1,19 @@
+{
+  "_doc": "Player-reported placements for objects/creatures the public server SQL gives a template (and loot) but NO spawn row -- the live realm has them, the repo does not. build-db adds a spawn point for each and records it in `reported_spawn`, so the page can say the marker is approximate and where the report came from. Each row: kind ('o' object / 'c' creature), entry, then EITHER `near` (a creature entry whose spawn points it borrows -- use when the report is 'next to boss X') OR explicit `map`,`x`,`y`,`z` (use when someone read real coordinates in game). `note` is shown verbatim on the page; `ref` is an https link to the evidence. A row whose entry gains a real spawn upstream is skipped with a build warning -- delete it then. Turtle-only. Hand-maintained; never guess a location to fill a gap.",
+  "spawns": [
+    {
+      "kind": "o",
+      "entry": 2020104,
+      "near": 9237,
+      "note": "Picked up off the floor in Lower Blackrock Spire",
+      "ref": "https://youtu.be/rxRTNZsQnUQ?t=162"
+    },
+    {
+      "kind": "o",
+      "entry": 2020103,
+      "near": 60735,
+      "note": "Picked up off the floor in Hateforge Quarry",
+      "ref": "https://youtu.be/KPUiA20iltE?t=11"
+    }
+  ]
+}

@@ -2815,7 +2815,46 @@ console.log("Importing zones + spawn points...");
       })();
     }
   }
-  console.log(`  spawn_points: ${nc} creatures + ${ngo} objects${nlink ? ` (+${nlink} scripted-transform)` : ""}`);
+  // Player-reported placements. The public server SQL ships a template + loot for some
+  // Turtle objects and no `gameobject` row at all (the Jewelcrafting "Gemology Plans" in
+  // LBRS / Hateforge Quarry: ~34 custom loot objects are in that state), so the item they
+  // hold had a source and no place. scripts/data/reported-spawns.json fills those in from
+  // player reports -- borrowing a nearby creature's spawn (`near`) or taking coordinates
+  // read in game -- and `reported_spawn` keeps the provenance, so the page can say the
+  // marker is approximate instead of passing a report off as server data. A real spawn
+  // always wins: an entry upstream has since placed is skipped, loudly.
+  db.exec(`CREATE TABLE reported_spawn (kind TEXT, id INTEGER, near INTEGER, note TEXT, ref TEXT)`);
+  let nrep = 0;
+  {
+    const rf = SQL_SOURCE === "turtle" ? join(ROOT, "scripts", "data", "reported-spawns.json") : null;
+    if (rf && existsSync(rf)) {
+      const { spawns: reported = [] } = JSON.parse(readFileSync(rf, "utf8"));
+      const has = db.prepare(`SELECT 1 FROM spawn_points INDEXED BY idx_spawn_id WHERE kind = ?1 AND id = ?2 LIMIT 1`);
+      const borrow = db.prepare(`INSERT INTO spawn_points (kind, id, map, x, y, zone, sub)
+        SELECT ?1, ?2, map, x, y, zone, sub FROM spawn_points INDEXED BY idx_spawn_id WHERE kind = 'c' AND id = ?3`);
+      const insRep = db.prepare(`INSERT INTO reported_spawn VALUES (?,?,?,?,?)`);
+      db.transaction(() => {
+        for (const r of reported) {
+          const kind = r.kind === "c" ? "c" : "o";
+          if (has.get(kind, r.entry)) {
+            console.warn(`  reported-spawns: ${kind}${r.entry} now has a real spawn upstream -- remove it from reported-spawns.json`);
+            continue;
+          }
+          let n = 0;
+          if (r.near) n = borrow.run(kind, r.entry, r.near).changes ?? 0;
+          else if (r.map != null && r.x != null && r.y != null) {
+            const home = homeZone(r.map, r.x, r.y, r.z ?? null);
+            sSp.run(kind, r.entry, r.map, r.x, r.y, home.zone, home.sub);
+            n = 1;
+          }
+          if (!n) { console.warn(`  reported-spawns: ${kind}${r.entry} resolved to no location (near=${r.near ?? "-"}) -- skipped`); continue; }
+          insRep.run(kind, r.entry, r.near ?? null, r.note || "", r.ref || null);
+          nrep += n;
+        }
+      })();
+    }
+  }
+  console.log(`  spawn_points: ${nc} creatures + ${ngo} objects${nlink ? ` (+${nlink} scripted-transform)` : ""}${nrep ? ` (+${nrep} player-reported)` : ""}`);
 
   // precompute per-zone spawn count (home-zone membership) for the browse list
   db.exec(`UPDATE zones SET spawns = (SELECT COUNT(*) FROM spawn_points s WHERE s.zone = zones.areaid)`);
