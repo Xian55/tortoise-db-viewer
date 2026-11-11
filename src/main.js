@@ -2853,6 +2853,11 @@ async function showObject(id) {
     query(Q.qObjectQuestEnd(entryIds.length), entryIds),
     query(Q.qObjectObjectiveOf(entryIds.length), entryIds),
   ]);
+  // Spawns that come from a player report, not the server data (see build-db
+  // `reported_spawn`): the marker is approximate and the page has to say so.
+  const reported = entryIds.length && (await caps()).reported
+    ? await query(Q.qObjectReported(entryIds.length), entryIds).catch(() => [])
+    : [];
 
   // A node like Copper Vein spawns across many zones; list every zone it appears in
   // (with parchment) by spawn count, and let a switcher re-draw the map per zone
@@ -2907,6 +2912,12 @@ async function showObject(id) {
       ? `<div class="zone-empty muted">No spawn-location map is available for this object.</div>`
       : `<div class="zone-empty muted">No spawn location is recorded for this object (it may be placed by a script or event).</div>`;
 
+  const reportedNote = reported.length
+    ? `<div class="zone-empty muted reported-spawn"><b>Approximate location.</b> The server data has no spawn for this object; the marker comes from a player report.<ul>${reported.map((r) =>
+        `<li>${esc(r.note)}${r.near ? `, next to ${npcLink(r.near, r.near_name || `NPC #${r.near}`)}` : ""}` +
+        `${/^https:\/\//.test(r.ref || "") ? ` <a href="${esc(r.ref)}" target="_blank" rel="noopener noreferrer">(source)</a>` : ""}</li>`).join("")}</ul></div>`
+    : "";
+
   app.innerHTML =
     `<div class="npc-page">
       <div class="npc-head">
@@ -2915,6 +2926,7 @@ async function showObject(id) {
       </div>
       ${readableText(readablePages, { title: "Inscription" })}
       ${activeZone ? zoneSwitch + `<div id="zonemap"></div>` : noMapNote}
+      ${reportedNote}
       ${tabDefs.length ? tabs(tabDefs) : ""}
     </div>`;
   mountTables();

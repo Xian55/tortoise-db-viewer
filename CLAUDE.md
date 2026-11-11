@@ -195,6 +195,31 @@ base-only.
   index/key/constraint clauses. Migration errors should sit at **0**; a non-zero count in
   the build log means the executor met something new.
 
+### Player-reported spawns (`scripts/data/reported-spawns.json`)
+
+The public server SQL is not the live realm. Some Turtle objects ship a
+`gameobject_template` row and loot and **no `gameobject` spawn row on any branch** —
+measured: 109 of 991 loot-bearing chests have no spawn, 34 of them Turtle-custom. The
+item inside then has a source and no place: the Jewelcrafting "Gemology Plans"
+(2020103/2020104, the Top Halves of Advanced Gemology I/II) rendered an empty Zone cell
+on the quest, item and object pages, and the answer existed only in players' memory.
+
+- `reported-spawns.json` (committed, hand-maintained) places such an entry from a player
+  report: either `near` — a creature entry whose spawn points it borrows, for "it is on
+  the floor next to boss X" — or explicit `map`/`x`/`y`/`z` when someone read real
+  coordinates in game. build-db inserts the point(s) into `spawn_points` right after the
+  scripted-transform links, so every Location column, the object map and `object_browse`
+  pick it up with no query change.
+- **Provenance ships with it.** `reported_spawn(kind, id, near, note, ref)` records what
+  was reported and the evidence link, and the object page prints an "Approximate
+  location" note naming the NPC. A borrowed boss coordinate with no disclosure would read
+  as server data. Optional schema — `caps().reported`.
+- **A real spawn always wins.** An entry that already has a spawn point is skipped with a
+  build warning: upstream caught up, delete the row.
+- **Never guess to fill a gap.** The sibling "Goldsmithing Plans" (2020101/2020102) are in
+  the same state and stay unplaced until someone reports them. Turtle-only, like the
+  other hand-maintained spawn files.
+
 ### Peer baselines ("vs. typical …")
 
 A raw stat means nothing alone, so a stat is shown next to the **median of a
