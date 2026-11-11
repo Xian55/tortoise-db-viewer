@@ -205,6 +205,14 @@ gets *slower*, suspect a wait that is never satisfied.
 - The DB warms **once per shard**; the first run per profile downloads it into
   `.smoke-cache/shard-N/` (gitignored), later runs reuse it. A schema/DB change auto-refreshes
   (OPFS file is keyed by the build version hash).
+- **The harness pins the data origin to R2** (`assetOrigin:main` seeded on every document,
+  harness.mjs `launch()`). The app races `version.json` across R2 / the raw.githubusercontent
+  mirror / Pages and takes the first answer; the mirror is a branch HEAD behind a ~5 minute
+  Fastly cache, and deploy.yml runs the suite ~40s after force-pushing it. When the mirror
+  won, that shard ran on the PREVIOUS deploy's DB, so the first tests to assert on data new
+  in their own build (the reported-spawn ones) failed in CI and passed locally. The tell is
+  the footer test's log line: `updated="Updated <an old date>"` on a fresh build means the
+  shard is not on the DB this job made — check that before suspecting the test.
 - Don't add `beforeAll`/browser setup inside a test module — the preload owns the lifecycle.
 - **Interacting with a map marker/dot?** The Leaflet map runs a `fitBounds` animation on
   load that shifts marker positions — a single click can miss. Either **retry** the

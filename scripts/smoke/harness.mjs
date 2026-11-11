@@ -107,6 +107,24 @@ export async function launch() {
       value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } },
     });
   });
+  // Pin the data origin to R2 before the app boots, on every document. Left alone the app
+  // RACES version.json across R2 / the raw.githubusercontent mirror / Pages and takes the
+  // first answer (config.js resolveOrigins) -- right for a visitor, wrong for a test: the
+  // mirror is a branch HEAD behind a ~5 minute Fastly cache, and the deploy runs this suite
+  // ~40s after force-pushing that branch. When the mirror answered first, the shard booted
+  // on the PREVIOUS deploy's version and pulled that DB from its immutable tag, so a test
+  // asserting on data new in this build failed against a DB that did not have it -- one
+  // shard out of four, footer reading "Updated Nov 6" on a Nov 11 build. R2's pointer is
+  // `no-store` and authoritative; locally (no VITE_DATA_BASE) "r2" IS the preview's own
+  // data dir. This is the app's own sticky-origin key, so a dead R2 still falls back to
+  // the race, and `?origin=` still overrides it. Re-seeded per document because
+  // resetState() clears localStorage between tests.
+  await page.evaluateOnNewDocument(() => {
+    try {
+      if (!localStorage.getItem("assetOrigin:main"))
+        localStorage.setItem("assetOrigin:main", JSON.stringify({ o: "r2", t: Date.now() }));
+    } catch { /* about:blank / opaque origin */ }
+  });
   page.on("pageerror", (e) => { if (!BENIGN_PAGEERR.test(e.message)) errbuf.push("pageerror: " + e.message); });
   page.on("requestfailed", (r) => {
     // An ABORTED media request is normal, not breakage: the audio player drops its src on
